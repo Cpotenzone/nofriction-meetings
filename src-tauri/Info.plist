@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Bundle Identification -->
+    <key>CFBundleName</key>
+    <string>noFriction Meetings</string>
+    
+    <key>CFBundleDisplayName</key>
+    <string>noFriction Meetings</string>
+    
+    <key>CFBundleIdentifier</key>
+    <string>com.nofriction.meetings</string>
+    
+    <key>CFBundleVersion</key>
+    <string>1.0.0-pre.1</string>
+    
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0-pre.1</string>
+    
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    
+    <!-- Executable name must match Cargo package name -->
+    <key>CFBundleExecutable</key>
+    <string>nofriction-meetings</string>
+    
+    <!-- System Requirements -->
+    <key>LSMinimumSystemVersion</key>
+    <string>12.3</string>
+    
+    <!-- Display Options -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    
+    <!-- Application Type -->
+    <!-- Set to false to show in Dock; true for menu bar only -->
+    <key>LSUIElement</key>
+    <false/>
+    
+    <!-- Privacy Permission Descriptions (required by macOS) -->
+    
+    <!-- Microphone - for transcription -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>noFriction Meetings needs microphone access to transcribe your voice during meetings.</string>
+    
+    <!-- Screen Recording - for system audio and screen capture -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>noFriction Meetings needs screen recording access to capture meeting content and system audio from apps like Zoom and Teams.</string>
+    
+    <!-- 
+        NOTE: The following permissions are NOT included because the app doesn't use them:
+        - NSCameraUsageDescription (Camera)
+        - NSAppleEventsUsageDescription (Accessibility/AppleScript)
+        - NSBluetoothAlwaysUsageDescription (Bluetooth)
+        - NSRemindersUsageDescription (Reminders)
+        - NSContactsUsageDescription (Contacts)
+        - NSCalendarsUsageDescription (Calendar)
+        
+        Only add these if the app actually needs them!
+    -->
+    
+    <!-- File Associations (optional) -->
+    <key>CFBundleDocumentTypes</key>
+    <array/>
+    
+    <!-- URL Schemes (optional) -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>nofriction</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>com.nofriction.meetings</string>
+        </dict>
+    </array>
+    
+</dict>
+</plist>

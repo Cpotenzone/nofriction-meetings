@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        noFriction Meetings - Developer ID Entitlements
+        
+        For distribution outside the Mac App Store via DMG.
+        NOTE: App Sandbox is DISABLED for Developer ID distribution.
+        This is required for ScreenCaptureKit and system audio capture.
+    -->
+    
+    <!-- Hardened Runtime Exceptions -->
+    
+    <!-- Required for ScreenCaptureKit and dynamic libraries -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    
+    <!-- Allow JIT compilation for WebView/JavaScript -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    
+    <!-- Disable library validation (required for Tauri plugins) -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    
+    <!-- Device Access -->
+    
+    <!-- Microphone access for meeting transcription -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    
+    <!--
+        NOTE: Screen recording permission is handled via TCC (System Preferences).
+        There is no entitlement for it - the app must be manually granted access
+        in System Preferences > Privacy & Security > Screen Recording.
+        
+        The app should detect when it lacks permission and guide the user there.
+    -->
+    
+</dict>
+</plist>

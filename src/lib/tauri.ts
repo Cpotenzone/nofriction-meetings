@@ -1,0 +1,282 @@
+// noFriction Meetings - Tauri API Wrappers
+// Type-safe wrappers for Tauri commands
+
+import { invoke } from "@tauri-apps/api/core";
+
+// Types
+export interface RecordingStatus {
+    is_recording: boolean;
+    duration_seconds: number;
+    video_frames: number;
+    audio_samples: number;
+}
+
+export interface AudioDevice {
+    id: string;
+    name: string;
+    is_default: boolean;
+    is_input: boolean;
+}
+
+export interface MonitorInfo {
+    id: number;
+    name: string;
+    width: number;
+    height: number;
+    is_primary: boolean;
+}
+
+export interface Meeting {
+    id: string;
+    title: string;
+    started_at: string;
+    ended_at: string | null;
+    duration_seconds: number | null;
+}
+
+export interface Transcript {
+    id: number;
+    meeting_id: string;
+    text: string;
+    speaker: string | null;
+    timestamp: string;
+    is_final: boolean;
+    confidence: number;
+}
+
+export interface Frame {
+    id: number;
+    meeting_id: string;
+    timestamp: string;
+    thumbnail_path: string | null;
+    ocr_text: string | null;
+}
+
+export interface SearchResult {
+    meeting_id: string;
+    meeting_title: string;
+    transcript_text: string;
+    timestamp: string;
+    relevance: number;
+}
+
+export interface TranscriptEvent {
+    text: string;
+    is_final: boolean;
+    confidence: number;
+    start: number;
+    duration: number;
+    speaker: string | null;
+}
+
+export interface AppSettings {
+    deepgram_api_key: string | null;
+    selected_microphone: string | null;
+    selected_monitor: number | null;
+    auto_start_recording: boolean;
+    show_notifications: boolean;
+}
+
+// Recording commands
+export async function startRecording(): Promise<string> {
+    return invoke<string>("start_recording");
+}
+
+export async function stopRecording(): Promise<void> {
+    return invoke("stop_recording");
+}
+
+export async function getRecordingStatus(): Promise<RecordingStatus> {
+    return invoke<RecordingStatus>("get_recording_status");
+}
+
+// Screenshot command (for preview)
+export async function captureScreenshot(monitorId?: number): Promise<string> {
+    return invoke<string>("capture_screenshot", { monitorId });
+}
+
+// Transcript commands
+export async function getTranscripts(meetingId: string): Promise<Transcript[]> {
+    return invoke<Transcript[]>("get_transcripts", { meetingId });
+}
+
+export async function searchTranscripts(query: string): Promise<SearchResult[]> {
+    return invoke<SearchResult[]>("search_transcripts", { query });
+}
+
+// Frame commands (for rewind timeline)
+export async function getFrames(meetingId: string, limit?: number): Promise<Frame[]> {
+    return invoke<Frame[]>("get_frames", { meetingId, limit });
+}
+
+export async function getFrameCount(meetingId: string): Promise<number> {
+    return invoke<number>("get_frame_count", { meetingId });
+}
+
+// Device commands
+export async function getAudioDevices(): Promise<AudioDevice[]> {
+    return invoke<AudioDevice[]>("get_audio_devices");
+}
+
+export async function setAudioDevice(deviceId: string): Promise<void> {
+    return invoke("set_audio_device", { deviceId });
+}
+
+export async function getMonitors(): Promise<MonitorInfo[]> {
+    return invoke<MonitorInfo[]>("get_monitors");
+}
+
+export async function setMonitor(monitorId: number): Promise<void> {
+    return invoke("set_monitor", { monitorId });
+}
+
+// Settings commands
+export async function setDeepgramApiKey(apiKey: string): Promise<void> {
+    return invoke("set_deepgram_api_key", { apiKey });
+}
+
+export async function getDeepgramApiKey(): Promise<string | null> {
+    return invoke<string | null>("get_deepgram_api_key");
+}
+
+export async function getSettings(): Promise<AppSettings> {
+    return invoke<AppSettings>("get_settings");
+}
+
+// Meeting commands
+export async function getMeetings(limit?: number): Promise<Meeting[]> {
+    return invoke<Meeting[]>("get_meetings", { limit });
+}
+
+export async function getMeeting(meetingId: string): Promise<Meeting | null> {
+    return invoke<Meeting | null>("get_meeting", { meetingId });
+}
+
+export async function deleteMeeting(meetingId: string): Promise<void> {
+    return invoke("delete_meeting", { meetingId });
+}
+
+// Synced Timeline types
+export interface TimelineFrame {
+    id: string;
+    frame_number: number;
+    timestamp_ms: number;
+    thumbnail_path: string | null;
+}
+
+export interface TimelineTranscript {
+    id: string;
+    timestamp_ms: number;
+    text: string;
+    speaker: string | null;
+    is_final: boolean;
+    duration_seconds: number;
+}
+
+export interface SyncedTimeline {
+    meeting_id: string;
+    meeting_title: string;
+    duration_seconds: number;
+    frames: TimelineFrame[];
+    transcripts: TimelineTranscript[];
+}
+
+// Synced timeline command
+export async function getSyncedTimeline(meetingId: string): Promise<SyncedTimeline> {
+    return invoke<SyncedTimeline>("get_synced_timeline", { meetingId });
+}
+
+// Get frame thumbnail (full or thumbnail size)
+export async function getFrameThumbnail(frameId: string, thumbnail: boolean = true): Promise<string | null> {
+    return invoke<string | null>("get_frame_thumbnail", { frameId, thumbnail });
+}
+
+// Get API key
+export async function getApiKey(): Promise<string | null> {
+    return invoke<string | null>("get_deepgram_api_key");
+}
+
+// Get saved settings
+export async function getSavedSettings(): Promise<{ microphone: string | null; monitor_id: number | null }> {
+    try {
+        const settings = await invoke<AppSettings>("get_settings");
+        return {
+            microphone: settings.selected_microphone,
+            monitor_id: settings.selected_monitor,
+        };
+    } catch {
+        return { microphone: null, monitor_id: null };
+    }
+}
+
+// ============================================
+// Knowledge Base Configuration Commands
+// ============================================
+
+// Supabase commands
+export async function configureSupabase(connectionString: string): Promise<void> {
+    return invoke("configure_supabase", { connectionString });
+}
+
+export async function checkSupabase(): Promise<boolean> {
+    return invoke<boolean>("check_supabase");
+}
+
+// Pinecone commands
+export async function configurePinecone(apiKey: string, indexHost: string, namespace?: string): Promise<void> {
+    return invoke("configure_pinecone", { apiKey, indexHost, namespace });
+}
+
+export async function checkPinecone(): Promise<boolean> {
+    return invoke<boolean>("check_pinecone");
+}
+
+// VLM commands
+export async function checkVlm(): Promise<boolean> {
+    return invoke<boolean>("check_vlm");
+}
+
+export async function checkVlmVision(): Promise<boolean> {
+    return invoke<boolean>("check_vlm_vision");
+}
+
+// Knowledge Base Processing
+export async function analyzePendingFrames(limit?: number): Promise<{ frames_processed: number; activities_created: number }> {
+    return invoke("analyze_pending_frames", { limit });
+}
+
+export async function syncToCloud(limit?: number): Promise<{ activities_synced: number; pinecone_upserts: number; supabase_inserts: number }> {
+    return invoke("sync_to_cloud", { limit });
+}
+
+export async function getPendingFrameCount(): Promise<number> {
+    return invoke<number>("get_pending_frame_count");
+}
+
+// Knowledge Base Search
+export interface KBSearchResult {
+    id: string;
+    source: string;
+    timestamp: string | null;
+    app_name: string | null;
+    category: string | null;
+    summary: string;
+    score: number | null;
+}
+
+export interface SearchOptions {
+    query?: string;
+    start_date?: string;
+    end_date?: string;
+    category?: string;
+    limit?: number;
+    sources?: string[];
+}
+
+export async function searchKnowledgeBase(options: SearchOptions): Promise<KBSearchResult[]> {
+    return invoke<KBSearchResult[]>("search_knowledge_base", { options });
+}
+
+export async function quickSemanticSearch(query: string, limit?: number): Promise<KBSearchResult[]> {
+    return invoke<KBSearchResult[]>("quick_semantic_search", { query, limit });
+}

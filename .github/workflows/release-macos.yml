@@ -1,0 +1,208 @@
+name: Build & Release macOS DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      skip_notarization:
+        description: 'Skip notarization (for testing)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  APP_NAME: noFriction Meetings
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      # Import Apple Developer ID certificate
+      - name: Import Code Signing Certificate
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          # Create keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          
+          # Import certificate
+          echo "$APPLE_CERT_P12" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 \
+            -P "$APPLE_CERT_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          
+          # Allow codesign to access the keychain
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          
+          # Find and export signing identity
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+          echo "Found signing identity: $IDENTITY"
+      
+      # Build the Tauri app
+      - name: Build Tauri App (Universal Binary)
+        run: |
+          npm run tauri build -- --bundles app --target universal-apple-darwin
+      
+      # Sign the app bundle
+      - name: Sign Application
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+        run: |
+          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/noFriction Meetings.app"
+          ENTITLEMENTS="src-tauri/entitlements.plist"
+          
+          echo "Signing app with Hardened Runtime..."
+          codesign --force --deep --options runtime --timestamp \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements "$ENTITLEMENTS" \
+            "$APP_PATH"
+          
+          echo "Verifying signature..."
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+      
+      # Create DMG
+      - name: Create DMG
+        run: |
+          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/noFriction Meetings.app"
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          DMG_NAME="noFriction-Meetings-${VERSION}.dmg"
+          
+          mkdir -p dist
+          
+          # Create temporary DMG
+          hdiutil create -srcfolder "$APP_PATH" \
+            -volname "noFriction Meetings $VERSION" \
+            -fs HFS+ \
+            -format UDRW \
+            dist/temp.dmg
+          
+          # Mount and add Applications symlink
+          hdiutil attach dist/temp.dmg -readwrite -noverify -noautoopen
+          sleep 2
+          ln -sf /Applications "/Volumes/noFriction Meetings $VERSION/Applications"
+          sync
+          hdiutil detach "/Volumes/noFriction Meetings $VERSION"
+          
+          # Convert to compressed DMG
+          hdiutil convert dist/temp.dmg -format UDZO -imagekey zlib-level=9 -o "dist/$DMG_NAME"
+          rm dist/temp.dmg
+          
+          echo "DMG_PATH=dist/$DMG_NAME" >> $GITHUB_ENV
+          echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
+      
+      # Sign DMG
+      - name: Sign DMG
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+        run: |
+          codesign --force --timestamp \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            "$DMG_PATH"
+      
+      # Notarize DMG
+      - name: Notarize DMG
+        if: ${{ github.event.inputs.skip_notarization != 'true' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "Submitting for notarization..."
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+      
+      # Verify final build
+      - name: Verify Build
+        run: |
+          echo "Verifying signatures..."
+          codesign --verify --verbose=2 "$DMG_PATH"
+          
+          echo "Gatekeeper assessment..."
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH" || true
+          
+          echo "SHA256 checksum:"
+          shasum -a 256 "$DMG_PATH"
+      
+      # Upload as artifact
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DMG_NAME }}
+          path: ${{ env.DMG_PATH }}
+          retention-days: 30
+      
+      # Create GitHub Release (only on tag push)
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.DMG_PATH }}
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # Output summary
+      - name: Build Summary
+        run: |
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          SHA256=$(shasum -a 256 "$DMG_PATH" | cut -d' ' -f1)
+          
+          echo "## 🎉 Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | $VERSION |" >> $GITHUB_STEP_SUMMARY
+          echo "| **DMG** | $DMG_NAME |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SHA256** | \`$SHA256\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Signed** | $APPLE_SIGNING_IDENTITY |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Notarized** | ${{ github.event.inputs.skip_notarization != 'true' && '✅' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
