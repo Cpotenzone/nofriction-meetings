@@ -334,6 +334,16 @@ pub async fn get_settings(
         .map_err(|e| format!("Failed to get settings: {}", e))
 }
 
+/// Get a single setting value
+#[tauri::command]
+pub async fn get_setting(
+    key: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    state.settings.get(&key).await
+        .map_err(|e| format!("Failed to get setting: {}", e))
+}
+
 /// Get all meetings
 #[tauri::command]
 pub async fn get_meetings(
@@ -1538,3 +1548,276 @@ pub async fn test_prompt(
         .to_string())
 }
 
+// ============================================================================
+// Meeting Intelligence Commands
+// ============================================================================
+
+use crate::meeting_intel::{MeetingState, MeetingStateResolver, CalendarEvent};
+use crate::catch_up_agent::{CatchUpCapsule, CatchUpAgent, TranscriptSegment, MeetingMetadata};
+use crate::live_intel_agent::{LiveInsightEvent, LiveIntelAgent};
+
+/// Get current meeting state (mode, timing, confidence)
+#[tauri::command]
+pub async fn get_meeting_state(
+    state: State<'_, AppState>,
+) -> Result<MeetingState, String> {
+    let resolver = MeetingStateResolver::new();
+    let now = chrono::Utc::now();
+    
+    // Get recording status to check if transcript is running
+    let is_transcribing = {
+        let engine = state.capture_engine.read();
+        engine.get_status().is_recording
+    };
+    
+    // TODO: Integrate with calendar API
+    // For now, use empty calendar events
+    let calendar_events: Vec<CalendarEvent> = Vec::new();
+    
+    // TODO: Get active window from system
+    let active_window: Option<&str> = None;
+    
+    // TODO: Check if audio is active
+    let audio_active = is_transcribing;
+    
+    let meeting_state = resolver.resolve(
+        now,
+        &calendar_events,
+        is_transcribing,
+        active_window,
+        audio_active,
+    );
+    
+    Ok(meeting_state)
+}
+
+/// Generate a catch-up capsule for late joiners
+#[tauri::command]
+pub async fn generate_catch_up(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<CatchUpCapsule, String> {
+    // Get transcripts for the meeting
+    let transcripts = state.database.get_transcripts(&meeting_id).await
+        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+    
+    if transcripts.is_empty() {
+        return Ok(CatchUpCapsule::default());
+    }
+    
+    // Convert to segments
+    let segments: Vec<TranscriptSegment> = transcripts.iter().map(|t| {
+        TranscriptSegment {
+            id: t.id.to_string(),
+            timestamp_ms: t.timestamp.timestamp_millis(),
+            speaker: t.speaker.clone(),
+            text: t.text.clone(),
+        }
+    }).collect();
+    
+    // Get meeting info
+    let meeting = state.database.get_meeting(&meeting_id).await
+        .map_err(|e| format!("Failed to get meeting: {}", e))?;
+    
+    let metadata = MeetingMetadata {
+        title: meeting.as_ref().map(|m| m.title.clone()).unwrap_or_default(),
+        description: None,
+        attendees: Vec::new(), // TODO: Get from calendar
+        scheduled_duration_min: None,
+    };
+    
+    // Calculate minutes since start
+    let meeting_start = meeting.as_ref()
+        .map(|m| m.started_at)
+        .unwrap_or_else(chrono::Utc::now);
+    let duration = chrono::Utc::now().signed_duration_since(meeting_start);
+    let minutes_since_start = duration.num_minutes() as i32;
+    
+    // Create agent and generate catch-up
+    let ai_client = crate::ai_client::AIClient::new();
+    let agent = CatchUpAgent::new(ai_client);
+    
+    agent.generate(&segments, &metadata, minutes_since_start, None).await
+}
+
+/// Get live insights stream for current recording
+#[tauri::command]
+pub async fn get_live_insights(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<LiveInsightEvent>, String> {
+    // Get recent transcripts
+    let transcripts = state.database.get_transcripts(&meeting_id).await
+        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+    
+    // Process through live intel agent
+    let mut agent = LiveIntelAgent::new();
+    
+    for transcript in transcripts.iter().rev().take(50).rev() {
+        let segment = TranscriptSegment {
+            id: transcript.id.to_string(),
+            timestamp_ms: transcript.timestamp.timestamp_millis(),
+            speaker: transcript.speaker.clone(),
+            text: transcript.text.clone(),
+        };
+        agent.process_segment(segment);
+    }
+    
+    Ok(agent.get_all_events().to_vec())
+}
+
+/// Pin an insight for later reference
+#[tauri::command]
+pub async fn pin_insight(
+    meeting_id: String,
+    insight_type: String,
+    insight_text: String,
+    timestamp_ms: i64,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Store pinned insight in database
+    // TODO: Add pinned_insights table
+    log::info!("Pinning insight for meeting {}: {} - {}", meeting_id, insight_type, insight_text);
+    Ok(())
+}
+
+/// Mark a decision point explicitly
+#[tauri::command]
+pub async fn mark_decision(
+    meeting_id: String,
+    decision_text: String,
+    context: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Store decision in database
+    // TODO: Add decisions table
+    log::info!("Marking decision for meeting {}: {}", meeting_id, decision_text);
+    Ok(())
+}
+
+// ============================================================================
+// Video Recording Commands
+// ============================================================================
+
+use crate::video_recorder::{VideoRecorder, RecordingSession, PinMoment};
+use crate::frame_extractor::{FrameExtractor, ExtractedFrame};
+use crate::chunk_manager::{ChunkManager, StorageStats, RetentionPolicy};
+
+// Lazy static for video recorder (global instance)
+use std::sync::OnceLock;
+static VIDEO_RECORDER: OnceLock<parking_lot::RwLock<VideoRecorder>> = OnceLock::new();
+static FRAME_EXTRACTOR: OnceLock<FrameExtractor> = OnceLock::new();
+static CHUNK_MANAGER: OnceLock<ChunkManager> = OnceLock::new();
+
+fn get_video_recorder() -> &'static parking_lot::RwLock<VideoRecorder> {
+    VIDEO_RECORDER.get_or_init(|| {
+        parking_lot::RwLock::new(VideoRecorder::default())
+    })
+}
+
+fn get_frame_extractor() -> &'static FrameExtractor {
+    FRAME_EXTRACTOR.get_or_init(FrameExtractor::default)
+}
+
+fn get_chunk_manager() -> &'static ChunkManager {
+    CHUNK_MANAGER.get_or_init(ChunkManager::default)
+}
+
+/// Start video recording for a meeting
+#[tauri::command]
+pub async fn start_video_recording(
+    meeting_id: String,
+) -> Result<(), String> {
+    let recorder = get_video_recorder();
+    recorder.write().start(&meeting_id)
+}
+
+/// Stop video recording
+#[tauri::command]
+pub async fn stop_video_recording() -> Result<RecordingSession, String> {
+    let recorder = get_video_recorder();
+    recorder.write().stop()
+}
+
+/// Get current video recording status
+#[tauri::command]
+pub async fn get_video_recording_status() -> Result<Option<RecordingSession>, String> {
+    let recorder = get_video_recorder();
+    Ok(recorder.read().get_status())
+}
+
+/// Pin the current moment in recording
+#[tauri::command]
+pub async fn video_pin_moment(
+    label: Option<String>,
+) -> Result<PinMoment, String> {
+    let recorder = get_video_recorder();
+    recorder.read().pin_moment(label)
+}
+
+/// Extract a frame at a specific timestamp
+#[tauri::command]
+pub async fn extract_frame_at(
+    meeting_id: String,
+    chunk_number: u32,
+    timestamp_secs: f64,
+) -> Result<ExtractedFrame, String> {
+    let chunk_manager = get_chunk_manager();
+    let chunks = chunk_manager.get_chunks(&meeting_id)?;
+    
+    let chunk = chunks.iter()
+        .find(|c| c.chunk_number == chunk_number)
+        .ok_or_else(|| format!("Chunk {} not found", chunk_number))?;
+    
+    let extractor = get_frame_extractor();
+    extractor.extract_at(&chunk.path, timestamp_secs, &meeting_id)
+}
+
+/// Extract thumbnail for timeline view
+#[tauri::command]
+pub async fn extract_thumbnail(
+    meeting_id: String,
+    chunk_number: u32,
+    timestamp_secs: f64,
+    size: Option<u32>,
+) -> Result<String, String> {
+    let chunk_manager = get_chunk_manager();
+    let chunks = chunk_manager.get_chunks(&meeting_id)?;
+    
+    let chunk = chunks.iter()
+        .find(|c| c.chunk_number == chunk_number)
+        .ok_or_else(|| format!("Chunk {} not found", chunk_number))?;
+    
+    let extractor = get_frame_extractor();
+    let thumb_path = extractor.extract_thumbnail(
+        &chunk.path, 
+        timestamp_secs, 
+        &meeting_id, 
+        size.unwrap_or(200)
+    )?;
+    
+    Ok(thumb_path.to_string_lossy().to_string())
+}
+
+/// Get storage statistics
+#[tauri::command]
+pub async fn get_storage_stats() -> Result<StorageStats, String> {
+    let manager = get_chunk_manager();
+    manager.get_stats()
+}
+
+/// Apply retention policies
+#[tauri::command]
+pub async fn apply_retention() -> Result<(u32, u64), String> {
+    let manager = get_chunk_manager();
+    manager.apply_retention()
+}
+
+/// Delete a meeting's video storage
+#[tauri::command]
+pub async fn delete_video_storage(
+    meeting_id: String,
+) -> Result<u64, String> {
+    let manager = get_chunk_manager();
+    manager.delete_meeting(&meeting_id)
+}

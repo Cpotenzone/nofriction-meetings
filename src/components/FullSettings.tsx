@@ -250,6 +250,67 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                 </p>
             </section>
 
+            {/* Video Recording & Storage Section */}
+            <section className="settings-section">
+                <h3>
+                    <span className="icon">🎬</span>
+                    Video Recording
+                </h3>
+                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
+                    Continuous video recording captures your screen efficiently. Frames are extracted on-demand.
+                </p>
+
+                <div className="settings-row">
+                    <div className="settings-label">
+                        <span className="label-main">Capture Mode</span>
+                        <span className="label-sub">
+                            Video recording is more efficient than frame capture
+                        </span>
+                    </div>
+                    <div className="settings-control">
+                        <span style={{
+                            padding: "4px 12px",
+                            background: "var(--accent-primary)",
+                            borderRadius: "20px",
+                            fontSize: "0.75rem",
+                            fontWeight: "600",
+                            color: "white"
+                        }}>
+                            🎬 Video (Recommended)
+                        </span>
+                    </div>
+                </div>
+
+                <div className="settings-row" style={{ marginTop: "var(--spacing-md)" }}>
+                    <div className="settings-label">
+                        <span className="label-main">Storage Usage</span>
+                        <span className="label-sub">
+                            Video files are stored locally and can be managed here
+                        </span>
+                    </div>
+                    <div className="settings-control">
+                        <button
+                            className="settings-button"
+                            onClick={async () => {
+                                try {
+                                    const { invoke } = await import("@tauri-apps/api/core");
+                                    const [deleted, freed] = await invoke<[number, number]>("apply_retention");
+                                    alert(`Cleaned up ${deleted} old recordings, freed ${(freed / 1024 / 1024).toFixed(1)} MB`);
+                                } catch (err) {
+                                    console.error("Cleanup failed:", err);
+                                }
+                            }}
+                        >
+                            🗑️ Cleanup Old Recordings
+                        </button>
+                    </div>
+                </div>
+
+                <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: "var(--spacing-sm)" }}>
+                    Videos are retained for 7 days by default. Pin moments are preserved longer.
+                </p>
+            </section>
+
             {/* Permissions Status */}
             <PermissionsStatus />
 

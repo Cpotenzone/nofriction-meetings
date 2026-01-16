@@ -83,6 +83,19 @@ export function RecordingControls({
                         <span>🎬 {formatNumber(videoFrames)} frames</span>
                         <span>🔊 {formatNumber(audioSamples)} samples</span>
                     </div>
+                    <button
+                        className="pin-moment-btn"
+                        onClick={async () => {
+                            try {
+                                const { invoke } = await import("@tauri-apps/api/core");
+                                await invoke("video_pin_moment", { label: null });
+                            } catch (err) {
+                                console.error("Failed to pin moment:", err);
+                            }
+                        }}
+                    >
+                        📌 Pin Moment
+                    </button>
                 </div>
             )}
         </div>

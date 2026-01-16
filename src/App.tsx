@@ -13,6 +13,7 @@ import { FullSettings } from "./components/FullSettings";
 import { AIChat } from "./components/AIChat";
 import { PromptLibrary } from "./components/PromptLibrary";
 import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
+import { SetupWizard, useSetupRequired } from "./components/SetupWizard";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 
@@ -24,12 +25,13 @@ function App() {
   const [showAIPanel, setShowAIPanel] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Hooks
+  // Hooks - ALL hooks must be called before any conditional returns
   const recording = useRecording();
   const transcripts = useTranscripts(recording.meetingId);
   const commandPalette = useCommandPalette();
+  const setupRequired = useSetupRequired();
 
-  // Global keyboard shortcuts
+  // Global keyboard shortcuts - must be before conditional returns
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // ⌘R - Toggle recording
@@ -53,7 +55,7 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [recording, transcripts]);
 
-  // Listen for native menu events
+  // Listen for native menu events - must be before conditional returns
   useEffect(() => {
     const listeners: (() => void)[] = [];
 
@@ -96,6 +98,20 @@ function App() {
       listeners.forEach(unlisten => unlisten());
     };
   }, [recording, transcripts, commandPalette]);
+
+  // Show loading while checking setup status
+  if (setupRequired === null) {
+    return (
+      <div className="app-loading">
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+
+  // Show setup wizard on first run
+  if (setupRequired) {
+    return <SetupWizard onComplete={() => window.location.reload()} />;
+  }
 
   const handleToggleRecording = async () => {
     try {

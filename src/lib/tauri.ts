@@ -280,3 +280,114 @@ export async function searchKnowledgeBase(options: SearchOptions): Promise<KBSea
 export async function quickSemanticSearch(query: string, limit?: number): Promise<KBSearchResult[]> {
     return invoke<KBSearchResult[]>("quick_semantic_search", { query, limit });
 }
+
+// ============================================================================
+// Video Recording Commands
+// ============================================================================
+
+export interface VideoChunk {
+    chunk_number: number;
+    path: string;
+    start_time: string;
+    end_time: string | null;
+    size_bytes: number;
+    duration_secs: number;
+}
+
+export interface PinMoment {
+    timestamp: string;
+    offset_secs: number;
+    label: string | null;
+    chunk_number: number;
+}
+
+export interface RecordingSession {
+    meeting_id: string;
+    started_at: string;
+    chunks: VideoChunk[];
+    pin_moments: PinMoment[];
+    is_active: boolean;
+}
+
+export interface ExtractedFrame {
+    path: string;
+    timestamp_secs: number;
+    chunk_number: number;
+    extracted_at: string;
+    width: number;
+    height: number;
+}
+
+export interface StorageStats {
+    total_bytes: number;
+    video_bytes: number;
+    frames_bytes: number;
+    meetings_count: number;
+    chunks_count: number;
+    oldest_meeting: string | null;
+    disk_limit_bytes: number;
+    usage_percent: number;
+}
+
+// Start video recording for a meeting
+export async function startVideoRecording(meetingId: string): Promise<void> {
+    return invoke("start_video_recording", { meetingId });
+}
+
+// Stop video recording
+export async function stopVideoRecording(): Promise<RecordingSession> {
+    return invoke<RecordingSession>("stop_video_recording");
+}
+
+// Get current video recording status
+export async function getVideoRecordingStatus(): Promise<RecordingSession | null> {
+    return invoke<RecordingSession | null>("get_video_recording_status");
+}
+
+// Pin the current moment in recording
+export async function videoPinMoment(label?: string): Promise<PinMoment> {
+    return invoke<PinMoment>("video_pin_moment", { label });
+}
+
+// Extract a frame at a specific timestamp
+export async function extractFrameAt(
+    meetingId: string,
+    chunkNumber: number,
+    timestampSecs: number
+): Promise<ExtractedFrame> {
+    return invoke<ExtractedFrame>("extract_frame_at", {
+        meetingId,
+        chunkNumber,
+        timestampSecs,
+    });
+}
+
+// Extract thumbnail for timeline view
+export async function extractThumbnail(
+    meetingId: string,
+    chunkNumber: number,
+    timestampSecs: number,
+    size?: number
+): Promise<string> {
+    return invoke<string>("extract_thumbnail", {
+        meetingId,
+        chunkNumber,
+        timestampSecs,
+        size,
+    });
+}
+
+// Get storage statistics
+export async function getStorageStats(): Promise<StorageStats> {
+    return invoke<StorageStats>("get_storage_stats");
+}
+
+// Apply retention policies
+export async function applyRetention(): Promise<[number, number]> {
+    return invoke<[number, number]>("apply_retention");
+}
+
+// Delete a meeting's video storage
+export async function deleteVideoStorage(meetingId: string): Promise<number> {
+    return invoke<number>("delete_video_storage", { meetingId });
+}

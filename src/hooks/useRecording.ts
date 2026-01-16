@@ -58,6 +58,15 @@ export function useRecording() {
         try {
             setError(null);
             const meetingId = await tauri.startRecording();
+
+            // Also start video recording
+            try {
+                await tauri.startVideoRecording(meetingId);
+            } catch (videoErr) {
+                console.warn('Video recording failed to start:', videoErr);
+                // Continue without video - audio is the priority
+            }
+
             setState((prev) => ({
                 ...prev,
                 isRecording: true,
@@ -78,6 +87,14 @@ export function useRecording() {
     const stopRecording = useCallback(async () => {
         try {
             setError(null);
+
+            // Stop video recording first
+            try {
+                await tauri.stopVideoRecording();
+            } catch (videoErr) {
+                console.warn('Video recording failed to stop:', videoErr);
+            }
+
             await tauri.stopRecording();
             setState((prev) => ({
                 ...prev,

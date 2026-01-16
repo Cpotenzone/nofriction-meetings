@@ -148,18 +148,21 @@ impl CaptureEngine {
             Self::run_system_audio_capture(sys_count, audio_callback_sys);
         });
 
-        // Start screen capture
-        SCREEN_RUNNING.store(true, Ordering::SeqCst);
-        let frame_count = self.video_frame_count.clone();
-        let frame_number = self.frame_number.clone();
-        let frame_callback = self.frame_callback.clone();
-        let monitor_id = self.selected_monitor_id.read().clone();
-        
-        tokio::spawn(async move {
-            Self::run_screen_capture(frame_count, frame_number, frame_callback, monitor_id).await;
-        });
+        // NOTE: Legacy frame capture is DISABLED by default
+        // Video recording (video_recorder.rs) now handles screen capture efficiently
+        // The old frame capture was dumping PNGs at 1 FPS, causing 2.5GB for 45 min
+        // To re-enable for debug, uncomment the block below:
+        // 
+        // SCREEN_RUNNING.store(true, Ordering::SeqCst);
+        // let frame_count = self.video_frame_count.clone();
+        // let frame_number = self.frame_number.clone();
+        // let frame_callback = self.frame_callback.clone();
+        // let monitor_id = self.selected_monitor_id.read().clone();
+        // tokio::spawn(async move {
+        //     Self::run_screen_capture(frame_count, frame_number, frame_callback, monitor_id).await;
+        // });
 
-        log::info!("Capture engine started (mic + system audio + screen)");
+        log::info!("Capture engine started (mic + system audio, video recording handles screen)");
         Ok(())
     }
 

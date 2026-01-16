@@ -258,6 +258,37 @@ impl AIClient {
         }];
         self.chat(&preset, messages, Some(content)).await
     }
+
+    /// Generic prompt completion
+    pub async fn complete(&self, prompt: &str) -> Result<String, String> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| format!("Failed to build client: {}", e))?;
+
+        let response = client
+            .post(format!("{}/api/generate", self.base_url))
+            .json(&serde_json::json!({
+                "model": "llama3.2",
+                "prompt": prompt,
+                "stream": false
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to call Ollama: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("Ollama returned error: {}", response.status()));
+        }
+
+        let result: serde_json::Value = response.json().await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        result.get("response")
+            .and_then(|r| r.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| "No response from Ollama".to_string())
+    }
 }
 
 fn format_size(bytes: i64) -> String {

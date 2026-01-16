@@ -12,6 +12,12 @@ pub mod supabase_client;
 pub mod pinecone_client;
 pub mod prompt_manager;
 pub mod menu_builder;
+pub mod meeting_intel;
+pub mod catch_up_agent;
+pub mod live_intel_agent;
+pub mod video_recorder;
+pub mod frame_extractor;
+pub mod chunk_manager;
 
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -156,6 +162,7 @@ pub fn run() {
             commands::get_meeting,
             commands::delete_meeting,
             commands::get_settings,
+            commands::get_setting,
             // AI Commands
             commands::check_ollama,
             commands::get_ollama_models,
@@ -219,6 +226,22 @@ pub fn run() {
             commands::get_resolved_use_case,
             commands::update_use_case_mapping,
             commands::test_prompt,
+            // Meeting Intelligence Commands
+            commands::get_meeting_state,
+            commands::generate_catch_up,
+            commands::get_live_insights,
+            commands::pin_insight,
+            commands::mark_decision,
+            // Video Recording Commands
+            commands::start_video_recording,
+            commands::stop_video_recording,
+            commands::get_video_recording_status,
+            commands::video_pin_moment,
+            commands::extract_frame_at,
+            commands::extract_thumbnail,
+            commands::get_storage_stats,
+            commands::apply_retention,
+            commands::delete_video_storage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
