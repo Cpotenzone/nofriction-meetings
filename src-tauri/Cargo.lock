@@ -3405,7 +3405,7 @@ checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 
 [[package]]
 name = "nofriction-meetings"
-version = "1.0.0-pre.1"
+version = "1.0.0-pre.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
