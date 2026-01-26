@@ -130,11 +130,6 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                         key={meeting.id}
                         className={`meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
                         onClick={() => onSelectMeeting(meeting.id)}
-                        style={{
-                            background: selectedMeetingId === meeting.id
-                                ? "var(--bg-glass-hover)"
-                                : undefined,
-                        }}
                     >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <div>
@@ -146,6 +141,20 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                                     )}
                                 </div>
                             </div>
+                            <button
+                                className="btn btn-ghost"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    // TODO: Add visual feedback for ingest trigger
+                                    tauri.triggerMeetingIngest(meeting.id)
+                                        .then(msg => console.log(msg))
+                                        .catch(err => console.error(err));
+                                }}
+                                title="Send to Intel Workflow"
+                                style={{ padding: "4px 8px", fontSize: "0.75rem", marginRight: "4px" }}
+                            >
+                                🧠
+                            </button>
                             <button
                                 className="btn btn-ghost"
                                 onClick={(e) => handleDelete(e, meeting.id)}

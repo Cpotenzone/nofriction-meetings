@@ -173,7 +173,7 @@ body {
 }
 
 .recording-toggle.recording {
-  background: #ef4444;
+  background: #ef4444 !important;
   animation: pulse-rec 2s infinite;
 }
 
@@ -286,6 +286,75 @@ body {
   border-color: var(--accent-purple);
   transform: translateX(-2px);
   box-shadow: var(--shadow-md);
+}
+
+/* Standard Meeting Item (Full View) */
+.meeting-item {
+  padding: 14px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.meeting-item:hover {
+  border-color: var(--accent-purple);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.meeting-item.selected {
+  background: #fdf4ff;
+  /* Very light purple */
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 1px var(--accent-purple);
+}
+
+/* Compact Meeting Item (Right Panel/Sidebar) */
+.compact-meeting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-meeting-item {
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  color: var(--text-primary);
+}
+
+.compact-meeting-item:hover {
+  background: #f3f4f6;
+  transform: translateX(2px);
+}
+
+.compact-meeting-item.selected {
+  background: var(--accent-purple);
+  color: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.compact-meeting-item .compact-meeting-title {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compact-meeting-item .compact-meeting-date {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.compact-meeting-item.selected .compact-meeting-date {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .meeting-title {

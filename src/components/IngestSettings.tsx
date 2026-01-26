@@ -1,7 +1,7 @@
 // Intelligence Pipeline Settings Component
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import "./Settings.css";
+
 
 export function IngestSettings() {
     const [enabled, setEnabled] = useState(false);

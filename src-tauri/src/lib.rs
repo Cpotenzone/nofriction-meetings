@@ -123,6 +123,28 @@ impl AppState {
         log::info!("Initializing Knowledge Base Clients...");
         let _ = emitter.emit("init-step", "Connecting to Knowledge Base...");
         let vlm = VLMClient::new();
+
+        // Configure VLM client with saved settings
+        if let Some(ref base_url) = saved_settings.vlm_base_url {
+            vlm.set_base_url(base_url.clone());
+            log::info!("VLM configured with base URL: {}", base_url);
+        }
+        if let Some(ref token) = saved_settings.vlm_bearer_token {
+            vlm.set_bearer_token(token.clone());
+            log::info!("VLM bearer token configured");
+        }
+        if let Some(ref model) = saved_settings.vlm_model_primary {
+            vlm.set_model(model.clone());
+        }
+        if let Some(ref model) = saved_settings.vlm_model_fallback {
+            vlm.set_fallback_model(model.clone());
+        }
+
+        // Also configure the global VLM client for standalone functions
+        if let Some(ref base_url) = saved_settings.vlm_base_url {
+            crate::vlm_client::vlm_configure(base_url, saved_settings.vlm_bearer_token.as_deref());
+        }
+
         let supabase = SupabaseClient::new();
         let pinecone = PineconeClient::new();
 
@@ -304,6 +326,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::check_init_status,
+            commands::check_permissions,
             commands::start_recording,
             commands::stop_recording,
             commands::stop_recording,
@@ -435,6 +458,7 @@ pub fn run() {
             commands::set_ingest_config,
             commands::get_ingest_queue_stats,
             commands::test_ingest_connection,
+            commands::trigger_meeting_ingest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

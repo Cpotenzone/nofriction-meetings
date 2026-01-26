@@ -168,7 +168,7 @@ impl PromptManager {
                 name TEXT NOT NULL UNIQUE,
                 display_name TEXT NOT NULL,
                 model_type TEXT NOT NULL DEFAULT 'llm',
-                base_url TEXT NOT NULL DEFAULT 'http://localhost:11434',
+                base_url TEXT NOT NULL DEFAULT 'http://localhost:8080',
                 capabilities TEXT,
                 default_temperature REAL NOT NULL DEFAULT 0.5,
                 default_max_tokens INTEGER NOT NULL DEFAULT 2048,
@@ -225,22 +225,16 @@ impl PromptManager {
         // Seed default models
         let models = vec![
             (
-                "llama3.2",
-                "Llama 3.2",
-                "llm",
-                vec!["text", "chat", "summarization"],
-            ),
-            (
-                "llava:latest",
-                "LLaVA Vision",
+                "qwen2.5vl:7b",
+                "Qwen 2.5 VL 7B",
                 "vlm",
-                vec!["vision", "image-analysis", "ocr"],
+                vec!["vision", "text", "chat", "image-analysis"],
             ),
             (
-                "gemma3:4b",
-                "Gemma 3 4B",
-                "llm",
-                vec!["text", "chat", "fast"],
+                "qwen2.5vl:3b",
+                "Qwen 2.5 VL 3B",
+                "vlm",
+                vec!["vision", "text", "chat", "fast"],
             ),
         ];
 
@@ -250,7 +244,7 @@ impl PromptManager {
             sqlx::query(r#"
                 INSERT OR IGNORE INTO model_configurations 
                 (id, name, display_name, model_type, base_url, capabilities, default_temperature, default_max_tokens, is_available, created_at)
-                VALUES (?, ?, ?, ?, 'http://localhost:11434', ?, 0.5, 2048, 0, ?)
+                VALUES (?, ?, ?, ?, 'http://localhost:8080', ?, 0.5, 2048, 0, ?)
             "#)
             .bind(&id)
             .bind(name)
@@ -264,11 +258,11 @@ impl PromptManager {
 
         // Get model IDs
         let llm_model_id: Option<String> =
-            sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'llama3.2'")
+            sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'qwen2.5vl:7b'")
                 .fetch_optional(&self.pool)
                 .await?;
         let vlm_model_id: Option<String> =
-            sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'llava:latest'")
+            sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'qwen2.5vl:7b'")
                 .fetch_optional(&self.pool)
                 .await?;
 
@@ -877,7 +871,7 @@ Be conservative - only extract what you're confident about."#,
         .bind(&input.name)
         .bind(&input.display_name)
         .bind(&input.model_type)
-        .bind(input.base_url.as_deref().unwrap_or("http://localhost:11434"))
+        .bind(input.base_url.as_deref().unwrap_or("http://localhost:8080"))
         .bind(&caps_json)
         .bind(input.default_temperature.unwrap_or(0.5))
         .bind(input.default_max_tokens.unwrap_or(2048))
@@ -892,7 +886,7 @@ Be conservative - only extract what you're confident about."#,
             model_type: input.model_type,
             base_url: input
                 .base_url
-                .unwrap_or_else(|| "http://localhost:11434".to_string()),
+                .unwrap_or_else(|| "http://localhost:8080".to_string()),
             capabilities: input.capabilities.unwrap_or_default(),
             default_temperature: input.default_temperature.unwrap_or(0.5),
             default_max_tokens: input.default_max_tokens.unwrap_or(2048),

@@ -1,11 +1,13 @@
-//! Ollama VLM Client for screenshot analysis
-//! 
-//! Uses LLaVA model via Ollama to analyze screenshots and extract activity context.
+//! VLM Client for Centralized qwen2.5vl API
+//!
+//! Uses Ollama-compatible REST API via SSH tunnel with bearer token authentication.
+//! Models: qwen2.5vl:7b (primary), qwen2.5vl:3b (fallback)
 
 use base64::Engine;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Activity context extracted from a screenshot by VLM
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,177 +30,396 @@ pub struct ActivityContext {
     pub entities: Option<serde_json::Value>,
 }
 
-/// Response from Ollama generate API
-#[derive(Debug, Deserialize)]
-struct OllamaGenerateResponse {
-    response: String,
-    done: bool,
+/// Message for chat API
+#[derive(Debug, Serialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    images: Option<Vec<String>>,
 }
 
-/// VLM Client for local Ollama instance
+/// Request payload for /api/chat
+#[derive(Debug, Serialize)]
+struct ChatRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<ChatOptions>,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatOptions {
+    temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+}
+
+/// Response from /api/chat
+#[derive(Debug, Deserialize)]
+struct ChatResponse {
+    model: String,
+    message: ChatMessageResponse,
+    done: bool,
+    #[serde(default)]
+    total_duration: Option<u64>,
+    #[serde(default)]
+    eval_count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatMessageResponse {
+    role: String,
+    content: String,
+}
+
+/// Response from /api/tags
+#[derive(Debug, Deserialize)]
+struct TagsResponse {
+    models: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelInfo {
+    name: String,
+}
+
+/// VLM Client for centralized API via SSH tunnel
 pub struct VLMClient {
+    /// Base URL (e.g., http://localhost:8080)
     base_url: Arc<RwLock<String>>,
-    model: Arc<RwLock<String>>,
+    /// Bearer token for authentication
+    bearer_token: Arc<RwLock<Option<String>>>,
+    /// Primary model (qwen2.5vl:7b)
+    model_primary: Arc<RwLock<String>>,
+    /// Fallback model (qwen2.5vl:3b)
+    model_fallback: Arc<RwLock<String>>,
+    /// HTTP client with timeout
+    client: reqwest::Client,
 }
 
 impl VLMClient {
     pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(90))
+            .build()
+            .unwrap_or_default();
+
         Self {
-            base_url: Arc::new(RwLock::new("http://localhost:11434".to_string())),
-            model: Arc::new(RwLock::new("llava".to_string())),
+            base_url: Arc::new(RwLock::new("http://localhost:8080".to_string())),
+            bearer_token: Arc::new(RwLock::new(None)),
+            model_primary: Arc::new(RwLock::new("qwen2.5vl:7b".to_string())),
+            model_fallback: Arc::new(RwLock::new("qwen2.5vl:3b".to_string())),
+            client,
         }
+    }
+
+    /// Configure the client
+    pub fn configure(&self, base_url: String, token: Option<String>) {
+        *self.base_url.write() = base_url;
+        *self.bearer_token.write() = token;
     }
 
     pub fn set_base_url(&self, url: String) {
         *self.base_url.write() = url;
     }
 
-    pub fn set_model(&self, model: String) {
-        *self.model.write() = model;
+    pub fn set_bearer_token(&self, token: String) {
+        *self.bearer_token.write() = Some(token);
     }
 
-    /// Check if Ollama is available
+    pub fn set_model(&self, model: String) {
+        *self.model_primary.write() = model;
+    }
+
+    pub fn set_fallback_model(&self, model: String) {
+        *self.model_fallback.write() = model;
+    }
+
+    /// Get base URL (for external use)
+    pub fn get_base_url(&self) -> String {
+        self.base_url.read().clone()
+    }
+
+    /// Get authorization header value (for external use)
+    pub fn get_auth_header(&self) -> Option<String> {
+        self.bearer_token
+            .read()
+            .as_ref()
+            .map(|t| format!("Bearer {}", t))
+    }
+
+    /// Check if the API is available
     pub async fn is_available(&self) -> bool {
         let url = format!("{}/api/tags", self.base_url.read());
-        match reqwest::get(&url).await {
+
+        let mut request = self.client.get(&url);
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        match request.send().await {
             Ok(resp) => resp.status().is_success(),
-            Err(_) => false,
+            Err(e) => {
+                log::warn!("VLM API not available: {}", e);
+                false
+            }
         }
     }
 
-    /// Check if the vision model is available
+    /// Check if vision models are available
     pub async fn has_vision_model(&self) -> Result<bool, String> {
         let url = format!("{}/api/tags", self.base_url.read());
-        let resp = reqwest::get(&url)
-            .await
-            .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
 
-        #[derive(Deserialize)]
-        struct TagsResponse {
-            models: Vec<ModelInfo>,
+        let mut request = self.client.get(&url);
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
         }
 
-        #[derive(Deserialize)]
-        struct ModelInfo {
-            name: String,
-        }
-
-        let tags: TagsResponse = resp.json().await
-            .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
-
-        let model_name = self.model.read().clone();
-        Ok(tags.models.iter().any(|m| m.name.starts_with(&model_name)))
-    }
-
-    /// Analyze a screenshot and extract activity context
-    pub async fn analyze_frame(&self, image_path: &str, prompt: &str) -> Result<ActivityContext, String> {
-        // Read and encode image as base64
-        let image_data = std::fs::read(image_path)
-            .map_err(|e| format!("Failed to read image: {}", e))?;
-        let base64_image = base64::engine::general_purpose::STANDARD.encode(&image_data);
-
-        // Use the provided prompt
-        let url = format!("{}/api/generate", self.base_url.read());
-        let model = self.model.read().clone();
-
-        let request_body = serde_json::json!({
-            "model": model,
-            "prompt": prompt,
-            "images": [base64_image],
-            "stream": false,
-            "options": {
-                "temperature": 0.1
-            }
-        });
-
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(&url)
-            .json(&request_body)
-            .timeout(std::time::Duration::from_secs(60))
+        let resp = request
             .send()
             .await
-            .map_err(|e| format!("Failed to send request to Ollama: {}", e))?;
+            .map_err(|e| format!("Failed to connect to VLM API: {}", e))?;
 
-        if !resp.status().is_success() {
-            return Err(format!("Ollama returned error: {}", resp.status()));
+        if resp.status() == 401 {
+            return Err("Unauthorized: Invalid or missing bearer token".to_string());
         }
 
-        let ollama_resp: OllamaGenerateResponse = resp.json().await
-            .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+        let tags: TagsResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse API response: {}", e))?;
 
-        // Parse the JSON response from the model
-        self.parse_activity_response(&ollama_resp.response)
+        let primary = self.model_primary.read().clone();
+        let has_model = tags.models.iter().any(|m| {
+            m.name
+                .starts_with(&primary.split(':').next().unwrap_or(&primary))
+        });
+
+        Ok(has_model)
     }
 
-    /// Parse VLM response into ActivityContext
-    fn parse_activity_response(&self, response: &str) -> Result<ActivityContext, String> {
-        // Try to extract JSON from the response (model might include extra text)
-        let json_str = if let Some(start) = response.find('{') {
-            if let Some(end) = response.rfind('}') {
-                &response[start..=end]
-            } else {
-                response
+    /// Analyze a screenshot using VLM with retry logic
+    pub async fn analyze_frame(
+        &self,
+        image_path: &str,
+        prompt: &str,
+    ) -> Result<ActivityContext, String> {
+        // Read and encode image as base64
+        let image_data =
+            std::fs::read(image_path).map_err(|e| format!("Failed to read image: {}", e))?;
+        let base64_image = base64::engine::general_purpose::STANDARD.encode(&image_data);
+
+        // Try primary model first
+        let primary_model = self.model_primary.read().clone();
+        match self
+            .call_chat_api(&base64_image, prompt, &primary_model)
+            .await
+        {
+            Ok(response) => return self.parse_response(&response, &primary_model),
+            Err(e) => {
+                log::warn!(
+                    "Primary model {} failed: {}, trying fallback",
+                    primary_model,
+                    e
+                );
             }
-        } else {
-            response
+        }
+
+        // Fallback to 3B model
+        let fallback_model = self.model_fallback.read().clone();
+        let response = self
+            .call_chat_api(&base64_image, prompt, &fallback_model)
+            .await?;
+        self.parse_response(&response, &fallback_model)
+    }
+
+    /// Call the /api/chat endpoint with retry
+    async fn call_chat_api(
+        &self,
+        image_b64: &str,
+        prompt: &str,
+        model: &str,
+    ) -> Result<String, String> {
+        let url = format!("{}/api/chat", self.base_url.read());
+
+        let request_body = ChatRequest {
+            model: model.to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+                images: Some(vec![image_b64.to_string()]),
+            }],
+            stream: false,
+            options: Some(ChatOptions {
+                temperature: 0.1,
+                max_tokens: Some(800),
+            }),
         };
 
-        // Parse JSON
-        let parsed: serde_json::Value = serde_json::from_str(json_str)
-            .map_err(|e| format!("Failed to parse VLM JSON response: {} - Response was: {}", e, response))?;
+        // Retry with exponential backoff
+        let mut last_error = String::new();
+        for attempt in 0..3 {
+            if attempt > 0 {
+                let delay = Duration::from_millis(1000 * 2u64.pow(attempt));
+                tokio::time::sleep(delay).await;
+            }
 
-        Ok(ActivityContext {
-            app_name: parsed.get("app_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            window_title: parsed.get("window_title").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            category: parsed.get("category")
-                .and_then(|v| v.as_str())
-                .unwrap_or("other")
-                .to_string(),
-            summary: parsed.get("summary")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown activity")
-                .to_string(),
-            focus_area: parsed.get("focus_area").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            visible_files: parsed.get("visible_files")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-                .unwrap_or_default(),
-            confidence: parsed.get("confidence")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.5) as f32,
-            entities: Some(parsed), // Capture the full parsed JSON as entities source
-        })
-    }
+            let mut request = self
+                .client
+                .post(&url)
+                .header("Content-Type", "application/json");
 
-    /// Analyze multiple frames and aggregate context
-    pub async fn analyze_frames_batch(&self, image_paths: &[String]) -> Result<Vec<ActivityContext>, String> {
-        let mut results = Vec::new();
-        
-        let prompt = r#"Analyze this screenshot and describe what the user is doing. 
-Respond in JSON format with these fields:
-{
-  "app_name": "name of the main application visible",
-  "window_title": "title of the window or document",
-  "category": "one of: development, communication, research, writing, design, media, browsing, system, other",
-  "summary": "brief description of what the user is doing",
-  "focus_area": "specific task or project they appear to be working on",
-  "visible_files": ["list", "of", "visible", "file", "names"],
-  "confidence": 0.8
-}
-Only respond with valid JSON."#;
+            if let Some(auth) = self.get_auth_header() {
+                request = request.header("Authorization", auth);
+            }
 
-        for path in image_paths {
-            match self.analyze_frame(path, prompt).await {
-                Ok(context) => results.push(context),
+            match request.json(&request_body).send().await {
+                Ok(resp) => {
+                    if resp.status() == 401 {
+                        return Err("Unauthorized: Invalid or missing bearer token".to_string());
+                    }
+                    if resp.status() == 503 {
+                        last_error = "Service unavailable, retrying...".to_string();
+                        continue;
+                    }
+                    if !resp.status().is_success() {
+                        let status = resp.status();
+                        let body = resp.text().await.unwrap_or_default();
+                        return Err(format!("API error {}: {}", status, body));
+                    }
+
+                    let chat_resp: ChatResponse = resp
+                        .json()
+                        .await
+                        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+                    log::info!("VLM analysis complete using {}", model);
+                    return Ok(chat_resp.message.content);
+                }
                 Err(e) => {
-                    log::warn!("Failed to analyze frame {}: {}", path, e);
-                    // Continue with other frames
+                    last_error = format!("Request failed: {}", e);
+                    continue;
                 }
             }
         }
 
-        Ok(results)
+        Err(format!("VLM API failed after 3 attempts: {}", last_error))
+    }
+
+    /// Parse VLM response into ActivityContext
+    fn parse_response(&self, response: &str, model: &str) -> Result<ActivityContext, String> {
+        // Try to extract JSON from response
+        let json_start = response.find('{');
+        let json_end = response.rfind('}');
+
+        if let (Some(start), Some(end)) = (json_start, json_end) {
+            let json_str = &response[start..=end];
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
+                return Ok(ActivityContext {
+                    app_name: parsed
+                        .get("app_name")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    window_title: parsed
+                        .get("window_title")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    category: parsed
+                        .get("category")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    summary: parsed
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&response[..response.len().min(200)])
+                        .to_string(),
+                    focus_area: parsed
+                        .get("focus_area")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    visible_files: parsed
+                        .get("visible_files")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    confidence: parsed
+                        .get("confidence")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.7) as f32,
+                    entities: parsed.get("entities").cloned(),
+                });
+            }
+        }
+
+        // Fallback: create context from raw response
+        Ok(ActivityContext {
+            app_name: None,
+            window_title: None,
+            category: "unknown".to_string(),
+            summary: response[..response.len().min(200)].to_string(),
+            focus_area: None,
+            visible_files: vec![],
+            confidence: 0.5,
+            entities: None,
+        })
+    }
+
+    /// Simple text chat (no image)
+    pub async fn chat(&self, prompt: &str) -> Result<String, String> {
+        let url = format!("{}/api/chat", self.base_url.read());
+        let model = self.model_primary.read().clone();
+
+        let request_body = ChatRequest {
+            model,
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+                images: None,
+            }],
+            stream: false,
+            options: Some(ChatOptions {
+                temperature: 0.3,
+                max_tokens: Some(500),
+            }),
+        };
+
+        let mut request = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json");
+
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        let resp = request
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("Chat request failed: {}", e))?;
+
+        if resp.status() == 401 {
+            return Err("Unauthorized: Invalid or missing bearer token".to_string());
+        }
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Chat API error: {}", body));
+        }
+
+        let chat_resp: ChatResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        Ok(chat_resp.message.content)
     }
 }
 
@@ -208,169 +429,67 @@ impl Default for VLMClient {
     }
 }
 
-impl VLMClient {
-    /// Get URL and model (for async operations without holding guard)
-    pub fn get_url_and_model(&self) -> (String, String) {
-        (self.base_url.read().clone(), self.model.read().clone())
-    }
-}
-
-// ============================================
-// Standalone async functions (avoid RwLock guard issues)
-// ============================================
-
-/// Check if Ollama is available (standalone)
-pub async fn vlm_is_available(base_url: &str) -> bool {
-    let url = format!("{}/api/tags", base_url);
-    match reqwest::get(&url).await {
-        Ok(resp) => resp.status().is_success(),
-        Err(_) => false,
-    }
-}
-
-/// Analyze a frame with VLM (standalone)
-pub async fn vlm_analyze_frame(
-    base_url: &str,
-    model: &str,
-    image_path: &str,
-    prompt: &str,
-) -> Result<ActivityContext, String> {
-    // Read and encode image as base64
-    let image_data = std::fs::read(image_path)
-        .map_err(|e| format!("Failed to read image: {}", e))?;
-    let base64_image = base64::engine::general_purpose::STANDARD.encode(&image_data);
-
-    let url = format!("{}/api/generate", base_url);
-
-    let request_body = serde_json::json!({
-        "model": model,
-        "prompt": prompt,
-        "images": [base64_image],
-        "stream": false,
-        "options": {
-            "temperature": 0.1
+impl Clone for VLMClient {
+    fn clone(&self) -> Self {
+        Self {
+            base_url: Arc::clone(&self.base_url),
+            bearer_token: Arc::clone(&self.bearer_token),
+            model_primary: Arc::clone(&self.model_primary),
+            model_fallback: Arc::clone(&self.model_fallback),
+            client: self.client.clone(),
         }
-    });
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&request_body)
-        .timeout(std::time::Duration::from_secs(60))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request to Ollama: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("Ollama returned error: {}", resp.status()));
     }
-
-    #[derive(Deserialize)]
-    struct OllamaResp {
-        response: String,
-    }
-
-    let ollama_resp: OllamaResp = resp.json().await
-        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
-
-    // Parse the JSON response from the model
-    parse_activity_response(&ollama_resp.response)
 }
 
-/// Parse VLM response into ActivityContext (helper)
-fn parse_activity_response(response: &str) -> Result<ActivityContext, String> {
-    // Try to extract JSON from the response (model might include extra text)
-    let json_str = if let Some(start) = response.find('{') {
-        if let Some(end) = response.rfind('}') {
-            &response[start..=end]
-        } else {
-            response
-        }
-    } else {
-        response
-    };
+// ============================================================================
+// Standalone Functions (for commands.rs compatibility)
+// ============================================================================
 
-    // Parse JSON
-    let parsed: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse VLM JSON response: {} - Response was: {}", e, response))?;
+use std::sync::OnceLock;
 
-    Ok(ActivityContext {
-        app_name: parsed.get("app_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        window_title: parsed.get("window_title").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        category: parsed.get("category")
-            .and_then(|v| v.as_str())
-            .unwrap_or("other")
-            .to_string(),
-        summary: parsed.get("summary")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown activity")
-            .to_string(),
-        focus_area: parsed.get("focus_area").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        visible_files: parsed.get("visible_files")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_default(),
-        confidence: parsed.get("confidence")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.5) as f32,
-        entities: Some(parsed),
-    })
+static VLM_CLIENT: OnceLock<VLMClient> = OnceLock::new();
+
+/// Get or initialize the global VLM client
+fn get_client() -> &'static VLMClient {
+    VLM_CLIENT.get_or_init(VLMClient::new)
 }
 
-/// Check if vision model is available (standalone)
-pub async fn vlm_has_vision_model(base_url: &str, model: &str) -> Result<bool, String> {
-    let url = format!("{}/api/tags", base_url);
-    let resp = reqwest::get(&url)
-        .await
-        .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
-
-    #[derive(Deserialize)]
-    struct TagsResponse {
-        models: Vec<ModelInfo>,
+/// Configure the global VLM client
+pub fn vlm_configure(base_url: &str, token: Option<&str>) {
+    let client = get_client();
+    client.set_base_url(base_url.to_string());
+    if let Some(t) = token {
+        client.set_bearer_token(t.to_string());
     }
-
-    #[derive(Deserialize)]
-    struct ModelInfo {
-        name: String,
-    }
-
-    let tags: TagsResponse = resp.json().await
-        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
-
-    Ok(tags.models.iter().any(|m| m.name.starts_with(model)))
 }
 
-/// Analyze multiple frames with VLM (standalone)
+/// Check if VLM API is available
+pub async fn vlm_is_available() -> bool {
+    get_client().is_available().await
+}
+
+/// Check if vision model is available
+pub async fn vlm_has_vision_model() -> Result<bool, String> {
+    get_client().has_vision_model().await
+}
+
+/// Analyze a single frame
+pub async fn vlm_analyze_frame(image_path: &str, prompt: &str) -> Result<ActivityContext, String> {
+    get_client().analyze_frame(image_path, prompt).await
+}
+
+/// Analyze multiple frames (batch)
 pub async fn vlm_analyze_frames_batch(
-    base_url: &str,
-    model: &str,
-    image_paths: &[String],
-) -> Result<Vec<ActivityContext>, String> {
+    frames: Vec<(String, String)>, // (path, prompt) pairs
+) -> Vec<Result<ActivityContext, String>> {
     let mut results = Vec::new();
-    
-    for path in image_paths {
-        // Use generic prompt for batch analysis
-        let prompt = r#"Analyze this screenshot and describe what the user is doing. 
-Respond in JSON format with these fields:
-{
-  "app_name": "name of the main application visible",
-  "window_title": "title of the window or document",
-  "category": "one of: development, communication, research, writing, design, media, browsing, system, other",
-  "summary": "brief description of what the user is doing",
-  "focus_area": "specific task or project they appear to be working on",
-  "visible_files": ["list", "of", "visible", "file", "names"],
-  "confidence": 0.8
-}
-Only respond with valid JSON, no other text."#;
-
-        match vlm_analyze_frame(base_url, model, path, prompt).await {
-            Ok(context) => results.push(context),
-            Err(e) => {
-                log::warn!("Failed to analyze frame {}: {}", path, e);
-                // Continue with other frames
-            }
-        }
+    for (path, prompt) in frames {
+        results.push(vlm_analyze_frame(&path, &prompt).await);
     }
+    results
+}
 
-    Ok(results)
+/// Simple text chat (no image)
+pub async fn vlm_chat(prompt: &str) -> Result<String, String> {
+    get_client().chat(prompt).await
 }

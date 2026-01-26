@@ -44,6 +44,11 @@ pub struct AppSettings {
     pub enable_ingest: Option<bool>,
     pub ingest_base_url: Option<String>,
     pub ingest_bearer_token: Option<String>,
+    // VLM API settings (centralized service)
+    pub vlm_base_url: Option<String>,
+    pub vlm_bearer_token: Option<String>,
+    pub vlm_model_primary: Option<String>,
+    pub vlm_model_fallback: Option<String>,
 }
 
 impl AppSettings {
@@ -80,6 +85,10 @@ impl AppSettings {
             enable_ingest: Some(false), // Disabled by default
             ingest_base_url: None,
             ingest_bearer_token: None,
+            vlm_base_url: Some("http://localhost:8080".to_string()), // Default SSH tunnel port
+            vlm_bearer_token: None,
+            vlm_model_primary: Some("qwen2.5vl:7b".to_string()),
+            vlm_model_fallback: Some("qwen2.5vl:3b".to_string()),
         }
     }
 }
@@ -234,6 +243,31 @@ impl SettingsManager {
         }
         if let Some(v) = self.get("personal_interval_ms").await? {
             settings.personal_interval_ms = v.parse().unwrap_or(3000);
+        }
+
+        // Intelligence Pipeline settings
+        if let Some(v) = self.get("enable_ingest").await? {
+            settings.enable_ingest = Some(v == "true");
+        }
+        if let Some(v) = self.get("ingest_base_url").await? {
+            settings.ingest_base_url = Some(v);
+        }
+        if let Some(v) = self.get("ingest_bearer_token").await? {
+            settings.ingest_bearer_token = Some(v);
+        }
+
+        // VLM API settings (centralized service)
+        if let Some(v) = self.get("vlm_base_url").await? {
+            settings.vlm_base_url = Some(v);
+        }
+        if let Some(v) = self.get("vlm_bearer_token").await? {
+            settings.vlm_bearer_token = Some(v);
+        }
+        if let Some(v) = self.get("vlm_model_primary").await? {
+            settings.vlm_model_primary = Some(v);
+        }
+        if let Some(v) = self.get("vlm_model_fallback").await? {
+            settings.vlm_model_fallback = Some(v);
         }
 
         Ok(settings)

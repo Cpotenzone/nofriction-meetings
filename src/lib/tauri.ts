@@ -431,6 +431,13 @@ export async function setThemeInterval(theme: string, intervalMs: number): Promi
 }
 
 // Get time spent in a theme today (in hours)
+// Get time spent in a theme today (in hours)
 export async function getThemeTimeToday(theme: string): Promise<number> {
     return invoke<number>("get_theme_time_today", { theme });
 }
+
+// Trigger manual ingest for a meeting
+export async function triggerMeetingIngest(meetingId: string): Promise<string> {
+    return invoke<string>("trigger_meeting_ingest", { meetingId });
+}
+

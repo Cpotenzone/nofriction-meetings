@@ -122,7 +122,11 @@ impl CaptureEngine {
     pub fn set_frame_interval(&self, interval_ms: u32) {
         let clamped = interval_ms.clamp(100, 10000); // 100ms to 10s range
         *self.frame_interval_ms.write() = clamped;
-        log::info!("Frame interval set to {}ms ({:.1} FPS)", clamped, 1000.0 / clamped as f32);
+        log::info!(
+            "Frame interval set to {}ms ({:.1} FPS)",
+            clamped,
+            1000.0 / clamped as f32
+        );
     }
 
     /// Start capture (screen + microphone + system audio)
@@ -143,19 +147,22 @@ impl CaptureEngine {
         let mic_count = self.mic_audio_count.clone();
         let audio_callback_mic = self.audio_callback.clone();
         let selected_mic = self.selected_mic_id.read().clone();
-        
+
         std::thread::spawn(move || {
             Self::run_mic_capture(mic_count, audio_callback_mic, selected_mic);
         });
 
         // Start system audio capture (ScreenCaptureKit)
+        // Temporarily disabled to debug permission loop/conflict
+        /*
         SYSTEM_AUDIO_RUNNING.store(true, Ordering::SeqCst);
         let sys_count = self.system_audio_count.clone();
         let audio_callback_sys = self.audio_callback.clone();
-        
+
         std::thread::spawn(move || {
             Self::run_system_audio_capture(sys_count, audio_callback_sys);
         });
+        */
 
         // Start screen capture with configurable interval
         SCREEN_RUNNING.store(true, Ordering::SeqCst);
@@ -164,10 +171,21 @@ impl CaptureEngine {
         let frame_callback = self.frame_callback.clone();
         let monitor_id = self.selected_monitor_id.read().clone();
         let interval_ms = *self.frame_interval_ms.read();
-        
-        log::info!("Starting screen capture at {}ms interval ({:.1} FPS)", interval_ms, 1000.0 / interval_ms as f32);
+
+        log::info!(
+            "Starting screen capture at {}ms interval ({:.1} FPS)",
+            interval_ms,
+            1000.0 / interval_ms as f32
+        );
         tokio::spawn(async move {
-            Self::run_screen_capture(frame_count, frame_number, frame_callback, monitor_id, interval_ms).await;
+            Self::run_screen_capture(
+                frame_count,
+                frame_number,
+                frame_callback,
+                monitor_id,
+                interval_ms,
+            )
+            .await;
         });
 
         log::info!("Capture engine started (mic + system audio + screen capture)");
@@ -201,8 +219,8 @@ impl CaptureEngine {
             is_recording: self.is_running.load(Ordering::SeqCst),
             duration_seconds: duration,
             video_frames: self.video_frame_count.load(Ordering::SeqCst),
-            audio_samples: self.mic_audio_count.load(Ordering::SeqCst) 
-                         + self.system_audio_count.load(Ordering::SeqCst),
+            audio_samples: self.mic_audio_count.load(Ordering::SeqCst)
+                + self.system_audio_count.load(Ordering::SeqCst),
         }
     }
 
@@ -308,7 +326,7 @@ impl CaptureEngine {
     ) {
         // Try to get the ScreenCaptureKit host with retry
         let sck_host = Self::get_sck_host_with_retry(3);
-        
+
         let host = match sck_host {
             Ok(h) => h,
             Err(e) => {
@@ -406,7 +424,7 @@ impl CaptureEngine {
     #[cfg(target_os = "macos")]
     fn get_sck_host_with_retry(max_retries: usize) -> Result<cpal::Host, String> {
         use rand::Rng;
-        
+
         let mut retries = 0;
         let mut delay_ms = 50u64;
 
@@ -415,14 +433,22 @@ impl CaptureEngine {
                 Ok(host) => return Ok(host),
                 Err(e) => {
                     if retries >= max_retries {
-                        return Err(format!("ScreenCaptureKit host failed after {} retries: {}", max_retries, e));
+                        return Err(format!(
+                            "ScreenCaptureKit host failed after {} retries: {}",
+                            max_retries, e
+                        ));
                     }
 
                     // Add jitter
                     let jitter = rand::rng().random_range(0..20) as u64;
                     let delay = std::time::Duration::from_millis(delay_ms + jitter);
-                    
-                    log::warn!("ScreenCaptureKit retry {} in {}ms: {}", retries + 1, delay_ms + jitter, e);
+
+                    log::warn!(
+                        "ScreenCaptureKit retry {} in {}ms: {}",
+                        retries + 1,
+                        delay_ms + jitter,
+                        e
+                    );
                     std::thread::sleep(delay);
 
                     retries += 1;
@@ -451,10 +477,11 @@ impl CaptureEngine {
         let monitor = if let Some(id) = monitor_id {
             monitors.into_iter().find(|m| m.id().unwrap_or(0) == id)
         } else {
-            monitors.into_iter().find(|m| m.is_primary().unwrap_or(false))
-        }.or_else(|| {
-            Monitor::all().ok().and_then(|mut m| m.pop())
-        });
+            monitors
+                .into_iter()
+                .find(|m| m.is_primary().unwrap_or(false))
+        }
+        .or_else(|| Monitor::all().ok().and_then(|mut m| m.pop()));
 
         let monitor = match monitor {
             Some(m) => m,
@@ -468,7 +495,12 @@ impl CaptureEngine {
         let mon_name = monitor.name().unwrap_or_else(|_| "Unknown".to_string());
         let mon_width = monitor.width().unwrap_or(0);
         let mon_height = monitor.height().unwrap_or(0);
-        log::info!("📺 Screen capture: {} ({}x{})", mon_name, mon_width, mon_height);
+        log::info!(
+            "📺 Screen capture: {} ({}x{})",
+            mon_name,
+            mon_width,
+            mon_height
+        );
 
         let capture_interval = std::time::Duration::from_millis(interval_ms as u64);
 
@@ -510,7 +542,7 @@ impl CaptureEngine {
         let default_device = host.default_input_device();
         let default_name = default_device.as_ref().and_then(|d| d.name().ok());
 
-        let mut devices: Vec<AudioDevice> = host
+        let devices: Vec<AudioDevice> = host
             .input_devices()
             .map_err(|e| format!("Failed to enumerate devices: {}", e))?
             .filter_map(|device| {
@@ -524,27 +556,8 @@ impl CaptureEngine {
             })
             .collect();
 
-        // Also try to list ScreenCaptureKit devices for system audio
-        #[cfg(target_os = "macos")]
-        if let Ok(sck_host) = Self::get_sck_host_with_retry(1) {
-            if let Ok(sck_devices) = sck_host.input_devices() {
-                for device in sck_devices {
-                    if let Ok(name) = device.name() {
-                        // Avoid duplicates and exclude speakers/airpods
-                        if !devices.iter().any(|d| d.name == name) 
-                           && !name.to_lowercase().contains("speakers")
-                           && !name.to_lowercase().contains("airpods") {
-                            devices.push(AudioDevice {
-                                id: name.clone(),
-                                name: format!("{} (System)", name),
-                                is_default: false,
-                                is_input: false, // Mark as output/system
-                            });
-                        }
-                    }
-                }
-            }
-        }
+        // System audio devices (SCK) are not listed to avoid triggering permission prompts.
+        // System audio capture will use the default loopback if enabled.
 
         Ok(devices)
     }

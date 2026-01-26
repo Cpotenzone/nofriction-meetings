@@ -2,10 +2,10 @@
 //!
 //! Runs on a configurable timer and processes pending frames with VLM.
 
+use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
 
 use crate::database::DatabaseManager;
 use crate::settings::SettingsManager;
@@ -72,7 +72,7 @@ impl VLMScheduler {
         let pending = self.database.count_unsynced_frames().await.unwrap_or(0);
         let interval = *self.interval_secs.read();
         let last = self.last_run.read().clone();
-        
+
         let next = if self.enabled.load(Ordering::SeqCst) && self.running.load(Ordering::SeqCst) {
             last.map(|l| l + chrono::Duration::seconds(interval as i64))
         } else {
@@ -120,7 +120,8 @@ impl VLMScheduler {
                 database,
                 settings,
                 prompt_manager,
-            ).await;
+            )
+            .await;
         });
     }
 
@@ -189,12 +190,9 @@ impl VLMScheduler {
 
             log::info!("VLM Scheduler: Processing {} frames...", pending.len());
 
-            // Get VLM config
-            let (base_url, model) = ("http://localhost:11434".to_string(), "llava".to_string());
-
-            // Check VLM availability
-            if !crate::vlm_client::vlm_is_available(&base_url).await {
-                log::warn!("VLM Scheduler: Ollama not available, skipping");
+            // Check VLM availability (centralized API)
+            if !crate::vlm_client::vlm_is_available().await {
+                log::warn!("VLM Scheduler: VLM API not available, skipping");
                 continue;
             }
 
@@ -203,15 +201,22 @@ impl VLMScheduler {
             // The prompt key convention is "{theme}_context_analysis"
             // Fallback to "frame_analysis" if specific theme prompt not found
             let prompt_key = format!("{}_context_analysis", active_theme);
-            
+
             let prompt_text = match prompt_manager.get_prompt(&prompt_key).await {
                 Ok(Some(p)) => {
-                    log::info!("VLM Scheduler: Using prompt '{}' for theme '{}'", p.name, active_theme);
+                    log::info!(
+                        "VLM Scheduler: Using prompt '{}' for theme '{}'",
+                        p.name,
+                        active_theme
+                    );
                     p.system_prompt
-                },
+                }
                 Ok(None) => {
                     // Try fallback
-                    log::warn!("VLM Scheduler: Prompt '{}' not found, falling back to 'frame_analysis'", prompt_key);
+                    log::warn!(
+                        "VLM Scheduler: Prompt '{}' not found, falling back to 'frame_analysis'",
+                        prompt_key
+                    );
                     match prompt_manager.get_prompt("frame_analysis").await {
                         Ok(Some(p)) => p.system_prompt,
                         _ => {
@@ -230,17 +235,17 @@ impl VLMScheduler {
                             Only respond with valid JSON."#.to_string()
                         }
                     }
-                },
+                }
                 Err(e) => {
                     log::error!("VLM Scheduler: Failed to get prompt: {}", e);
-                    continue; 
+                    continue;
                 }
             };
 
             // Process frames
             let mut processed = 0;
             for frame in pending {
-                match crate::vlm_client::vlm_analyze_frame(&base_url, &model, &frame.frame_path, &prompt_text).await {
+                match crate::vlm_client::vlm_analyze_frame(&frame.frame_path, &prompt_text).await {
                     Ok(context) => {
                         // Create activity log entry
                         let activity = crate::database::ActivityLogEntry {
@@ -274,22 +279,31 @@ impl VLMScheduler {
                                         if let Some(items) = list.as_array() {
                                             for item in items {
                                                 // Item must have a 'name' field to be a valid entity
-                                                if let Some(name) = item.get("name").and_then(|s| s.as_str()) {
+                                                if let Some(name) =
+                                                    item.get("name").and_then(|s| s.as_str())
+                                                {
                                                     // Extract confidence if present, else use context confidence
-                                                    let conf = item.get("confidence")
+                                                    let conf = item
+                                                        .get("confidence")
                                                         .and_then(|c| c.as_f64()) // Handle number
-                                                        .or_else(|| item.get("confidence").and_then(|s| s.as_str().map(|_| 0.8))) // Handle string (high/med/low) - simplified
+                                                        .or_else(|| {
+                                                            item.get("confidence").and_then(|s| {
+                                                                s.as_str().map(|_| 0.8)
+                                                            })
+                                                        }) // Handle string (high/med/low) - simplified
                                                         .map(|f| f as f32)
                                                         .unwrap_or(context.confidence);
-                                                    
-                                                    let _ = database.add_entity(
-                                                        activity_id,
-                                                        entity_type,
-                                                        name,
-                                                        Some(item),
-                                                        conf,
-                                                        Some(&active_theme)
-                                                    ).await;
+
+                                                    let _ = database
+                                                        .add_entity(
+                                                            activity_id,
+                                                            entity_type,
+                                                            name,
+                                                            Some(item),
+                                                            conf,
+                                                            Some(&active_theme),
+                                                        )
+                                                        .await;
                                                 }
                                             }
                                         }
