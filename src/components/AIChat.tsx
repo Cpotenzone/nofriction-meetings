@@ -38,6 +38,7 @@ export function AIChat({ meetingId }: AIChatProps) {
     const [models, setModels] = useState<OllamaModel[]>([]);
     const [presets, setPresets] = useState<AIPreset[]>([]);
     const [selectedPreset, setSelectedPreset] = useState<string>("qa");
+    const [selectedModel, setSelectedModel] = useState<string>("");
 
     const chatRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -61,8 +62,18 @@ export function AIChat({ meetingId }: AIChatProps) {
             setOllamaAvailable(available);
 
             if (available) {
-                const modelList = await invoke<OllamaModel[]>("get_ollama_models");
+                const [modelList, savedModel] = await Promise.all([
+                    invoke<OllamaModel[]>("get_ollama_models"),
+                    invoke<string | null>("get_ai_chat_model"),
+                ]);
                 setModels(modelList);
+
+                // Set selected model: saved preference or first available
+                if (savedModel && modelList.some(m => m.name === savedModel)) {
+                    setSelectedModel(savedModel);
+                } else if (modelList.length > 0) {
+                    setSelectedModel(modelList[0].name);
+                }
             }
         } catch (err) {
             console.error("Failed to check Ollama:", err);
@@ -214,10 +225,26 @@ export function AIChat({ meetingId }: AIChatProps) {
                     </select>
                 </div>
                 {models.length > 0 && (
-                    <div className="model-info">
-                        <span className="model-badge">
-                            🧠 {models[0].name}
-                        </span>
+                    <div className="model-selector">
+                        <label>Model:</label>
+                        <select
+                            value={selectedModel}
+                            onChange={async (e) => {
+                                const newModel = e.target.value;
+                                setSelectedModel(newModel);
+                                try {
+                                    await invoke("set_ai_chat_model", { model: newModel });
+                                } catch (err) {
+                                    console.error("Failed to save model:", err);
+                                }
+                            }}
+                        >
+                            {models.map((m) => (
+                                <option key={m.name} value={m.name}>
+                                    {m.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 )}
             </div>

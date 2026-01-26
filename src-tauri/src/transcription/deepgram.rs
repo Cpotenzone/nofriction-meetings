@@ -1,17 +1,21 @@
-// noFriction Meetings - Deepgram Client
-// WebSocket streaming transcription with batched audio handling
 
-use futures_util::{SinkExt, StreamExt};
+use async_trait::async_trait;
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::collections::VecDeque;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 
-/// Deepgram response message
+use crate::transcription::TranscriptionProvider;
+use crate::database::DatabaseManager;
+
+// Reuse the existing structures from deepgram_client.rs
+// (Normally we would import them if they were public, but simpler to redefine or move here)
+
 #[derive(Debug, Deserialize)]
 struct DeepgramResponse {
     channel: Option<Channel>,
@@ -41,7 +45,6 @@ struct Word {
     speaker: Option<u32>,
 }
 
-/// Transcript segment for frontend
 #[derive(Debug, Clone, Serialize)]
 pub struct TranscriptSegment {
     pub text: String,
@@ -52,24 +55,22 @@ pub struct TranscriptSegment {
     pub speaker: Option<String>,
 }
 
-/// Audio batch for processing
 struct AudioBatch {
     samples: Vec<f32>,
     sample_rate: u32,
 }
 
-/// Deepgram client for streaming transcription
-pub struct DeepgramClient {
+pub struct DeepgramProvider {
     api_key: Arc<RwLock<Option<String>>>,
     is_connected: Arc<AtomicBool>,
     audio_tx: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     samples_sent: Arc<AtomicU64>,
-    database: Arc<RwLock<Option<Arc<crate::database::DatabaseManager>>>>,
+    database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
     meeting_id: Arc<RwLock<Option<String>>>,
 }
 
-impl DeepgramClient {
+impl DeepgramProvider {
     pub fn new() -> Self {
         Self {
             api_key: Arc::new(RwLock::new(None)),
@@ -82,100 +83,13 @@ impl DeepgramClient {
         }
     }
 
-    pub fn set_api_key(&self, key: String) {
-        *self.api_key.write() = Some(key);
-    }
-
-    pub fn get_api_key(&self) -> Option<String> {
-        self.api_key.read().clone()
-    }
-
-    pub fn has_api_key(&self) -> bool {
-        self.api_key.read().is_some()
-    }
-
-    pub fn is_connected(&self) -> bool {
-        self.is_connected.load(Ordering::SeqCst)
-    }
-
-    pub fn set_app_handle(&self, app: AppHandle) {
-        *self.app_handle.write() = Some(app);
-    }
-
-    pub fn get_app_handle(&self) -> Option<AppHandle> {
-        self.app_handle.read().clone()
-    }
-
-    pub fn set_database(&self, db: Arc<crate::database::DatabaseManager>) {
-        *self.database.write() = Some(db);
-    }
-
-    pub fn set_meeting_id(&self, id: String) {
-        *self.meeting_id.write() = Some(id);
-    }
-
-    pub fn clear_meeting(&self) {
-        *self.meeting_id.write() = None;
-    }
-
-    pub fn set_disconnected(&self) {
-        self.is_connected.store(false, Ordering::SeqCst);
-        *self.audio_tx.write() = None;
-        log::info!("Deepgram marked as disconnected");
-    }
-
-    /// Start connection (spawns async task internally)
-    pub fn start_connection(&self) {
-        let api_key = match self.get_api_key() {
-            Some(k) => k,
-            None => {
-                log::warn!("Cannot connect to Deepgram: no API key");
-                return;
-            }
-        };
-
-        let app = match self.get_app_handle() {
-            Some(a) => a,
-            None => {
-                log::warn!("Cannot connect to Deepgram: no app handle");
-                return;
-            }
-        };
-
-        if self.is_connected.load(Ordering::SeqCst) {
-            log::info!("Already connected to Deepgram");
-            return;
-        }
-
-        let is_connected = self.is_connected.clone();
-        let audio_tx_holder = self.audio_tx.clone();
-        let samples_sent = self.samples_sent.clone();
-        let database = self.database.clone();
-        let meeting_id = self.meeting_id.clone();
-
-        tokio::spawn(async move {
-            match Self::connect_internal(
-                api_key, 
-                app, 
-                is_connected.clone(), 
-                audio_tx_holder, 
-                samples_sent,
-                database,
-                meeting_id,
-            ).await {
-                Ok(_) => log::info!("Deepgram connection established"),
-                Err(e) => log::error!("Deepgram connection failed: {}", e),
-            }
-        });
-    }
-
     async fn connect_internal(
         api_key: String,
         app: AppHandle,
         is_connected: Arc<AtomicBool>,
         audio_tx_holder: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
         samples_sent: Arc<AtomicU64>,
-        database: Arc<RwLock<Option<Arc<crate::database::DatabaseManager>>>>,
+        database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
         meeting_id: Arc<RwLock<Option<String>>>,
     ) -> Result<(), String> {
         // Use nova-3 model with advanced features
@@ -210,24 +124,22 @@ impl DeepgramClient {
             .map_err(|e| format!("Failed to connect to Deepgram: {}", e))?;
 
         is_connected.store(true, Ordering::SeqCst);
-        log::info!("✅ Connected to Deepgram WebSocket (nova-2)");
+        log::info!("✅ Connected to Deepgram WebSocket (nova-3)");
 
         let (mut write, mut read) = ws_stream.split();
 
-        // Create channel for audio batches - smaller buffer for lower latency
+        // Create channel for audio batches
         let (audio_tx, mut audio_rx) = mpsc::channel::<AudioBatch>(100);
         *audio_tx_holder.write() = Some(audio_tx);
 
-        // Spawn task to process and send audio - LOW LATENCY MODE
+        // Spawn task to process and send audio
         let is_connected_send = is_connected.clone();
         tokio::spawn(async move {
             let mut buffer: VecDeque<f32> = VecDeque::with_capacity(8000);
-            // Target: 16kHz mono, send every 20ms = 320 samples for low latency
-            // Deepgram recommends 20-100ms chunks
-            let batch_size = 320usize;
+            let batch_size = 320usize; // 20ms @ 16kHz
             
             loop {
-                // Wait for audio with short timeout for responsiveness
+                // Wait for audio with short timeout
                 let result = tokio::time::timeout(
                     std::time::Duration::from_millis(20),
                     audio_rx.recv()
@@ -235,15 +147,13 @@ impl DeepgramClient {
 
                 match result {
                     Ok(Some(batch)) => {
-                        // Resample to 16kHz mono
                         let resampled = Self::resample_to_16k_mono(&batch.samples, batch.sample_rate);
                         buffer.extend(resampled);
                     }
-                    Ok(None) => break, // Channel closed
-                    Err(_) => {} // Timeout - send what we have
+                    Ok(None) => break,
+                    Err(_) => {}
                 }
 
-                // Send buffered audio immediately when we have enough
                 while buffer.len() >= batch_size {
                     if !is_connected_send.load(Ordering::SeqCst) {
                         return;
@@ -296,16 +206,12 @@ impl DeepgramClient {
                                                 .map(|s| format!("Speaker {}", s)),
                                         };
 
-                                        log::info!("📝 Transcript{}: {}", 
-                                            if segment.is_final { " [FINAL]" } else { "" },
-                                            segment.text);
-
-                                        // Emit to frontend for live display
+                                        // Emit to frontend
                                         if let Err(e) = app.emit("live_transcript", &segment) {
                                             log::error!("Failed to emit transcript: {}", e);
                                         }
 
-                                        // Save FINAL transcripts to database
+                                        // Save FINAL transcripts
                                         if is_final {
                                             if let Some(db) = database_recv.read().as_ref().cloned() {
                                                 if let Some(mid) = meeting_id_recv.read().as_ref().cloned() {
@@ -313,16 +219,13 @@ impl DeepgramClient {
                                                     let speaker_clone = segment.speaker.clone();
                                                     let confidence = alt.confidence;
                                                     tokio::spawn(async move {
-                                                        match db.add_transcript(
+                                                        let _ = db.add_transcript(
                                                             &mid,
                                                             &text_clone,
                                                             speaker_clone.as_deref(),
                                                             true,
                                                             confidence,
-                                                        ).await {
-                                                            Ok(id) => log::info!("💾 Transcript saved (id: {})", id),
-                                                            Err(e) => log::error!("Failed to save transcript: {}", e),
-                                                        }
+                                                        ).await;
                                                     });
                                                 }
                                             }
@@ -332,14 +235,8 @@ impl DeepgramClient {
                             }
                         }
                     }
-                    Ok(Message::Close(frame)) => {
-                        log::info!("Deepgram connection closed: {:?}", frame);
-                        break;
-                    }
-                    Err(e) => {
-                        log::error!("WebSocket error: {}", e);
-                        break;
-                    }
+                    Ok(Message::Close(_)) => break,
+                    Err(_) => break,
                     _ => {}
                 }
             }
@@ -349,35 +246,6 @@ impl DeepgramClient {
         Ok(())
     }
 
-    /// Queue audio samples for sending (non-blocking)
-    pub fn queue_audio(&self, samples: &[f32], sample_rate: u32) {
-        if !self.is_connected.load(Ordering::SeqCst) {
-            return;
-        }
-
-        if samples.is_empty() {
-            return;
-        }
-
-        if let Some(tx) = self.audio_tx.read().as_ref() {
-            let batch = AudioBatch {
-                samples: samples.to_vec(),
-                sample_rate,
-            };
-            
-            // Non-blocking send - drop if full
-            if tx.try_send(batch).is_err() {
-                // Only log occasionally
-                static DROP_COUNT: AtomicU64 = AtomicU64::new(0);
-                let count = DROP_COUNT.fetch_add(1, Ordering::Relaxed);
-                if count % 100 == 0 {
-                    log::warn!("Audio batch dropped (buffer full) #{}", count);
-                }
-            }
-        }
-    }
-
-    /// Convert f32 samples to i16 PCM bytes
     fn f32_to_i16_bytes(samples: &[f32]) -> Vec<u8> {
         samples.iter()
             .map(|&s| {
@@ -388,13 +256,11 @@ impl DeepgramClient {
             .collect()
     }
 
-    /// Resample to 16kHz mono
     fn resample_to_16k_mono(samples: &[f32], from_rate: u32) -> Vec<f32> {
         if samples.is_empty() {
             return vec![];
         }
 
-        // First convert to mono if stereo (assume interleaved)
         let mono: Vec<f32> = if samples.len() > 1 {
             samples.chunks(2)
                 .map(|chunk| {
@@ -409,7 +275,6 @@ impl DeepgramClient {
             samples.to_vec()
         };
 
-        // Then resample if needed
         if from_rate == 16000 {
             return mono;
         }
@@ -442,8 +307,86 @@ impl DeepgramClient {
     }
 }
 
-impl Default for DeepgramClient {
-    fn default() -> Self {
-        Self::new()
+#[async_trait]
+impl TranscriptionProvider for DeepgramProvider {
+    fn start(&self) {
+        let api_key = match self.api_key.read().clone() {
+            Some(k) => k,
+            None => {
+                log::warn!("Cannot connect to Deepgram: no API key");
+                return;
+            }
+        };
+
+        let app = match self.app_handle.read().clone() {
+            Some(a) => a,
+            None => {
+                log::warn!("Cannot connect to Deepgram: no app handle");
+                return;
+            }
+        };
+
+        if self.is_connected.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let is_connected = self.is_connected.clone();
+        let audio_tx_holder = self.audio_tx.clone();
+        let samples_sent = self.samples_sent.clone();
+        let database = self.database.clone();
+        let meeting_id = self.meeting_id.clone();
+
+        tokio::spawn(async move {
+            if let Err(e) = Self::connect_internal(
+                api_key, 
+                app, 
+                is_connected, 
+                audio_tx_holder, 
+                samples_sent,
+                database,
+                meeting_id,
+            ).await {
+                log::error!("Deepgram connection failed: {}", e);
+            }
+        });
+    }
+
+    fn stop(&self) {
+        self.is_connected.store(false, Ordering::SeqCst);
+        *self.audio_tx.write() = None;
+        log::info!("Deepgram disconnected");
+    }
+
+    fn process_audio(&self, samples: &[f32], sample_rate: u32) {
+        if !self.is_connected.load(Ordering::SeqCst) || samples.is_empty() {
+            return;
+        }
+
+        if let Some(tx) = self.audio_tx.read().as_ref() {
+            let batch = AudioBatch {
+                samples: samples.to_vec(),
+                sample_rate,
+            };
+            let _ = tx.try_send(batch);
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.is_connected.load(Ordering::SeqCst)
+    }
+
+    fn set_api_key(&self, key: String) {
+        *self.api_key.write() = Some(key);
+    }
+
+    fn set_context(
+        &self, 
+        app_handle: AppHandle, 
+        database: Arc<DatabaseManager>, 
+        meeting_id: String
+    ) {
+        *self.app_handle.write() = Some(app_handle);
+        *self.database.write() = Some(database);
+        *self.meeting_id.write() = Some(meeting_id);
     }
 }

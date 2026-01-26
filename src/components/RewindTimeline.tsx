@@ -114,20 +114,92 @@ export function RewindTimeline({ meetingId, onFrameSelect }: RewindTimelineProps
         );
     }
 
+    const [zoom, setZoom] = useState(1);
+    const [pan, setPan] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+    // Reset zoom when frame changes
+    useEffect(() => {
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+    }, [selectedIndex]);
+
+    const handleWheel = (e: React.WheelEvent) => {
+        if (e.ctrlKey || e.metaKey) { // Pinch gesture or Ctrl+Wheel
+            e.preventDefault();
+            const delta = -e.deltaY * 0.01;
+            setZoom(z => Math.min(Math.max(1, z + delta), 5)); // Limit zoom 1x to 5x
+        }
+    };
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (zoom > 1) {
+            setIsDragging(true);
+            setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+        }
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (isDragging && zoom > 1) {
+            setPan({
+                x: e.clientX - dragStart.x,
+                y: e.clientY - dragStart.y
+            });
+        }
+    };
+
+    const handleMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    // ... (rest of component)
+
     return (
         <div className="rewind-timeline glass-panel">
+            {/* Header ... */}
             <div className="timeline-header">
                 <h3>🎬 Rewind</h3>
                 <div className="timeline-stats">
+                    {zoom > 1 && (
+                        <button
+                            className="btn-tiny"
+                            onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+                            style={{
+                                background: '#3b82f6', color: 'white', border: 'none',
+                                borderRadius: '4px', padding: '2px 6px', fontSize: '10px',
+                                marginRight: '8px', cursor: 'pointer'
+                            }}
+                        >
+                            Reset Zoom ({(zoom * 100).toFixed(0)}%)
+                        </button>
+                    )}
                     <span>{frames.length} frames</span>
                     {getDuration() && <span> • {getDuration()}</span>}
                 </div>
             </div>
 
             {/* Preview area */}
-            <div className="timeline-preview">
+            <div
+                className="timeline-preview"
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                style={{ overflow: 'hidden', cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+            >
                 {previewImage ? (
-                    <img src={previewImage} alt="Frame preview" />
+                    <img
+                        src={previewImage}
+                        alt="Frame preview"
+                        style={{
+                            transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+                            transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                            transformOrigin: 'center center',
+                            pointerEvents: 'none' // Let events bubble to container
+                        }}
+                    />
                 ) : (
                     <div className="preview-placeholder">
                         <span>Select a frame to preview</span>

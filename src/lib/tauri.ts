@@ -143,6 +143,11 @@ export async function getSettings(): Promise<AppSettings> {
     return invoke<AppSettings>("get_settings");
 }
 
+// Set frame capture interval (milliseconds)
+export async function setFrameCaptureInterval(intervalMs: number): Promise<void> {
+    return invoke("set_frame_capture_interval", { intervalMs });
+}
+
 // Meeting commands
 export async function getMeetings(limit?: number): Promise<Meeting[]> {
     return invoke<Meeting[]>("get_meetings", { limit });
@@ -390,4 +395,42 @@ export async function applyRetention(): Promise<[number, number]> {
 // Delete a meeting's video storage
 export async function deleteVideoStorage(meetingId: string): Promise<number> {
     return invoke<number>("delete_video_storage", { meetingId });
+}
+
+// ============================================
+// Activity Theme Commands
+// ============================================
+
+export interface ThemeSettings {
+    active_theme: string;
+    prospecting_interval_ms: number;
+    fundraising_interval_ms: number;
+    product_dev_interval_ms: number;
+    admin_interval_ms: number;
+    personal_interval_ms: number;
+}
+
+// Set the active theme
+export async function setActiveTheme(theme: string): Promise<void> {
+    return invoke<void>("set_active_theme", { theme });
+}
+
+// Get the current active theme
+export async function getActiveTheme(): Promise<string> {
+    return invoke<string>("get_active_theme");
+}
+
+// Get all theme settings
+export async function getThemeSettings(): Promise<ThemeSettings> {
+    return invoke<ThemeSettings>("get_theme_settings");
+}
+
+// Set screenshot interval for a specific theme
+export async function setThemeInterval(theme: string, intervalMs: number): Promise<void> {
+    return invoke<void>("set_theme_interval", { theme, intervalMs });
+}
+
+// Get time spent in a theme today (in hours)
+export async function getThemeTimeToday(theme: string): Promise<number> {
+    return invoke<number>("get_theme_time_today", { theme });
 }

@@ -1,13 +1,14 @@
 {
   "name": "nofriction-meetings",
   "private": true,
-  "version": "1.0.0-pre.2",
+  "version": "1.1.0-rc.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prebuild": "node increment-version.js"
   },
   "dependencies": {
     "react": "^19.1.0",

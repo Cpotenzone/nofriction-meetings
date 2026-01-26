@@ -1,3 +1,4 @@
+
 // noFriction Meetings - Full Settings Component
 // Comprehensive settings with device selection, API config, and preferences
 
@@ -7,6 +8,10 @@ import type { AudioDevice, MonitorInfo } from "../lib/tauri";
 import { AISettings } from "./AISettings";
 import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
 import { PermissionsStatus } from "./PermissionsStatus";
+import { ActivityThemesSettings } from "./ActivityThemesSettings";
+import PromptBrowser from "./PromptBrowser";
+import { TranscriptionSettings } from "./TranscriptionSettings";
+import { IngestSettings } from "./IngestSettings";
 
 interface FullSettingsProps {
     onSave?: () => void;
@@ -27,6 +32,9 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
     // Loading states
     const [isLoadingDevices, setIsLoadingDevices] = useState(true);
     const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+
+    // Sidebar State
+    const [activeCategory, setActiveCategory] = useState<"general" | "transcription" | "intelligence" | "capture" | "data">("general");
 
     // Load current settings
     useEffect(() => {
@@ -117,292 +125,295 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         }
     };
 
-    return (
-        <div className="full-settings scrollable">
-            {/* Deepgram API Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🎙️</span>
-                    Deepgram API
-                </h3>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">API Key</span>
-                        <span className="label-sub">Required for live transcription. Get one at deepgram.com</span>
-                    </div>
-                    <div className="settings-control">
-                        <input
-                            type="text"
-                            className="settings-input"
-                            placeholder="Enter your Deepgram API key"
-                            value={apiKey}
-                            onChange={(e) => {
-                                setApiKey(e.target.value);
-                                setApiKeyValid(null);
-                            }}
-                        />
-                        <button
-                            className={`settings-button ${apiKeyValid ? "success" : ""}`}
-                            onClick={handleSaveApiKey}
-                            disabled={isSavingApiKey || !apiKey}
-                        >
-                            {isSavingApiKey ? "Saving..." : apiKeyValid ? "✓ Saved" : "Save"}
-                        </button>
-                    </div>
-                </div>
-            </section>
+    const categories = [
+        { id: "general", label: "General", icon: "⚙️" },
+        { id: "transcription", label: "Transcription", icon: "🎙️" },
+        { id: "capture", label: "Capture", icon: "🎥" },
+        { id: "intelligence", label: "Intelligence", icon: "🧠" },
+        { id: "data", label: "Data", icon: "💾" },
+    ];
 
-            {/* Microphone Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🎤</span>
-                    Microphone
-                </h3>
-                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
-                    Select the microphone for voice capture. This will be used for live transcription.
-                </p>
+    const renderSidbar = () => (
+        <div className="settings-sidebar glass-panel">
+            <div className="sidebar-header">
+                <h2>Settings</h2>
+            </div>
+            <nav className="sidebar-nav">
+                {categories.map(cat => (
+                    <button
+                        key={cat.id}
+                        className={`sidebar-item ${activeCategory === cat.id ? "active" : ""}`}
+                        onClick={() => setActiveCategory(cat.id as any)}
+                    >
+                        <span className="sidebar-icon">{cat.icon}</span>
+                        <span className="sidebar-label">{cat.label}</span>
+                    </button>
+                ))}
+            </nav>
+            <div className="sidebar-footer">
+                <div className="app-version">v1.0.0</div>
+            </div>
+        </div>
+    );
 
-                {isLoadingDevices ? (
-                    <div className="loading-spinner" style={{ margin: "var(--spacing-lg) auto" }}></div>
-                ) : (
-                    <div className="device-list">
-                        {audioDevices.filter(d => d.is_input).map((device) => (
-                            <div
-                                key={device.id}
-                                className={`device-item ${selectedMic === device.id ? "selected" : ""}`}
-                                onClick={() => handleSelectMic(device.id)}
-                            >
-                                <span className="device-icon">🎤</span>
-                                <span className="device-name">{device.name}</span>
-                                {device.is_default && (
-                                    <span className="device-default">Default</span>
-                                )}
-                            </div>
-                        ))}
-                        {audioDevices.filter(d => d.is_input).length === 0 && (
-                            <p style={{ color: "var(--text-tertiary)", textAlign: "center", padding: "var(--spacing-md)" }}>
-                                No microphones detected
-                            </p>
-                        )}
-                    </div>
-                )}
-            </section>
+    const renderContent = () => {
+        switch (activeCategory) {
+            case "general":
+                return (
+                    <div className="settings-content-panel fade-in">
+                        <section className="settings-section">
+                            <h3>Microphone</h3>
+                            <p className="section-desc">Select the microphone for voice capture.</p>
+                            {isLoadingDevices ? (
+                                <div className="loading-spinner" style={{ margin: "20px auto" }} />
+                            ) : (
+                                <div className="device-list">
+                                    {audioDevices.filter(d => d.is_input).map((device) => (
+                                        <div
+                                            key={device.id}
+                                            className={`device-item ${selectedMic === device.id ? "selected" : ""}`}
+                                            onClick={() => handleSelectMic(device.id)}
+                                        >
+                                            <span className="device-icon">🎤</span>
+                                            <div className="device-info">
+                                                <span className="device-name">{device.name}</span>
+                                                {device.is_default && <span className="device-tag">Default</span>}
+                                            </div>
+                                            {selectedMic === device.id && <span className="check-icon">✓</span>}
+                                        </div>
+                                    ))}
+                                    {audioDevices.filter(d => d.is_input).length === 0 && (
+                                        <p style={{ color: "var(--text-tertiary)" }}>No microphones detected</p>
+                                    )}
+                                </div>
+                            )}
+                        </section>
 
-            {/* Monitor Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🖥️</span>
-                    Screen Capture
-                </h3>
-                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
-                    Select which monitor to capture for screenshots and rewind.
-                </p>
-
-                {isLoadingDevices ? (
-                    <div className="loading-spinner" style={{ margin: "var(--spacing-lg) auto" }}></div>
-                ) : (
-                    <div className="monitor-preview">
-                        {monitors.map((monitor) => (
-                            <div
-                                key={monitor.id}
-                                className={`monitor-card ${selectedMonitor === monitor.id ? "selected" : ""}`}
-                                onClick={() => handleSelectMonitor(monitor.id)}
-                            >
-                                <div className="monitor-icon">🖥️</div>
-                                <div className="monitor-name">{monitor.name}</div>
-                                <div className="monitor-resolution">
-                                    {monitor.width} × {monitor.height}
-                                    {monitor.is_primary && " (Primary)"}
+                        <section className="settings-section">
+                            <h3>System Audio</h3>
+                            <div className="settings-row">
+                                <div className="settings-label">
+                                    <span className="label-main">Capture System Audio</span>
+                                    <span className="label-sub">Zoom, YouTube, etc.</span>
+                                </div>
+                                <div className="toggle-switch active">
+                                    <div className="toggle-knob"></div>
                                 </div>
                             </div>
-                        ))}
+                        </section>
                     </div>
-                )}
-            </section>
-
-            {/* System Audio Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🔊</span>
-                    System Audio
-                </h3>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Capture System Audio</span>
-                        <span className="label-sub">
-                            Automatically captures audio from your computer (Zoom, YouTube, etc.)
-                        </span>
+                );
+            case "transcription":
+                return <TranscriptionSettings />;
+            case "capture":
+                return (
+                    <div className="settings-content-panel fade-in">
+                        <section className="settings-section">
+                            <h3>Screen Capture</h3>
+                            <p className="section-desc">Select which monitor to record.</p>
+                            {isLoadingDevices ? (
+                                <div className="loading-spinner" style={{ margin: "20px auto" }} />
+                            ) : (
+                                <div className="monitor-preview-grid">
+                                    {monitors.map((monitor) => (
+                                        <div
+                                            key={monitor.id}
+                                            className={`monitor-card ${selectedMonitor === monitor.id ? "selected" : ""}`}
+                                            onClick={() => handleSelectMonitor(monitor.id)}
+                                        >
+                                            <div className="monitor-screen">
+                                                <span className="monitor-res">{monitor.width}x{monitor.height}</span>
+                                            </div>
+                                            <div className="monitor-name">{monitor.name}</div>
+                                            {monitor.is_primary && <span className="monitor-tag">Primary</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
+                        <section className="settings-section">
+                            <h3>Recording Mode</h3>
+                            <div className="segmented-control">
+                                <button className="segment active">Video Mode</button>
+                                <button className="segment">Frame Mode</button>
+                            </div>
+                            <ScreenshotFrequencySlider />
+                        </section>
                     </div>
-                    <div className="settings-control">
-                        <span style={{
-                            padding: "4px 12px",
-                            background: "var(--success)",
-                            borderRadius: "20px",
-                            fontSize: "0.75rem",
-                            fontWeight: "600"
-                        }}>
-                            ✓ Enabled
-                        </span>
+                );
+            case "intelligence":
+                return (
+                    <div className="settings-content-panel fade-in">
+                        <section className="settings-section">
+                            <h3>Activity Themes</h3>
+                            <ActivityThemesSettings />
+                        </section>
+                        {/* AISettings included here to fix unused variable error */}
+                        <div className="settings-section-divider"></div>
+                        <AISettings />
+                        <div className="settings-section-divider"></div>
+                        <IngestSettings />
+                        <section className="settings-section">
+                            <h3>Deepgram API</h3>
+                            <div className="settings-input-group">
+                                <input
+                                    type="password"
+                                    placeholder="Enter API Key"
+                                    value={apiKey}
+                                    onChange={(e) => { setApiKey(e.target.value); setApiKeyValid(null); }}
+                                    className="modern-input"
+                                />
+                                <button className="btn-primary" onClick={handleSaveApiKey} disabled={isSavingApiKey}>
+                                    {isSavingApiKey ? "Saving..." : apiKeyValid ? "Saved" : "Save"}
+                                </button>
+                            </div>
+                        </section>
+                        <section className="settings-section">
+                            <h3>Knowledge Base</h3>
+                            <KnowledgeBaseSettings />
+                        </section>
+                        <section className="settings-section">
+                            <h3>Prompt Library</h3>
+                            <PromptBrowser />
+                        </section>
                     </div>
-                </div>
-                <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: "var(--spacing-sm)" }}>
-                    System audio capture uses ScreenCaptureKit. Make sure the app has Screen Recording permission.
-                </p>
-            </section>
-
-            {/* Video Recording & Storage Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🎬</span>
-                    Video Recording
-                </h3>
-                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
-                    Continuous video recording captures your screen efficiently. Frames are extracted on-demand.
-                </p>
-
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Capture Mode</span>
-                        <span className="label-sub">
-                            Video recording is more efficient than frame capture
-                        </span>
-                    </div>
-                    <div className="settings-control">
-                        <span style={{
-                            padding: "4px 12px",
-                            background: "var(--accent-primary)",
-                            borderRadius: "20px",
-                            fontSize: "0.75rem",
-                            fontWeight: "600",
-                            color: "white"
-                        }}>
-                            🎬 Video (Recommended)
-                        </span>
-                    </div>
-                </div>
-
-                <div className="settings-row" style={{ marginTop: "var(--spacing-md)" }}>
-                    <div className="settings-label">
-                        <span className="label-main">Storage Usage</span>
-                        <span className="label-sub">
-                            Video files are stored locally and can be managed here
-                        </span>
-                    </div>
-                    <div className="settings-control">
-                        <button
-                            className="settings-button"
-                            onClick={async () => {
-                                try {
+                );
+            case "data":
+                return (
+                    <div className="settings-content-panel fade-in">
+                        <PermissionsStatus />
+                        <section className="settings-section">
+                            <h3>Storage Management</h3>
+                            <div className="storage-card">
+                                <div className="storage-icon">💾</div>
+                                <div className="storage-details">
+                                    <span className="storage-title">Local Recordings</span>
+                                    <span className="storage-subtitle">Manage disk usage and cleanup</span>
+                                </div>
+                                <button className="btn-danger-outline" onClick={async () => {
                                     const { invoke } = await import("@tauri-apps/api/core");
-                                    const [deleted, freed] = await invoke<[number, number]>("apply_retention");
-                                    alert(`Cleaned up ${deleted} old recordings, freed ${(freed / 1024 / 1024).toFixed(1)} MB`);
-                                } catch (err) {
-                                    console.error("Cleanup failed:", err);
-                                }
-                            }}
-                        >
-                            🗑️ Cleanup Old Recordings
-                        </button>
-                    </div>
-                </div>
-
-                <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: "var(--spacing-sm)" }}>
-                    Videos are retained for 7 days by default. Pin moments are preserved longer.
-                </p>
-            </section>
-
-            {/* Permissions Status */}
-            <PermissionsStatus />
-
-            {/* AI Settings */}
-            <AISettings />
-
-            {/* Knowledge Base Settings (Supabase, Pinecone, VLM) */}
-            <KnowledgeBaseSettings />
-
-            {/* About Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">ℹ️</span>
-                    About
-                </h3>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">noFriction Meetings</span>
-                        <span className="label-sub">Version 1.0.0</span>
-                    </div>
-                </div>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Data Location</span>
-                        <span className="label-sub" style={{ wordBreak: "break-all" }}>
-                            ~/Library/Application Support/com.nofriction.meetings/
-                        </span>
-                    </div>
-                </div>
-            </section>
-
-            {/* Data Management Section */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🗃️</span>
-                    Data Management
-                </h3>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Clear Cache</span>
-                        <span className="label-sub">Remove temporary analysis data and pending frames</span>
-                    </div>
-                    <div className="settings-control">
-                        <button
-                            className="btn btn-secondary"
-                            onClick={async () => {
-                                if (confirm("Clear all cached data? This cannot be undone.")) {
+                                    await invoke("apply_retention");
+                                    alert("Cleanup complete");
+                                }}>Cleanup Now</button>
+                            </div>
+                        </section>
+                        <section className="settings-section">
+                            <h3>Export & Reset</h3>
+                            <div className="button-group">
+                                <button className="btn-secondary" onClick={async () => {
                                     try {
+                                        const { invoke } = await import("@tauri-apps/api/core");
+                                        const data = await invoke<string>("export_data");
+                                        const blob = new Blob([data], { type: "application/json" });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement("a");
+                                        a.href = url;
+                                        a.download = `nofriction-export-${new Date().toISOString().split("T")[0]}.json`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    } catch (err) {
+                                        console.error("Failed to export data:", err);
+                                        alert("Failed to export data");
+                                    }
+                                }}>Export Data to JSON</button>
+                                <button className="btn-danger" onClick={async () => {
+                                    if (confirm("Clear all cache? This cannot be undone.")) {
                                         const { invoke } = await import("@tauri-apps/api/core");
                                         await invoke("clear_cache");
                                         alert("Cache cleared successfully");
-                                    } catch (err) {
-                                        console.error("Failed to clear cache:", err);
-                                        alert("Failed to clear cache");
                                     }
-                                }
-                            }}
-                        >
-                            Clear Cache
-                        </button>
+                                }}>Clear Cache</button>
+                            </div>
+                        </section>
                     </div>
+                );
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <div className="full-settings-layout">
+            {renderSidbar()}
+            <div className="settings-main-content">
+                <div className="content-header">
+                    <h1>{categories.find(c => c.id === activeCategory)?.label}</h1>
                 </div>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Export Data</span>
-                        <span className="label-sub">Download all meetings and transcripts as JSON</span>
-                    </div>
-                    <div className="settings-control">
-                        <button
-                            className="btn btn-secondary"
-                            onClick={async () => {
-                                try {
-                                    const { invoke } = await import("@tauri-apps/api/core");
-                                    const data = await invoke<string>("export_data");
-                                    const blob = new Blob([data], { type: "application/json" });
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement("a");
-                                    a.href = url;
-                                    a.download = `nofriction-export-${new Date().toISOString().split("T")[0]}.json`;
-                                    a.click();
-                                    URL.revokeObjectURL(url);
-                                } catch (err) {
-                                    console.error("Failed to export data:", err);
-                                    alert("Failed to export data");
-                                }
-                            }}
-                        >
-                            Export Data
-                        </button>
-                    </div>
+                <div className="content-scrollable">
+                    {renderContent()}
                 </div>
-            </section>
+            </div>
+        </div>
+    );
+}
+
+// Internal component for Screenshot Frequency slider with dynamic display
+function ScreenshotFrequencySlider() {
+    const [intervalMs, setIntervalMs] = useState(1000);
+
+    // Load saved setting on mount
+    useEffect(() => {
+        const loadSetting = async () => {
+            try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                const settings = await invoke<{ frame_capture_interval_ms?: number }>("get_capture_settings");
+                if (settings.frame_capture_interval_ms) {
+                    setIntervalMs(settings.frame_capture_interval_ms);
+                }
+            } catch (err) {
+                console.error("Failed to load frame interval:", err);
+            }
+        };
+        loadSetting();
+    }, []);
+
+    const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newInterval = parseInt(e.target.value, 10);
+        setIntervalMs(newInterval);
+        try {
+            await tauri.setFrameCaptureInterval(newInterval);
+        } catch (err) {
+            console.error("Failed to set frame interval:", err);
+        }
+    };
+
+    // Format the interval for display
+    const formatInterval = (ms: number): string => {
+        if (ms <= 500) {
+            return `${Math.round(1000 / ms)} per second`;
+        } else if (ms === 1000) {
+            return "1 per second";
+        } else {
+            return `1 every ${(ms / 1000).toFixed(1)}s`;
+        }
+    };
+
+    return (
+        <div className="settings-row" style={{ marginTop: "var(--spacing-md)" }}>
+            <div className="settings-label">
+                <span className="label-main">Screenshot Frequency</span>
+                <span className="label-sub">
+                    How often to capture screenshots during recording
+                </span>
+            </div>
+            <div className="settings-control" style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
+                <input
+                    type="range"
+                    min={100}
+                    max={5000}
+                    step={100}
+                    value={intervalMs}
+                    onChange={handleChange}
+                    style={{ width: "150px" }}
+                />
+                <span style={{
+                    fontSize: "0.75rem",
+                    color: "var(--text-secondary)",
+                    fontWeight: intervalMs === 1000 ? 400 : 600
+                }}>
+                    {formatInterval(intervalMs)}{intervalMs === 1000 ? " (default)" : ""}
+                </span>
+            </div>
         </div>
     );
 }

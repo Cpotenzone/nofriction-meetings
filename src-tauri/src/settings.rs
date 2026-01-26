@@ -9,6 +9,10 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
     pub deepgram_api_key: Option<String>,
+    pub gemini_api_key: Option<String>,
+    pub gladia_api_key: Option<String>,
+    pub google_stt_key_json: Option<String>,
+    pub transcription_provider: String, // "deepgram", "gemini", "gladia", "google_stt"
     pub selected_microphone: Option<String>,
     pub selected_monitor: Option<u32>,
     pub auto_start_recording: bool,
@@ -20,10 +24,26 @@ pub struct AppSettings {
     pub always_on_capture: bool,
     pub queue_frames_for_vlm: bool,
     pub frame_capture_interval_ms: u32,
+    // VLM auto-processing settings
+    pub vlm_auto_process: bool,
+    pub vlm_process_interval_secs: u32,
+    // AI chat settings
+    pub ai_chat_model: Option<String>,
+    // Activity theme settings
+    pub active_theme: String,
+    pub prospecting_interval_ms: u32,
+    pub fundraising_interval_ms: u32,
+    pub product_dev_interval_ms: u32,
+    pub admin_interval_ms: u32,
+    pub personal_interval_ms: u32,
     // Knowledge base settings
     pub supabase_connection_string: Option<String>,
     pub pinecone_api_key: Option<String>,
     pub pinecone_index_host: Option<String>,
+    // Intelligence Pipeline settings
+    pub enable_ingest: Option<bool>,
+    pub ingest_base_url: Option<String>,
+    pub ingest_bearer_token: Option<String>,
 }
 
 impl AppSettings {
@@ -31,19 +51,35 @@ impl AppSettings {
     pub fn with_defaults() -> Self {
         Self {
             deepgram_api_key: None,
+            gemini_api_key: None,
+            gladia_api_key: None,
+            google_stt_key_json: None,
+            transcription_provider: "deepgram".to_string(),
             selected_microphone: None,
             selected_monitor: None,
             auto_start_recording: false,
             show_notifications: true,
-            capture_microphone: true,          // Mic on by default
-            capture_system_audio: true,        // System audio ON for meeting capture
-            capture_screen: false,             // Screen capture OFF by default (reduces CPU)
-            always_on_capture: false,          // Not always-on by default
-            queue_frames_for_vlm: false,       // VLM OFF by default (saves resources)
-            frame_capture_interval_ms: 5000,   // 5 sec instead of 1 (5x less disk I/O)
+            capture_microphone: true,                // Mic on by default
+            capture_system_audio: true,              // System audio ON for meeting capture
+            capture_screen: false,                   // Screen capture OFF by default (reduces CPU)
+            always_on_capture: false,                // Not always-on by default
+            queue_frames_for_vlm: false,             // VLM OFF by default (saves resources)
+            frame_capture_interval_ms: 5000,         // 5 sec instead of 1 (5x less disk I/O)
+            vlm_auto_process: false,                 // Auto-processing OFF by default
+            vlm_process_interval_secs: 120,          // 2 minutes default interval
+            ai_chat_model: None,                     // Will use first available model
+            active_theme: "prospecting".to_string(), // Default theme
+            prospecting_interval_ms: 1500,           // 1.5 seconds
+            fundraising_interval_ms: 1500,           // 1.5 seconds
+            product_dev_interval_ms: 2000,           // 2 seconds
+            admin_interval_ms: 2000,                 // 2 seconds
+            personal_interval_ms: 3000,              // 3 seconds
             supabase_connection_string: None,
             pinecone_api_key: None,
             pinecone_index_host: None,
+            enable_ingest: Some(false), // Disabled by default
+            ingest_base_url: None,
+            ingest_bearer_token: None,
         }
     }
 }
@@ -76,12 +112,10 @@ impl SettingsManager {
 
     /// Get a setting value
     pub async fn get(&self, key: &str) -> Result<Option<String>, sqlx::Error> {
-        let result: Option<(String,)> = sqlx::query_as(
-            "SELECT value FROM settings WHERE key = ?"
-        )
-        .bind(key)
-        .fetch_optional(self.pool.as_ref())
-        .await?;
+        let result: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+            .bind(key)
+            .fetch_optional(self.pool.as_ref())
+            .await?;
 
         Ok(result.map(|(v,)| v))
     }
@@ -117,6 +151,18 @@ impl SettingsManager {
 
         if let Some(key) = self.get("deepgram_api_key").await? {
             settings.deepgram_api_key = Some(key);
+        }
+        if let Some(key) = self.get("gemini_api_key").await? {
+            settings.gemini_api_key = Some(key);
+        }
+        if let Some(key) = self.get("gladia_api_key").await? {
+            settings.gladia_api_key = Some(key);
+        }
+        if let Some(key) = self.get("google_stt_key_json").await? {
+            settings.google_stt_key_json = Some(key);
+        }
+        if let Some(prov) = self.get("transcription_provider").await? {
+            settings.transcription_provider = prov;
         }
         if let Some(mic) = self.get("selected_microphone").await? {
             settings.selected_microphone = Some(mic);
@@ -159,6 +205,36 @@ impl SettingsManager {
         if let Some(v) = self.get("pinecone_index_host").await? {
             settings.pinecone_index_host = Some(v);
         }
+        // VLM auto-processing settings
+        if let Some(v) = self.get("vlm_auto_process").await? {
+            settings.vlm_auto_process = v == "true";
+        }
+        if let Some(v) = self.get("vlm_process_interval_secs").await? {
+            settings.vlm_process_interval_secs = v.parse().unwrap_or(120);
+        }
+        // AI chat model
+        if let Some(v) = self.get("ai_chat_model").await? {
+            settings.ai_chat_model = Some(v);
+        }
+        // Activity theme settings
+        if let Some(v) = self.get("active_theme").await? {
+            settings.active_theme = v;
+        }
+        if let Some(v) = self.get("prospecting_interval_ms").await? {
+            settings.prospecting_interval_ms = v.parse().unwrap_or(1500);
+        }
+        if let Some(v) = self.get("fundraising_interval_ms").await? {
+            settings.fundraising_interval_ms = v.parse().unwrap_or(1500);
+        }
+        if let Some(v) = self.get("product_dev_interval_ms").await? {
+            settings.product_dev_interval_ms = v.parse().unwrap_or(2000);
+        }
+        if let Some(v) = self.get("admin_interval_ms").await? {
+            settings.admin_interval_ms = v.parse().unwrap_or(2000);
+        }
+        if let Some(v) = self.get("personal_interval_ms").await? {
+            settings.personal_interval_ms = v.parse().unwrap_or(3000);
+        }
 
         Ok(settings)
     }
@@ -171,6 +247,26 @@ impl SettingsManager {
     /// Get Deepgram API key
     pub async fn get_deepgram_api_key(&self) -> Result<Option<String>, sqlx::Error> {
         self.get("deepgram_api_key").await
+    }
+
+    /// Save Gemini API key
+    pub async fn set_gemini_api_key(&self, key: &str) -> Result<(), sqlx::Error> {
+        self.set("gemini_api_key", key).await
+    }
+
+    /// Save Gladia API key
+    pub async fn set_gladia_api_key(&self, key: &str) -> Result<(), sqlx::Error> {
+        self.set("gladia_api_key", key).await
+    }
+
+    /// Save Google STT key JSON
+    pub async fn set_google_stt_key(&self, key: &str) -> Result<(), sqlx::Error> {
+        self.set("google_stt_key_json", key).await
+    }
+
+    /// Set transcription provider
+    pub async fn set_transcription_provider(&self, provider: &str) -> Result<(), sqlx::Error> {
+        self.set("transcription_provider", provider).await
     }
 
     /// Save selected microphone
@@ -200,27 +296,38 @@ impl SettingsManager {
 
     /// Set capture microphone toggle
     pub async fn set_capture_microphone(&self, enabled: bool) -> Result<(), sqlx::Error> {
-        self.set("capture_microphone", if enabled { "true" } else { "false" }).await
+        self.set("capture_microphone", if enabled { "true" } else { "false" })
+            .await
     }
 
     /// Set capture system audio toggle
     pub async fn set_capture_system_audio(&self, enabled: bool) -> Result<(), sqlx::Error> {
-        self.set("capture_system_audio", if enabled { "true" } else { "false" }).await
+        self.set(
+            "capture_system_audio",
+            if enabled { "true" } else { "false" },
+        )
+        .await
     }
 
     /// Set capture screen toggle
     pub async fn set_capture_screen(&self, enabled: bool) -> Result<(), sqlx::Error> {
-        self.set("capture_screen", if enabled { "true" } else { "false" }).await
+        self.set("capture_screen", if enabled { "true" } else { "false" })
+            .await
     }
 
     /// Set always-on capture toggle
     pub async fn set_always_on_capture(&self, enabled: bool) -> Result<(), sqlx::Error> {
-        self.set("always_on_capture", if enabled { "true" } else { "false" }).await
+        self.set("always_on_capture", if enabled { "true" } else { "false" })
+            .await
     }
 
     /// Set queue frames for VLM toggle
     pub async fn set_queue_frames_for_vlm(&self, enabled: bool) -> Result<(), sqlx::Error> {
-        self.set("queue_frames_for_vlm", if enabled { "true" } else { "false" }).await
+        self.set(
+            "queue_frames_for_vlm",
+            if enabled { "true" } else { "false" },
+        )
+        .await
     }
 
     /// Set frame capture interval
@@ -245,5 +352,81 @@ impl SettingsManager {
     /// Set Pinecone index host
     pub async fn set_pinecone_index_host(&self, host: &str) -> Result<(), sqlx::Error> {
         self.set("pinecone_index_host", host).await
+    }
+
+    // ============================================
+    // VLM Auto-Processing Settings
+    // ============================================
+
+    /// Set VLM auto-processing enabled
+    pub async fn set_vlm_auto_process(&self, enabled: bool) -> Result<(), sqlx::Error> {
+        self.set("vlm_auto_process", if enabled { "true" } else { "false" })
+            .await
+    }
+
+    /// Set VLM processing interval in seconds
+    pub async fn set_vlm_process_interval(&self, secs: u32) -> Result<(), sqlx::Error> {
+        let clamped = secs.clamp(30, 600); // 30s to 10min
+        self.set("vlm_process_interval_secs", &clamped.to_string())
+            .await
+    }
+
+    // ============================================
+    // AI Chat Settings
+    // ============================================
+
+    /// Set AI chat model
+    pub async fn set_ai_chat_model(&self, model: &str) -> Result<(), sqlx::Error> {
+        self.set("ai_chat_model", model).await
+    }
+
+    /// Get AI chat model
+    pub async fn get_ai_chat_model(&self) -> Result<Option<String>, sqlx::Error> {
+        self.get("ai_chat_model").await
+    }
+
+    // ============================================
+    // Activity Theme Settings
+    // ============================================
+
+    /// Set active theme
+    pub async fn set_active_theme(&self, theme: &str) -> Result<(), sqlx::Error> {
+        self.set("active_theme", theme).await
+    }
+
+    /// Get active theme
+    pub async fn get_active_theme(&self) -> Result<String, sqlx::Error> {
+        Ok(self
+            .get("active_theme")
+            .await?
+            .unwrap_or_else(|| "prospecting".to_string()))
+    }
+
+    /// Set screenshot interval for a specific theme
+    pub async fn set_theme_interval(
+        &self,
+        theme: &str,
+        interval_ms: u32,
+    ) -> Result<(), sqlx::Error> {
+        let key = format!("{}_interval_ms", theme);
+        self.set(&key, &interval_ms.to_string()).await
+    }
+
+    /// Get screenshot interval for a specific theme
+    pub async fn get_theme_interval(&self, theme: &str) -> Result<u32, sqlx::Error> {
+        let key = format!("{}_interval_ms", theme);
+        let default = match theme {
+            "prospecting" => 1500,
+            "fundraising" => 1500,
+            "product_dev" => 2000,
+            "admin" => 2000,
+            "personal" => 3000,
+            _ => 2000,
+        };
+        Ok(self
+            .get(&key)
+            .await?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default))
     }
 }

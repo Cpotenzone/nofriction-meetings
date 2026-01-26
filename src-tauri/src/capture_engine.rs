@@ -86,6 +86,7 @@ pub struct CaptureEngine {
     start_time: Arc<RwLock<Option<std::time::Instant>>>,
     selected_mic_id: Arc<RwLock<Option<String>>>,
     selected_monitor_id: Arc<RwLock<Option<u32>>>,
+    frame_interval_ms: Arc<RwLock<u32>>,
     audio_callback: Arc<RwLock<Option<AudioCallback>>>,
     frame_callback: Arc<RwLock<Option<FrameCallback>>>,
 }
@@ -101,6 +102,7 @@ impl CaptureEngine {
             start_time: Arc::new(RwLock::new(None)),
             selected_mic_id: Arc::new(RwLock::new(None)),
             selected_monitor_id: Arc::new(RwLock::new(None)),
+            frame_interval_ms: Arc::new(RwLock::new(1000)), // Default: 1 screenshot per second
             audio_callback: Arc::new(RwLock::new(None)),
             frame_callback: Arc::new(RwLock::new(None)),
         }
@@ -114,6 +116,13 @@ impl CaptureEngine {
     /// Set the frame callback
     pub fn set_frame_callback(&self, callback: FrameCallback) {
         *self.frame_callback.write() = Some(callback);
+    }
+
+    /// Set the frame capture interval in milliseconds
+    pub fn set_frame_interval(&self, interval_ms: u32) {
+        let clamped = interval_ms.clamp(100, 10000); // 100ms to 10s range
+        *self.frame_interval_ms.write() = clamped;
+        log::info!("Frame interval set to {}ms ({:.1} FPS)", clamped, 1000.0 / clamped as f32);
     }
 
     /// Start capture (screen + microphone + system audio)
@@ -148,15 +157,17 @@ impl CaptureEngine {
             Self::run_system_audio_capture(sys_count, audio_callback_sys);
         });
 
-        // Start screen capture at 1 FPS
+        // Start screen capture with configurable interval
         SCREEN_RUNNING.store(true, Ordering::SeqCst);
         let frame_count = self.video_frame_count.clone();
         let frame_number = self.frame_number.clone();
         let frame_callback = self.frame_callback.clone();
         let monitor_id = self.selected_monitor_id.read().clone();
+        let interval_ms = *self.frame_interval_ms.read();
         
+        log::info!("Starting screen capture at {}ms interval ({:.1} FPS)", interval_ms, 1000.0 / interval_ms as f32);
         tokio::spawn(async move {
-            Self::run_screen_capture(frame_count, frame_number, frame_callback, monitor_id).await;
+            Self::run_screen_capture(frame_count, frame_number, frame_callback, monitor_id, interval_ms).await;
         });
 
         log::info!("Capture engine started (mic + system audio + screen capture)");
@@ -427,6 +438,7 @@ impl CaptureEngine {
         frame_number: Arc<AtomicU64>,
         frame_callback: Arc<RwLock<Option<FrameCallback>>>,
         monitor_id: Option<u32>,
+        interval_ms: u32,
     ) {
         let monitors = match Monitor::all() {
             Ok(m) => m,
@@ -458,7 +470,7 @@ impl CaptureEngine {
         let mon_height = monitor.height().unwrap_or(0);
         log::info!("📺 Screen capture: {} ({}x{})", mon_name, mon_width, mon_height);
 
-        let capture_interval = std::time::Duration::from_secs(1); // 1 FPS
+        let capture_interval = std::time::Duration::from_millis(interval_ms as u64);
 
         while SCREEN_RUNNING.load(Ordering::SeqCst) {
             match monitor.capture_image() {

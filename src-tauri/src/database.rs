@@ -207,6 +207,49 @@ impl DatabaseManager {
         let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_activity_log_category ON activity_log(category)")
             .execute(&self.pool).await;
 
+        // Theme activity tracking table
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS theme_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                theme TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                duration_seconds INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        "#)
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_theme_sessions_theme ON theme_sessions(theme)")
+            .execute(&self.pool).await;
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_theme_sessions_started ON theme_sessions(started_at)")
+            .execute(&self.pool).await;
+
+        // Phase 3: Entities table for structured entity extraction
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                activity_id INTEGER NOT NULL,
+                entity_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                metadata TEXT,
+                confidence REAL DEFAULT 0.5,
+                theme TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (activity_id) REFERENCES activity_log(id) ON DELETE CASCADE
+            )
+        "#)
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")
+            .execute(&self.pool).await;
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_entities_theme ON entities(theme)")
+            .execute(&self.pool).await;
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_entities_activity ON entities(activity_id)")
+            .execute(&self.pool).await;
+
         log::info!("Database migrations completed");
         Ok(())
     }
@@ -712,10 +755,130 @@ pub struct ActivityLogEntry {
     pub synced_at: Option<DateTime<Utc>>,
 }
 
+/// Entity extracted from VLM analysis (Phase 3)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entity {
+    pub id: Option<i64>,
+    pub activity_id: i64,
+    pub entity_type: String, // "person", "company", "feature", "task", etc.
+    pub name: String,
+    pub metadata: Option<String>, // JSON
+    pub confidence: f32,
+    pub theme: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 impl DatabaseManager {
     // ============================================
-    // Frame Queue Methods
+    // Entity Methods (Phase 3)
     // ============================================
+
+    /// Add an extracted entity
+    pub async fn add_entity(
+        &self,
+        activity_id: i64,
+        entity_type: &str,
+        name: &str,
+        metadata: Option<&serde_json::Value>,
+        confidence: f32,
+        theme: Option<&str>,
+    ) -> Result<i64, sqlx::Error> {
+        let metadata_str = metadata.map(|v| v.to_string());
+        
+        let result = sqlx::query(
+            "INSERT INTO entities (activity_id, entity_type, name, metadata, confidence, theme) 
+             VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind(activity_id)
+        .bind(entity_type)
+        .bind(name)
+        .bind(metadata_str)
+        .bind(confidence)
+        .bind(theme)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.last_insert_rowid())
+    }
+
+    /// Get entities for an activity
+    pub async fn get_entities(&self, activity_id: i64) -> Result<Vec<Entity>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT id, activity_id, entity_type, name, metadata, confidence, theme, created_at 
+             FROM entities WHERE activity_id = ?"
+        )
+        .bind(activity_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|r| Entity {
+            id: Some(r.get("id")),
+            activity_id: r.get("activity_id"),
+            entity_type: r.get("entity_type"),
+            name: r.get("name"),
+            metadata: r.get("metadata"),
+            confidence: r.get("confidence"),
+            theme: r.get("theme"),
+            created_at: DateTime::parse_from_rfc3339(&r.get::<String, _>("created_at"))
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+        }).collect())
+    }
+
+    /// Get recent extracted entities (filtered by theme/type)
+    pub async fn get_recent_entities(&self, limit: i32) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+        let sql = r#"
+            SELECT 
+                e.id, e.entity_type, e.name, e.confidence, e.activity_id,
+                e.theme, e.created_at, e.metadata,
+                a.app_name, a.window_title, a.start_time
+            FROM entities e
+            JOIN activities a ON e.activity_id = a.id
+            ORDER BY a.start_time DESC
+            LIMIT ?
+        "#;
+
+        let rows = sqlx::query(sql)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let result = rows.into_iter().map(|row| {
+            let id: i64 = row.get("id");
+            let activity_id: i64 = row.get("activity_id");
+            let entity_type: String = row.get("entity_type");
+            let name: String = row.get("name");
+            let confidence: f32 = row.get("confidence");
+            let theme: Option<String> = row.try_get("theme").ok();
+            let created_at: String = row.get("created_at");
+            let metadata_str: Option<String> = row.try_get("metadata").ok();
+            let app_name: Option<String> = row.try_get("app_name").ok();
+            let window_title: Option<String> = row.try_get("window_title").ok();
+            let start_time: String = row.get("start_time");
+
+            // Parse metadata string to JSON object if present
+            let metadata_obj: Option<serde_json::Value> = metadata_str
+                .and_then(|s| serde_json::from_str(&s).ok());
+
+            serde_json::json!({
+                "id": id,
+                "activity_id": activity_id,
+                "entity_type": entity_type,
+                "name": name,
+                "metadata": metadata_obj,
+                "confidence": confidence,
+                "theme": theme,
+                "created_at": created_at,
+                "source": {
+                    "app_name": app_name,
+                    "window_title": window_title,
+                    "timestamp": start_time
+                }
+            })
+        }).collect();
+
+        Ok(result)
+    }
 
     /// Add a frame to the analysis queue
     pub async fn queue_frame(
@@ -1028,5 +1191,192 @@ impl DatabaseManager {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    // ============================================
+    // Theme Session Tracking
+    // ============================================
+
+    /// Start a new theme session
+    pub async fn start_theme_session(&self, theme: &str) -> Result<i64, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+        
+        let result = sqlx::query("INSERT INTO theme_sessions (theme, started_at) VALUES (?, ?)")
+            .bind(theme)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.last_insert_rowid())
+    }
+
+    /// End the current theme session
+    pub async fn end_theme_session(&self, session_id: i64) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        
+        // Get start time to calculate duration
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT started_at FROM theme_sessions WHERE id = ? AND ended_at IS NULL"
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some((started_at_str,)) = row {
+            if let Ok(started_at) = DateTime::parse_from_rfc3339(&started_at_str) {
+                let duration = (now.timestamp() - started_at.timestamp()) as i32;
+                
+                sqlx::query("UPDATE theme_sessions SET ended_at = ?, duration_seconds = ? WHERE id = ?")
+                    .bind(now.to_rfc3339())
+                    .bind(duration)
+                    .bind(session_id)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Get total time in a theme for today (in seconds)
+    pub async fn get_theme_time_today(&self, theme: &str) -> Result<i64, sqlx::Error> {
+        let today_start = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap();
+        let today_start_str = DateTime::<Utc>::from_naive_utc_and_offset(today_start, Utc).to_rfc3339();
+        
+        let row: (Option<i64>,) = sqlx::query_as(
+            "SELECT SUM(duration_seconds) FROM theme_sessions WHERE theme = ? AND started_at >= ? AND ended_at IS NOT NULL"
+        )
+        .bind(theme)
+        .bind(&today_start_str)
+        .fetch_one(&self.pool)
+        .await?;
+        
+        Ok(row.0.unwrap_or(0))
+    }
+
+    /// Get the last open session ID for cleanup
+    pub async fn get_last_open_session(&self) -> Result<Option<i64>, sqlx::Error> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT id FROM theme_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        Ok(row.map(|r| r.0))
+    }
+
+    // ============================================
+    // Phase 3: Entity Methods
+    // ============================================
+
+    /// Insert an entity extracted from VLM analysis
+    pub async fn insert_entity(
+        &self,
+        activity_id: i64,
+        entity_type: &str,
+        name: &str,
+        metadata: Option<&str>,
+        confidence: f32,
+        theme: Option<&str>,
+    ) -> Result<i64, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+
+        let result = sqlx::query(
+            "INSERT INTO entities (activity_id, entity_type, name, metadata, confidence, theme, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(activity_id)
+        .bind(entity_type)
+        .bind(name)
+        .bind(metadata)
+        .bind(confidence)
+        .bind(theme)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.last_insert_rowid())
+    }
+
+    /// List all entities with optional filters
+    pub async fn list_entities(
+        &self,
+        limit: Option<i32>,
+        entity_type: Option<&str>,
+        theme: Option<&str>,
+    ) -> Result<Vec<Entity>, sqlx::Error> {
+        let limit = limit.unwrap_or(100);
+
+        let mut query = "SELECT id, activity_id, entity_type, name, metadata, confidence, theme, created_at FROM entities WHERE 1=1".to_string();
+        
+        if entity_type.is_some() {
+            query.push_str(" AND entity_type = ?");
+        }
+        if theme.is_some() {
+            query.push_str(" AND theme = ?");
+        }
+        
+        query.push_str(" ORDER BY created_at DESC LIMIT ?");
+
+        let mut query_builder = sqlx::query_as::<_, (Option<i64>, i64, String, String, Option<String>, f32, Option<String>, String)>(&query);
+        
+        if let Some(et) = entity_type {
+            query_builder = query_builder.bind(et);
+        }
+        if let Some(t) = theme {
+            query_builder = query_builder.bind(t);
+        }
+        
+        query_builder = query_builder.bind(limit);
+
+        let rows = query_builder.fetch_all(&self.pool).await?;
+
+        let entities: Vec<Entity> = rows.into_iter().map(|(id, activity_id, entity_type, name, metadata, confidence, theme, created_at_str)| {
+            Entity {
+                id,
+                activity_id,
+                entity_type,
+                name,
+                metadata,
+                confidence,
+                theme,
+                created_at: DateTime::parse_from_rfc3339(&created_at_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            }
+        }).collect();
+
+        Ok(entities)
+    }
+
+    /// Get entities by type
+    pub async fn get_entities_by_type(&self, entity_type: &str, limit: i32) -> Result<Vec<Entity>, sqlx::Error> {
+        self.list_entities(Some(limit), Some(entity_type), None).await
+    }
+
+    /// Get entities for a specific activity
+    pub async fn get_entities_for_activity(&self, activity_id: i64) -> Result<Vec<Entity>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, (Option<i64>, i64, String, String, Option<String>, f32, Option<String>, String)>(
+            "SELECT id, activity_id, entity_type, name, metadata, confidence, theme, created_at FROM entities WHERE activity_id = ? ORDER BY created_at DESC"
+        )
+        .bind(activity_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let entities: Vec<Entity> = rows.into_iter().map(|(id, activity_id, entity_type, name, metadata, confidence, theme, created_at_str)| {
+            Entity {
+                id,
+                activity_id,
+                entity_type,
+                name,
+                metadata,
+                confidence,
+                theme,
+                created_at: DateTime::parse_from_rfc3339(&created_at_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            }
+        }).collect();
+
+        Ok(entities)
     }
 }

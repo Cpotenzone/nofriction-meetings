@@ -24,6 +24,8 @@ pub struct ActivityContext {
     pub visible_files: Vec<String>,
     /// Confidence score 0-1
     pub confidence: f32,
+    /// Extracted entities (people, companies, etc.)
+    pub entities: Option<serde_json::Value>,
 }
 
 /// Response from Ollama generate API
@@ -89,25 +91,13 @@ impl VLMClient {
     }
 
     /// Analyze a screenshot and extract activity context
-    pub async fn analyze_frame(&self, image_path: &str) -> Result<ActivityContext, String> {
+    pub async fn analyze_frame(&self, image_path: &str, prompt: &str) -> Result<ActivityContext, String> {
         // Read and encode image as base64
         let image_data = std::fs::read(image_path)
             .map_err(|e| format!("Failed to read image: {}", e))?;
         let base64_image = base64::engine::general_purpose::STANDARD.encode(&image_data);
 
-        let prompt = r#"Analyze this screenshot and describe what the user is doing. 
-Respond in JSON format with these fields:
-{
-  "app_name": "name of the main application visible",
-  "window_title": "title of the window or document",
-  "category": "one of: development, communication, research, writing, design, media, browsing, system, other",
-  "summary": "brief description of what the user is doing",
-  "focus_area": "specific task or project they appear to be working on",
-  "visible_files": ["list", "of", "visible", "file", "names"],
-  "confidence": 0.8
-}
-Only respond with valid JSON, no other text."#;
-
+        // Use the provided prompt
         let url = format!("{}/api/generate", self.base_url.read());
         let model = self.model.read().clone();
 
@@ -177,6 +167,7 @@ Only respond with valid JSON, no other text."#;
             confidence: parsed.get("confidence")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.5) as f32,
+            entities: Some(parsed), // Capture the full parsed JSON as entities source
         })
     }
 
@@ -184,8 +175,21 @@ Only respond with valid JSON, no other text."#;
     pub async fn analyze_frames_batch(&self, image_paths: &[String]) -> Result<Vec<ActivityContext>, String> {
         let mut results = Vec::new();
         
+        let prompt = r#"Analyze this screenshot and describe what the user is doing. 
+Respond in JSON format with these fields:
+{
+  "app_name": "name of the main application visible",
+  "window_title": "title of the window or document",
+  "category": "one of: development, communication, research, writing, design, media, browsing, system, other",
+  "summary": "brief description of what the user is doing",
+  "focus_area": "specific task or project they appear to be working on",
+  "visible_files": ["list", "of", "visible", "file", "names"],
+  "confidence": 0.8
+}
+Only respond with valid JSON."#;
+
         for path in image_paths {
-            match self.analyze_frame(path).await {
+            match self.analyze_frame(path, prompt).await {
                 Ok(context) => results.push(context),
                 Err(e) => {
                     log::warn!("Failed to analyze frame {}: {}", path, e);
@@ -229,24 +233,12 @@ pub async fn vlm_analyze_frame(
     base_url: &str,
     model: &str,
     image_path: &str,
+    prompt: &str,
 ) -> Result<ActivityContext, String> {
     // Read and encode image as base64
     let image_data = std::fs::read(image_path)
         .map_err(|e| format!("Failed to read image: {}", e))?;
     let base64_image = base64::engine::general_purpose::STANDARD.encode(&image_data);
-
-    let prompt = r#"Analyze this screenshot and describe what the user is doing. 
-Respond in JSON format with these fields:
-{
-  "app_name": "name of the main application visible",
-  "window_title": "title of the window or document",
-  "category": "one of: development, communication, research, writing, design, media, browsing, system, other",
-  "summary": "brief description of what the user is doing",
-  "focus_area": "specific task or project they appear to be working on",
-  "visible_files": ["list", "of", "visible", "file", "names"],
-  "confidence": 0.8
-}
-Only respond with valid JSON, no other text."#;
 
     let url = format!("{}/api/generate", base_url);
 
@@ -321,6 +313,7 @@ fn parse_activity_response(response: &str) -> Result<ActivityContext, String> {
         confidence: parsed.get("confidence")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.5) as f32,
+        entities: Some(parsed),
     })
 }
 
@@ -356,7 +349,21 @@ pub async fn vlm_analyze_frames_batch(
     let mut results = Vec::new();
     
     for path in image_paths {
-        match vlm_analyze_frame(base_url, model, path).await {
+        // Use generic prompt for batch analysis
+        let prompt = r#"Analyze this screenshot and describe what the user is doing. 
+Respond in JSON format with these fields:
+{
+  "app_name": "name of the main application visible",
+  "window_title": "title of the window or document",
+  "category": "one of: development, communication, research, writing, design, media, browsing, system, other",
+  "summary": "brief description of what the user is doing",
+  "focus_area": "specific task or project they appear to be working on",
+  "visible_files": ["list", "of", "visible", "file", "names"],
+  "confidence": 0.8
+}
+Only respond with valid JSON, no other text."#;
+
+        match vlm_analyze_frame(base_url, model, path, prompt).await {
             Ok(context) => results.push(context),
             Err(e) => {
                 log::warn!("Failed to analyze frame {}: {}", path, e);

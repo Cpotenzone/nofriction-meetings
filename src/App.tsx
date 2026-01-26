@@ -1,105 +1,115 @@
-// noFriction Meetings - Main App
-// Single-binary macOS meeting transcription app with rewind timeline
-
+// noFriction Meetings - Sidebar Layout
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
+import { Sidebar } from "./components/Sidebar";
 import { LiveTranscriptView } from "./components/LiveTranscript";
-import { RecordingControls } from "./components/RecordingControls";
 import { MeetingHistory } from "./components/MeetingHistory";
 import { SearchBar } from "./components/SearchBar";
 import { RewindGallery } from "./components/RewindGallery";
 import { FullSettings } from "./components/FullSettings";
-import { AIChat } from "./components/AIChat";
-import { PromptLibrary } from "./components/PromptLibrary";
+import { KBSearch } from "./components/KBSearch";
+import { InsightsView } from "./components/InsightsView";
+import { EntitiesView } from "./components/EntitiesView";
 import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { SetupWizard, useSetupRequired } from "./components/SetupWizard";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 
-type Tab = "live" | "rewind" | "settings" | "prompts";
+type Tab = "live" | "rewind" | "kb" | "insights" | "intel" | "settings";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("live");
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
-  const [showAIPanel, setShowAIPanel] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Hooks - ALL hooks must be called before any conditional returns
   const recording = useRecording();
   const transcripts = useTranscripts(recording.meetingId);
   const commandPalette = useCommandPalette();
   const setupRequired = useSetupRequired();
 
-  // Global keyboard shortcuts - must be before conditional returns
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // ⌘R - Toggle recording
-      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
-        e.preventDefault();
-        if (recording.isRecording) {
-          recording.stopRecording();
-        } else {
-          transcripts.clearLiveTranscripts();
-          recording.startRecording();
-        }
-      }
-      // ⌘\ - Toggle sidebar
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
-        e.preventDefault();
-        setSidebarCollapsed(prev => !prev);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [recording, transcripts]);
-
-  // Listen for native menu events - must be before conditional returns
+  // Menu event listeners
   useEffect(() => {
     const listeners: (() => void)[] = [];
 
     const setupListeners = async () => {
-      // Navigation events
-      listeners.push(await listen("menu:view_live", () => setActiveTab("live")));
-      listeners.push(await listen("menu:view_rewind", () => setActiveTab("rewind")));
-      listeners.push(await listen("menu:view_settings", () => setActiveTab("settings")));
-      listeners.push(await listen("menu:view_prompts", () => setActiveTab("prompts")));
-
-      // Command palette
-      listeners.push(await listen("menu:command_palette", () => commandPalette.open()));
-
-      // Recording events
-      listeners.push(await listen("menu:new_recording", async () => {
-        if (!recording.isRecording) {
-          transcripts.clearLiveTranscripts();
-          await recording.startRecording();
-        }
-      }));
-      listeners.push(await listen("menu:stop_recording", async () => {
-        if (recording.isRecording) {
-          await recording.stopRecording();
-        }
-      }));
-
-      // AI events - open AI slide panel
-      listeners.push(await listen("menu:summarize", () => {
-        setShowAIPanel(true);
-      }));
-      listeners.push(await listen("menu:action_items", () => {
-        setShowAIPanel(true);
-      }));
-      listeners.push(await listen("menu:ask_ai", () => setShowAIPanel(true)));
+      listeners.push(await listen("menu:search", () => setActiveTab("kb")));
+      listeners.push(await listen("menu:insights", () => setActiveTab("insights")));
+      listeners.push(await listen("menu:settings", () => setActiveTab("settings")));
     };
 
     setupListeners();
+    return () => listeners.forEach(unlisten => unlisten());
+  }, []);
+
+  // Hooks must be unconditional
+  const [isBackendReady, setIsBackendReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [isLongLoading, setIsLongLoading] = useState(false);
+
+  // Listen for startup events and poll as fallback
+  useEffect(() => {
+    let unlistenReady: (() => void) | null = null;
+    let unlistenError: (() => void) | null = null;
+    let pollInterval: number | null = null;
+
+    const setupListeners = async () => {
+      try {
+        console.log("Setting up event listeners...");
+        unlistenReady = await listen("app-ready", () => {
+          console.log("Event: app-ready");
+          setIsBackendReady(true);
+        });
+        unlistenError = await listen<string>("init-error", (e) => {
+          console.error("Event: init-error", e);
+          setInitError(e.payload);
+        });
+      } catch (e) {
+        console.error("Failed to setup listeners:", e);
+      }
+    };
+    setupListeners();
+
+    // Safer Polling fallback using check_init_status
+    const pollBackend = async () => {
+      try {
+        const status = await invoke<{ "Ready": null } | { "Depending": null } | { "Failed": string } | "Initializing" | "Ready">("check_init_status");
+        console.log("Poll status:", status);
+
+        if (status === "Ready" || (typeof status === 'object' && 'Ready' in status)) {
+          console.log("Backend Ready confirmed via poll");
+          setIsBackendReady(true);
+        } else if (typeof status === 'object' && 'Failed' in status) {
+          // @ts-ignore
+          const errorMsg = status.Failed;
+          console.error("Backend Failed via poll:", errorMsg);
+          setInitError(errorMsg);
+        }
+      } catch (e) {
+        // Command might not be registered yet if very early
+      }
+    };
+
+    pollInterval = window.setInterval(() => {
+      // Stop polling to be safe
+      if (isBackendReady || initError) {
+        if (pollInterval) clearInterval(pollInterval);
+        return;
+      }
+      pollBackend();
+    }, 500);
+
+    // Timeout warning
+    const timeout = setTimeout(() => setIsLongLoading(true), 8000);
 
     return () => {
-      listeners.forEach(unlisten => unlisten());
+      if (unlistenReady) unlistenReady();
+      if (unlistenError) unlistenError();
+      if (pollInterval) clearInterval(pollInterval);
+      clearTimeout(timeout);
     };
-  }, [recording, transcripts, commandPalette]);
+  }, [isBackendReady, initError]);
 
-  // Show loading while checking setup status
   if (setupRequired === null) {
     return (
       <div className="app-loading">
@@ -108,7 +118,6 @@ function App() {
     );
   }
 
-  // Show setup wizard on first run
   if (setupRequired) {
     return <SetupWizard onComplete={() => window.location.reload()} />;
   }
@@ -126,182 +135,147 @@ function App() {
     }
   };
 
+  if (setupRequired === null || !isBackendReady || initError) {
+    return (
+      <div className="app-loading" style={{ flexDirection: 'column', gap: '16px', background: '#1a1d29', color: 'white' }}>
+        {initError ? (
+          <>
+            <div style={{ fontSize: '48px' }}>⚠️</div>
+            <h2 style={{ fontSize: '20px', fontWeight: 600 }}>Startup Failed</h2>
+            <p style={{ color: '#ef4444', maxWidth: '400px', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
+              {initError}
+            </p>
+            <button onClick={() => window.location.reload()} className="btn btn-secondary" style={{ marginTop: '16px' }}>Retry</button>
+          </>
+        ) : (
+          <>
+            <div className="loading-spinner" style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: '#7c3aed' }} />
+            <div>
+              <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 500 }}>Initializing noFriction...</p>
+              {isLongLoading && (
+                <p style={{ color: '#9ca3af', fontSize: 12, marginTop: '8px' }}>
+                  Taking longer than expected. Please wait...
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   const handleSelectMeeting = (meetingId: string) => {
     setSelectedMeetingId(meetingId);
     transcripts.loadTranscripts(meetingId);
-    // Don't force tab switch - user can navigate freely
+    setActiveTab("rewind");
   };
 
-  // Determine which meeting to show in rewind/AI
-  const rewindMeetingId = recording.isRecording
-    ? recording.meetingId
-    : selectedMeetingId;
+  const rewindMeetingId = recording.isRecording ? recording.meetingId : selectedMeetingId;
+
+  // Tab content titles
+  const tabTitles: Record<Tab, string> = {
+    live: "Live Transcription",
+    rewind: "Meeting Playback",
+    kb: "Knowledge Base",
+    insights: "Activity Insights",
+    intel: "Deep Intel",
+    settings: "Settings",
+  };
 
   return (
     <div className="app-container">
-      {/* Header */}
-      <header className="app-header glass-panel">
-        <div className="app-title">
-          <h1>noFriction Meetings</h1>
-          <span className="subtitle">Live Transcription & AI Analysis</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          {recording.isRecording && (
-            <div className="badge badge-error" style={{ animation: "pulse 2s infinite" }}>
-              ● Recording
-            </div>
-          )}
-          {recording.error && (
-            <div className="badge badge-warning" title={recording.error}>
-              ⚠️ Error
-            </div>
-          )}
-        </div>
-      </header>
+      {/* Left Sidebar */}
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab as Tab)}
+        recording={recording}
+        onToggleRecording={handleToggleRecording}
+      />
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <div className="main-content">
-        {/* Main Panel - Full Width Content Area */}
-        <div className="main-panel glass-panel">
-          <div className="panel-header">
-            <div className="tabs">
-              <button
-                className={`tab ${activeTab === "live" ? "active" : ""}`}
-                onClick={() => setActiveTab("live")}
-              >
-                📝 Live
-              </button>
-              <button
-                className={`tab ${activeTab === "rewind" ? "active" : ""}`}
-                onClick={() => setActiveTab("rewind")}
-              >
-                🎬 Rewind
-              </button>
-              <div className="tab-spacer" />
-              <button
-                className={`tab tab-toggle ${showAIPanel ? "active" : ""}`}
-                onClick={() => setShowAIPanel(!showAIPanel)}
-                title="Toggle AI Assistant (⌘⇧I)"
-              >
-                🤖 AI
-              </button>
-            </div>
-          </div>
-
-          {/* Tab Content */}
-          <div className="panel-content scrollable">
-            {/* Main Views (Live / Rewind) */}
-            {(activeTab === "live" || activeTab === "rewind") && (
-              <div className="content-with-ai-panel">
-                <div className="main-view-area">
-                  {activeTab === "live" && (
-                    <div className="live-view">
-                      <SearchBar
-                        onSearch={transcripts.search}
-                        isSearching={transcripts.isSearching}
-                      />
-                      <div className="live-transcripts scrollable">
-                        {transcripts.searchResults.length > 0 ? (
-                          <div className="search-results">
-                            {transcripts.searchResults.map((result, idx) => (
-                              <div
-                                key={idx}
-                                className="search-result-item"
-                                onClick={() => handleSelectMeeting(result.meeting_id)}
-                              >
-                                <div className="result-header">
-                                  <span className="result-title">{result.meeting_title}</span>
-                                  <span className="result-date">
-                                    {new Date(result.timestamp).toLocaleDateString()}
-                                  </span>
-                                </div>
-                                <p className="result-text">{result.transcript_text}</p>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <LiveTranscriptView
-                            transcripts={transcripts.liveTranscripts}
-                            isRecording={recording.isRecording}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === "rewind" && (
-                    <RewindGallery
-                      meetingId={rewindMeetingId}
-                      isRecording={recording.isRecording}
-                    />
-                  )}
-                </div>
-
-                {/* AI Slide Panel */}
-                <div className={`ai-slide-panel ${showAIPanel ? "open" : ""}`}>
-                  <div className="ai-panel-header">
-                    <span>🤖 AI Assistant</span>
-                    <button
-                      className="ai-panel-close"
-                      onClick={() => setShowAIPanel(false)}
-                      title="Close AI Panel"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <AIChat meetingId={rewindMeetingId} />
-                </div>
-              </div>
-            )}
-
-            {/* Settings (accessed via ⌘,) */}
-            {activeTab === "settings" && (
-              <FullSettings />
-            )}
-
-            {/* Prompts (accessed via ⌘⇧P) */}
-            {activeTab === "prompts" && (
-              <PromptLibrary />
-            )}
-          </div>
+        <div className="content-header">
+          <h1 className="content-title">{tabTitles[activeTab]}</h1>
+          <p className="content-subtitle">
+            {recording.isRecording && "● Recording in progress"}
+            {recording.error && `⚠️ ${recording.error}`}
+          </p>
         </div>
 
-        {/* Sidebar - Recording Controls */}
-        <div className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
-          <button
-            className="sidebar-toggle"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            title={sidebarCollapsed ? "Expand Sidebar (⌘\\)" : "Collapse Sidebar (⌘\\)"}
-          >
-            {sidebarCollapsed ? "▶" : "◀"}
-          </button>
-
-          <RecordingControls
-            isRecording={recording.isRecording}
-            isPaused={recording.isPaused}
-            duration={recording.duration}
-            videoFrames={recording.videoFrames}
-            audioSamples={recording.audioSamples}
-            onToggle={handleToggleRecording}
-            onPause={recording.pauseRecording}
-          />
-
-          {!sidebarCollapsed && (
-            <div className="sidebar-meetings glass-panel">
-              <h3>Past Meetings</h3>
-              <div className="meetings-list scrollable">
-                <MeetingHistory
-                  onSelectMeeting={handleSelectMeeting}
-                  selectedMeetingId={selectedMeetingId}
-                  compact
+        <div className="content-body">
+          {/* Live View */}
+          {activeTab === "live" && (
+            <>
+              <div className="search-container">
+                <SearchBar
+                  onSearch={transcripts.search}
+                  isSearching={transcripts.isSearching}
                 />
               </div>
-            </div>
+              {transcripts.searchResults.length > 0 ? (
+                <div className="search-results">
+                  {transcripts.searchResults.map((result, idx) => (
+                    <div
+                      key={idx}
+                      className="meeting-card"
+                      onClick={() => handleSelectMeeting(result.meeting_id)}
+                    >
+                      <div className="meeting-title">{result.meeting_title}</div>
+                      <div className="meeting-date">
+                        {new Date(result.timestamp).toLocaleDateString()}
+                      </div>
+                      <p style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
+                        {result.transcript_text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <LiveTranscriptView
+                  transcripts={transcripts.liveTranscripts}
+                  isRecording={recording.isRecording}
+                />
+              )}
+            </>
           )}
+
+          {/* Rewind View */}
+          {activeTab === "rewind" && (
+            <RewindGallery
+              meetingId={rewindMeetingId}
+              isRecording={recording.isRecording}
+            />
+          )}
+
+          {/* Knowledge Base */}
+          {activeTab === "kb" && <KBSearch />}
+
+          {/* Insights */}
+          {activeTab === "insights" && <InsightsView />}
+
+          {/* Settings */}
+          {activeTab === "settings" && <FullSettings />}
+
+          {/* Intel */}
+          {activeTab === "intel" && <EntitiesView />}
         </div>
       </div>
 
-      {/* Command Palette (⌘K) */}
+      {/* Right Panel - Meeting History */}
+      <div className="right-panel">
+        <div className="panel-header">
+          <h2 className="panel-title">Recent Meetings</h2>
+        </div>
+        <div className="panel-body">
+          <MeetingHistory
+            onSelectMeeting={handleSelectMeeting}
+            selectedMeetingId={selectedMeetingId}
+            compact
+          />
+        </div>
+      </div>
+
+      {/* Command Palette */}
       <CommandPalette
         isOpen={commandPalette.isOpen}
         onClose={commandPalette.close}

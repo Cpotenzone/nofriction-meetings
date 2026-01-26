@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Sqlite, Row};
+use sqlx::{Pool, Row, Sqlite};
 use uuid::Uuid;
 
 // ============================================
@@ -22,6 +22,8 @@ pub struct Prompt {
     pub model_id: Option<String>,
     pub temperature: f32,
     pub max_tokens: Option<i32>,
+    pub theme: Option<String>, // NEW: For theme-specific prompts (prospecting, fundraising, etc.)
+    pub version: i32,          // NEW: Version control for prompt evolution
     pub is_builtin: bool,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
@@ -110,6 +112,7 @@ pub struct ResolvedUseCase {
 // Prompt Manager
 // ============================================
 
+#[derive(Clone)]
 pub struct PromptManager {
     pool: Pool<Sqlite>,
 }
@@ -122,7 +125,8 @@ impl PromptManager {
     /// Run migrations for prompt management tables
     pub async fn run_migrations(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Create prompt_library table
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS prompt_library (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -133,17 +137,32 @@ impl PromptManager {
                 model_id TEXT,
                 temperature REAL NOT NULL DEFAULT 0.5,
                 max_tokens INTEGER,
+                theme TEXT,
+                version INTEGER NOT NULL DEFAULT 1,
                 is_builtin BOOLEAN NOT NULL DEFAULT 0,
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
-        "#)
+        "#,
+        )
         .execute(&self.pool)
         .await?;
 
+        // Add indexes for theme and version
+        let _ =
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_prompts_theme ON prompt_library(theme)")
+                .execute(&self.pool)
+                .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_prompts_version ON prompt_library(name, version DESC)",
+        )
+        .execute(&self.pool)
+        .await;
+
         // Create model_configurations table
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS model_configurations (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
@@ -157,12 +176,14 @@ impl PromptManager {
                 last_health_check TEXT,
                 created_at TEXT NOT NULL
             )
-        "#)
+        "#,
+        )
         .execute(&self.pool)
         .await?;
 
         // Create use_case_mappings table
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS use_case_mappings (
                 id TEXT PRIMARY KEY,
                 use_case TEXT NOT NULL UNIQUE,
@@ -175,7 +196,8 @@ impl PromptManager {
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             )
-        "#)
+        "#,
+        )
         .execute(&self.pool)
         .await?;
 
@@ -190,10 +212,11 @@ impl PromptManager {
         let now = Utc::now().to_rfc3339();
 
         // Check if already seeded
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM prompt_library WHERE is_builtin = 1")
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0);
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM prompt_library WHERE is_builtin = 1")
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0);
 
         if count > 0 {
             return Ok(());
@@ -201,9 +224,24 @@ impl PromptManager {
 
         // Seed default models
         let models = vec![
-            ("llama3.2", "Llama 3.2", "llm", vec!["text", "chat", "summarization"]),
-            ("llava:latest", "LLaVA Vision", "vlm", vec!["vision", "image-analysis", "ocr"]),
-            ("gemma3:4b", "Gemma 3 4B", "llm", vec!["text", "chat", "fast"]),
+            (
+                "llama3.2",
+                "Llama 3.2",
+                "llm",
+                vec!["text", "chat", "summarization"],
+            ),
+            (
+                "llava:latest",
+                "LLaVA Vision",
+                "vlm",
+                vec!["vision", "image-analysis", "ocr"],
+            ),
+            (
+                "gemma3:4b",
+                "Gemma 3 4B",
+                "llm",
+                vec!["text", "chat", "fast"],
+            ),
         ];
 
         for (name, display, model_type, caps) in models {
@@ -225,12 +263,14 @@ impl PromptManager {
         }
 
         // Get model IDs
-        let llm_model_id: Option<String> = sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'llama3.2'")
-            .fetch_optional(&self.pool)
-            .await?;
-        let vlm_model_id: Option<String> = sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'llava:latest'")
-            .fetch_optional(&self.pool)
-            .await?;
+        let llm_model_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'llama3.2'")
+                .fetch_optional(&self.pool)
+                .await?;
+        let vlm_model_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM model_configurations WHERE name = 'llava:latest'")
+                .fetch_optional(&self.pool)
+                .await?;
 
         // Seed default prompts
         let prompts = vec![
@@ -357,8 +397,8 @@ Provide a brief one-sentence summary of the specific task."#,
             let prompt_id = Uuid::new_v4().to_string();
             sqlx::query(r#"
                 INSERT OR IGNORE INTO prompt_library 
-                (id, name, description, category, system_prompt, model_id, temperature, is_builtin, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+                (id, name, description, category, system_prompt, model_id, temperature, theme, version, is_builtin, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 1, 1, 1, ?, ?)
             "#)
             .bind(&prompt_id)
             .bind(name)
@@ -390,7 +430,199 @@ Provide a brief one-sentence summary of the specific task."#,
             .await?;
         }
 
-        log::info!("Seeded default prompts, models, and use cases");
+        // ===================================================================
+        // Phase 2: Seed Theme-Specific Prompts
+        // ===================================================================
+
+        let vlm_id = vlm_model_id.as_ref();
+
+        // PROSPECTING THEME
+        self.create_theme_prompt(
+            "prospecting",
+            "prospecting_entity_extraction",
+            "Extract people, companies, and outreach activity from prospecting sessions",
+            "vlm",
+            r#"You are analyzing screen/audio data during a prospecting session.
+
+Extract the following entities in JSON format:
+{
+  "people": [{"name": "", "title": "", "company": "", "contact_info": ""}],
+  "companies": [{"name": "", "industry": "", "size": ""}],
+  "outreach_activities": [{"type": "email|call|message", "recipient": "", "sentiment": ""}],
+  "meetings": [{"scheduled_with": "", "date": "", "purpose": ""}]
+}
+
+Assign confidence level (high/medium/low) to each entity."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.3),
+        )
+        .await?;
+
+        self.create_theme_prompt(
+            "prospecting",
+            "prospecting_context_analysis",
+            "Analyze prospecting activity stage and sentiment",
+            "vlm",
+            r#"Analyze this prospecting activity and determine:
+1. Stage: research | initial_contact | follow_up | meeting_booked
+2. Key talking points or value props mentioned
+3. Sentiment of interactions (positive/neutral/negative)
+4. Recommended next steps
+
+Return structured JSON."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.4),
+        )
+        .await?;
+
+        // FUNDRAISING THEME
+        self.create_theme_prompt(
+            "fundraising",
+            "fundraising_entity_extraction",
+            "Extract investors, pitch deck details, and feedback from fundraising activities",
+            "vlm",
+            r#"You are analyzing screen/audio data during fundraising activities.
+
+Extract the following in JSON format:
+{
+  "investors": [{"name": "", "firm": "", "check_size": "", "stage_focus": ""}],
+  "pitch_deck": {"version": "", "visible_slides": [], "changes_made": []},
+  "feedback": [{"investor": "", "question": "", "concern": "", "positive_signal": ""}],
+  "pipeline": [{"investor": "", "stage": "intro|pitch|diligence|offer"}]
+}
+
+Mark confidence level for each entity."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.3),
+        )
+        .await?;
+
+        self.create_theme_prompt(
+            "fundraising",
+            "fundraising_context_analysis",
+            "Analyze fundraising meeting outcomes and next steps",
+            "vlm",
+            r#"Analyze this fundraising activity:
+1. Meeting type: intro | pitch | update | due_diligence
+2. Investor sentiment: very_interested | interested | neutral | not_interested
+3. Key objections or concerns raised
+4. Next steps and timeline
+5. Probability of investment (high/medium/low)
+
+Return structured JSON."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.4),
+        )
+        .await?;
+
+        // PRODUCT DEVELOPMENT THEME
+        self.create_theme_prompt(
+            "product_dev",
+            "product_entity_extraction",
+            "Extract features, decisions, and artifacts from product development work",
+            "vlm",
+            r#"Analyzing product development work.
+
+Extract in JSON format:
+{
+  "features": [{"name": "", "description": "", "priority": "high|medium|low"}],
+  "decisions": [{"type": "technical|design|product", "decision": "", "rationale": ""}],
+  "artifacts": [{"type": "mockup|diagram|code", "description": "", "file_name": ""}],
+  "collaborators": [{"name": "", "role": "", "contribution": ""}]
+}
+
+Assign confidence levels."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.3),
+        )
+        .await?;
+
+        self.create_theme_prompt(
+            "product_dev",
+            "product_context_analysis",
+            "Analyze product development focus and progress",
+            "vlm",
+            r#"Analyze this product development activity:
+1. Focus area: feature_development | bug_fixing | refactoring | design | planning
+2. Progress indicators: code_written | tests_added | reviewed | deployed
+3. Blockers or challenges identified
+4. Collaboration quality: solo | paired | team_discussion
+5. Context switches detected (interruptions)
+
+Return structured JSON."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.4),
+        )
+        .await?;
+
+        // ADMIN THEME
+        self.create_theme_prompt(
+            "admin",
+            "admin_entity_extraction",
+            "Extract tasks, workflows, and automation opportunities from administrative work",
+            "vlm",
+            r#"Analyzing administrative work.
+
+Extract in JSON format:
+{
+  "tasks": [{"description": "", "deadline": "", "priority": ""}],
+  "workflows": [{"name": "", "steps": [], "frequency": ""}],
+  "tools": [{"name": "", "purpose": "", "time_spent": ""}],
+  "automation_opportunities": [{"workflow": "", "potential_savings": "", "complexity": "low|medium|high"}]
+}
+
+Mark confidence levels."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.3),
+        ).await?;
+
+        self.create_theme_prompt(
+            "admin",
+            "admin_context_analysis",
+            "Analyze administrative burden and efficiency",
+            "vlm",
+            r#"Analyze this administrative activity:
+1. Task type: email | scheduling | filing | reporting | other
+2. Repetitiveness: one_time | weekly | daily | ad_hoc
+3. Automation potential: high | medium | low | none
+4. Time efficiency: optimal | acceptable | inefficient
+5. Estimated time saved if automated
+
+Return structured JSON."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.4),
+        )
+        .await?;
+
+        // PERSONAL THEME
+        self.create_theme_prompt(
+            "personal",
+            "personal_activity_categorization",
+            "High-level activity categorization for personal time",
+            "vlm",
+            r#"High-level activity analysis. Categorize into one of:
+- work_professional
+- learning_development
+- communication
+- entertainment
+- health_wellness
+- other
+
+Extract only high-confidence entities in JSON:
+{
+  "category": "",
+  "subcategory": "",
+  "tools_used": [],
+  "duration_estimate": ""
+}
+
+Be conservative - only extract what you're confident about."#,
+            vlm_id.map(|s| s.as_str()),
+            Some(0.5),
+        )
+        .await?;
+
+        log::info!("Seeded default prompts, models, use cases, and theme-specific prompts");
         Ok(())
     }
 
@@ -405,8 +637,8 @@ Provide a brief one-sentence summary of the specific task."#,
 
         sqlx::query(r#"
             INSERT INTO prompt_library 
-            (id, name, description, category, system_prompt, user_prompt_template, model_id, temperature, max_tokens, is_builtin, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
+            (id, name, description, category, system_prompt, user_prompt_template, model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0, 1, ?, ?)
         "#)
         .bind(&id)
         .bind(&input.name)
@@ -432,6 +664,8 @@ Provide a brief one-sentence summary of the specific task."#,
             model_id: input.model_id,
             temperature: input.temperature.unwrap_or(0.5),
             max_tokens: input.max_tokens,
+            theme: None,
+            version: 1,
             is_builtin: false,
             is_active: true,
             created_at: now,
@@ -440,11 +674,13 @@ Provide a brief one-sentence summary of the specific task."#,
     }
 
     pub async fn get_prompt(&self, id: &str) -> Result<Option<Prompt>, sqlx::Error> {
-        let row = sqlx::query(r#"
+        let row = sqlx::query(
+            r#"
             SELECT id, name, description, category, system_prompt, user_prompt_template, 
-                   model_id, temperature, max_tokens, is_builtin, is_active, created_at, updated_at
+                   model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
             FROM prompt_library WHERE id = ?
-        "#)
+        "#,
+        )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -456,25 +692,31 @@ Provide a brief one-sentence summary of the specific task."#,
         let query = if let Some(cat) = category {
             sqlx::query(r#"
                 SELECT id, name, description, category, system_prompt, user_prompt_template, 
-                       model_id, temperature, max_tokens, is_builtin, is_active, created_at, updated_at
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
                 FROM prompt_library WHERE category = ? ORDER BY name
             "#)
             .bind(cat)
         } else {
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 SELECT id, name, description, category, system_prompt, user_prompt_template, 
-                       model_id, temperature, max_tokens, is_builtin, is_active, created_at, updated_at
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
                 FROM prompt_library ORDER BY category, name
-            "#)
+            "#,
+            )
         };
 
         let rows = query.fetch_all(&self.pool).await?;
         Ok(rows.iter().map(|r| self.row_to_prompt(r)).collect())
     }
 
-    pub async fn update_prompt(&self, id: &str, updates: PromptUpdate) -> Result<Option<Prompt>, sqlx::Error> {
+    pub async fn update_prompt(
+        &self,
+        id: &str,
+        updates: PromptUpdate,
+    ) -> Result<Option<Prompt>, sqlx::Error> {
         let now = Utc::now().to_rfc3339();
-        
+
         // Build dynamic update query
         let mut set_clauses = vec!["updated_at = ?".to_string()];
         let mut bindings: Vec<String> = vec![now.clone()];
@@ -534,7 +776,11 @@ Provide a brief one-sentence summary of the specific task."#,
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn duplicate_prompt(&self, id: &str, new_name: &str) -> Result<Option<Prompt>, sqlx::Error> {
+    pub async fn duplicate_prompt(
+        &self,
+        id: &str,
+        new_name: &str,
+    ) -> Result<Option<Prompt>, sqlx::Error> {
         if let Some(original) = self.get_prompt(id).await? {
             let input = PromptCreate {
                 name: new_name.to_string(),
@@ -581,7 +827,10 @@ Provide a brief one-sentence summary of the specific task."#,
         Ok(row.map(|r| self.row_to_model_config(&r)))
     }
 
-    pub async fn get_model_config_by_name(&self, name: &str) -> Result<Option<ModelConfig>, sqlx::Error> {
+    pub async fn get_model_config_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<ModelConfig>, sqlx::Error> {
         let row = sqlx::query(r#"
             SELECT id, name, display_name, model_type, base_url, capabilities, 
                    default_temperature, default_max_tokens, is_available, last_health_check, created_at
@@ -594,7 +843,11 @@ Provide a brief one-sentence summary of the specific task."#,
         Ok(row.map(|r| self.row_to_model_config(&r)))
     }
 
-    pub async fn update_model_availability(&self, name: &str, is_available: bool) -> Result<(), sqlx::Error> {
+    pub async fn update_model_availability(
+        &self,
+        name: &str,
+        is_available: bool,
+    ) -> Result<(), sqlx::Error> {
         let now = Utc::now().to_rfc3339();
         sqlx::query("UPDATE model_configurations SET is_available = ?, last_health_check = ? WHERE name = ?")
             .bind(is_available)
@@ -605,7 +858,10 @@ Provide a brief one-sentence summary of the specific task."#,
         Ok(())
     }
 
-    pub async fn create_model_config(&self, input: ModelConfigCreate) -> Result<ModelConfig, sqlx::Error> {
+    pub async fn create_model_config(
+        &self,
+        input: ModelConfigCreate,
+    ) -> Result<ModelConfig, sqlx::Error> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
@@ -634,7 +890,9 @@ Provide a brief one-sentence summary of the specific task."#,
             name: input.name,
             display_name: input.display_name,
             model_type: input.model_type,
-            base_url: input.base_url.unwrap_or_else(|| "http://localhost:11434".to_string()),
+            base_url: input
+                .base_url
+                .unwrap_or_else(|| "http://localhost:11434".to_string()),
             capabilities: input.capabilities.unwrap_or_default(),
             default_temperature: input.default_temperature.unwrap_or(0.5),
             default_max_tokens: input.default_max_tokens.unwrap_or(2048),
@@ -687,7 +945,10 @@ Provide a brief one-sentence summary of the specific task."#,
         self.get_use_case(use_case).await
     }
 
-    pub async fn get_resolved_use_case(&self, use_case: &str) -> Result<Option<ResolvedUseCase>, sqlx::Error> {
+    pub async fn get_resolved_use_case(
+        &self,
+        use_case: &str,
+    ) -> Result<Option<ResolvedUseCase>, sqlx::Error> {
         if let Some(uc) = self.get_use_case(use_case).await? {
             let prompt = if let Some(ref pid) = uc.prompt_id {
                 self.get_prompt(pid).await?
@@ -724,9 +985,8 @@ Provide a brief one-sentence summary of the specific task."#,
     }
 
     pub async fn import_prompts(&self, json: &str) -> Result<Vec<Prompt>, sqlx::Error> {
-        let data: serde_json::Value = serde_json::from_str(json).map_err(|e| {
-            sqlx::Error::Protocol(format!("Invalid JSON: {}", e))
-        })?;
+        let data: serde_json::Value = serde_json::from_str(json)
+            .map_err(|e| sqlx::Error::Protocol(format!("Invalid JSON: {}", e)))?;
 
         let mut imported = Vec::new();
         if let Some(prompts) = data.get("prompts").and_then(|p| p.as_array()) {
@@ -739,6 +999,212 @@ Provide a brief one-sentence summary of the specific task."#,
             }
         }
         Ok(imported)
+    }
+
+    // ============================================
+    // Theme-Specific Prompt Methods (Phase 2)
+    // ============================================
+
+    /// List prompts for a specific theme
+    pub async fn list_prompts_by_theme(&self, theme: &str) -> Result<Vec<Prompt>, sqlx::Error> {
+        let rows = sqlx::query(r#"
+            SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                   model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+            FROM prompt_library WHERE theme = ? ORDER BY name, version DESC
+        "#)
+        .bind(theme)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|r| self.row_to_prompt(r)).collect())
+    }
+
+    /// Get the latest version of a prompt by name and theme
+    pub async fn get_latest_prompt(
+        &self,
+        name: &str,
+        theme: Option<&str>,
+    ) -> Result<Option<Prompt>, sqlx::Error> {
+        let row = if let Some(t) = theme {
+            sqlx::query(r#"
+                SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+                FROM prompt_library WHERE name = ? AND theme = ? ORDER BY version DESC LIMIT 1
+            "#)
+            .bind(name)
+            .bind(t)
+            .fetch_optional(&self.pool)
+            .await?
+        } else {
+            sqlx::query(r#"
+                SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+                FROM prompt_library WHERE name = ? AND theme IS NULL ORDER BY version DESC LIMIT 1
+            "#)
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?
+        };
+
+        Ok(row.map(|r| self.row_to_prompt(&r)))
+    }
+
+    /// Get all versions of a prompt by name
+    pub async fn get_prompt_versions(
+        &self,
+        name: &str,
+        theme: Option<&str>,
+    ) -> Result<Vec<Prompt>, sqlx::Error> {
+        let rows = if let Some(t) = theme {
+            sqlx::query(r#"
+                SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+                FROM prompt_library WHERE name = ? AND theme = ? ORDER BY version DESC
+            "#)
+            .bind(name)
+            .bind(t)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(r#"
+                SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+                FROM prompt_library WHERE name = ? AND theme IS NULL ORDER BY version DESC
+            "#)
+            .bind(name)
+            .fetch_all(&self.pool)
+            .await?
+        };
+
+        Ok(rows.iter().map(|r| self.row_to_prompt(r)).collect())
+    }
+
+    /// Create a new version of an existing prompt (version control)
+    pub async fn create_prompt_version(
+        &self,
+        prompt_id: &str,
+        updates: PromptUpdate,
+    ) -> Result<Prompt, sqlx::Error> {
+        // Get the current prompt
+        let current = self
+            .get_prompt(prompt_id)
+            .await?
+            .ok_or_else(|| sqlx::Error::Protocol("Prompt not found".to_string()))?;
+
+        // Create new version
+        let new_id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+        let now_str = now.to_rfc3339();
+        let new_version = current.version + 1;
+
+        let new_name = updates.name.as_ref().unwrap_or(&current.name);
+        let new_desc = updates
+            .description
+            .as_ref()
+            .or(current.description.as_ref());
+        let new_cat = updates.category.as_ref().unwrap_or(&current.category);
+        let new_prompt = updates
+            .system_prompt
+            .as_ref()
+            .unwrap_or(&current.system_prompt);
+        let new_user_template = updates
+            .user_prompt_template
+            .as_ref()
+            .or(current.user_prompt_template.as_ref());
+        let new_model_id = updates.model_id.as_ref().or(current.model_id.as_ref());
+        let new_temp = updates.temperature.unwrap_or(current.temperature);
+
+        sqlx::query(r#"
+            INSERT INTO prompt_library 
+            (id, name, description, category, system_prompt, user_prompt_template, model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        "#)
+        .bind(&new_id)
+        .bind(new_name)
+        .bind(new_desc)
+        .bind(new_cat)
+        .bind(new_prompt)
+        .bind(new_user_template)
+        .bind(new_model_id)
+        .bind(new_temp)
+        .bind(&current.max_tokens)
+        .bind(&current.theme)
+        .bind(new_version)
+        .bind(current.is_builtin)
+        .bind(&now_str)
+        .bind(&now_str)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(Prompt {
+            id: new_id,
+            name: new_name.clone(),
+            description: new_desc.cloned(),
+            category: new_cat.clone(),
+            system_prompt: new_prompt.clone(),
+            user_prompt_template: new_user_template.cloned(),
+            model_id: new_model_id.cloned(),
+            temperature: new_temp,
+            max_tokens: current.max_tokens,
+            theme: current.theme.clone(),
+            version: new_version,
+            is_builtin: current.is_builtin,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    /// Create a theme-specific prompt
+    pub async fn create_theme_prompt(
+        &self,
+        theme: &str,
+        name: &str,
+        description: &str,
+        category: &str,
+        system_prompt: &str,
+        model_id: Option<&str>,
+        temperature: Option<f32>,
+    ) -> Result<Prompt, sqlx::Error> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+        let now_str = now.to_rfc3339();
+
+        sqlx::query(r#"
+            INSERT INTO prompt_library 
+            (id, name, description, category, system_prompt, model_id, temperature, theme, version, is_builtin, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, ?, ?)
+        "#)
+        .bind(&id)
+        .bind(name)
+        .bind(description)
+        .bind(category)
+        .bind(system_prompt)
+        .bind(model_id)
+        .bind(temperature.unwrap_or(0.5))
+        .bind(theme)
+        .bind(&now_str)
+        .bind(&now_str)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(Prompt {
+            id,
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            category: category.to_string(),
+            system_prompt: system_prompt.to_string(),
+            user_prompt_template: None,
+            model_id: model_id.map(|s| s.to_string()),
+            temperature: temperature.unwrap_or(0.5),
+            max_tokens: None,
+            theme: Some(theme.to_string()),
+            version: 1,
+            is_builtin: true,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        })
     }
 
     // ============================================
@@ -756,6 +1222,8 @@ Provide a brief one-sentence summary of the specific task."#,
             model_id: row.get("model_id"),
             temperature: row.get("temperature"),
             max_tokens: row.get("max_tokens"),
+            theme: row.get("theme"),
+            version: row.get("version"),
             is_builtin: row.get("is_builtin"),
             is_active: row.get("is_active"),
             created_at: DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))
@@ -781,7 +1249,8 @@ Provide a brief one-sentence summary of the specific task."#,
             default_temperature: row.get("default_temperature"),
             default_max_tokens: row.get("default_max_tokens"),
             is_available: row.get("is_available"),
-            last_health_check: row.get::<Option<String>, _>("last_health_check")
+            last_health_check: row
+                .get::<Option<String>, _>("last_health_check")
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
             created_at: DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))
