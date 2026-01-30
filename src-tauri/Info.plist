@@ -4,26 +4,26 @@
 <dict>
     <!-- Bundle Identification -->
     <key>CFBundleName</key>
-    <string>Nano Banana Meetings</string>
+    <string>noFriction Meetings</string>
     
     <key>CFBundleDisplayName</key>
-    <string>Nano Banana Meetings</string>
+    <string>noFriction Meetings</string>
     
     <key>CFBundleIdentifier</key>
-    <string>com.nano-banana.meetings</string>
+    <string>com.nofriction.meetings</string>
     
     <key>CFBundleVersion</key>
-    <string>1.0.0-pre.1</string>
+    <string>2.4.0</string>
     
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0-pre.1</string>
+    <string>2.4.0</string>
     
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     
     <!-- Executable name must match Cargo package name -->
     <key>CFBundleExecutable</key>
-    <string>nano-banana-meetings</string>
+    <string>nofriction-meetings</string>
     
     <!-- System Requirements -->
     <key>LSMinimumSystemVersion</key>
@@ -45,27 +45,11 @@
     
     <!-- Microphone - for transcription -->
     <key>NSMicrophoneUsageDescription</key>
-    <string>Nano Banana Meetings needs microphone access to transcribe your voice during meetings.</string>
+    <string>noFriction Meetings needs microphone access to transcribe your voice during meetings.</string>
     
     <!-- Screen Recording - for system audio and screen capture -->
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Nano Banana Meetings needs screen recording access to capture meeting content and system audio from apps like Zoom and Teams.</string>
-    
-    <!-- 
-        NOTE: The following permissions are NOT included because the app doesn't use them:
-        - NSCameraUsageDescription (Camera)
-        - NSAppleEventsUsageDescription (Accessibility/AppleScript)
-        - NSBluetoothAlwaysUsageDescription (Bluetooth)
-        - NSRemindersUsageDescription (Reminders)
-        - NSContactsUsageDescription (Contacts)
-        - NSCalendarsUsageDescription (Calendar)
-        
-        Only add these if the app actually needs them!
-    -->
-    
-    <!-- File Associations (optional) -->
-    <key>CFBundleDocumentTypes</key>
-    <array/>
+    <string>noFriction Meetings needs screen recording access to capture meeting content and system audio from apps like Zoom and Teams.</string>
     
     <!-- URL Schemes (optional) -->
     <key>CFBundleURLTypes</key>
@@ -73,10 +57,10 @@
         <dict>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>nano-banana</string>
+                <string>nofriction</string>
             </array>
             <key>CFBundleURLName</key>
-            <string>com.nano-banana.meetings</string>
+            <string>com.nofriction.meetings</string>
         </dict>
     </array>
     

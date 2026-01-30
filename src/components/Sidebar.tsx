@@ -37,7 +37,7 @@ export function Sidebar({ activeTab, onTabChange, recording, onToggleRecording }
                 <span className="logo-icon">noFriction</span>
                 <span className="logo-text">Meetings</span>
             </div>
-            <div className="edition-label">V2.1 // PROFESSIONAL</div>
+            <div className="edition-label">V2.4 // PROFESSIONAL</div>
 
             {/* Navigation */}
             <nav className="sidebar-nav">
