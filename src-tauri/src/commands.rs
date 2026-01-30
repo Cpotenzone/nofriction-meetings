@@ -26,16 +26,317 @@ pub struct PermissionStatus {
     pub accessibility: bool,
 }
 
-/// Check macOS permissions (without triggering prompts if possible)
+/// Check macOS permissions (without triggering prompts)
 #[tauri::command]
 pub async fn check_permissions() -> Result<PermissionStatus, String> {
-    // Stubbed to avoid unsafe permission checks causing crashes or build issues.
-    // We assume true so the UI shows "Granted", and let macOS prompt on first use if needed.
-    Ok(PermissionStatus {
-        screen_recording: true,
-        microphone: true,
-        accessibility: true,
-    })
+    #[cfg(target_os = "macos")]
+    {
+        use crate::accessibility_extractor::AccessibilityExtractor;
+
+        // Check screen recording permission
+        let screen_recording = check_screen_recording_permission();
+
+        // Check microphone permission
+        let microphone = check_microphone_permission();
+
+        // Check accessibility permission
+        let accessibility = AccessibilityExtractor::is_trusted();
+
+        Ok(PermissionStatus {
+            screen_recording,
+            microphone,
+            accessibility,
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On non-macOS, assume all permissions granted
+        Ok(PermissionStatus {
+            screen_recording: true,
+            microphone: true,
+            accessibility: true,
+        })
+    }
+}
+
+/// Check screen recording permission on macOS
+#[cfg(target_os = "macos")]
+fn check_screen_recording_permission() -> bool {
+    // Try to list monitors and capture - if it fails, permission is not granted
+    use xcap::Monitor;
+
+    match Monitor::all() {
+        Ok(monitors) => {
+            if let Some(monitor) = monitors.first() {
+                // Try to capture an image - this requires screen recording permission
+                monitor.capture_image().is_ok()
+            } else {
+                false
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// Check microphone permission on macOS
+#[cfg(target_os = "macos")]
+fn check_microphone_permission() -> bool {
+    // Try to get the default input device
+    use cpal::traits::{DeviceTrait, HostTrait};
+
+    let host = cpal::default_host();
+    if let Some(device) = host.default_input_device() {
+        // Try to get supported configs - this requires mic permission
+        match device.supported_input_configs() {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    } else {
+        false
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct ScreenTestResult {
+    pub success: bool,
+    pub frame_width: Option<u32>,
+    pub frame_height: Option<u32>,
+    pub error: Option<String>,
+}
+
+/// Test screen capture - attempts to capture a single frame
+#[tauri::command]
+pub async fn test_screen_capture() -> Result<ScreenTestResult, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use xcap::Monitor;
+
+        match Monitor::all() {
+            Ok(monitors) => {
+                // Find primary monitor or use the first available
+                let monitor = monitors
+                    .into_iter()
+                    .find(|m| m.is_primary().unwrap_or(false))
+                    .or_else(|| Monitor::all().ok().and_then(|mut m: Vec<Monitor>| m.pop()));
+
+                if let Some(monitor) = monitor {
+                    match monitor.capture_image() {
+                        Ok(image) => {
+                            let width = image.width();
+                            let height = image.height();
+                            Ok(ScreenTestResult {
+                                success: true,
+                                frame_width: Some(width),
+                                frame_height: Some(height),
+                                error: None,
+                            })
+                        }
+                        Err(e) => Ok(ScreenTestResult {
+                            success: false,
+                            frame_width: None,
+                            frame_height: None,
+                            error: Some(format!("Failed to capture frame: {}", e)),
+                        }),
+                    }
+                } else {
+                    Ok(ScreenTestResult {
+                        success: false,
+                        frame_width: None,
+                        frame_height: None,
+                        error: Some("No monitor found".to_string()),
+                    })
+                }
+            }
+            Err(e) => Ok(ScreenTestResult {
+                success: false,
+                frame_width: None,
+                frame_height: None,
+                error: Some(format!("Failed to list monitors: {}", e)),
+            }),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(ScreenTestResult {
+            success: false,
+            frame_width: None,
+            frame_height: None,
+            error: Some("Screen capture test only available on macOS".to_string()),
+        })
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct MicTestResult {
+    pub success: bool,
+    pub device_name: Option<String>,
+    pub sample_rate: Option<u32>,
+    pub channels: Option<u16>,
+    pub error: Option<String>,
+}
+
+/// Test microphone - attempts to initialize the mic
+#[tauri::command]
+pub async fn test_microphone() -> Result<MicTestResult, String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+
+    let host = cpal::default_host();
+    match host.default_input_device() {
+        Some(device) => {
+            let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
+            match device.default_input_config() {
+                Ok(config) => Ok(MicTestResult {
+                    success: true,
+                    device_name: Some(name),
+                    sample_rate: Some(config.sample_rate().0),
+                    channels: Some(config.channels()),
+                    error: None,
+                }),
+                Err(e) => Ok(MicTestResult {
+                    success: false,
+                    device_name: Some(name),
+                    sample_rate: None,
+                    channels: None,
+                    error: Some(format!("Failed to get config: {}", e)),
+                }),
+            }
+        }
+        None => Ok(MicTestResult {
+            success: false,
+            device_name: None,
+            sample_rate: None,
+            channels: None,
+            error: Some("No microphone found".to_string()),
+        }),
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct AccessibilityTestResult {
+    pub success: bool,
+    pub is_trusted: bool,
+    pub app_name: Option<String>,
+    pub text_sample: Option<String>,
+    pub text_length: Option<usize>,
+    pub error: Option<String>,
+}
+
+/// Test accessibility - attempts to extract text from focused window
+#[tauri::command]
+pub async fn test_accessibility() -> Result<AccessibilityTestResult, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::accessibility_extractor::AccessibilityExtractor;
+
+        let is_trusted = AccessibilityExtractor::is_trusted();
+        if !is_trusted {
+            return Ok(AccessibilityTestResult {
+                success: false,
+                is_trusted: false,
+                app_name: None,
+                text_sample: None,
+                text_length: None,
+                error: Some("Accessibility permission not granted".to_string()),
+            });
+        }
+
+        let extractor = AccessibilityExtractor::new();
+        match extractor.extract_focused_window() {
+            Ok(result) => {
+                let sample = if result.text.len() > 200 {
+                    format!("{}...", &result.text[..200])
+                } else {
+                    result.text.clone()
+                };
+                Ok(AccessibilityTestResult {
+                    success: true,
+                    is_trusted: true,
+                    app_name: result.app_name.clone(),
+                    text_sample: Some(sample),
+                    text_length: Some(result.text.len()),
+                    error: None,
+                })
+            }
+            Err(e) => Ok(AccessibilityTestResult {
+                success: false,
+                is_trusted: true,
+                app_name: None,
+                text_sample: None,
+                text_length: None,
+                error: Some(e),
+            }),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(AccessibilityTestResult {
+            success: false,
+            is_trusted: false,
+            app_name: None,
+            text_sample: None,
+            text_length: None,
+            error: Some("Accessibility test only available on macOS".to_string()),
+        })
+    }
+}
+
+/// Request a specific permission (triggers macOS prompt)
+#[tauri::command]
+pub async fn request_permission(permission_type: String) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        match permission_type.as_str() {
+            "screen_recording" => {
+                // Trigger screen recording permission prompt by trying to capture
+                use xcap::Monitor;
+
+                match Monitor::all() {
+                    Ok(monitors) => {
+                        if let Some(monitor) = monitors.first() {
+                            match monitor.capture_image() {
+                                Ok(_) => Ok(true),
+                                Err(_) => Ok(false),
+                            }
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Err(_) => Ok(false),
+                }
+            }
+            "microphone" => {
+                // Trigger microphone permission by trying to access device
+                use cpal::traits::{DeviceTrait, HostTrait};
+
+                let host = cpal::default_host();
+                match host.default_input_device() {
+                    Some(device) => match device.default_input_config() {
+                        Ok(_) => Ok(true),
+                        Err(_) => Ok(false),
+                    },
+                    None => Ok(false),
+                }
+            }
+            "accessibility" => {
+                // Trigger accessibility permission prompt
+                use crate::accessibility_extractor::AccessibilityExtractor;
+
+                // Request with prompt
+                let is_trusted = AccessibilityExtractor::request_permission_with_prompt();
+                Ok(is_trusted)
+            }
+            _ => Err(format!("Unknown permission type: {}", permission_type)),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = permission_type;
+        Ok(true) // Non-macOS always granted
+    }
 }
 
 /// Start recording with frame capture and live transcription
@@ -63,6 +364,35 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     std::fs::create_dir_all(&frames_dir)
         .map_err(|e| format!("Failed to create frames directory: {}", e))?;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 1: Initialize Stateful Screen Ingest
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Start metrics collection
+    state.metrics_collector.start_meeting(&meeting_id);
+
+    // Start state builder for this meeting
+    {
+        let state_builder = state.state_builder.read();
+        state_builder.start_meeting(&meeting_id);
+    }
+
+    // Phase 2: Start episode builder
+    {
+        let episode_builder = state.episode_builder.read();
+        episode_builder.start_meeting(&meeting_id);
+    }
+
+    // Phase 3: Start timeline builder
+    state
+        .timeline_builder
+        .start_meeting(&meeting_id, chrono::Utc::now());
+
+    log::info!(
+        "📊 Stateful capture initialized for meeting: {} (Phase 1-3)",
+        meeting_id
+    );
+
     // Set up Transcription connection
     {
         // Use transcription manager
@@ -85,40 +415,148 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         transcription_manager.process_audio(&buffer.samples, buffer.sample_rate);
     });
 
-    // Set up frame callback to store screenshots
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 1: Stateful Frame Callback (DeDupGate + StateBuilder)
+    // ═══════════════════════════════════════════════════════════════════════════
     let db_for_frames = state.database.clone();
     let meeting_id_for_frames = meeting_id.clone();
     let frames_dir_clone = frames_dir.clone();
+    let state_builder = state.state_builder.clone();
+    let metrics_collector = state.metrics_collector.clone();
+
+    // Estimated bytes per frame (for savings calculation)
+    const ESTIMATED_FRAME_BYTES: u64 = 50_000; // ~50KB per JPEG
 
     let frame_callback: Arc<dyn Fn(CapturedFrame) + Send + Sync> = Arc::new(move |frame| {
         let db = db_for_frames.clone();
         let mid = meeting_id_for_frames.clone();
         let dir = frames_dir_clone.clone();
+        let builder = state_builder.clone();
+        let metrics = metrics_collector.clone();
 
-        // Save frame asynchronously
+        // Process frame through StateBuilder (stateful dedup)
         tokio::spawn(async move {
-            // Generate thumbnail path
-            let filename = format!("frame_{}.jpg", frame.frame_number);
-            let thumbnail_path = dir.join(&filename);
+            // Start CPU timer
+            let timer_start = std::time::Instant::now();
 
-            // Save as JPEG thumbnail
-            if let Err(e) = frame.image.to_rgb8().save(&thumbnail_path) {
-                log::warn!("Failed to save frame thumbnail: {}", e);
-                return;
+            // Record frame received
+            metrics.record_frame();
+
+            // Process through StateBuilder (pHash + delta scoring)
+            let result = {
+                let builder = builder.read();
+                builder.process_frame(frame.image.clone(), frame.timestamp)
+            };
+
+            use crate::state_builder::FrameProcessResult;
+
+            match result {
+                FrameProcessResult::Extended {
+                    state_id,
+                    new_end_ts,
+                } => {
+                    // Frame was a duplicate - extend current state duration
+                    metrics.record_duplicate_skipped(ESTIMATED_FRAME_BYTES);
+
+                    // Update state end_ts in database
+                    if let Err(e) = db.extend_screen_state(&state_id, new_end_ts).await {
+                        log::warn!("Failed to extend screen state: {}", e);
+                    }
+
+                    log::trace!("📺 Frame duplicate, extended state: {}", state_id);
+                }
+
+                FrameProcessResult::NewState {
+                    completed_state,
+                    new_state_id,
+                } => {
+                    // State boundary detected - save keyframe
+                    metrics.record_new_state();
+
+                    // Finalize the completed state if any
+                    if let Some(completed) = completed_state {
+                        log::debug!(
+                            "📺 State completed: {} (duration: {:?}ms)",
+                            completed.state_id,
+                            completed.duration_ms()
+                        );
+                    }
+
+                    // Get pending keyframe to save
+                    let pending_keyframe = {
+                        let builder = builder.read();
+                        builder.take_pending_keyframe()
+                    };
+
+                    if let Some(keyframe_image) = pending_keyframe {
+                        // Generate keyframe path (state-based, not frame-number-based)
+                        let filename = format!("state_{}.jpg", new_state_id);
+                        let keyframe_path = dir.join(&filename);
+
+                        // Save keyframe as JPEG
+                        if let Err(e) = keyframe_image.to_rgb8().save(&keyframe_path) {
+                            log::warn!("Failed to save keyframe: {}", e);
+                        } else {
+                            metrics.record_image_write(ESTIMATED_FRAME_BYTES);
+
+                            // Get state info for database insertion
+                            let state_record = {
+                                let builder = builder.read();
+                                // Access current state info from accumulator
+                                // For now we insert with minimal info
+                                None::<crate::state_builder::ScreenState>
+                            };
+
+                            // Insert new screen state into database
+                            let flags_json = "{}";
+                            if let Err(e) = db
+                                .add_screen_state(
+                                    &new_state_id,
+                                    &mid,
+                                    frame.timestamp,
+                                    Some(frame.timestamp),
+                                    "",  // phash - would need to pass from StateBuilder
+                                    0.0, // delta_score
+                                    Some(keyframe_path.to_str().unwrap_or("")),
+                                    "other",
+                                    flags_json,
+                                )
+                                .await
+                            {
+                                log::warn!("Failed to save screen state: {}", e);
+                            }
+
+                            log::debug!("📺 New state: {} → {:?}", new_state_id, keyframe_path);
+                        }
+                    }
+                }
+
+                FrameProcessResult::PassThrough => {
+                    // Stateful capture disabled, fall back to legacy behavior
+                    let filename = format!("frame_{}.jpg", frame.frame_number);
+                    let thumbnail_path = dir.join(&filename);
+
+                    if let Err(e) = frame.image.to_rgb8().save(&thumbnail_path) {
+                        log::warn!("Failed to save frame thumbnail: {}", e);
+                        return;
+                    }
+
+                    if let Err(e) = db
+                        .add_frame(
+                            &mid,
+                            frame.timestamp,
+                            Some(thumbnail_path.to_str().unwrap_or("")),
+                            None,
+                        )
+                        .await
+                    {
+                        log::warn!("Failed to save frame to database: {}", e);
+                    }
+                }
             }
 
-            // Store in database
-            if let Err(e) = db
-                .add_frame(
-                    &mid,
-                    frame.timestamp,
-                    Some(thumbnail_path.to_str().unwrap_or("")),
-                    None, // OCR text - could be added later
-                )
-                .await
-            {
-                log::warn!("Failed to save frame to database: {}", e);
-            }
+            // Record CPU time
+            metrics.record_cpu_time(timer_start.elapsed());
         });
     });
 
@@ -142,7 +580,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     }
 
     log::info!(
-        "Recording started: {} (frames saved to {:?})",
+        "🎬 Recording started: {} (stateful capture enabled, frames → {:?})",
         meeting_id,
         frames_dir
     );
@@ -168,8 +606,148 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
         state.transcription_manager.stop();
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 1: Finalize Stateful Screen Ingest
+    // ═══════════════════════════════════════════════════════════════════════════
     if was_recording {
-        log::info!("Recording stopped successfully");
+        // End state builder session
+        let final_state = {
+            let state_builder = state.state_builder.read();
+            state_builder.end_meeting()
+        };
+
+        if let Some(completed) = final_state {
+            log::info!(
+                "📺 Final state completed: {} (duration: {:?}ms)",
+                completed.state_id,
+                completed.duration_ms()
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // Phase 2: Finalize Episode Building
+        // ═══════════════════════════════════════════════════════════════════════
+        let episodes = {
+            let episode_builder = state.episode_builder.read();
+            episode_builder.finalize_all()
+        };
+
+        log::info!(
+            "📚 Episode building completed: {} episodes created",
+            episodes.len()
+        );
+
+        // Save episodes to database
+        for episode in &episodes {
+            // Create the episode first
+            if let Err(e) = state
+                .database
+                .create_episode(
+                    &episode.episode_id,
+                    &episode.meeting_id,
+                    episode.start_ts,
+                    episode.app_name.as_deref(),
+                    episode.window_title.as_deref(),
+                )
+                .await
+            {
+                log::warn!("Failed to create episode: {}", e);
+                continue;
+            }
+
+            // Then update with final stats
+            if let Some(end_ts) = episode.end_ts {
+                if let Err(e) = state
+                    .database
+                    .update_episode(
+                        &episode.episode_id,
+                        end_ts,
+                        episode.state_count,
+                        episode.duration_ms(),
+                    )
+                    .await
+                {
+                    log::warn!("Failed to update episode: {}", e);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // Phase 3: Finalize Timeline Generation
+        // ═══════════════════════════════════════════════════════════════════════
+        let timeline_events = state.timeline_builder.end_meeting(chrono::Utc::now());
+        let topic_clusters = state.timeline_builder.get_topics();
+
+        log::info!(
+            "📊 Timeline generation completed: {} events, {} topics",
+            timeline_events.len(),
+            topic_clusters.len()
+        );
+
+        // Save timeline events to database
+        for event in &timeline_events {
+            if let Err(e) = state
+                .database
+                .add_timeline_event(
+                    &event.event_id,
+                    &event.meeting_id,
+                    event.ts,
+                    event.event_type.as_str(),
+                    &event.title,
+                    event.description.as_deref(),
+                    event.app_name.as_deref(),
+                    event.window_title.as_deref(),
+                    event.duration_ms,
+                    event.episode_id.as_deref(),
+                    event.state_id.as_deref(),
+                    event.topic.as_deref(),
+                    event.importance,
+                )
+                .await
+            {
+                log::warn!("Failed to save timeline event: {}", e);
+            }
+        }
+
+        // Save topic clusters to database
+        for topic in &topic_clusters {
+            if let Err(e) = state
+                .database
+                .add_topic_cluster(
+                    &topic.topic_id,
+                    &state
+                        .timeline_builder
+                        .get_events()
+                        .first()
+                        .map(|e| e.meeting_id.clone())
+                        .unwrap_or_default(),
+                    &topic.name,
+                    topic.description.as_deref(),
+                    topic.start_ts,
+                    topic.end_ts,
+                    topic.event_count,
+                    topic.total_duration_ms,
+                )
+                .await
+            {
+                log::warn!("Failed to save topic cluster: {}", e);
+            }
+        }
+
+        // End metrics collection and log summary
+        if let Some(metrics) = state.metrics_collector.end_meeting() {
+            metrics.log_summary();
+
+            // Log highlights for easy verification
+            log::info!(
+                "🎯 Stateful capture summary: {} frames → {} states ({:.1}% reduction)",
+                metrics.frames_in,
+                metrics.states_out,
+                metrics.dedup_ratio * 100.0
+            );
+        }
+
+        log::info!("🎬 Recording stopped successfully (Phase 1-3 finalized)");
     }
 
     Ok(())
@@ -229,6 +807,12 @@ pub async fn search_transcripts(
 }
 
 /// Get frames for a meeting (rewind timeline)
+
+#[tauri::command]
+pub async fn debug_log(message: String) {
+    eprintln!("[FRONTEND] {}", message);
+}
+
 #[tauri::command]
 pub async fn get_frames(
     meeting_id: String,
@@ -257,36 +841,65 @@ pub async fn get_frame_count(
 }
 
 /// Get a frame thumbnail as base64
+/// Supports both legacy frames (integer IDs) and screen_states (UUID state_ids)
 #[tauri::command]
 pub async fn get_frame_thumbnail(
     frame_id: String,
     _thumbnail: bool,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
-    // Parse frame_id (handles both integer and string IDs)
-    let id: i64 = frame_id.parse().unwrap_or(0);
+    // First, check if this is a UUID (screen_state) or integer (legacy frame)
+    let is_uuid = frame_id.contains('-') && frame_id.len() > 20;
 
-    // Get frame from database - search through recent meetings
-    let meetings = state
-        .database
-        .list_meetings(100)
-        .await
-        .map_err(|e| format!("Failed to get meetings: {}", e))?;
-
-    for meeting in meetings {
-        let frames = state
+    if is_uuid {
+        // Search screen_states by state_id
+        let meetings = state
             .database
-            .get_frames(&meeting.id, 10000)
+            .list_meetings(100)
             .await
-            .map_err(|e| format!("Failed to get frames: {}", e))?;
+            .map_err(|e| format!("Failed to get meetings: {}", e))?;
 
-        if let Some(frame) = frames.iter().find(|f| f.id == id) {
-            if let Some(ref path) = frame.file_path {
-                if let Ok(data) = std::fs::read(path) {
-                    let base64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                    return Ok(Some(base64));
-                } else {
-                    log::warn!("Failed to read frame file: {}", path);
+        for meeting in meetings {
+            let screen_states = state
+                .database
+                .get_screen_states(&meeting.id, 10000)
+                .await
+                .map_err(|e| format!("Failed to get screen states: {}", e))?;
+
+            if let Some(screen_state) = screen_states.iter().find(|s| s.state_id == frame_id) {
+                if let Some(ref path) = screen_state.keyframe_path {
+                    if let Ok(data) = std::fs::read(path) {
+                        let base64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                        return Ok(Some(base64));
+                    }
+                }
+            }
+        }
+    } else {
+        // Legacy integer ID - search frames table
+        let id: i64 = frame_id.parse().unwrap_or(0);
+
+        let meetings = state
+            .database
+            .list_meetings(100)
+            .await
+            .map_err(|e| format!("Failed to get meetings: {}", e))?;
+
+        for meeting in meetings {
+            let frames = state
+                .database
+                .get_frames(&meeting.id, 10000)
+                .await
+                .map_err(|e| format!("Failed to get frames: {}", e))?;
+
+            if let Some(frame) = frames.iter().find(|f| f.id == id) {
+                if let Some(ref path) = frame.file_path {
+                    if let Ok(data) = std::fs::read(path) {
+                        let base64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                        return Ok(Some(base64));
+                    } else {
+                        log::warn!("Failed to read frame file: {}", path);
+                    }
                 }
             }
         }
@@ -514,11 +1127,38 @@ pub async fn get_synced_timeline(
     meeting_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<SyncedTimeline>, String> {
+    log::info!("📊 get_synced_timeline called for meeting: {}", meeting_id);
     state
         .database
         .get_synced_timeline(&meeting_id)
         .await
         .map_err(|e| format!("Failed to get synced timeline: {}", e))
+}
+
+/// Get timeline events for a meeting (Phase 3)
+#[tauri::command]
+pub async fn get_timeline_events(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::database::TimelineEventRecord>, String> {
+    state
+        .database
+        .get_timeline_events(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get timeline events: {}", e))
+}
+
+/// Get topic clusters for a meeting (Phase 3)
+#[tauri::command]
+pub async fn get_topic_clusters(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::database::TopicClusterRecord>, String> {
+    state
+        .database
+        .get_topic_clusters(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get topic clusters: {}", e))
 }
 
 // ============================================
@@ -2745,4 +3385,306 @@ pub async fn trigger_meeting_ingest(
         "Ingest complete. Uploaded {} frames and {} transcripts.",
         success_frames, segment_count
     ))
+}
+
+// ===== Calendar Integration Commands =====
+
+/// Check if calendar access is authorized (macOS EventKit)
+#[tauri::command]
+pub async fn check_calendar_access() -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::calendar_client::{CalendarAccessStatus, CalendarClient};
+        let status = CalendarClient::check_access();
+        Ok(status == CalendarAccessStatus::Authorized)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(false)
+    }
+}
+
+/// Request calendar access permission
+#[tauri::command]
+pub async fn request_calendar_access() -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::calendar_client::CalendarClient;
+        // Request access with a polling-based approach (static method)
+        CalendarClient::request_access().await
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Calendar access only available on macOS".to_string())
+    }
+}
+
+/// Get calendar events for today
+#[tauri::command]
+pub async fn get_calendar_events(
+    _start_date: String,
+    _end_date: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::calendar_client::CalendarClient;
+
+        let client = CalendarClient::new();
+        let events = client.fetch_events()?;
+
+        // Convert to JSON-serializable format
+        let json_events: Vec<serde_json::Value> = events
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.event_id,
+                    "title": e.title,
+                    "start_time": e.start_time.to_rfc3339(),
+                    "end_time": e.end_time.to_rfc3339(),
+                    "location": e.location,
+                    "notes": e.notes,
+                    "is_all_day": e.is_all_day,
+                    "calendar_name": e.calendar_name,
+                })
+            })
+            .collect();
+
+        Ok(json_events)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(vec![])
+    }
+}
+
+/// Get the current/active meeting from calendar (if any)
+#[tauri::command]
+pub async fn get_current_meeting() -> Result<Option<serde_json::Value>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::calendar_client::CalendarClient;
+
+        let client = CalendarClient::new();
+        match client.get_current_event() {
+            Some(event) => Ok(Some(serde_json::json!({
+                "id": event.event_id,
+                "title": event.title,
+                "start_time": event.start_time.to_rfc3339(),
+                "end_time": event.end_time.to_rfc3339(),
+                "location": event.location,
+                "notes": event.notes,
+                "is_all_day": event.is_all_day,
+                "calendar_name": event.calendar_name,
+            }))),
+            None => Ok(None),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(None)
+    }
+}
+
+/// Get upcoming meetings for today
+#[tauri::command]
+pub async fn get_upcoming_meetings(hours: Option<i64>) -> Result<Vec<serde_json::Value>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::calendar_client::CalendarClient;
+        use chrono::{Duration, Utc};
+
+        let _hours = hours.unwrap_or(24);
+        let now = Utc::now();
+        let lookahead = now + Duration::hours(hours.unwrap_or(24));
+
+        let client = CalendarClient::new();
+        let events = client.fetch_events()?;
+
+        // Filter to upcoming events (not all-day, starts in future within lookahead)
+        let json_events: Vec<serde_json::Value> = events
+            .iter()
+            .filter(|e| !e.is_all_day && e.start_time > now && e.start_time <= lookahead)
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.event_id,
+                    "title": e.title,
+                    "start_time": e.start_time.to_rfc3339(),
+                    "end_time": e.end_time.to_rfc3339(),
+                    "location": e.location,
+                    "calendar_name": e.calendar_name,
+                })
+            })
+            .collect();
+
+        Ok(json_events)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(vec![])
+    }
+}
+
+// ===== Capture Metrics Commands =====
+
+/// Get capture metrics report for the current or last meeting
+#[tauri::command]
+pub async fn get_capture_metrics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    match state.metrics_collector.snapshot() {
+        Some(metrics) => Ok(serde_json::json!({
+            "meeting_id": metrics.meeting_id,
+            "frames_processed": metrics.frames_in,
+            "states_created": metrics.states_out,
+            "duplicates_skipped": metrics.duplicates_skipped,
+            "images_written": metrics.images_written,
+            "bytes_saved": metrics.bytes_saved_estimate,
+            "bytes_saved_formatted": format_bytes(metrics.bytes_saved_estimate),
+            "dedup_percentage": if metrics.frames_in > 0 {
+                100.0 * (1.0 - (metrics.states_out as f64 / metrics.frames_in as f64))
+            } else {
+                0.0
+            },
+            "ocr_calls": metrics.ocr_calls,
+            "snapshots": metrics.snapshots_created,
+            "patches": metrics.patches_created,
+            "cpu_time_ms": metrics.cpu_time_ms,
+        })),
+        None => Ok(serde_json::json!({
+            "message": "No active meeting"
+        })),
+    }
+}
+
+/// Format bytes as human-readable string
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
+// ============================================================================
+// VIDEO DIAGNOSTICS COMMANDS
+// ============================================================================
+
+#[derive(serde::Serialize)]
+pub struct CaptureDiagnostics {
+    pub monitors: Vec<MonitorInfo>,
+    pub current_monitor_id: Option<u32>,
+    pub frame_interval_ms: u32,
+    pub is_recording: bool,
+    pub screen_permission: bool,
+    pub mic_permission: bool,
+}
+
+/// Get comprehensive capture diagnostics for troubleshooting
+#[tauri::command]
+pub async fn get_capture_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<CaptureDiagnostics, String> {
+    use crate::capture_engine::CaptureEngine;
+
+    // Get monitor list
+    let monitors = CaptureEngine::list_monitors()?;
+
+    // Get capture engine status
+    let engine = state.capture_engine.read();
+    let status = engine.get_status();
+    let frame_interval_ms = 1000; // Default, would need to expose this from engine
+
+    // Check permissions
+    #[cfg(target_os = "macos")]
+    let screen_permission = check_screen_recording_permission();
+    #[cfg(not(target_os = "macos"))]
+    let screen_permission = true;
+
+    #[cfg(target_os = "macos")]
+    let mic_permission = check_microphone_permission();
+    #[cfg(not(target_os = "macos"))]
+    let mic_permission = true;
+
+    Ok(CaptureDiagnostics {
+        monitors,
+        current_monitor_id: None, // Would need to expose from engine
+        frame_interval_ms,
+        is_recording: status.is_recording,
+        screen_permission,
+        mic_permission,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct TestCaptureResult {
+    pub image_base64: String,
+    pub actual_width: u32,
+    pub actual_height: u32,
+    pub expected_width: u32,
+    pub expected_height: u32,
+    pub monitor_name: String,
+    pub dimensions_match: bool,
+}
+
+/// Capture a single test frame for diagnostics
+#[tauri::command]
+pub async fn test_live_capture(
+    _state: State<'_, AppState>,
+) -> Result<TestCaptureResult, String> {
+    use xcap::Monitor;
+
+    // Get primary monitor
+    let monitors = Monitor::all().map_err(|e| format!("Failed to list monitors: {}", e))?;
+    let monitor = monitors
+        .into_iter()
+        .find(|m| m.is_primary().unwrap_or(false))
+        .ok_or_else(|| "No primary monitor found".to_string())?;
+
+    let expected_width = monitor.width().unwrap_or(0);
+    let expected_height = monitor.height().unwrap_or(0);
+    let monitor_name = monitor.name().unwrap_or_else(|_| "Unknown".to_string());
+
+    // Capture test frame
+    let image = monitor
+        .capture_image()
+        .map_err(|e| format!("Failed to capture test frame: {}", e))?;
+
+    let actual_width = image.width();
+    let actual_height = image.height();
+
+    // Convert to JPEG and base64
+    let mut jpeg_bytes = Vec::new();
+    let dynamic_image = image::DynamicImage::ImageRgba8(image);
+    dynamic_image
+        .write_to(
+            &mut std::io::Cursor::new(&mut jpeg_bytes),
+            image::ImageFormat::Jpeg,
+        )
+        .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
+
+    let image_base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
+
+    // Check if dimensions match (allowing small variance for retina scaling)
+    let dimensions_match = actual_width == expected_width && actual_height == expected_height;
+
+    Ok(TestCaptureResult {
+        image_base64,
+        actual_width,
+        actual_height,
+        expected_width,
+        expected_height,
+        monitor_name,
+        dimensions_match,
+    })
 }

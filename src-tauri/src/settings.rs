@@ -49,6 +49,11 @@ pub struct AppSettings {
     pub vlm_bearer_token: Option<String>,
     pub vlm_model_primary: Option<String>,
     pub vlm_model_fallback: Option<String>,
+    // Stateful Screen Ingest - Dedup thresholds (Phase 1)
+    pub dedup_hash_threshold: Option<u32>, // Hamming distance threshold for hash comparison
+    pub dedup_delta_threshold: Option<f64>, // Mean pixel delta threshold (0.0 - 1.0)
+    pub dedup_enabled: Option<bool>,       // Enable/disable dedup pipeline
+    pub snapshot_interval_secs: Option<u64>, // Periodic checkpoint interval
 }
 
 impl AppSettings {
@@ -89,6 +94,11 @@ impl AppSettings {
             vlm_bearer_token: None,
             vlm_model_primary: Some("qwen2.5vl:7b".to_string()),
             vlm_model_fallback: Some("qwen2.5vl:3b".to_string()),
+            // Stateful Screen Ingest defaults
+            dedup_hash_threshold: Some(5), // 5 bits Hamming distance tolerance
+            dedup_delta_threshold: Some(0.02), // 2% mean pixel delta tolerance
+            dedup_enabled: Some(true),     // Dedup enabled by default
+            snapshot_interval_secs: Some(30), // 30 second checkpoint interval
         }
     }
 }

@@ -178,6 +178,11 @@ impl CaptureEngine {
             1000.0 / interval_ms as f32
         );
         tokio::spawn(async move {
+            // Delay screen capture startup to prevent permission prompt race with audio
+            // This ensures audio permission prompt (system modal) doesn't dismiss/hide screen recording prompt
+            // increased to 3s as 1s was not enough
+            tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
             Self::run_screen_capture(
                 frame_count,
                 frame_number,

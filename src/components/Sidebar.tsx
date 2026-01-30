@@ -18,10 +18,13 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
     { id: 'live', icon: '🎤', label: 'Live', title: 'Live Transcription' },
     { id: 'rewind', icon: '⏮️', label: 'Rewind', title: 'Meeting Playback' },
+    { id: 'timeline', icon: '📊', label: 'Timeline', title: 'Activity Timeline' },
     { id: 'kb', icon: '📚', label: 'Knowledge', title: 'Knowledge Base' },
     { id: 'insights', icon: '💡', label: 'Insights', title: 'Activity Analytics' },
     { id: 'intel', icon: '🧠', label: 'Intel', title: 'Deep Intel' },
+    { id: 'admin', icon: '🛡️', label: 'Admin', title: 'Management Suite' },
     { id: 'settings', icon: '⚙️', label: 'Settings', title: 'App Settings' },
+    { id: 'help', icon: '❓', label: 'Help', title: 'Help & Documentation' },
 ];
 
 export function Sidebar({ activeTab, onTabChange, recording, onToggleRecording }: SidebarProps) {
@@ -31,9 +34,10 @@ export function Sidebar({ activeTab, onTabChange, recording, onToggleRecording }
         <div className="sidebar">
             {/* Logo */}
             <div className="sidebar-logo">
-                <div className="logo-icon">✦</div>
-                <div className="logo-text">noFriction</div>
+                <span className="logo-icon">noFriction</span>
+                <span className="logo-text">Meetings</span>
             </div>
+            <div className="edition-label">V2.1 // PROFESSIONAL</div>
 
             {/* Navigation */}
             <nav className="sidebar-nav">
@@ -67,12 +71,12 @@ export function Sidebar({ activeTab, onTabChange, recording, onToggleRecording }
                     {recording.isRecording ? (
                         <>
                             <span className="rec-dot">●</span>
-                            <span>Stop</span>
+                            <span>HALT_REC</span>
                         </>
                     ) : (
                         <>
                             <span>⏺</span>
-                            <span>Record</span>
+                            <span>ARM / REC</span>
                         </>
                     )}
                 </button>

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# noFriction Meetings - macOS Release Script
+# Nano Banana Meetings - macOS Release Script
 # Creates a signed, notarized DMG for distribution
 #
 # Usage:
@@ -51,7 +51,7 @@ BUILD_DIR="$TAURI_DIR/target/release/bundle/macos"
 OUTPUT_DIR="$PROJECT_ROOT/dist"
 
 log_info "=================================="
-log_info "noFriction Meetings Release Build"
+log_info "Nano Banana Meetings Release Build"
 log_info "=================================="
 log_info "App Name: $APP_NAME"
 log_info "Version: $APP_VERSION"

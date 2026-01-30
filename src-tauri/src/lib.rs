@@ -26,6 +26,31 @@ pub mod vlm_scheduler;
 pub mod ingest_client;
 pub mod ingest_queue;
 
+// Phase 1: Stateful Screen Ingest
+pub mod capture_metrics;
+pub mod dedupe_gate;
+pub mod state_builder;
+
+// Phase 2: Episodes & Text Snapshots
+pub mod diff_builder;
+pub mod episode_builder;
+pub mod snapshot_extractor;
+
+// Phase 3: Timeline & Accessibility
+pub mod timeline_builder;
+
+// v2.1.0: Native Text Extraction & Classification
+pub mod accessibility_extractor;
+pub mod calendar_client;
+pub mod semantic_classifier;
+pub mod vision_ocr;
+
+// v2.1.0: Management Suite (Admin Console)
+pub mod admin_commands;
+pub mod audit_log;
+pub mod data_editor;
+pub mod storage_manager;
+
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -55,6 +80,13 @@ pub struct AppState {
     // Intelligence Pipeline integration
     pub ingest_client: Option<Arc<ingest_client::IngestClient>>,
     pub ingest_queue: Arc<parking_lot::Mutex<ingest_queue::IngestQueue>>,
+    // Phase 1: Stateful Screen Ingest
+    pub state_builder: Arc<RwLock<state_builder::StateBuilder>>,
+    pub metrics_collector: Arc<capture_metrics::MetricsCollector>,
+    // Phase 2: Episode Building
+    pub episode_builder: Arc<RwLock<episode_builder::EpisodeBuilder>>,
+    // Phase 3: Timeline Generation
+    pub timeline_builder: Arc<timeline_builder::TimelineBuilder>,
 }
 
 impl AppState {
@@ -212,6 +244,19 @@ impl AppState {
             None
         };
 
+        // Initialize Phase 1: Stateful Screen Ingest components
+        log::info!("Initializing Stateful Screen Ingest (v2.0)...");
+        let _ = emitter.emit("init-step", "Setting up Stateful Capture Pipeline...");
+        let state_builder = state_builder::StateBuilder::new();
+        let metrics_collector = capture_metrics::MetricsCollector::new();
+
+        // Initialize Phase 2: Episode Building
+        let episode_builder = episode_builder::EpisodeBuilder::new();
+
+        // Initialize Phase 3: Timeline Building
+        let timeline_builder = timeline_builder::TimelineBuilder::new();
+        log::info!("Stateful Screen Ingest initialized (Phase 1-3).");
+
         Ok(Self {
             capture_engine: Arc::new(RwLock::new(capture)),
             // deepgram_client: Arc::new(RwLock::new(deepgram)),
@@ -225,6 +270,10 @@ impl AppState {
             prompt_manager,
             ingest_client,
             ingest_queue: Arc::new(parking_lot::Mutex::new(ingest_queue)),
+            state_builder: Arc::new(RwLock::new(state_builder)),
+            metrics_collector: Arc::new(metrics_collector),
+            episode_builder: Arc::new(RwLock::new(episode_builder)),
+            timeline_builder: Arc::new(timeline_builder),
         })
     }
 }
@@ -287,7 +336,8 @@ pub fn run() {
                                     log::info!("State managed, emitting app-ready...");
                                     let _ = handle_clone.emit("app-ready", ());
                                     log::info!(
-                                        "noFriction Meetings v1.0.0 initialized successfully"
+                                        "noFriction Meetings v{} initialized successfully",
+                                        env!("CARGO_PKG_VERSION")
                                     );
                                 }
                                 Err(e) => {
@@ -327,6 +377,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::check_init_status,
             commands::check_permissions,
+            commands::test_screen_capture,
+            commands::test_microphone,
+            commands::test_accessibility,
+            commands::request_permission,
             commands::start_recording,
             commands::stop_recording,
             commands::stop_recording,
@@ -348,6 +402,7 @@ pub fn run() {
             commands::set_gladia_api_key,
             commands::set_google_stt_key,
             commands::set_active_provider,
+            commands::debug_log,
             commands::get_meetings,
             commands::get_meeting,
             commands::delete_meeting,
@@ -459,6 +514,41 @@ pub fn run() {
             commands::get_ingest_queue_stats,
             commands::test_ingest_connection,
             commands::trigger_meeting_ingest,
+            // Phase 3: Timeline Commands
+            commands::get_timeline_events,
+            commands::get_topic_clusters,
+            // v2.1.0: Calendar Integration Commands
+            commands::check_calendar_access,
+            commands::request_calendar_access,
+            commands::get_calendar_events,
+            commands::get_current_meeting,
+            commands::get_upcoming_meetings,
+            // v2.1.0: Capture Metrics Command
+            commands::get_capture_metrics,
+            // v2.1.0: Management Suite Commands
+            admin_commands::list_recordings_with_storage,
+            admin_commands::get_admin_storage_stats,
+            admin_commands::preview_delete_recordings,
+            admin_commands::delete_recordings,
+            admin_commands::get_audit_log,
+            admin_commands::get_audit_log_count,
+            admin_commands::get_system_health,
+            admin_commands::get_admin_queue_stats,
+            admin_commands::get_feature_flags,
+            admin_commands::set_feature_flag,
+            // v2.1.0: Learned Data Commands
+            admin_commands::list_learned_data,
+            admin_commands::count_learned_data,
+            admin_commands::edit_learned_data,
+            admin_commands::get_data_versions,
+            admin_commands::restore_data_version,
+            // v2.1.0: Tools Console Commands (M4)
+            admin_commands::get_job_history,
+            admin_commands::pause_ingest_queue,
+            admin_commands::get_database_stats,
+            // v2.1.0: Video Diagnostics Commands
+            commands::get_capture_diagnostics,
+            commands::test_live_capture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

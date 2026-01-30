@@ -22,13 +22,22 @@ buildNumber++;
 // Write new build number
 fs.writeFileSync(buildNumberPath, buildNumber.toString() + '\n');
 
-// Update tauri.conf.json
+// Read tauri.conf.json to get current version
 const tauriConfPath = path.join(__dirname, 'src-tauri', 'tauri.conf.json');
 const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
 
-// Update version in format 1.0.0-rc.BUILD
-tauriConf.version = `1.0.0-rc.${buildNumber}`;
+// Parse current version - preserve major.minor.patch if it's not an RC version
+const currentVersion = tauriConf.version;
+let newVersion;
 
-fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
-
-console.log(`✓ Version updated to ${tauriConf.version} (build #${buildNumber})`);
+// If version is 2.x.x or higher (not an RC), keep it as-is
+if (currentVersion && !currentVersion.includes('-rc.') && currentVersion.match(/^[2-9]\./)) {
+    newVersion = currentVersion;
+    console.log(`✓ Preserving major version ${newVersion} (build #${buildNumber})`);
+} else {
+    // Default behavior for RC versions
+    newVersion = `1.0.0-rc.${buildNumber}`;
+    tauriConf.version = newVersion;
+    fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
+    console.log(`✓ Version updated to ${newVersion} (build #${buildNumber})`);
+}

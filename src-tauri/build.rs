@@ -1,4 +1,4 @@
-// noFriction Meetings - Build Script
+// Nano Banana Meetings - Build Script
 // Configures Swift runtime linking and macOS frameworks for ScreenCaptureKit
 
 fn main() {

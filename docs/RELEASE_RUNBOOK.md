@@ -1,4 +1,4 @@
-# noFriction Meetings - macOS Release Runbook
+# Nano Banana Meetings - macOS Release Runbook
 
 ## Overview
 
@@ -56,7 +56,7 @@ base64 -i ~/Desktop/Developer_ID_Application.p12 | pbcopy
 ### Run Release Build
 
 ```bash
-cd /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings
+cd /Users/caseypotenzone/.gemini/antigravity/nano-banana-meetings
 
 # Full release (with notarization)
 ./scripts/release-macos.sh
@@ -69,7 +69,7 @@ SKIP_NOTARIZATION=1 ./scripts/release-macos.sh
 
 ```
 dist/
-├── noFriction-Meetings-1.0.0.dmg     # Final signed/notarized DMG
+├── Nano Banana-Meetings-1.0.0.dmg     # Final signed/notarized DMG
 └── release-manifest.json              # Build metadata
 ```
 
@@ -82,7 +82,7 @@ dist/
 ```bash
 # Verify .app bundle
 codesign --verify --deep --strict --verbose=2 \
-  "src-tauri/target/release/bundle/macos/noFriction Meetings.app"
+  "src-tauri/target/release/bundle/macos/Nano Banana Meetings.app"
 
 # Expected output: "valid on disk" and "satisfies its Designated Requirement"
 ```
@@ -90,7 +90,7 @@ codesign --verify --deep --strict --verbose=2 \
 ### 2. Verify DMG Signature
 
 ```bash
-codesign --verify --verbose=2 dist/noFriction-Meetings-1.0.0.dmg
+codesign --verify --verbose=2 dist/Nano Banana-Meetings-1.0.0.dmg
 ```
 
 ### 3. Gatekeeper Assessment
@@ -98,11 +98,11 @@ codesign --verify --verbose=2 dist/noFriction-Meetings-1.0.0.dmg
 ```bash
 # Check if Gatekeeper will allow the app
 spctl --assess --type execute --verbose=2 \
-  "src-tauri/target/release/bundle/macos/noFriction Meetings.app"
+  "src-tauri/target/release/bundle/macos/Nano Banana Meetings.app"
 
 # Check DMG
 spctl --assess --type open --context context:primary-signature --verbose=2 \
-  dist/noFriction-Meetings-1.0.0.dmg
+  dist/Nano Banana-Meetings-1.0.0.dmg
 ```
 
 ### 4. Check Quarantine (simulated download)
@@ -110,10 +110,10 @@ spctl --assess --type open --context context:primary-signature --verbose=2 \
 ```bash
 # Add quarantine attribute (simulates browser download)
 xattr -w com.apple.quarantine "0081;$(printf '%x' $(date +%s));Safari;$(uuidgen)" \
-  dist/noFriction-Meetings-1.0.0.dmg
+  dist/Nano Banana-Meetings-1.0.0.dmg
 
 # Check it's set
-xattr -l dist/noFriction-Meetings-1.0.0.dmg
+xattr -l dist/Nano Banana-Meetings-1.0.0.dmg
 
 # Should show quarantine attribute
 ```
@@ -121,7 +121,7 @@ xattr -l dist/noFriction-Meetings-1.0.0.dmg
 ### 5. Verify Notarization Staple
 
 ```bash
-xcrun stapler validate dist/noFriction-Meetings-1.0.0.dmg
+xcrun stapler validate dist/Nano Banana-Meetings-1.0.0.dmg
 # Expected: "The validate action worked!"
 ```
 
@@ -136,9 +136,9 @@ This simulates a real user download experience.
 1. Use a **clean macOS VM** or a Mac that has never seen this app
 2. Remove any existing installation:
    ```bash
-   rm -rf /Applications/noFriction\ Meetings.app
-   rm -rf ~/Library/Application\ Support/com.nofriction.meetings
-   tccutil reset All com.nofriction.meetings
+   rm -rf /Applications/Nano Banana\ Meetings.app
+   rm -rf ~/Library/Application\ Support/com.nano-banana.meetings
+   tccutil reset All com.nano-banana.meetings
    ```
 
 ### Test Steps
@@ -184,7 +184,7 @@ This simulates a real user download experience.
 
 ```bash
 # Calculate checksum
-shasum -a 256 dist/noFriction-Meetings-1.0.0.dmg
+shasum -a 256 dist/Nano Banana-Meetings-1.0.0.dmg
 
 # Compare with published checksum (from release-manifest.json or GitHub Release)
 ```

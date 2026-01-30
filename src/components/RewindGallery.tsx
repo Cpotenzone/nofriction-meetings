@@ -2,7 +2,7 @@
 // Full meeting review with frame gallery, timeline, and synced transcripts
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getSyncedTimeline, getFrameThumbnail } from "../lib/tauri";
+import { getSyncedTimeline, getFrameThumbnail, debugLog } from "../lib/tauri";
 import type { SyncedTimeline, TimelineFrame } from "../lib/tauri";
 
 interface RewindGalleryProps {
@@ -23,23 +23,38 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
 
     // Load timeline data
     useEffect(() => {
+        // Reset state immediately when meeting changes
+        setTimeline(null);
+        setSelectedFrame(null);
+        setFrameImage(null);
+        setThumbnails(new Map());
+
         if (!meetingId) {
-            setTimeline(null);
             return;
         }
 
         const loadTimeline = async () => {
+            debugLog(`🔄 RewindGallery: Loading timeline for meetingId: ${meetingId}`);
+            console.log("🔄 RewindGallery: Loading timeline for meetingId:", meetingId);
             setIsLoading(true);
             try {
                 const data = await getSyncedTimeline(meetingId);
+                debugLog(`✅ RewindGallery: Received timeline data with ${data.frames.length} frames`);
+                console.log("✅ RewindGallery: Received timeline data:", data);
                 setTimeline(data);
 
                 // Select first frame if available
                 if (data.frames.length > 0) {
+                    debugLog(`📸 RewindGallery: Selecting first frame of ${data.frames.length} frames`);
+                    console.log(`📸 RewindGallery: Selecting first frame of ${data.frames.length} frames`);
                     setSelectedFrame(data.frames[0]);
                     setCurrentTime(data.frames[0].timestamp_ms);
+                } else {
+                    debugLog("⚠️ RewindGallery: No frames found in timeline data");
+                    console.warn("⚠️ RewindGallery: No frames found in timeline data");
                 }
             } catch (err) {
+                debugLog(`❌ RewindGallery: Failed to load timeline: ${err}`);
                 console.error("Failed to load timeline:", err);
             } finally {
                 setIsLoading(false);
@@ -70,7 +85,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
             try {
                 const base64 = await getFrameThumbnail(selectedFrame.id, false);
                 if (base64) {
-                    setFrameImage(`data:image/png;base64,${base64}`);
+                    setFrameImage(`data:image/jpeg;base64,${base64}`);
                 }
             } catch (err) {
                 console.error("Failed to load frame:", err);
@@ -90,10 +105,12 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                     try {
                         const base64 = await getFrameThumbnail(frame.id, true);
                         if (base64) {
-                            setThumbnails((prev) => new Map(prev).set(frame.id, `data:image/png;base64,${base64}`));
+                            // debugLog(`framedata: ${base64.substring(0, 50)}...`);
+                            setThumbnails((prev) => new Map(prev).set(frame.id, `data:image/jpeg;base64,${base64}`));
                         }
                     } catch (err) {
-                        // Ignore thumbnail errors
+                        console.error(`Failed to load thumbnail for frame ${frame.id}:`, err);
+                        // debugLog(`❌ Failed to load thumbnail for frame ${frame.id}: ${err}`);
                     }
                 }
             }

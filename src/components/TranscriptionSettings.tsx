@@ -46,16 +46,16 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
         try {
             // Save keys if changed (length > 0 && not masked)
             if (deepgramKey && !deepgramKey.includes("****")) {
-                await invoke("set_deepgram_api_key", { apiKey: deepgramKey });
+                await invoke("set_deepgram_api_key", { api_key: deepgramKey });
             }
             if (geminiKey && !geminiKey.includes("****")) {
-                await invoke("set_gemini_api_key", { apiKey: geminiKey });
+                await invoke("set_gemini_api_key", { api_key: geminiKey });
             }
             if (gladiaKey && !gladiaKey.includes("****")) {
-                await invoke("set_gladia_api_key", { apiKey: gladiaKey });
+                await invoke("set_gladia_api_key", { api_key: gladiaKey });
             }
             if (googleKey && !googleKey.includes("****")) {
-                await invoke("set_google_stt_key", { keyJson: googleKey });
+                await invoke("set_google_stt_key", { key_json: googleKey });
             }
 
             // Set active provider

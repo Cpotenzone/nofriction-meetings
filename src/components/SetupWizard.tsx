@@ -88,7 +88,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         <div className="step-icon">🎙️</div>
                         <h2>Real-Time Transcription</h2>
                         <p className="step-description">
-                            noFriction uses Deepgram for live speech-to-text. You'll need a free API key.
+                            noFriction Meetings uses Deepgram for live speech-to-text. You'll need a free API key.
                         </p>
 
                         <div className="api-key-section">
@@ -128,7 +128,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         <div className="step-icon">⚙️</div>
                         <h2>Capture Settings</h2>
                         <p className="step-description">
-                            Configure what noFriction captures during your meetings.
+                            Configure what noFriction Meetings captures during your meetings.
                         </p>
 
                         <div className="capture-options">
@@ -242,7 +242,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         onClick={handleFinish}
                         disabled={isLoading}
                     >
-                        {isLoading ? 'Saving...' : 'Start Using noFriction'}
+                        {isLoading ? 'Saving...' : 'Start Using noFriction Meetings'}
                     </button>
                 )}
             </div>

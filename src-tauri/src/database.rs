@@ -300,7 +300,283 @@ impl DatabaseManager {
         .execute(&self.pool)
         .await;
 
-        log::info!("Database migrations completed");
+        // ═══════════════════════════════════════════════════════════════════════
+        // Phase 1: Stateful Screen Ingest - ScreenStates table
+        // ═══════════════════════════════════════════════════════════════════════
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS screen_states (
+                state_id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                start_ts TEXT NOT NULL,
+                end_ts TEXT,
+                app_name TEXT,
+                window_title TEXT,
+                phash TEXT NOT NULL,
+                delta_score REAL DEFAULT 0.0,
+                keyframe_path TEXT,
+                state_type TEXT DEFAULT 'other',
+                flags TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_screen_states_meeting ON screen_states(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_screen_states_start ON screen_states(start_ts)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // Phase 2: Stateful Screen Ingest - Episodes & Text Snapshots
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // DocumentEpisode: Continuous focus on app/window
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS document_episodes (
+                episode_id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                start_ts TEXT NOT NULL,
+                end_ts TEXT,
+                app_name TEXT,
+                window_title TEXT,
+                document_fingerprint TEXT,
+                state_count INTEGER DEFAULT 0,
+                total_duration_ms INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_episodes_meeting ON document_episodes(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_episodes_app ON document_episodes(app_name)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // Episode-State junction table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS episode_states (
+                episode_id TEXT NOT NULL,
+                state_id TEXT NOT NULL,
+                sequence_num INTEGER DEFAULT 0,
+                PRIMARY KEY (episode_id, state_id),
+                FOREIGN KEY (episode_id) REFERENCES document_episodes(episode_id) ON DELETE CASCADE,
+                FOREIGN KEY (state_id) REFERENCES screen_states(state_id) ON DELETE CASCADE
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // TextSnapshot: Text at meaningful boundaries
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS text_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                episode_id TEXT,
+                state_id TEXT,
+                ts TEXT NOT NULL,
+                text TEXT NOT NULL,
+                text_hash TEXT NOT NULL,
+                quality_score REAL DEFAULT 0.0,
+                source TEXT DEFAULT 'ocr',
+                word_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (episode_id) REFERENCES document_episodes(episode_id) ON DELETE CASCADE,
+                FOREIGN KEY (state_id) REFERENCES screen_states(state_id) ON DELETE CASCADE
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_episode ON text_snapshots(episode_id)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_hash ON text_snapshots(text_hash)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // TextPatch: Diff between snapshots
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS text_patches (
+                patch_id TEXT PRIMARY KEY,
+                episode_id TEXT NOT NULL,
+                from_snapshot_id TEXT,
+                to_snapshot_id TEXT,
+                from_text_hash TEXT NOT NULL,
+                to_text_hash TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                unified_diff TEXT NOT NULL,
+                lines_added INTEGER DEFAULT 0,
+                lines_removed INTEGER DEFAULT 0,
+                change_summary TEXT,
+                change_type TEXT DEFAULT 'content_changed',
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (episode_id) REFERENCES document_episodes(episode_id) ON DELETE CASCADE
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_patches_episode ON text_patches(episode_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // Phase 3: Stateful Screen Ingest - Timeline Events
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // MeetingTimelineEvent: Timeline events for meetings
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS meeting_timeline_events (
+                event_id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                app_name TEXT,
+                window_title TEXT,
+                duration_ms INTEGER,
+                episode_id TEXT,
+                state_id TEXT,
+                topic TEXT,
+                importance REAL DEFAULT 0.5,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
+                FOREIGN KEY (episode_id) REFERENCES document_episodes(episode_id) ON DELETE SET NULL
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_timeline_meeting ON meeting_timeline_events(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_timeline_ts ON meeting_timeline_events(ts)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_timeline_topic ON meeting_timeline_events(topic)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // TopicCluster: Topic groupings for meetings
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS topic_clusters (
+                topic_id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                start_ts TEXT NOT NULL,
+                end_ts TEXT,
+                event_count INTEGER DEFAULT 0,
+                total_duration_ms INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+        "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_topics_meeting ON topic_clusters(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // v2.1.0: Management Suite - Audit Log & Data Versioning
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Audit log for all admin actions
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                details TEXT,
+                bytes_affected INTEGER DEFAULT 0,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)")
+            .execute(&self.pool)
+            .await;
+        let _ =
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
+                .execute(&self.pool)
+                .await;
+
+        // Versioned edits for learned data
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS data_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                field_name TEXT NOT NULL,
+                previous_value TEXT,
+                new_value TEXT,
+                diff TEXT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_versions_entity ON data_versions(entity_type, entity_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        log::info!("Database migrations completed (v2.1 - Management Suite)");
         Ok(())
     }
 
@@ -685,6 +961,665 @@ impl DatabaseManager {
 
         Ok(row.0)
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 1: Stateful Screen Ingest - ScreenState methods
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Add a new screen state
+    pub async fn add_screen_state(
+        &self,
+        state_id: &str,
+        meeting_id: &str,
+        start_ts: DateTime<Utc>,
+        end_ts: Option<DateTime<Utc>>,
+        phash: &str,
+        delta_score: f32,
+        keyframe_path: Option<&str>,
+        state_type: &str,
+        flags_json: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO screen_states 
+            (state_id, meeting_id, start_ts, end_ts, phash, delta_score, keyframe_path, state_type, flags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(state_id)
+        .bind(meeting_id)
+        .bind(start_ts.to_rfc3339())
+        .bind(end_ts.map(|ts| ts.to_rfc3339()))
+        .bind(phash)
+        .bind(delta_score)
+        .bind(keyframe_path)
+        .bind(state_type)
+        .bind(flags_json)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update screen state end timestamp (extend duration)
+    pub async fn extend_screen_state(
+        &self,
+        state_id: &str,
+        end_ts: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE screen_states SET end_ts = ? WHERE state_id = ?")
+            .bind(end_ts.to_rfc3339())
+            .bind(state_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Update screen state with keyframe path after saving
+    pub async fn update_screen_state_keyframe(
+        &self,
+        state_id: &str,
+        keyframe_path: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE screen_states SET keyframe_path = ? WHERE state_id = ?")
+            .bind(keyframe_path)
+            .bind(state_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get screen states for a meeting
+    pub async fn get_screen_states(
+        &self,
+        meeting_id: &str,
+        limit: i32,
+    ) -> Result<Vec<ScreenStateRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT state_id, meeting_id, start_ts, end_ts, app_name, window_title,
+                   phash, delta_score, keyframe_path, state_type, flags, created_at
+            FROM screen_states 
+            WHERE meeting_id = ?
+            ORDER BY start_ts ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(meeting_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| ScreenStateRecord {
+                state_id: r.get("state_id"),
+                meeting_id: r.get("meeting_id"),
+                start_ts: r.get("start_ts"),
+                end_ts: r.try_get("end_ts").ok(),
+                app_name: r.try_get("app_name").ok(),
+                window_title: r.try_get("window_title").ok(),
+                phash: r.get("phash"),
+                delta_score: r.try_get("delta_score").unwrap_or(0.0),
+                keyframe_path: r.try_get("keyframe_path").ok(),
+                state_type: r
+                    .try_get("state_type")
+                    .unwrap_or_else(|_| "other".to_string()),
+                flags: r.try_get("flags").unwrap_or_else(|_| "{}".to_string()),
+            })
+            .collect())
+    }
+
+    /// Count screen states for a meeting
+    pub async fn count_screen_states(&self, meeting_id: &str) -> Result<i64, sqlx::Error> {
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM screen_states WHERE meeting_id = ?")
+            .bind(meeting_id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(row.0)
+    }
+
+    /// Get the latest screen state for a meeting
+    pub async fn get_latest_screen_state(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Option<ScreenStateRecord>, sqlx::Error> {
+        let row = sqlx::query(
+            r#"
+            SELECT state_id, meeting_id, start_ts, end_ts, app_name, window_title,
+                   phash, delta_score, keyframe_path, state_type, flags, created_at
+            FROM screen_states 
+            WHERE meeting_id = ?
+            ORDER BY start_ts DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(meeting_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| ScreenStateRecord {
+            state_id: r.get("state_id"),
+            meeting_id: r.get("meeting_id"),
+            start_ts: r.get("start_ts"),
+            end_ts: r.try_get("end_ts").ok(),
+            app_name: r.try_get("app_name").ok(),
+            window_title: r.try_get("window_title").ok(),
+            phash: r.get("phash"),
+            delta_score: r.try_get("delta_score").unwrap_or(0.0),
+            keyframe_path: r.try_get("keyframe_path").ok(),
+            state_type: r
+                .try_get("state_type")
+                .unwrap_or_else(|_| "other".to_string()),
+            flags: r.try_get("flags").unwrap_or_else(|_| "{}".to_string()),
+        }))
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 2: Document Episodes & Text Snapshots CRUD
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Create a new document episode
+    pub async fn create_episode(
+        &self,
+        episode_id: &str,
+        meeting_id: &str,
+        start_ts: DateTime<Utc>,
+        app_name: Option<&str>,
+        window_title: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO document_episodes 
+            (episode_id, meeting_id, start_ts, app_name, window_title)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(episode_id)
+        .bind(meeting_id)
+        .bind(start_ts.to_rfc3339())
+        .bind(app_name)
+        .bind(window_title)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update episode end time and stats
+    pub async fn update_episode(
+        &self,
+        episode_id: &str,
+        end_ts: DateTime<Utc>,
+        state_count: i32,
+        total_duration_ms: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE document_episodes 
+            SET end_ts = ?, state_count = ?, total_duration_ms = ?
+            WHERE episode_id = ?
+            "#,
+        )
+        .bind(end_ts.to_rfc3339())
+        .bind(state_count)
+        .bind(total_duration_ms)
+        .bind(episode_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Link a state to an episode
+    pub async fn link_state_to_episode(
+        &self,
+        episode_id: &str,
+        state_id: &str,
+        sequence_num: i32,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO episode_states (episode_id, state_id, sequence_num)
+            VALUES (?, ?, ?)
+            "#,
+        )
+        .bind(episode_id)
+        .bind(state_id)
+        .bind(sequence_num)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get episodes for a meeting
+    pub async fn get_episodes(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<DocumentEpisodeRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT episode_id, meeting_id, start_ts, end_ts, app_name, window_title,
+                   document_fingerprint, state_count, total_duration_ms
+            FROM document_episodes 
+            WHERE meeting_id = ?
+            ORDER BY start_ts ASC
+            "#,
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| DocumentEpisodeRecord {
+                episode_id: r.get("episode_id"),
+                meeting_id: r.get("meeting_id"),
+                start_ts: r.get("start_ts"),
+                end_ts: r.try_get("end_ts").ok(),
+                app_name: r.try_get("app_name").ok(),
+                window_title: r.try_get("window_title").ok(),
+                document_fingerprint: r.try_get("document_fingerprint").ok(),
+                state_count: r.try_get("state_count").unwrap_or(0),
+                total_duration_ms: r.try_get("total_duration_ms").unwrap_or(0),
+            })
+            .collect())
+    }
+
+    /// Add a text snapshot
+    pub async fn add_text_snapshot(
+        &self,
+        snapshot_id: &str,
+        episode_id: Option<&str>,
+        state_id: Option<&str>,
+        ts: DateTime<Utc>,
+        text: &str,
+        text_hash: &str,
+        quality_score: f32,
+        source: &str,
+    ) -> Result<(), sqlx::Error> {
+        let word_count = text.split_whitespace().count() as i32;
+
+        sqlx::query(
+            r#"
+            INSERT INTO text_snapshots 
+            (snapshot_id, episode_id, state_id, ts, text, text_hash, quality_score, source, word_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(snapshot_id)
+        .bind(episode_id)
+        .bind(state_id)
+        .bind(ts.to_rfc3339())
+        .bind(text)
+        .bind(text_hash)
+        .bind(quality_score)
+        .bind(source)
+        .bind(word_count)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get latest snapshot for an episode
+    pub async fn get_latest_snapshot(
+        &self,
+        episode_id: &str,
+    ) -> Result<Option<TextSnapshotRecord>, sqlx::Error> {
+        let row = sqlx::query(
+            r#"
+            SELECT snapshot_id, episode_id, state_id, ts, text, text_hash, 
+                   quality_score, source, word_count
+            FROM text_snapshots 
+            WHERE episode_id = ?
+            ORDER BY ts DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(episode_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| TextSnapshotRecord {
+            snapshot_id: r.get("snapshot_id"),
+            episode_id: r.try_get("episode_id").ok(),
+            state_id: r.try_get("state_id").ok(),
+            ts: r.get("ts"),
+            text: r.get("text"),
+            text_hash: r.get("text_hash"),
+            quality_score: r.try_get("quality_score").unwrap_or(0.0),
+            source: r.try_get("source").unwrap_or_else(|_| "ocr".to_string()),
+            word_count: r.try_get("word_count").unwrap_or(0),
+        }))
+    }
+
+    /// Add a text patch (diff between snapshots)
+    pub async fn add_text_patch(
+        &self,
+        patch_id: &str,
+        episode_id: &str,
+        from_snapshot_id: Option<&str>,
+        to_snapshot_id: Option<&str>,
+        from_text_hash: &str,
+        to_text_hash: &str,
+        ts: DateTime<Utc>,
+        unified_diff: &str,
+        lines_added: i32,
+        lines_removed: i32,
+        change_summary: Option<&str>,
+        change_type: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO text_patches 
+            (patch_id, episode_id, from_snapshot_id, to_snapshot_id, from_text_hash, 
+             to_text_hash, ts, unified_diff, lines_added, lines_removed, change_summary, change_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(patch_id)
+        .bind(episode_id)
+        .bind(from_snapshot_id)
+        .bind(to_snapshot_id)
+        .bind(from_text_hash)
+        .bind(to_text_hash)
+        .bind(ts.to_rfc3339())
+        .bind(unified_diff)
+        .bind(lines_added)
+        .bind(lines_removed)
+        .bind(change_summary)
+        .bind(change_type)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get patches for an episode
+    pub async fn get_patches(&self, episode_id: &str) -> Result<Vec<TextPatchRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT patch_id, episode_id, from_snapshot_id, to_snapshot_id,
+                   from_text_hash, to_text_hash, ts, unified_diff,
+                   lines_added, lines_removed, change_summary, change_type
+            FROM text_patches 
+            WHERE episode_id = ?
+            ORDER BY ts ASC
+            "#,
+        )
+        .bind(episode_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TextPatchRecord {
+                patch_id: r.get("patch_id"),
+                episode_id: r.get("episode_id"),
+                from_snapshot_id: r.try_get("from_snapshot_id").ok(),
+                to_snapshot_id: r.try_get("to_snapshot_id").ok(),
+                from_text_hash: r.get("from_text_hash"),
+                to_text_hash: r.get("to_text_hash"),
+                ts: r.get("ts"),
+                unified_diff: r.get("unified_diff"),
+                lines_added: r.try_get("lines_added").unwrap_or(0),
+                lines_removed: r.try_get("lines_removed").unwrap_or(0),
+                change_summary: r.try_get("change_summary").ok(),
+                change_type: r
+                    .try_get("change_type")
+                    .unwrap_or_else(|_| "content_changed".to_string()),
+            })
+            .collect())
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 3: Timeline Events CRUD
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Add a timeline event
+    pub async fn add_timeline_event(
+        &self,
+        event_id: &str,
+        meeting_id: &str,
+        ts: DateTime<Utc>,
+        event_type: &str,
+        title: &str,
+        description: Option<&str>,
+        app_name: Option<&str>,
+        window_title: Option<&str>,
+        duration_ms: Option<i64>,
+        episode_id: Option<&str>,
+        state_id: Option<&str>,
+        topic: Option<&str>,
+        importance: f32,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO meeting_timeline_events 
+            (event_id, meeting_id, ts, event_type, title, description, 
+             app_name, window_title, duration_ms, episode_id, state_id, topic, importance)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(event_id)
+        .bind(meeting_id)
+        .bind(ts.to_rfc3339())
+        .bind(event_type)
+        .bind(title)
+        .bind(description)
+        .bind(app_name)
+        .bind(window_title)
+        .bind(duration_ms)
+        .bind(episode_id)
+        .bind(state_id)
+        .bind(topic)
+        .bind(importance)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get timeline events for a meeting
+    pub async fn get_timeline_events(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<TimelineEventRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT event_id, meeting_id, ts, event_type, title, description,
+                   app_name, window_title, duration_ms, episode_id, state_id, topic, importance
+            FROM meeting_timeline_events 
+            WHERE meeting_id = ?
+            ORDER BY ts ASC
+            "#,
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TimelineEventRecord {
+                event_id: r.get("event_id"),
+                meeting_id: r.get("meeting_id"),
+                ts: r.get("ts"),
+                event_type: r.get("event_type"),
+                title: r.get("title"),
+                description: r.try_get("description").ok(),
+                app_name: r.try_get("app_name").ok(),
+                window_title: r.try_get("window_title").ok(),
+                duration_ms: r.try_get("duration_ms").ok(),
+                episode_id: r.try_get("episode_id").ok(),
+                state_id: r.try_get("state_id").ok(),
+                topic: r.try_get("topic").ok(),
+                importance: r.try_get("importance").unwrap_or(0.5),
+            })
+            .collect())
+    }
+
+    /// Add a topic cluster
+    pub async fn add_topic_cluster(
+        &self,
+        topic_id: &str,
+        meeting_id: &str,
+        name: &str,
+        description: Option<&str>,
+        start_ts: DateTime<Utc>,
+        end_ts: Option<DateTime<Utc>>,
+        event_count: i32,
+        total_duration_ms: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO topic_clusters 
+            (topic_id, meeting_id, name, description, start_ts, end_ts, event_count, total_duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(topic_id)
+        .bind(meeting_id)
+        .bind(name)
+        .bind(description)
+        .bind(start_ts.to_rfc3339())
+        .bind(end_ts.map(|ts| ts.to_rfc3339()))
+        .bind(event_count)
+        .bind(total_duration_ms)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get topic clusters for a meeting
+    pub async fn get_topic_clusters(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<TopicClusterRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT topic_id, meeting_id, name, description, start_ts, end_ts,
+                   event_count, total_duration_ms
+            FROM topic_clusters 
+            WHERE meeting_id = ?
+            ORDER BY start_ts ASC
+            "#,
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TopicClusterRecord {
+                topic_id: r.get("topic_id"),
+                meeting_id: r.get("meeting_id"),
+                name: r.get("name"),
+                description: r.try_get("description").ok(),
+                start_ts: r.get("start_ts"),
+                end_ts: r.try_get("end_ts").ok(),
+                event_count: r.try_get("event_count").unwrap_or(0),
+                total_duration_ms: r.try_get("total_duration_ms").unwrap_or(0),
+            })
+            .collect())
+    }
+}
+
+/// Screen state database record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenStateRecord {
+    pub state_id: String,
+    pub meeting_id: String,
+    pub start_ts: String,
+    pub end_ts: Option<String>,
+    pub app_name: Option<String>,
+    pub window_title: Option<String>,
+    pub phash: String,
+    pub delta_score: f32,
+    pub keyframe_path: Option<String>,
+    pub state_type: String,
+    pub flags: String,
+}
+
+/// Document episode database record (Phase 2)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentEpisodeRecord {
+    pub episode_id: String,
+    pub meeting_id: String,
+    pub start_ts: String,
+    pub end_ts: Option<String>,
+    pub app_name: Option<String>,
+    pub window_title: Option<String>,
+    pub document_fingerprint: Option<String>,
+    pub state_count: i32,
+    pub total_duration_ms: i64,
+}
+
+/// Text snapshot database record (Phase 2)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextSnapshotRecord {
+    pub snapshot_id: String,
+    pub episode_id: Option<String>,
+    pub state_id: Option<String>,
+    pub ts: String,
+    pub text: String,
+    pub text_hash: String,
+    pub quality_score: f32,
+    pub source: String,
+    pub word_count: i32,
+}
+
+/// Text patch database record (Phase 2)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextPatchRecord {
+    pub patch_id: String,
+    pub episode_id: String,
+    pub from_snapshot_id: Option<String>,
+    pub to_snapshot_id: Option<String>,
+    pub from_text_hash: String,
+    pub to_text_hash: String,
+    pub ts: String,
+    pub unified_diff: String,
+    pub lines_added: i32,
+    pub lines_removed: i32,
+    pub change_summary: Option<String>,
+    pub change_type: String,
+}
+
+/// Timeline event database record (Phase 3)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimelineEventRecord {
+    pub event_id: String,
+    pub meeting_id: String,
+    pub ts: String,
+    pub event_type: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub app_name: Option<String>,
+    pub window_title: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub episode_id: Option<String>,
+    pub state_id: Option<String>,
+    pub topic: Option<String>,
+    pub importance: f32,
+}
+
+/// Topic cluster database record (Phase 3)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicClusterRecord {
+    pub topic_id: String,
+    pub meeting_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub start_ts: String,
+    pub end_ts: Option<String>,
+    pub event_count: i32,
+    pub total_duration_ms: i64,
 }
 
 /// Frame record (for rewind timeline)
@@ -730,33 +1665,87 @@ pub struct TimelineTranscript {
 
 impl DatabaseManager {
     /// Get synced timeline for a meeting (frames + transcripts aligned)
+    /// Supports both legacy frames table and new screen_states table
     pub async fn get_synced_timeline(
         &self,
         meeting_id: &str,
     ) -> Result<Option<SyncedTimeline>, sqlx::Error> {
+        eprintln!(
+            "🔍 get_synced_timeline CALLED with meeting_id: {}",
+            meeting_id
+        );
+
         // Get meeting info
         let meeting = match self.get_meeting(meeting_id).await? {
             Some(m) => m,
-            None => return Ok(None),
+            None => {
+                eprintln!("❌ Meeting not found: {}", meeting_id);
+                return Ok(None);
+            }
         };
 
         let start_time = meeting.started_at;
         let duration = meeting.duration_seconds.unwrap_or(0);
 
-        // Get frames
-        let frames = self.get_frames(meeting_id, 10000).await?;
-        let timeline_frames: Vec<TimelineFrame> = frames
-            .into_iter()
-            .map(|f| {
-                let ms = (f.timestamp - start_time).num_milliseconds();
-                TimelineFrame {
-                    id: f.id.to_string(),
-                    frame_number: f.frame_number,
-                    timestamp_ms: ms.max(0),
-                    thumbnail_path: f.file_path,
-                }
-            })
-            .collect();
+        // Try to get frames from legacy frames table first
+        let legacy_frames = self.get_frames(meeting_id, 10000).await?;
+        eprintln!(
+            "📊 Legacy frames count: {} for meeting: {}",
+            legacy_frames.len(),
+            meeting_id
+        );
+
+        let timeline_frames: Vec<TimelineFrame> = if !legacy_frames.is_empty() {
+            // Use legacy frames table
+            eprintln!("✅ Using {} legacy frames", legacy_frames.len());
+            legacy_frames
+                .into_iter()
+                .map(|f| {
+                    let ms = (f.timestamp - start_time).num_milliseconds();
+                    TimelineFrame {
+                        id: f.id.to_string(),
+                        frame_number: f.frame_number,
+                        timestamp_ms: ms.max(0),
+                        thumbnail_path: f.file_path,
+                    }
+                })
+                .collect()
+        } else {
+            // Fallback to screen_states table (stateful capture)
+            log::info!(
+                "No legacy frames for meeting {}, checking screen_states",
+                meeting_id
+            );
+            let screen_states = self.get_screen_states(meeting_id, 10000).await?;
+            log::info!(
+                "Found {} screen_states for meeting {}",
+                screen_states.len(),
+                meeting_id
+            );
+            let frames: Vec<TimelineFrame> = screen_states
+                .into_iter()
+                .enumerate()
+                .filter(|(_, s)| s.keyframe_path.is_some()) // Only use states with keyframes
+                .map(|(idx, s)| {
+                    // Parse start_ts to calculate timestamp_ms
+                    let state_ts = DateTime::parse_from_rfc3339(&s.start_ts)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or(start_time);
+                    let ms = (state_ts - start_time).num_milliseconds();
+                    TimelineFrame {
+                        id: s.state_id,
+                        frame_number: idx as i64,
+                        timestamp_ms: ms.max(0),
+                        thumbnail_path: s.keyframe_path,
+                    }
+                })
+                .collect();
+            log::info!(
+                "Returning {} timeline frames from screen_states",
+                frames.len()
+            );
+            frames
+        };
 
         // Get transcripts
         let transcripts = self.get_transcripts(meeting_id).await?;

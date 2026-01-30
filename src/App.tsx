@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { HelpSection } from "./components/Help";
+import { debugLog } from "./lib/tauri";
 import "./App.css";
 import { Sidebar } from "./components/Sidebar";
 import { LiveTranscriptView } from "./components/LiveTranscript";
@@ -12,16 +14,19 @@ import { FullSettings } from "./components/FullSettings";
 import { KBSearch } from "./components/KBSearch";
 import { InsightsView } from "./components/InsightsView";
 import { EntitiesView } from "./components/EntitiesView";
+import { ActivityTimeline } from "./components/ActivityTimeline";
 import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { SetupWizard, useSetupRequired } from "./components/SetupWizard";
+import { AdminConsole } from "./components/AdminConsole";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 
-type Tab = "live" | "rewind" | "kb" | "insights" | "intel" | "settings";
+type Tab = "live" | "rewind" | "kb" | "insights" | "intel" | "timeline" | "admin" | "settings" | "help";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("live");
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [meetingListRefreshKey, setMeetingListRefreshKey] = useState(0);
 
   const recording = useRecording();
   const transcripts = useTranscripts(recording.meetingId);
@@ -126,6 +131,8 @@ function App() {
     try {
       if (recording.isRecording) {
         await recording.stopRecording();
+        // Refresh meeting list after recording stops
+        setMeetingListRefreshKey((k) => k + 1);
       } else {
         transcripts.clearLiveTranscripts();
         await recording.startRecording();
@@ -151,7 +158,7 @@ function App() {
           <>
             <div className="loading-spinner" style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: '#7c3aed' }} />
             <div>
-              <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 500 }}>Initializing noFriction...</p>
+              <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 500 }}>Initializing noFriction Meetings...</p>
               {isLongLoading && (
                 <p style={{ color: '#9ca3af', fontSize: 12, marginTop: '8px' }}>
                   Taking longer than expected. Please wait...
@@ -164,13 +171,20 @@ function App() {
     );
   }
 
-  const handleSelectMeeting = (meetingId: string) => {
+  // When a meeting is selected
+  const handleMeetingSelect = (meetingId: string) => {
+    debugLog(`Meeting selected: ${meetingId}`);
     setSelectedMeetingId(meetingId);
     transcripts.loadTranscripts(meetingId);
-    setActiveTab("rewind");
+
+    // Only switch to rewind if we're not already on timeline
+    // This preserves the current tab when selecting meetings from Timeline view
+    if (activeTab !== "timeline") {
+      setActiveTab("rewind");
+    }
   };
 
-  const rewindMeetingId = recording.isRecording ? recording.meetingId : selectedMeetingId;
+  const rewindMeetingId = selectedMeetingId || (recording.isRecording ? recording.meetingId : null);
 
   // Tab content titles
   const tabTitles: Record<Tab, string> = {
@@ -179,7 +193,10 @@ function App() {
     kb: "Knowledge Base",
     insights: "Activity Insights",
     intel: "Deep Intel",
+    timeline: "Activity Timeline",
+    admin: "Management Suite",
     settings: "Settings",
+    help: "Help & Documentation",
   };
 
   return (
@@ -218,7 +235,7 @@ function App() {
                     <div
                       key={idx}
                       className="meeting-card"
-                      onClick={() => handleSelectMeeting(result.meeting_id)}
+                      onClick={() => handleMeetingSelect(result.meeting_id)}
                     >
                       <div className="meeting-title">{result.meeting_title}</div>
                       <div className="meeting-date">
@@ -258,22 +275,34 @@ function App() {
 
           {/* Intel */}
           {activeTab === "intel" && <EntitiesView />}
+
+          {/* Activity Timeline */}
+          {activeTab === "timeline" && (
+            <ActivityTimeline meetingId={rewindMeetingId} />
+          )}
+
+          {/* Admin Console */}
+          {activeTab === "admin" && <AdminConsole />}
+          {activeTab === "help" && <HelpSection />}
         </div>
       </div>
 
-      {/* Right Panel - Meeting History */}
-      <div className="right-panel">
-        <div className="panel-header">
-          <h2 className="panel-title">Recent Meetings</h2>
+      {/* Right Panel - Meeting History (on Rewind and Timeline tabs) */}
+      {(activeTab === "rewind" || activeTab === "timeline") && (
+        <div className="right-panel">
+          <div className="panel-header">
+            <h2 className="panel-title">Recent Meetings</h2>
+          </div>
+          <div className="panel-body">
+            <MeetingHistory
+              onSelectMeeting={handleMeetingSelect}
+              selectedMeetingId={selectedMeetingId}
+              refreshKey={meetingListRefreshKey}
+              compact
+            />
+          </div>
         </div>
-        <div className="panel-body">
-          <MeetingHistory
-            onSelectMeeting={handleSelectMeeting}
-            selectedMeetingId={selectedMeetingId}
-            compact
-          />
-        </div>
-      </div>
+      )}
 
       {/* Command Palette */}
       <CommandPalette

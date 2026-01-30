@@ -9,15 +9,16 @@ interface MeetingHistoryProps {
     onSelectMeeting: (meetingId: string) => void;
     selectedMeetingId: string | null;
     compact?: boolean;
+    refreshKey?: number; // Increment to trigger reload
 }
 
-export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = false }: MeetingHistoryProps) {
+export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = false, refreshKey = 0 }: MeetingHistoryProps) {
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         loadMeetings();
-    }, []);
+    }, [refreshKey]); // Reload when refreshKey changes
 
     const loadMeetings = async () => {
         setIsLoading(true);
