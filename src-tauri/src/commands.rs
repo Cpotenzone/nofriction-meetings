@@ -2,7 +2,7 @@
 // Frontend-callable commands for recording, transcription, frames, and settings
 
 use crate::capture_engine::{
-    AudioBuffer, AudioDevice, CapturedFrame, MonitorInfo, RecordingStatus,
+    AudioBuffer, AudioDevice, CaptureMode, CapturedFrame, MonitorInfo, RecordingStatus,
 };
 use crate::database::{Frame, Meeting, SearchResult, SyncedTimeline, Transcript};
 use crate::settings::AppSettings;
@@ -1362,6 +1362,44 @@ pub async fn analyze_frames_batch(
 
     // Collect successful results
     Ok(results.into_iter().filter_map(|r| r.ok()).collect())
+}
+
+// =============================================================================
+// TheBrain Cloud API Commands
+// =============================================================================
+
+/// Authenticate with TheBrain API
+#[tauri::command]
+pub async fn thebrain_authenticate(
+    username: String,
+    password: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    // Authenticate
+    let token = crate::vlm_client::vlm_authenticate(&username, &password).await?;
+
+    // Store credentials in settings (for persistence)
+    let settings = state.settings.clone();
+    let _ = settings.set("thebrain_username", &username).await;
+    let _ = settings.set("thebrain_token", &token).await;
+    // Note: We don't store password in settings for security
+
+    log::info!("✅ TheBrain authentication successful");
+    Ok(true)
+}
+
+/// Check if TheBrain API is connected
+#[tauri::command]
+pub async fn check_thebrain(_state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(crate::vlm_client::vlm_is_authenticated() && crate::vlm_client::vlm_is_available().await)
+}
+
+/// Get available models from TheBrain API
+#[tauri::command]
+pub async fn get_thebrain_models(
+    _state: State<'_, AppState>,
+) -> Result<Vec<crate::vlm_client::ModelStatus>, String> {
+    crate::vlm_client::vlm_get_models().await
 }
 
 /// Configure Supabase connection
@@ -3711,5 +3749,119 @@ pub async fn stop_realtime_transcription(state: State<'_, AppState>) -> Result<(
     log::info!("🛑 Stopping real-time transcription");
     let tm = state.transcription_manager.clone();
     tm.stop();
+    Ok(())
+}
+
+// ============================================
+// Always-On Recording Commands
+// ============================================
+
+/// Get current capture mode
+#[tauri::command]
+pub async fn get_capture_mode(state: State<'_, AppState>) -> Result<String, String> {
+    let engine = state.capture_engine.read();
+    let mode = engine.get_mode();
+    Ok(format!("{:?}", mode))
+}
+
+/// Start ambient capture (screen only, 30s intervals, no audio)
+#[tauri::command]
+pub async fn start_ambient_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    log::info!("🌙 Starting ambient capture mode");
+    let engine = state.capture_engine.read();
+    engine.start_ambient(app)
+}
+
+/// Start meeting capture (full audio + screen, 2s intervals)
+#[tauri::command]
+pub async fn start_meeting_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    log::info!("🎙️ Starting meeting capture mode");
+    let engine = state.capture_engine.read();
+    engine.start_meeting(app)
+}
+
+/// Pause capture (stop all without ending session)
+#[tauri::command]
+pub async fn pause_capture(state: State<'_, AppState>) -> Result<(), String> {
+    log::info!("⏸️ Pausing capture");
+    let engine = state.capture_engine.read();
+    engine.pause()
+}
+
+/// Get Always-On settings
+#[derive(serde::Serialize)]
+pub struct AlwaysOnSettings {
+    pub enabled: bool,
+    pub idle_timeout_mins: u32,
+    pub ambient_interval_secs: u32,
+    pub meeting_interval_secs: u32,
+    pub retention_hours: u32,
+    pub calendar_detection: bool,
+    pub app_detection: bool,
+}
+
+#[tauri::command]
+pub async fn get_always_on_settings() -> Result<AlwaysOnSettings, String> {
+    // TODO: Load from persistent settings
+    Ok(AlwaysOnSettings {
+        enabled: false,
+        idle_timeout_mins: 5,
+        ambient_interval_secs: 30,
+        meeting_interval_secs: 2,
+        retention_hours: 24,
+        calendar_detection: true,
+        app_detection: true,
+    })
+}
+
+#[tauri::command]
+pub async fn set_always_on_enabled(enabled: bool) -> Result<(), String> {
+    log::info!("Setting Always-On enabled: {}", enabled);
+    // TODO: Persist and actually start/stop services
+    Ok(())
+}
+
+/// Get all running meeting apps
+#[tauri::command]
+pub async fn get_running_meeting_apps() -> Result<Vec<String>, String> {
+    use crate::meeting_trigger::MeetingTriggerEngine;
+
+    let default_apps = vec![
+        "zoom.us".to_string(),
+        "Zoom".to_string(),
+        "Google Meet".to_string(),
+        "Microsoft Teams".to_string(),
+        "Teams".to_string(),
+        "Slack".to_string(),
+        "Discord".to_string(),
+        "FaceTime".to_string(),
+        "Webex".to_string(),
+    ];
+
+    Ok(MeetingTriggerEngine::get_running_meeting_apps(
+        &default_apps,
+    ))
+}
+
+/// Check if audio is being used (microphone active)
+#[tauri::command]
+pub async fn check_audio_usage() -> Result<bool, String> {
+    use crate::meeting_trigger::MeetingTriggerEngine;
+    Ok(MeetingTriggerEngine::check_audio_usage())
+}
+
+/// Dismiss a meeting detection suggestion
+#[tauri::command]
+pub async fn dismiss_meeting_detection(
+    state: State<'_, AppState>,
+    detection_id: String,
+) -> Result<(), String> {
+    state.meeting_trigger.dismiss_detection(&detection_id);
     Ok(())
 }

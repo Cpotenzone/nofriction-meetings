@@ -27,6 +27,11 @@ pub mod menu_ids {
 
     pub const REFRESH_MODELS: &str = "refresh_models";
     pub const CLEAR_CACHE: &str = "clear_cache";
+
+    // Always-On Capture Mode (v2.5.0)
+    pub const MODE_AMBIENT: &str = "mode_ambient";
+    pub const MODE_MEETING: &str = "mode_meeting";
+    pub const MODE_PAUSE: &str = "mode_pause";
 }
 
 /// Build the application menu bar
@@ -142,6 +147,11 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )
         .separator()
         .item(&MenuItemBuilder::with_id(menu_ids::REFRESH_MODELS, "Refresh AI Models").build(app)?)
+        .separator()
+        // Always-On Recording Modes
+        .item(&MenuItemBuilder::with_id(menu_ids::MODE_AMBIENT, "🌙 Ambient Mode").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::MODE_MEETING, "🎙️ Meeting Mode").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::MODE_PAUSE, "⏸️ Pause Recording").build(app)?)
         .build()?;
 
     // Window menu
@@ -222,6 +232,16 @@ pub fn handle_menu_event(app: &AppHandle<Wry>, event_id: &str) {
         }
         menu_ids::EXPORT_PROMPTS => {
             emit_to_frontend(app, "menu:export_prompts");
+        }
+        // Always-On Capture Modes
+        menu_ids::MODE_AMBIENT => {
+            emit_to_frontend(app, "menu:mode_ambient");
+        }
+        menu_ids::MODE_MEETING => {
+            emit_to_frontend(app, "menu:mode_meeting");
+        }
+        menu_ids::MODE_PAUSE => {
+            emit_to_frontend(app, "menu:mode_pause");
         }
         _ => {
             log::debug!("Unhandled menu event: {}", event_id);

@@ -544,3 +544,42 @@ export async function markDecision(meetingId: string, decisionText: string, cont
     });
 }
 
+// ============================================
+// Always-On Recording Commands
+// ============================================
+
+export type CaptureMode = 'Ambient' | 'Meeting' | 'Paused';
+
+export interface AlwaysOnSettings {
+    enabled: boolean;
+    idle_timeout_mins: number;
+    ambient_interval_secs: number;
+    meeting_interval_secs: number;
+    retention_hours: number;
+    calendar_detection: boolean;
+    app_detection: boolean;
+}
+
+export async function getCaptureMode(): Promise<CaptureMode> {
+    return invoke<string>("get_capture_mode").then(mode => mode as CaptureMode);
+}
+
+export async function startAmbientCapture(): Promise<void> {
+    return invoke("start_ambient_capture");
+}
+
+export async function startMeetingCapture(): Promise<void> {
+    return invoke("start_meeting_capture");
+}
+
+export async function pauseCapture(): Promise<void> {
+    return invoke("pause_capture");
+}
+
+export async function getAlwaysOnSettings(): Promise<AlwaysOnSettings> {
+    return invoke<AlwaysOnSettings>("get_always_on_settings");
+}
+
+export async function setAlwaysOnEnabled(enabled: boolean): Promise<void> {
+    return invoke("set_always_on_enabled", { enabled });
+}

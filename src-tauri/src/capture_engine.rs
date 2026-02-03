@@ -37,6 +37,23 @@ pub enum AudioSource {
     System,
 }
 
+/// Capture mode for Always-On Recording
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CaptureMode {
+    /// Ambient mode: screen capture only at longer intervals (30s default), no audio
+    Ambient,
+    /// Meeting mode: full capture with audio and faster intervals (2s default)
+    Meeting,
+    /// Paused: no capture
+    Paused,
+}
+
+impl Default for CaptureMode {
+    fn default() -> Self {
+        CaptureMode::Paused
+    }
+}
+
 /// Recording status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordingStatus {
@@ -89,6 +106,10 @@ pub struct CaptureEngine {
     frame_interval_ms: Arc<RwLock<u32>>,
     audio_callback: Arc<RwLock<Option<AudioCallback>>>,
     frame_callback: Arc<RwLock<Option<FrameCallback>>>,
+    /// Current capture mode (Always-On Recording)
+    capture_mode: Arc<RwLock<CaptureMode>>,
+    /// Whether audio capture is enabled (off in Ambient mode)
+    audio_enabled: Arc<AtomicBool>,
 }
 
 impl CaptureEngine {
@@ -105,6 +126,8 @@ impl CaptureEngine {
             frame_interval_ms: Arc::new(RwLock::new(1000)), // Default: 1 screenshot per second
             audio_callback: Arc::new(RwLock::new(None)),
             frame_callback: Arc::new(RwLock::new(None)),
+            capture_mode: Arc::new(RwLock::new(CaptureMode::Paused)),
+            audio_enabled: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -120,7 +143,7 @@ impl CaptureEngine {
 
     /// Set the frame capture interval in milliseconds
     pub fn set_frame_interval(&self, interval_ms: u32) {
-        let clamped = interval_ms.clamp(100, 10000); // 100ms to 10s range
+        let clamped = interval_ms.clamp(100, 60000); // 100ms to 60s range
         *self.frame_interval_ms.write() = clamped;
         log::info!(
             "Frame interval set to {}ms ({:.1} FPS)",
@@ -129,7 +152,116 @@ impl CaptureEngine {
         );
     }
 
-    /// Start capture (screen + microphone + system audio)
+    /// Get current capture mode
+    pub fn get_mode(&self) -> CaptureMode {
+        *self.capture_mode.read()
+    }
+
+    /// Set capture mode (internal use)
+    fn set_mode(&self, mode: CaptureMode) {
+        *self.capture_mode.write() = mode;
+        log::info!("Capture mode set to: {:?}", mode);
+    }
+
+    /// Start ambient capture (screen only, no audio, 30s intervals)
+    pub fn start_ambient(&self, app: AppHandle) -> Result<(), String> {
+        if self.is_running.load(Ordering::SeqCst) {
+            // If already running, just switch mode
+            self.set_mode(CaptureMode::Ambient);
+            self.audio_enabled.store(false, Ordering::SeqCst);
+            *self.frame_interval_ms.write() = 30000; // 30 seconds
+            log::info!("Switched to Ambient mode (30s intervals, no audio)");
+            return Ok(());
+        }
+
+        // Start fresh in ambient mode
+        self.set_mode(CaptureMode::Ambient);
+        self.audio_enabled.store(false, Ordering::SeqCst);
+        *self.frame_interval_ms.write() = 30000; // 30 seconds
+
+        self.start_screen_only(app)?;
+        log::info!("🌙 Ambient capture started (screen only @ 30s)");
+        Ok(())
+    }
+
+    /// Start meeting capture (full audio + screen, 2s intervals)
+    pub fn start_meeting(&self, app: AppHandle) -> Result<(), String> {
+        if self.is_running.load(Ordering::SeqCst) {
+            // If already running, switch mode and enable audio
+            self.set_mode(CaptureMode::Meeting);
+            self.audio_enabled.store(true, Ordering::SeqCst);
+            *self.frame_interval_ms.write() = 2000; // 2 seconds
+
+            // Start audio capture if not running
+            if !MIC_RUNNING.load(Ordering::SeqCst) {
+                MIC_RUNNING.store(true, Ordering::SeqCst);
+                let mic_count = self.mic_audio_count.clone();
+                let audio_callback_mic = self.audio_callback.clone();
+                let selected_mic = self.selected_mic_id.read().clone();
+                std::thread::spawn(move || {
+                    Self::run_mic_capture(mic_count, audio_callback_mic, selected_mic);
+                });
+            }
+
+            log::info!("Switched to Meeting mode (2s intervals, audio enabled)");
+            return Ok(());
+        }
+
+        // Start fresh in meeting mode
+        self.set_mode(CaptureMode::Meeting);
+        self.audio_enabled.store(true, Ordering::SeqCst);
+        *self.frame_interval_ms.write() = 2000; // 2 seconds
+
+        self.start(app)?;
+        log::info!("🎙️ Meeting capture started (audio + screen @ 2s)");
+        Ok(())
+    }
+
+    /// Pause capture (stop everything but retain mode)
+    pub fn pause(&self) -> Result<(), String> {
+        self.set_mode(CaptureMode::Paused);
+        self.stop()?;
+        log::info!("⏸️ Capture paused");
+        Ok(())
+    }
+
+    /// Start screen capture only (for ambient mode)
+    fn start_screen_only(&self, _app: AppHandle) -> Result<(), String> {
+        if self.is_running.load(Ordering::SeqCst) {
+            return Err("Already recording".to_string());
+        }
+
+        self.is_running.store(true, Ordering::SeqCst);
+        self.video_frame_count.store(0, Ordering::SeqCst);
+        self.frame_number.store(0, Ordering::SeqCst);
+        *self.start_time.write() = Some(std::time::Instant::now());
+
+        // Start screen capture only
+        SCREEN_RUNNING.store(true, Ordering::SeqCst);
+        let frame_count = self.video_frame_count.clone();
+        let frame_number = self.frame_number.clone();
+        let frame_callback = self.frame_callback.clone();
+        let monitor_id = self.selected_monitor_id.read().clone();
+        let interval_ms = *self.frame_interval_ms.read();
+
+        log::info!(
+            "Starting ambient screen capture at {}ms interval",
+            interval_ms
+        );
+        tokio::spawn(async move {
+            Self::run_screen_capture(
+                frame_count,
+                frame_number,
+                frame_callback,
+                monitor_id,
+                interval_ms,
+            )
+            .await;
+        });
+
+        Ok(())
+    }
+
     pub fn start(&self, _app: AppHandle) -> Result<(), String> {
         if self.is_running.load(Ordering::SeqCst) {
             return Err("Already recording".to_string());

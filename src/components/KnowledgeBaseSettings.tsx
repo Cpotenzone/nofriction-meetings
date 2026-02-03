@@ -9,6 +9,7 @@ interface HealthStatus {
     pinecone: boolean | null;
     vlm: boolean | null;
     vlmVision: boolean | null;
+    thebrain: boolean | null;
 }
 
 export function KnowledgeBaseSettings() {
@@ -18,12 +19,18 @@ export function KnowledgeBaseSettings() {
     const [pineconeHost, setPineconeHost] = useState("");
     const [pineconeNamespace, setPineconeNamespace] = useState("");
 
+    // TheBrain credentials
+    const [thebrainEmail, setThebrainEmail] = useState("");
+    const [thebrainPassword, setThebrainPassword] = useState("");
+    const [thebrainError, setThebrainError] = useState<string | null>(null);
+
     // Status
     const [health, setHealth] = useState<HealthStatus>({
         supabase: null,
         pinecone: null,
         vlm: null,
         vlmVision: null,
+        thebrain: null,
     });
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -37,17 +44,37 @@ export function KnowledgeBaseSettings() {
     const checkHealth = async () => {
         setIsLoading(true);
         try {
-            const [supabase, pinecone, vlm, vlmVision] = await Promise.all([
+            const [supabase, pinecone, vlm, vlmVision, thebrain] = await Promise.all([
                 invoke<boolean>("check_supabase").catch(() => false),
                 invoke<boolean>("check_pinecone").catch(() => false),
                 invoke<boolean>("check_vlm").catch(() => false),
                 invoke<boolean>("check_vlm_vision").catch(() => false),
+                invoke<boolean>("check_thebrain").catch(() => false),
             ]);
-            setHealth({ supabase, pinecone, vlm, vlmVision });
+            setHealth({ supabase, pinecone, vlm, vlmVision, thebrain });
         } catch (err) {
             console.error("Health check failed:", err);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleThebrainLogin = async () => {
+        if (!thebrainEmail.trim() || !thebrainPassword.trim()) return;
+        setIsSaving(true);
+        setThebrainError(null);
+        try {
+            await invoke("thebrain_authenticate", {
+                username: thebrainEmail,
+                password: thebrainPassword
+            });
+            await checkHealth();
+            setThebrainPassword(""); // Clear password after success
+        } catch (err) {
+            console.error("TheBrain login failed:", err);
+            setThebrainError(String(err));
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -133,8 +160,8 @@ export function KnowledgeBaseSettings() {
 
                 <div className="health-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--spacing-md)" }}>
                     <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
-                        <span>VLM (Ollama)</span>
-                        <StatusBadge status={health.vlm} />
+                        <span>🧠 TheBrain Cloud</span>
+                        <StatusBadge status={health.thebrain} />
                     </div>
                     <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
                         <span>Vision Model</span>
@@ -158,6 +185,71 @@ export function KnowledgeBaseSettings() {
                         Pending frames: {pendingFrames}
                     </span>
                 </div>
+            </section>
+
+            {/* TheBrain Cloud VLM */}
+            <section className="settings-section">
+                <h3>
+                    <span className="icon">🧠</span>
+                    TheBrain Cloud AI
+                </h3>
+                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
+                    Connect to TheBrain Cloud for AI-powered screen analysis and knowledge extraction.
+                </p>
+
+                {health.thebrain ? (
+                    <div className="success-box" style={{
+                        padding: "var(--spacing-md)",
+                        background: "rgba(16, 185, 129, 0.1)",
+                        borderRadius: "8px",
+                        border: "1px solid rgba(16, 185, 129, 0.3)"
+                    }}>
+                        ✅ Connected to TheBrain Cloud
+                    </div>
+                ) : (
+                    <>
+                        <div className="settings-row">
+                            <div className="settings-label">
+                                <span className="label-main">Email</span>
+                            </div>
+                            <div className="settings-control">
+                                <input
+                                    type="email"
+                                    className="settings-input"
+                                    placeholder="your@email.com"
+                                    value={thebrainEmail}
+                                    onChange={(e) => setThebrainEmail(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="settings-row">
+                            <div className="settings-label">
+                                <span className="label-main">Password</span>
+                            </div>
+                            <div className="settings-control" style={{ display: "flex", gap: "var(--spacing-sm)" }}>
+                                <input
+                                    type="password"
+                                    className="settings-input"
+                                    placeholder="••••••••"
+                                    value={thebrainPassword}
+                                    onChange={(e) => setThebrainPassword(e.target.value)}
+                                />
+                                <button
+                                    className="settings-button"
+                                    onClick={handleThebrainLogin}
+                                    disabled={isSaving || !thebrainEmail.trim() || !thebrainPassword.trim()}
+                                >
+                                    {isSaving ? "Connecting..." : "Connect"}
+                                </button>
+                            </div>
+                        </div>
+                        {thebrainError && (
+                            <p style={{ color: "var(--error)", fontSize: "0.875rem", marginTop: "var(--spacing-sm)" }}>
+                                ⚠️ {thebrainError}
+                            </p>
+                        )}
+                    </>
+                )}
             </section>
 
             {/* Supabase Configuration */}

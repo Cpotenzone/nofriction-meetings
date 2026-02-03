@@ -51,6 +51,15 @@ pub mod audit_log;
 pub mod data_editor;
 pub mod storage_manager;
 
+// v2.5.0: Always-On Recording
+pub mod ambient_capture;
+pub mod continue_prompt;
+pub mod interaction_loop;
+pub mod meeting_trigger;
+pub mod power_manager;
+pub mod privacy_filter;
+pub mod tray_builder;
+
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -58,7 +67,11 @@ use tauri::{AppHandle, Emitter, Manager};
 use capture_engine::CaptureEngine;
 use database::DatabaseManager;
 // use deepgram_client::DeepgramClient; // Deprecated
+use ambient_capture::AmbientCaptureService;
+use interaction_loop::InteractionLoop;
+use meeting_trigger::MeetingTriggerEngine;
 use pinecone_client::PineconeClient;
+use power_manager::PowerManager;
 use prompt_manager::PromptManager;
 use settings::SettingsManager;
 use supabase_client::SupabaseClient;
@@ -85,10 +98,14 @@ pub struct AppState {
     pub metrics_collector: Arc<capture_metrics::MetricsCollector>,
     // Phase 2: Episode Building
     pub episode_builder: Arc<RwLock<episode_builder::EpisodeBuilder>>,
-    // Phase 3: Timeline Generation
     pub timeline_builder: Arc<timeline_builder::TimelineBuilder>,
     // v2.1.0: Apple Calendar Integration
     pub calendar_client: Arc<RwLock<calendar_client::CalendarClient>>,
+    // v2.5.0: Always-On Recording
+    pub power_manager: Arc<PowerManager>,
+    pub ambient_capture: Arc<AmbientCaptureService>,
+    pub meeting_trigger: Arc<MeetingTriggerEngine>,
+    pub interaction_loop: Arc<InteractionLoop>,
 }
 
 impl AppState {
@@ -259,6 +276,22 @@ impl AppState {
         let timeline_builder = timeline_builder::TimelineBuilder::new();
         log::info!("Stateful Screen Ingest initialized (Phase 1-3).");
 
+        // Initialize v2.5.0: Power Manager for Always-On Recording
+        log::info!("Initializing Power Manager...");
+        let power_manager = PowerManager::new();
+
+        // Initialize v2.5.0: Ambient Capture Service
+        log::info!("Initializing Ambient Capture Service...");
+        let ambient_capture = AmbientCaptureService::new();
+
+        // Initialize v2.5.0: Meeting Trigger Engine
+        log::info!("Initializing Meeting Trigger Engine...");
+        let meeting_trigger = MeetingTriggerEngine::new();
+
+        // Initialize v2.5.0: Interaction Loop for human check-ins
+        log::info!("Initializing Interaction Loop...");
+        let interaction_loop = InteractionLoop::new();
+
         Ok(Self {
             capture_engine: Arc::new(RwLock::new(capture)),
             // deepgram_client: Arc::new(RwLock::new(deepgram)),
@@ -277,6 +310,10 @@ impl AppState {
             episode_builder: Arc::new(RwLock::new(episode_builder)),
             timeline_builder: Arc::new(timeline_builder),
             calendar_client: Arc::new(RwLock::new(calendar_client::CalendarClient::new())),
+            power_manager: Arc::new(power_manager),
+            ambient_capture: Arc::new(ambient_capture),
+            meeting_trigger: Arc::new(meeting_trigger),
+            interaction_loop: Arc::new(interaction_loop),
         })
     }
 }
@@ -372,6 +409,13 @@ pub fn run() {
             app.set_menu(menu)?;
             log::info!("Native macOS menu bar created");
 
+            // Create system tray with context menu
+            if let Err(e) = tray_builder::create_tray(app.handle()) {
+                log::error!("Failed to create system tray: {}", e);
+            } else {
+                log::info!("System tray with context menu created");
+            }
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -423,6 +467,10 @@ pub fn run() {
             commands::check_vlm_vision,
             commands::analyze_frame,
             commands::analyze_frames_batch,
+            // TheBrain Cloud API Commands
+            commands::thebrain_authenticate,
+            commands::check_thebrain,
+            commands::get_thebrain_models,
             commands::configure_supabase,
             commands::check_supabase,
             commands::sync_activity_to_supabase,
@@ -556,6 +604,16 @@ pub fn run() {
             // v2.1.0: Video Diagnostics Commands
             commands::get_capture_diagnostics,
             commands::test_live_capture,
+            // v2.5.0: Always-On Recording Commands
+            commands::get_capture_mode,
+            commands::start_ambient_capture,
+            commands::start_meeting_capture,
+            commands::pause_capture,
+            commands::get_always_on_settings,
+            commands::set_always_on_enabled,
+            commands::get_running_meeting_apps,
+            commands::check_audio_usage,
+            commands::dismiss_meeting_detection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

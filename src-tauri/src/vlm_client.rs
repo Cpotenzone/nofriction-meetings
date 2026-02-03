@@ -1,13 +1,42 @@
-//! VLM Client for Centralized qwen2.5vl API
+//! VLM Client for TheBrain Cloud API
 //!
-//! Uses Ollama-compatible REST API via SSH tunnel with bearer token authentication.
-//! Models: qwen2.5vl:7b (primary), qwen2.5vl:3b (fallback)
+//! Uses TheBrain API at https://7wk6vrq9achr2djw.caas.targon.com
+//! Models: qwen3-vl:8b (vision), qwen3:8b (text), qwen2.5-coder:7b (code)
 
 use base64::Engine;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
+
+/// TheBrain API base URL
+const THEBRAIN_API_URL: &str = "https://7wk6vrq9achr2djw.caas.targon.com";
+
+/// Token response from /api/token
+#[derive(Debug, Deserialize)]
+struct TokenResponse {
+    access_token: String,
+    token_type: String,
+}
+
+/// Model status from /api/models/status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelStatus {
+    pub id: String,
+    pub loaded: bool,
+    #[serde(default)]
+    pub size_gb: Option<f32>,
+    #[serde(default)]
+    pub preload: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsStatusResponse {
+    models: Vec<ModelStatus>,
+    loaded_models: Vec<String>,
+    #[serde(default)]
+    gpu_used_gb: Option<f32>,
+}
 
 /// Activity context extracted from a screenshot by VLM
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,15 +114,17 @@ struct ModelInfo {
     name: String,
 }
 
-/// VLM Client for centralized API via SSH tunnel
+/// VLM Client for TheBrain Cloud API
 pub struct VLMClient {
-    /// Base URL (e.g., http://localhost:8080)
+    /// Base URL (TheBrain API)
     base_url: Arc<RwLock<String>>,
-    /// Bearer token for authentication
+    /// Bearer token for authentication (JWT from /api/token)
     bearer_token: Arc<RwLock<Option<String>>>,
-    /// Primary model (qwen2.5vl:7b)
+    /// Stored credentials for re-authentication
+    credentials: Arc<RwLock<Option<(String, String)>>>,
+    /// Primary model (qwen3-vl:8b for vision)
     model_primary: Arc<RwLock<String>>,
-    /// Fallback model (qwen2.5vl:3b)
+    /// Fallback model (qwen2.5vl:7b)
     model_fallback: Arc<RwLock<String>>,
     /// HTTP client with timeout
     client: reqwest::Client,
@@ -102,17 +133,112 @@ pub struct VLMClient {
 impl VLMClient {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(180)) // TheBrain has 180s image timeout
             .build()
             .unwrap_or_default();
 
         Self {
-            base_url: Arc::new(RwLock::new("http://localhost:8080".to_string())),
+            base_url: Arc::new(RwLock::new(THEBRAIN_API_URL.to_string())),
             bearer_token: Arc::new(RwLock::new(None)),
-            model_primary: Arc::new(RwLock::new("qwen2.5vl:7b".to_string())),
-            model_fallback: Arc::new(RwLock::new("qwen2.5vl:3b".to_string())),
+            credentials: Arc::new(RwLock::new(None)),
+            model_primary: Arc::new(RwLock::new("qwen3-vl:8b".to_string())),
+            model_fallback: Arc::new(RwLock::new("qwen2.5vl:7b".to_string())),
             client,
         }
+    }
+
+    /// Authenticate with TheBrain API using username/password
+    pub async fn authenticate(&self, username: &str, password: &str) -> Result<String, String> {
+        let url = format!("{}/api/token", self.base_url.read());
+
+        let form_data = format!(
+            "username={}&password={}",
+            urlencoding::encode(username),
+            urlencoding::encode(password)
+        );
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(form_data)
+            .send()
+            .await
+            .map_err(|e| format!("Authentication request failed: {}", e))?;
+
+        if resp.status() == 401 {
+            return Err("Invalid username or password".to_string());
+        }
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Authentication failed: {}", body));
+        }
+
+        let token_resp: TokenResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse token response: {}", e))?;
+
+        // Store token and credentials
+        *self.bearer_token.write() = Some(token_resp.access_token.clone());
+        *self.credentials.write() = Some((username.to_string(), password.to_string()));
+
+        log::info!("✅ Successfully authenticated with TheBrain API");
+        Ok(token_resp.access_token)
+    }
+
+    /// Re-authenticate using stored credentials (for token refresh)
+    pub async fn reauthenticate(&self) -> Result<(), String> {
+        let creds = self.credentials.read().clone();
+        if let Some((username, password)) = creds {
+            self.authenticate(&username, &password).await?;
+            Ok(())
+        } else {
+            Err("No stored credentials for re-authentication".to_string())
+        }
+    }
+
+    /// Get available models from TheBrain API
+    pub async fn get_models(&self) -> Result<Vec<ModelStatus>, String> {
+        let url = format!("{}/api/models/status", self.base_url.read());
+
+        let mut request = self.client.get(&url);
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        let resp = request
+            .send()
+            .await
+            .map_err(|e| format!("Failed to get models: {}", e))?;
+
+        if resp.status() == 401 {
+            // Try re-authentication then retry once
+            self.reauthenticate().await?;
+
+            let url2 = format!("{}/api/models/status", self.base_url.read());
+            let mut req2 = self.client.get(&url2);
+            if let Some(auth) = self.get_auth_header() {
+                req2 = req2.header("Authorization", auth);
+            }
+            let resp2 = req2
+                .send()
+                .await
+                .map_err(|e| format!("Retry failed: {}", e))?;
+            let status: ModelsStatusResponse = resp2
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse models response: {}", e))?;
+            return Ok(status.models);
+        }
+
+        let status: ModelsStatusResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse models response: {}", e))?;
+
+        Ok(status.models)
     }
 
     /// Configure the client
@@ -150,9 +276,9 @@ impl VLMClient {
             .map(|t| format!("Bearer {}", t))
     }
 
-    /// Check if the API is available
+    /// Check if the API is available (uses TheBrain /api/models/status)
     pub async fn is_available(&self) -> bool {
-        let url = format!("{}/api/tags", self.base_url.read());
+        let url = format!("{}/api/models/status", self.base_url.read());
 
         let mut request = self.client.get(&url);
         if let Some(auth) = self.get_auth_header() {
@@ -160,44 +286,30 @@ impl VLMClient {
         }
 
         match request.send().await {
-            Ok(resp) => resp.status().is_success(),
+            Ok(resp) => {
+                if resp.status() == 401 {
+                    log::warn!("TheBrain API: Authentication required");
+                    return false;
+                }
+                resp.status().is_success()
+            }
             Err(e) => {
-                log::warn!("VLM API not available: {}", e);
+                log::warn!("TheBrain API not available: {}", e);
                 false
             }
         }
     }
 
-    /// Check if vision models are available
+    /// Check if vision models are available (TheBrain API)
     pub async fn has_vision_model(&self) -> Result<bool, String> {
-        let url = format!("{}/api/tags", self.base_url.read());
+        let models = self.get_models().await?;
 
-        let mut request = self.client.get(&url);
-        if let Some(auth) = self.get_auth_header() {
-            request = request.header("Authorization", auth);
-        }
+        // Check for any VL (vision-language) model
+        let has_vision = models
+            .iter()
+            .any(|m| m.id.contains("vl") || m.id.contains("-vl:") || m.id.contains("vision"));
 
-        let resp = request
-            .send()
-            .await
-            .map_err(|e| format!("Failed to connect to VLM API: {}", e))?;
-
-        if resp.status() == 401 {
-            return Err("Unauthorized: Invalid or missing bearer token".to_string());
-        }
-
-        let tags: TagsResponse = resp
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse API response: {}", e))?;
-
-        let primary = self.model_primary.read().clone();
-        let has_model = tags.models.iter().any(|m| {
-            m.name
-                .starts_with(&primary.split(':').next().unwrap_or(&primary))
-        });
-
-        Ok(has_model)
+        Ok(has_vision)
     }
 
     /// Analyze a screenshot using VLM with retry logic
@@ -434,6 +546,7 @@ impl Clone for VLMClient {
         Self {
             base_url: Arc::clone(&self.base_url),
             bearer_token: Arc::clone(&self.bearer_token),
+            credentials: Arc::clone(&self.credentials),
             model_primary: Arc::clone(&self.model_primary),
             model_fallback: Arc::clone(&self.model_fallback),
             client: self.client.clone(),
@@ -492,4 +605,19 @@ pub async fn vlm_analyze_frames_batch(
 /// Simple text chat (no image)
 pub async fn vlm_chat(prompt: &str) -> Result<String, String> {
     get_client().chat(prompt).await
+}
+
+/// Authenticate with TheBrain API
+pub async fn vlm_authenticate(username: &str, password: &str) -> Result<String, String> {
+    get_client().authenticate(username, password).await
+}
+
+/// Get available models from TheBrain API
+pub async fn vlm_get_models() -> Result<Vec<ModelStatus>, String> {
+    get_client().get_models().await
+}
+
+/// Check if authenticated (has valid bearer token)
+pub fn vlm_is_authenticated() -> bool {
+    get_client().bearer_token.read().is_some()
 }

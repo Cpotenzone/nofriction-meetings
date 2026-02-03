@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCaptureMode, type CaptureMode } from '../lib/tauri';
 
 // Types
 interface MeetingState {
@@ -81,6 +82,22 @@ export function MeetingIntelPanel({
     const [liveInsights, setLiveInsights] = useState<LiveInsightEvent[]>([]);
     const [showTenSecond, setShowTenSecond] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [captureMode, setCaptureMode] = useState<CaptureMode>('Paused');
+
+    // Fetch capture mode periodically
+    useEffect(() => {
+        const fetchCaptureMode = async () => {
+            try {
+                const mode = await getCaptureMode();
+                setCaptureMode(mode);
+            } catch (err) {
+                console.error('Failed to get capture mode:', err);
+            }
+        };
+        fetchCaptureMode();
+        const interval = setInterval(fetchCaptureMode, 5000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Fetch meeting state periodically
     useEffect(() => {
@@ -207,12 +224,20 @@ export function MeetingIntelPanel({
             <div className="intel-header">
                 <div className="intel-title-row">
                     <h2>{meetingState?.title || 'Meeting Intelligence'}</h2>
-                    <span
-                        className="intel-mode-pill"
-                        style={{ backgroundColor: getModeColor() }}
-                    >
-                        {getModeLabel()}
-                    </span>
+                    <div className="intel-badges">
+                        <span
+                            className={`capture-mode-badge ${captureMode.toLowerCase()}`}
+                            title={`Always-On: ${captureMode}`}
+                        >
+                            {captureMode === 'Meeting' ? '🎙️' : captureMode === 'Ambient' ? '🌙' : '⏸️'}
+                        </span>
+                        <span
+                            className="intel-mode-pill"
+                            style={{ backgroundColor: getModeColor() }}
+                        >
+                            {getModeLabel()}
+                        </span>
+                    </div>
                 </div>
 
                 {meetingState && meetingState.minutes_since_start > 0 && (

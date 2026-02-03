@@ -18,6 +18,7 @@ import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { SetupWizard, useSetupRequired } from "./components/SetupWizard";
 import { AdminConsole } from "./components/AdminConsole";
 import { MeetingIntelPanel } from "./components/MeetingIntelPanel";
+import { MeetingDetectionBanner } from "./components/MeetingDetectionBanner";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 
@@ -41,11 +42,24 @@ function App() {
       listeners.push(await listen("menu:search", () => setActiveTab("kb")));
       listeners.push(await listen("menu:insights", () => setActiveTab("insights")));
       listeners.push(await listen("menu:settings", () => setActiveTab("settings")));
+      // Tray menu events
+      listeners.push(await listen("tray:start_recording", async () => {
+        if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        }
+      }));
+      listeners.push(await listen("tray:stop_recording", async () => {
+        if (recording.isRecording) {
+          await recording.stopRecording();
+          setMeetingListRefreshKey((k) => k + 1);
+        }
+      }));
     };
 
     setupListeners();
     return () => listeners.forEach(unlisten => unlisten());
-  }, []);
+  }, [recording, transcripts]);
 
   // Hooks must be unconditional
   const [isBackendReady, setIsBackendReady] = useState(false);
@@ -218,6 +232,16 @@ function App() {
             {recording.error && `⚠️ ${recording.error}`}
           </p>
         </div>
+
+        {/* Meeting Detection Banner - shows when meetings detected */}
+        {!recording.isRecording && (
+          <MeetingDetectionBanner
+            onStartRecording={async () => {
+              transcripts.clearLiveTranscripts();
+              await recording.startRecording();
+            }}
+          />
+        )}
 
         <div className="content-body">
           {/* Live View */}
