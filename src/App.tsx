@@ -13,11 +13,11 @@ import { RewindGallery } from "./components/RewindGallery";
 import { FullSettings } from "./components/FullSettings";
 import { KBSearch } from "./components/KBSearch";
 import { InsightsView } from "./components/InsightsView";
-import { EntitiesView } from "./components/EntitiesView";
 import { ActivityTimeline } from "./components/ActivityTimeline";
 import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { SetupWizard, useSetupRequired } from "./components/SetupWizard";
 import { AdminConsole } from "./components/AdminConsole";
+import { MeetingIntelPanel } from "./components/MeetingIntelPanel";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 
@@ -274,7 +274,13 @@ function App() {
           {activeTab === "settings" && <FullSettings />}
 
           {/* Intel */}
-          {activeTab === "intel" && <EntitiesView />}
+          {activeTab === "intel" && (
+            <MeetingIntelPanel
+              meetingId={selectedMeetingId || (recording.isRecording && recording.meetingId ? recording.meetingId : undefined)}
+              isRecording={recording.isRecording}
+              onStartRecording={handleToggleRecording}
+            />
+          )}
 
           {/* Activity Timeline */}
           {activeTab === "timeline" && (

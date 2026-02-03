@@ -1162,6 +1162,11 @@ pub async fn get_topic_clusters(
 }
 
 // ============================================
+// Intelligence / Meeting State Commands
+// ============================================
+use crate::meeting_intel::{CalendarEvent, MeetingState, MeetingStateResolver};
+
+// ============================================
 // AI Commands (Ollama Integration)
 // ============================================
 
@@ -2626,11 +2631,32 @@ pub async fn test_prompt(
 
 // ============================================================================
 // Meeting Intelligence Commands
-// ============================================================================
+// ============================================
+// Calendar Commands
+// ============================================
+
+use crate::calendar_client::{CalendarClient, CalendarEventNative};
+
+/// Get calendar events for today/tomorrow
+#[tauri::command]
+pub async fn get_calendar_events(
+    state: State<'_, AppState>,
+) -> Result<Vec<CalendarEventNative>, String> {
+    // Request access if needed (static method, no instance needed)
+    if !CalendarClient::request_access().await? {
+        return Err("Calendar access denied".to_string());
+    }
+
+    let client = state.calendar_client.read();
+    client.fetch_events()
+}
+
+// ============================================
+// Intelligence / Meeting State Commands
+// ============================================
 
 use crate::catch_up_agent::{CatchUpAgent, CatchUpCapsule, MeetingMetadata, TranscriptSegment};
 use crate::live_intel_agent::{LiveInsightEvent, LiveIntelAgent};
-use crate::meeting_intel::{CalendarEvent, MeetingState, MeetingStateResolver};
 
 /// Get current meeting state (mode, timing, confidence)
 #[tauri::command]
@@ -2644,14 +2670,33 @@ pub async fn get_meeting_state(state: State<'_, AppState>) -> Result<MeetingStat
         engine.get_status().is_recording
     };
 
-    // TODO: Integrate with calendar API
-    // For now, use empty calendar events
-    let calendar_events: Vec<CalendarEvent> = Vec::new();
+    // Get calendar events from shared client
+    // We only try to fetch if we have access, otherwise we proceed with empty list
+    // to avoid blocking or errors during state polling.
+    let calendar_events: Vec<CalendarEvent> = {
+        let client = state.calendar_client.read();
+        if let Ok(events) = client.fetch_events() {
+            events
+                .into_iter()
+                .map(|e| CalendarEvent {
+                    id: e.event_id,
+                    title: e.title,
+                    start_time: e.start_time,
+                    end_time: e.end_time,
+                    attendees: e.attendees,
+                    description: e.notes,
+                    meeting_url: e.meeting_url,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
 
-    // TODO: Get active window from system
+    // Placeholder for future active window detection
     let active_window: Option<&str> = None;
 
-    // TODO: Check if audio is active
+    // Audio activity is currently tied to transcription status
     let audio_active = is_transcribing;
 
     let meeting_state = resolver.resolve(
@@ -3421,45 +3466,6 @@ pub async fn request_calendar_access() -> Result<bool, String> {
     }
 }
 
-/// Get calendar events for today
-#[tauri::command]
-pub async fn get_calendar_events(
-    _start_date: String,
-    _end_date: String,
-) -> Result<Vec<serde_json::Value>, String> {
-    #[cfg(target_os = "macos")]
-    {
-        use crate::calendar_client::CalendarClient;
-
-        let client = CalendarClient::new();
-        let events = client.fetch_events()?;
-
-        // Convert to JSON-serializable format
-        let json_events: Vec<serde_json::Value> = events
-            .iter()
-            .map(|e| {
-                serde_json::json!({
-                    "id": e.event_id,
-                    "title": e.title,
-                    "start_time": e.start_time.to_rfc3339(),
-                    "end_time": e.end_time.to_rfc3339(),
-                    "location": e.location,
-                    "notes": e.notes,
-                    "is_all_day": e.is_all_day,
-                    "calendar_name": e.calendar_name,
-                })
-            })
-            .collect();
-
-        Ok(json_events)
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok(vec![])
-    }
-}
-
 /// Get the current/active meeting from calendar (if any)
 #[tauri::command]
 pub async fn get_current_meeting() -> Result<Option<serde_json::Value>, String> {
@@ -3639,9 +3645,7 @@ pub struct TestCaptureResult {
 
 /// Capture a single test frame for diagnostics
 #[tauri::command]
-pub async fn test_live_capture(
-    _state: State<'_, AppState>,
-) -> Result<TestCaptureResult, String> {
+pub async fn test_live_capture(_state: State<'_, AppState>) -> Result<TestCaptureResult, String> {
     use xcap::Monitor;
 
     // Get primary monitor
@@ -3687,4 +3691,25 @@ pub async fn test_live_capture(
         monitor_name,
         dimensions_match,
     })
+}
+
+/// Start real-time transcription (without recording/saving to disk)
+#[tauri::command]
+pub async fn start_realtime_transcription(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    log::info!("🎤 Starting real-time transcription for: {}", meeting_id);
+    let tm = state.transcription_manager.clone();
+    tm.start();
+    Ok(())
+}
+
+/// Stop real-time transcription
+#[tauri::command]
+pub async fn stop_realtime_transcription(state: State<'_, AppState>) -> Result<(), String> {
+    log::info!("🛑 Stopping real-time transcription");
+    let tm = state.transcription_manager.clone();
+    tm.stop();
+    Ok(())
 }

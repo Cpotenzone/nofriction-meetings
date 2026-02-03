@@ -87,6 +87,8 @@ pub struct AppState {
     pub episode_builder: Arc<RwLock<episode_builder::EpisodeBuilder>>,
     // Phase 3: Timeline Generation
     pub timeline_builder: Arc<timeline_builder::TimelineBuilder>,
+    // v2.1.0: Apple Calendar Integration
+    pub calendar_client: Arc<RwLock<calendar_client::CalendarClient>>,
 }
 
 impl AppState {
@@ -274,6 +276,7 @@ impl AppState {
             metrics_collector: Arc::new(metrics_collector),
             episode_builder: Arc::new(RwLock::new(episode_builder)),
             timeline_builder: Arc::new(timeline_builder),
+            calendar_client: Arc::new(RwLock::new(calendar_client::CalendarClient::new())),
         })
     }
 }
@@ -483,6 +486,10 @@ pub fn run() {
             commands::get_live_insights,
             commands::pin_insight,
             commands::mark_decision,
+            // Calendar
+            commands::get_calendar_events,
+            // Realtime Transcription (Deepgram)
+            commands::start_realtime_transcription,
             // Video Recording Commands
             commands::start_video_recording,
             commands::stop_video_recording,

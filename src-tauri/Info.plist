@@ -51,6 +51,10 @@
     <key>NSScreenCaptureUsageDescription</key>
     <string>noFriction Meetings needs screen recording access to capture meeting content and system audio from apps like Zoom and Teams.</string>
     
+    <!-- Calendar - for meeting detection -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
+    
     <!-- URL Schemes (optional) -->
     <key>CFBundleURLTypes</key>
     <array>

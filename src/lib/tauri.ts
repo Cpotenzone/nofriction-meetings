@@ -446,3 +446,101 @@ export async function debugLog(message: string): Promise<void> {
     return invoke("debug_log", { message });
 }
 
+// AI / LLM Commands
+export async function aiChat(presetId: string, message: string, meetingId?: string): Promise<string> {
+    return invoke<string>("ai_chat", {
+        preset_id: presetId,
+        message,
+        meeting_id: meetingId
+    });
+}
+
+// ============================================
+// Intelligence / Meeting State Commands
+// ============================================
+
+export interface MeetingState {
+    meeting_id: string | null;
+    mode: 'pre' | 'live' | 'catchup';
+    minutes_since_start: number;
+    minutes_until_start: number;
+    confidence: number;
+    title: string;
+    attendees: string[];
+    is_transcript_running: boolean;
+    is_meeting_window_active: boolean;
+}
+
+export interface InsightItem {
+    text: string;
+    importance: number;
+}
+
+export interface Decision {
+    text: string;
+    made_by: string | null;
+}
+
+export interface RiskSignal {
+    text: string;
+    severity: number;
+    signal_type: string;
+}
+
+export interface CatchUpCapsule {
+    what_missed: InsightItem[];
+    current_topic: string;
+    decisions: Decision[];
+    open_threads: string[];
+    next_moves: string[];
+    risks: RiskSignal[];
+    questions_to_ask: string[];
+    ten_second_version: string;
+    sixty_second_version: string;
+    confidence: number;
+    generated_at_minute: number;
+}
+
+export interface LiveInsightEvent {
+    type: string;
+    id: string;
+    text?: string;
+    assignee?: string;
+    context?: string;
+    severity?: number;
+    by?: string;
+    from_topic?: string;
+    to_topic?: string;
+    reason?: string;
+    timestamp_ms: number;
+}
+
+export async function getMeetingState(): Promise<MeetingState> {
+    return invoke<MeetingState>("get_meeting_state");
+}
+
+export async function generateCatchUp(meetingId: string): Promise<CatchUpCapsule> {
+    return invoke<CatchUpCapsule>("generate_catch_up", { meeting_id: meetingId });
+}
+
+export async function getLiveInsights(meetingId: string): Promise<LiveInsightEvent[]> {
+    return invoke<LiveInsightEvent[]>("get_live_insights", { meeting_id: meetingId });
+}
+
+export async function pinInsight(meetingId: string, insightType: string, insightText: string, timestampMs: number): Promise<void> {
+    return invoke("pin_insight", {
+        meeting_id: meetingId,
+        insight_type: insightType,
+        insight_text: insightText,
+        timestamp_ms: timestampMs
+    });
+}
+
+export async function markDecision(meetingId: string, decisionText: string, context: string | null): Promise<void> {
+    return invoke("mark_decision", {
+        meeting_id: meetingId,
+        decision_text: decisionText,
+        context: context
+    });
+}
+

@@ -30,6 +30,10 @@
     <key>com.apple.security.device.audio-input</key>
     <true/>
     
+    <!-- Calendar access -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
+    
     <!--
         NOTE: Screen recording permission is handled via TCC (System Preferences).
         There is no entitlement for it - the app must be manually granted access

@@ -215,7 +215,7 @@ body {
   background: #ef4444 !important;
   border-color: #ef4444 !important;
   color: #ffffff !important;
-  animation: pulse-hazard 1s infinite;
+  /* animation: pulse-hazard 1s infinite; */
 }
 
 @keyframes pulse-hazard {
@@ -290,7 +290,7 @@ body {
 }
 
 .content-header::after {
-  content: "LOCATION: [SYSTEM_ROOT] // SECTOR: NANO_BANANA";
+  content: "LOCATION: [SYSTEM_ROOT] // SECTOR: NOFRICTION_INTEL";
   position: absolute;
   top: 8px;
   right: 16px;
@@ -884,7 +884,7 @@ body {
   width: 100%;
   height: 100%;
   background: linear-gradient(to bottom, transparent, rgba(250, 204, 21, 0.2), transparent);
-  animation: scanline 3s linear infinite;
+  /* animation: scanline 3s linear infinite; */
 }
 
 @keyframes scanline {
@@ -924,11 +924,11 @@ body {
 }
 
 .sidebar-nav-item:hover .nav-icon {
-  animation: glitch 0.2s linear infinite;
+  /* animation: glitch 0.2s linear infinite; */
 }
 
 .logo-icon:hover {
-  animation: glitch 0.3s linear infinite;
+  /* animation: glitch 0.3s linear infinite; */
 }
 
 .prompt-description {
