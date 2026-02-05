@@ -60,7 +60,7 @@ export default function PromptBrowser() {
             setPrompts(results);
         } catch (err) {
             console.error('Failed to load prompts:', err);
-            setError('Failed to load prompts. Please try again.');
+            setError(`Failed to load prompts: ${err}`);
         } finally {
             setLoading(false);
         }
@@ -89,14 +89,6 @@ export default function PromptBrowser() {
         setVersions([]);
     };
 
-    const openConfigDirectory = async () => {
-        try {
-            await invoke('open_path', { path: '~/.config/nofriction-meetings' });
-        } catch (err) {
-            console.error('Failed to open config directory:', err);
-        }
-    };
-
     const filteredPrompts = prompts.filter(p =>
         selectedTheme === 'all' || p.theme === selectedTheme
     );
@@ -114,13 +106,6 @@ export default function PromptBrowser() {
                     <h2>Prompt Management</h2>
                     <p className="subtitle">Browse and view theme-specific prompts for VLM analysis</p>
                 </div>
-
-                <button onClick={openConfigDirectory} className="btn-secondary">
-                    <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    Edit in Files
-                </button>
             </div>
 
             {/* Theme Selector */}

@@ -216,9 +216,9 @@ impl DataEditor {
     ) -> Result<Vec<LearnedDataItem>, sqlx::Error> {
         let query = if let Some(s) = search {
             sqlx::query(
-                "SELECT id, content, created_at, NULL as metadata
+                "SELECT snapshot_id, text, created_at, source as metadata
                  FROM text_snapshots
-                 WHERE content LIKE ?
+                 WHERE text LIKE ?
                  ORDER BY created_at DESC
                  LIMIT ? OFFSET ?",
             )
@@ -227,7 +227,7 @@ impl DataEditor {
             .bind(offset)
         } else {
             sqlx::query(
-                "SELECT id, content, created_at, NULL as metadata
+                "SELECT snapshot_id, text, created_at, source as metadata
                  FROM text_snapshots
                  ORDER BY created_at DESC
                  LIMIT ? OFFSET ?",
@@ -241,13 +241,13 @@ impl DataEditor {
         Ok(rows
             .into_iter()
             .map(|row| {
-                let id: i64 = row.get("id");
-                let content: String = row.get("content");
+                let id: String = row.get("snapshot_id");
+                let content: String = row.get("text");
                 let created_at: String = row.get("created_at");
                 LearnedDataItem {
                     entity_type: "text_snapshot".to_string(),
-                    entity_id: id.to_string(),
-                    title: format!("Text Snapshot #{}", id),
+                    entity_id: id.clone(),
+                    title: format!("Text Snapshot {}", &id[..8.min(id.len())]),
                     content: content.chars().take(200).collect(),
                     metadata: row.get("metadata"),
                     created_at: created_at.clone(),

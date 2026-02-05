@@ -533,6 +533,123 @@ impl VLMClient {
 
         Ok(chat_resp.message.content)
     }
+
+    /// Chat with a specific model (non-streaming)
+    pub async fn chat_with_model(&self, prompt: &str, model: &str) -> Result<String, String> {
+        let url = format!("{}/api/chat", self.base_url.read());
+
+        let request_body = ChatRequest {
+            model: model.to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+                images: None,
+            }],
+            stream: false,
+            options: Some(ChatOptions {
+                temperature: 0.7,
+                max_tokens: Some(2048),
+            }),
+        };
+
+        let mut request = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json");
+
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        let resp = request
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("Chat request failed: {}", e))?;
+
+        if resp.status() == 401 {
+            // Try reauthentication
+            if self.reauthenticate().await.is_ok() {
+                // Retry once
+                return Box::pin(self.chat_with_model(prompt, model)).await;
+            }
+            return Err("Unauthorized: Please login to TheBrain".to_string());
+        }
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Chat API error: {}", body));
+        }
+
+        let chat_resp: ChatResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        Ok(chat_resp.message.content)
+    }
+
+    /// Streaming chat with TheBrain API (collects full response)
+    /// Uses POST /api/chat/stream with SSE
+    pub async fn chat_stream(&self, prompt: &str, model: &str) -> Result<String, String> {
+        let url = format!("{}/api/chat/stream", self.base_url.read());
+
+        let request_body = serde_json::json!({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}]
+        });
+
+        let mut request = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json");
+
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        let resp = request
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("Stream request failed: {}", e))?;
+
+        if resp.status() == 401 {
+            // Try reauthentication
+            if self.reauthenticate().await.is_ok() {
+                return Box::pin(self.chat_stream(prompt, model)).await;
+            }
+            return Err("Unauthorized: Please login to TheBrain".to_string());
+        }
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Stream API error: {}", body));
+        }
+
+        // Read SSE response and collect content
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read stream: {}", e))?;
+
+        let mut full_content = String::new();
+        for line in body.lines() {
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(content) = parsed.get("content").and_then(|v| v.as_str()) {
+                        full_content.push_str(content);
+                    }
+                }
+            }
+        }
+
+        if full_content.is_empty() {
+            return Err("No content in response".to_string());
+        }
+
+        Ok(full_content)
+    }
 }
 
 impl Default for VLMClient {
@@ -620,4 +737,14 @@ pub async fn vlm_get_models() -> Result<Vec<ModelStatus>, String> {
 /// Check if authenticated (has valid bearer token)
 pub fn vlm_is_authenticated() -> bool {
     get_client().bearer_token.read().is_some()
+}
+
+/// Chat with a specific model
+pub async fn vlm_chat_with_model(prompt: &str, model: &str) -> Result<String, String> {
+    get_client().chat_with_model(prompt, model).await
+}
+
+/// Streaming chat (collects full response)
+pub async fn vlm_chat_stream(prompt: &str, model: &str) -> Result<String, String> {
+    get_client().chat_stream(prompt, model).await
 }

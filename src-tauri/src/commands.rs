@@ -423,6 +423,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     let frames_dir_clone = frames_dir.clone();
     let state_builder = state.state_builder.clone();
     let metrics_collector = state.metrics_collector.clone();
+    let settings_for_frames = state.settings.clone();
 
     // Estimated bytes per frame (for savings calculation)
     const ESTIMATED_FRAME_BYTES: u64 = 50_000; // ~50KB per JPEG
@@ -433,6 +434,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         let dir = frames_dir_clone.clone();
         let builder = state_builder.clone();
         let metrics = metrics_collector.clone();
+        let settings = settings_for_frames.clone();
 
         // Process frame through StateBuilder (stateful dedup)
         tokio::spawn(async move {
@@ -527,6 +529,24 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
                             }
 
                             log::debug!("📺 New state: {} → {:?}", new_state_id, keyframe_path);
+
+                            // Queue frame for VLM analysis if enabled
+                            if let Ok(app_settings) = settings.get_all().await {
+                                if app_settings.queue_frames_for_vlm {
+                                    if let Err(e) = db
+                                        .queue_frame(
+                                            None, // frame_id - using screen state
+                                            keyframe_path.to_str().unwrap_or(""),
+                                            frame.timestamp,
+                                        )
+                                        .await
+                                    {
+                                        log::warn!("Failed to queue frame for VLM: {}", e);
+                                    } else {
+                                        log::debug!("📸 Queued frame for VLM: {}", new_state_id);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1394,12 +1414,448 @@ pub async fn check_thebrain(_state: State<'_, AppState>) -> Result<bool, String>
     Ok(crate::vlm_client::vlm_is_authenticated() && crate::vlm_client::vlm_is_available().await)
 }
 
+/// Set VLM API URL and reconfigure the client
+#[tauri::command]
+pub async fn set_vlm_api_url(url: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Save to settings
+    state
+        .settings
+        .set("vlm_base_url", &url)
+        .await
+        .map_err(|e| format!("Failed to save VLM URL: {}", e))?;
+
+    // Reconfigure the VLM client with new URL
+    crate::vlm_client::vlm_configure(&url, None);
+
+    log::info!("✅ VLM API URL updated to: {}", url);
+    Ok(())
+}
+
 /// Get available models from TheBrain API
 #[tauri::command]
 pub async fn get_thebrain_models(
     _state: State<'_, AppState>,
 ) -> Result<Vec<crate::vlm_client::ModelStatus>, String> {
     crate::vlm_client::vlm_get_models().await
+}
+
+/// Capture text from the current focused window using accessibility APIs
+/// and store it as a text snapshot in the database
+#[tauri::command]
+pub async fn capture_accessibility_snapshot(
+    state: State<'_, AppState>,
+) -> Result<CapturedSnapshotResult, String> {
+    use crate::snapshot_extractor::{ExtractionResult, ExtractionSource, SnapshotExtractor};
+    use uuid::Uuid;
+
+    log::info!("📸 Capturing accessibility snapshot from focused window...");
+
+    let extractor = SnapshotExtractor::new();
+
+    // First try accessibility, fall back to OCR if needed
+    let result = extractor.extract_from_accessibility(None, None, None, None);
+
+    match result {
+        ExtractionResult::Success(snapshot) => {
+            let snapshot_id = Uuid::new_v4().to_string();
+            let text_preview = if snapshot.text.len() > 200 {
+                format!("{}...", &snapshot.text[..200])
+            } else {
+                snapshot.text.clone()
+            };
+
+            // Store to database
+            if let Err(e) = state
+                .database
+                .add_text_snapshot(
+                    &snapshot_id,
+                    None, // episode_id
+                    None, // state_id
+                    chrono::Utc::now(),
+                    &snapshot.text,
+                    &snapshot.text_hash,
+                    snapshot.quality_score,
+                    ExtractionSource::Accessibility.as_str(),
+                )
+                .await
+            {
+                log::warn!("Failed to save snapshot to database: {}", e);
+            }
+
+            log::info!(
+                "✅ Captured {} words from accessibility API",
+                snapshot.word_count
+            );
+
+            Ok(CapturedSnapshotResult {
+                success: true,
+                text_preview,
+                word_count: snapshot.word_count,
+                source: "accessibility".to_string(),
+                snapshot_id,
+            })
+        }
+        ExtractionResult::Failed(reason) => {
+            log::warn!("Accessibility capture failed: {}", reason);
+            Err(format!("Capture failed: {}", reason))
+        }
+        ExtractionResult::TooShort => Err("Captured text too short to be useful".to_string()),
+        ExtractionResult::LowQuality(score) => Err(format!(
+            "Captured text quality too low: {:.1}%",
+            score * 100.0
+        )),
+        ExtractionResult::Disabled => Err("Text extraction is disabled".to_string()),
+    }
+}
+
+/// Result of capturing a snapshot
+#[derive(serde::Serialize)]
+pub struct CapturedSnapshotResult {
+    pub success: bool,
+    pub text_preview: String,
+    pub word_count: i32,
+    pub source: String,
+    pub snapshot_id: String,
+}
+
+/// Chat with TheBrain API using specified model
+#[tauri::command]
+pub async fn thebrain_chat(
+    message: String,
+    model: String,
+    _state: State<'_, AppState>,
+) -> Result<String, String> {
+    if !crate::vlm_client::vlm_is_authenticated() {
+        return Err("Not authenticated with TheBrain. Please login in Settings.".to_string());
+    }
+
+    log::info!(
+        "🧠 TheBrain chat: model={}, message_len={}",
+        model,
+        message.len()
+    );
+
+    // Use streaming endpoint for better response
+    crate::vlm_client::vlm_chat_stream(&message, &model).await
+}
+
+/// RAG Chat Response with context and citations
+#[derive(serde::Serialize)]
+pub struct RagChatResponse {
+    pub response: String,
+    pub context_used: Vec<ContextItem>,
+    pub model: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ContextItem {
+    pub id: String,
+    pub score: f32,
+    pub summary: String,
+    pub timestamp: Option<String>,
+    pub category: Option<String>,
+}
+
+/// Chat with TheBrain using RAG - retrieves relevant context before answering
+#[tauri::command]
+pub async fn thebrain_rag_chat(
+    message: String,
+    model: String,
+    top_k: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<RagChatResponse, String> {
+    if !crate::vlm_client::vlm_is_authenticated() {
+        return Err("Not authenticated with TheBrain. Please login in Settings.".to_string());
+    }
+
+    let search_count = top_k.unwrap_or(5);
+    log::info!(
+        "🧠 RAG Chat: searching {} items, model={}",
+        search_count,
+        model
+    );
+
+    // Get config before async operations (avoid holding RwLock guard across await)
+    let pinecone_config = state.pinecone_client.read().get_config();
+
+    // Step 1: Search Pinecone for relevant context
+    let context_items = match pinecone_config {
+        Some(config) => {
+            match crate::pinecone_client::pinecone_search(&config, &message, search_count).await {
+                Ok(matches) => matches
+                    .into_iter()
+                    .filter(|m| m.score > 0.5) // Only include good matches
+                    .map(|m| {
+                        let metadata = m.metadata.as_ref();
+                        ContextItem {
+                            id: m.id,
+                            score: m.score,
+                            summary: metadata
+                                .and_then(|md| md.get("summary").or_else(|| md.get("text")))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            timestamp: metadata
+                                .and_then(|md| md.get("timestamp"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            category: metadata
+                                .and_then(|md| md.get("category"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    log::warn!("Pinecone search failed, proceeding without context: {}", e);
+                    vec![]
+                }
+            }
+        }
+        None => {
+            log::info!("Pinecone not configured, proceeding without context");
+            vec![]
+        }
+    };
+
+    // Step 2: Build augmented prompt with context
+    let augmented_prompt = if !context_items.is_empty() {
+        let context_text = context_items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                format!(
+                    "[{}] {} (relevance: {:.0}%)\n   {}",
+                    i + 1,
+                    item.timestamp.as_deref().unwrap_or("Unknown time"),
+                    item.score * 100.0,
+                    item.summary
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        format!(
+            r#"You are an intelligent assistant with access to the user's activity history and meeting data.
+
+RELEVANT CONTEXT FROM USER'S HISTORY:
+{}
+
+USER QUESTION: {}
+
+Instructions:
+- Use the context above to inform your answer when relevant
+- If the context doesn't contain relevant information, say so and answer based on general knowledge
+- Reference specific items from the context when applicable (e.g., "Based on your meeting on [date]...")
+- Be concise and actionable"#,
+            context_text, message
+        )
+    } else {
+        format!(
+            r#"You are an intelligent assistant helping with daily operations.
+
+USER QUESTION: {}
+
+Note: No relevant context was found in the user's history for this query. Answer based on general knowledge."#,
+            message
+        )
+    };
+
+    // Step 3: Call TheBrain with augmented prompt
+    let response = crate::vlm_client::vlm_chat_stream(&augmented_prompt, &model).await?;
+
+    log::info!(
+        "🧠 RAG Chat complete: {} context items used",
+        context_items.len()
+    );
+
+    Ok(RagChatResponse {
+        response,
+        context_used: context_items,
+        model,
+    })
+}
+
+// ============================================================================
+// Conversation Storage Commands (Phase 2)
+// ============================================================================
+
+/// Conversation record for storage
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ConversationRecord {
+    pub id: String,
+    pub timestamp: String,
+    pub user_query: String,
+    pub assistant_response: String,
+    pub model_used: String,
+    pub context_refs: Vec<String>, // IDs of context items used
+}
+
+/// Store a conversation to both Supabase and Pinecone
+#[tauri::command]
+pub async fn store_conversation(
+    user_query: String,
+    assistant_response: String,
+    model_used: String,
+    context_refs: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let timestamp = chrono::Utc::now().to_rfc3339();
+
+    log::info!("💾 Storing conversation: {}", id);
+
+    // Get configs before async operations (avoid RwLock guard across await)
+    let pinecone_config = state.pinecone_client.read().get_config();
+    let supabase_pool = state.supabase_client.read().get_pool();
+
+    // Store to Pinecone for semantic search of past conversations
+    if let Some(config) = pinecone_config {
+        // Create searchable text combining Q&A
+        let searchable_text = format!("Q: {}\nA: {}", user_query, assistant_response);
+
+        let metadata = crate::pinecone_client::ActivityMetadata {
+            timestamp: timestamp.clone(),
+            category: "conversation".to_string(),
+            app_name: Some("thebrain-chat".to_string()),
+            focus_area: None,
+            summary: format!(
+                "User asked about: {}...",
+                &user_query.chars().take(100).collect::<String>()
+            ),
+        };
+
+        if let Err(e) =
+            crate::pinecone_client::pinecone_upsert(&config, &id, &searchable_text, &metadata).await
+        {
+            log::warn!("Failed to store conversation to Pinecone: {}", e);
+        } else {
+            log::info!("📌 Conversation stored to Pinecone: {}", id);
+        }
+    }
+
+    // Store to Supabase if connected
+    if let Some(pool) = supabase_pool {
+        let query = r#"
+            INSERT INTO conversations (id, timestamp, user_query, assistant_response, model_used, context_refs)
+            VALUES ($1::uuid, $2::timestamptz, $3, $4, $5, $6)
+            ON CONFLICT (id) DO NOTHING
+        "#;
+
+        match sqlx::query(query)
+            .bind(&id)
+            .bind(&timestamp)
+            .bind(&user_query)
+            .bind(&assistant_response)
+            .bind(&model_used)
+            .bind(serde_json::to_value(&context_refs).unwrap_or_default())
+            .execute(&pool)
+            .await
+        {
+            Ok(_) => log::info!("📦 Conversation stored to Supabase: {}", id),
+            Err(e) => log::warn!("Failed to store conversation to Supabase: {}", e),
+        }
+    }
+
+    Ok(id)
+}
+
+/// Get recent conversation history
+#[tauri::command]
+pub async fn get_conversation_history(
+    limit: Option<i32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ConversationRecord>, String> {
+    let max_count = limit.unwrap_or(20);
+
+    // Get pool before async operations (avoid RwLock guard across await)
+    let supabase_pool = state.supabase_client.read().get_pool();
+
+    // Try to get from Supabase first
+    if let Some(pool) = supabase_pool {
+        let query = r#"
+            SELECT id, timestamp, user_query, assistant_response, model_used, context_refs
+            FROM conversations
+            ORDER BY timestamp DESC
+            LIMIT $1
+        "#;
+
+        match sqlx::query_as::<_, (String, String, String, String, String, serde_json::Value)>(
+            query,
+        )
+        .bind(max_count)
+        .fetch_all(&pool)
+        .await
+        {
+            Ok(rows) => {
+                let records = rows
+                    .into_iter()
+                    .map(
+                        |(
+                            id,
+                            timestamp,
+                            user_query,
+                            assistant_response,
+                            model_used,
+                            context_refs,
+                        )| {
+                            ConversationRecord {
+                                id,
+                                timestamp,
+                                user_query,
+                                assistant_response,
+                                model_used,
+                                context_refs: context_refs
+                                    .as_array()
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                            }
+                        },
+                    )
+                    .collect();
+                return Ok(records);
+            }
+            Err(e) => {
+                log::warn!("Failed to fetch conversations from Supabase: {}", e);
+            }
+        }
+    }
+
+    // If Supabase not available, return empty
+    Ok(vec![])
+}
+
+/// Combined RAG chat with automatic conversation storage
+#[tauri::command]
+pub async fn thebrain_rag_chat_with_memory(
+    message: String,
+    model: String,
+    top_k: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<RagChatResponse, String> {
+    // First do the RAG chat
+    let response = thebrain_rag_chat(message.clone(), model.clone(), top_k, state.clone()).await?;
+
+    // Then store the conversation for future retrieval
+    let context_refs: Vec<String> = response.context_used.iter().map(|c| c.id.clone()).collect();
+
+    if let Err(e) = store_conversation(
+        message,
+        response.response.clone(),
+        model,
+        context_refs,
+        state,
+    )
+    .await
+    {
+        log::warn!("Failed to store conversation: {}", e);
+    }
+
+    Ok(response)
 }
 
 /// Configure Supabase connection
@@ -2144,6 +2600,7 @@ pub async fn search_knowledge_base(
                                 .as_ref()
                                 .and_then(|m| {
                                     m.get("summary")
+                                        .or_else(|| m.get("text"))
                                         .and_then(|v| v.as_str().map(|s| s.to_string()))
                                 })
                                 .unwrap_or_default(),
@@ -2905,16 +3362,31 @@ fn get_chunk_manager() -> &'static ChunkManager {
 
 /// Start video recording for a meeting
 #[tauri::command]
-pub async fn start_video_recording(meeting_id: String) -> Result<(), String> {
+pub async fn start_video_recording(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let recorder = get_video_recorder();
-    recorder.write().start(&meeting_id)
+    recorder.write().start(&meeting_id)?;
+
+    // Prevent sleep during video recording
+    let _ = state
+        .power_manager
+        .prevent_sleep("Video Recording Active")
+        .map_err(|e| log::warn!("Failed to prevent sleep: {}", e));
+    Ok(())
 }
 
 /// Stop video recording
 #[tauri::command]
-pub async fn stop_video_recording() -> Result<RecordingSession, String> {
+pub async fn stop_video_recording(state: State<'_, AppState>) -> Result<RecordingSession, String> {
     let recorder = get_video_recorder();
-    recorder.write().stop()
+    let result = recorder.write().stop();
+
+    // Release sleep assertion
+    state.power_manager.release_assertion();
+
+    result
 }
 
 /// Get current video recording status
@@ -3073,6 +3545,114 @@ pub async fn get_ai_chat_model(state: State<'_, AppState>) -> Result<Option<Stri
         .get_ai_chat_model()
         .await
         .map_err(|e| format!("Failed to get model: {}", e))
+}
+
+/// Set AI provider configuration
+#[tauri::command]
+pub async fn set_ai_provider_settings(
+    provider: String,
+    url: Option<String>,
+    key: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .settings
+        .set_ai_provider(&provider)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(u) = url {
+        state
+            .settings
+            .set_ai_remote_url(&u)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(k) = key {
+        state
+            .settings
+            .set_ai_remote_key(&k)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+/// Get AI provider configuration
+#[tauri::command]
+pub async fn get_ai_provider_settings(
+    state: State<'_, AppState>,
+) -> Result<(String, Option<String>, Option<String>), String> {
+    let settings = state.settings.get_all().await.map_err(|e| e.to_string())?;
+    Ok((
+        settings.ai_provider,
+        settings.ai_remote_url,
+        settings.ai_remote_key,
+    ))
+}
+
+// ============================================
+// Accessibility Capture Commands
+// ============================================
+
+/// Get accessibility capture status
+#[tauri::command]
+pub async fn get_accessibility_capture_status(
+    state: State<'_, AppState>,
+) -> Result<crate::accessibility_capture::AccessibilityCaptureStats, String> {
+    Ok(state.accessibility_capture.get_stats())
+}
+
+/// Start accessibility capture
+#[tauri::command]
+pub async fn start_accessibility_capture(state: State<'_, AppState>) -> Result<(), String> {
+    // Also enable in settings
+    state
+        .settings
+        .set_accessibility_capture_enabled(true)
+        .await
+        .map_err(|e| format!("Failed to enable setting: {}", e))?;
+
+    // Update config in service
+    state.accessibility_capture.update_config(
+        crate::accessibility_capture::AccessibilityCaptureConfig {
+            enabled: true,
+            interval_secs: 10,
+            min_word_count: 5,
+            deduplicate: true,
+        },
+    );
+
+    // Start the service if not running
+    if !state.accessibility_capture.is_running() {
+        state.accessibility_capture.start(
+            state.database.clone(),
+            state.settings.clone(),
+            state.pinecone_client.clone(),
+        )?;
+    }
+
+    log::info!("📝 Accessibility capture started");
+    Ok(())
+}
+
+/// Stop accessibility capture
+#[tauri::command]
+pub async fn stop_accessibility_capture(state: State<'_, AppState>) -> Result<(), String> {
+    // Disable in settings
+    state
+        .settings
+        .set_accessibility_capture_enabled(false)
+        .await
+        .map_err(|e| format!("Failed to disable setting: {}", e))?;
+
+    // Stop the service
+    state.accessibility_capture.stop();
+
+    log::info!("📝 Accessibility capture stopped");
+    Ok(())
 }
 
 // ============================================
@@ -3772,7 +4352,14 @@ pub async fn start_ambient_capture(
 ) -> Result<(), String> {
     log::info!("🌙 Starting ambient capture mode");
     let engine = state.capture_engine.read();
-    engine.start_ambient(app)
+    engine.start_ambient(app)?;
+
+    // Prevent sleep
+    let _ = state
+        .power_manager
+        .prevent_sleep("Ambient Capture Active")
+        .map_err(|e| log::warn!("Failed to prevent sleep: {}", e));
+    Ok(())
 }
 
 /// Start meeting capture (full audio + screen, 2s intervals)
@@ -3783,7 +4370,14 @@ pub async fn start_meeting_capture(
 ) -> Result<(), String> {
     log::info!("🎙️ Starting meeting capture mode");
     let engine = state.capture_engine.read();
-    engine.start_meeting(app)
+    engine.start_meeting(app)?;
+
+    // Prevent sleep with higher priority? (Using same IOPM assertion for now)
+    let _ = state
+        .power_manager
+        .prevent_sleep("Meeting Capture Active")
+        .map_err(|e| log::warn!("Failed to prevent sleep: {}", e));
+    Ok(())
 }
 
 /// Pause capture (stop all without ending session)
@@ -3791,7 +4385,9 @@ pub async fn start_meeting_capture(
 pub async fn pause_capture(state: State<'_, AppState>) -> Result<(), String> {
     log::info!("⏸️ Pausing capture");
     let engine = state.capture_engine.read();
-    engine.pause()
+    engine.pause();
+    state.power_manager.release_assertion();
+    Ok(())
 }
 
 /// Get Always-On settings

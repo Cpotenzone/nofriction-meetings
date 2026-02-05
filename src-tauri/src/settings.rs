@@ -40,6 +40,7 @@ pub struct AppSettings {
     pub supabase_connection_string: Option<String>,
     pub pinecone_api_key: Option<String>,
     pub pinecone_index_host: Option<String>,
+    pub pinecone_namespace: Option<String>,
     // Intelligence Pipeline settings
     pub enable_ingest: Option<bool>,
     pub ingest_base_url: Option<String>,
@@ -54,6 +55,13 @@ pub struct AppSettings {
     pub dedup_delta_threshold: Option<f64>, // Mean pixel delta threshold (0.0 - 1.0)
     pub dedup_enabled: Option<bool>,       // Enable/disable dedup pipeline
     pub snapshot_interval_secs: Option<u64>, // Periodic checkpoint interval
+    // Accessibility capture settings
+    pub accessibility_capture_enabled: bool,
+    pub accessibility_capture_interval_secs: u32,
+    // AI Provider settings
+    pub ai_provider: String, // "local" or "remote"
+    pub ai_remote_url: Option<String>,
+    pub ai_remote_key: Option<String>,
 }
 
 impl AppSettings {
@@ -87,10 +95,11 @@ impl AppSettings {
             supabase_connection_string: None,
             pinecone_api_key: None,
             pinecone_index_host: None,
+            pinecone_namespace: Some("default".to_string()),
             enable_ingest: Some(false), // Disabled by default
             ingest_base_url: None,
             ingest_bearer_token: None,
-            vlm_base_url: Some("http://localhost:8080".to_string()), // Default SSH tunnel port
+            vlm_base_url: Some("https://7wk6vrq9achr2djw.caas.targon.com".to_string()), // TheBrain Cloud API
             vlm_bearer_token: None,
             vlm_model_primary: Some("qwen2.5vl:7b".to_string()),
             vlm_model_fallback: Some("qwen2.5vl:3b".to_string()),
@@ -99,6 +108,13 @@ impl AppSettings {
             dedup_delta_threshold: Some(0.02), // 2% mean pixel delta tolerance
             dedup_enabled: Some(true),     // Dedup enabled by default
             snapshot_interval_secs: Some(30), // 30 second checkpoint interval
+            // Accessibility capture defaults
+            accessibility_capture_enabled: false, // OFF by default
+            accessibility_capture_interval_secs: 10, // 10 seconds
+            // AI Provider defaults
+            ai_provider: "remote".to_string(), // Default to remote for reliability
+            ai_remote_url: None,
+            ai_remote_key: None,
         }
     }
 }
@@ -224,6 +240,9 @@ impl SettingsManager {
         if let Some(v) = self.get("pinecone_index_host").await? {
             settings.pinecone_index_host = Some(v);
         }
+        if let Some(v) = self.get("pinecone_namespace").await? {
+            settings.pinecone_namespace = Some(v);
+        }
         // VLM auto-processing settings
         if let Some(v) = self.get("vlm_auto_process").await? {
             settings.vlm_auto_process = v == "true";
@@ -278,6 +297,25 @@ impl SettingsManager {
         }
         if let Some(v) = self.get("vlm_model_fallback").await? {
             settings.vlm_model_fallback = Some(v);
+        }
+
+        // Accessibility capture settings
+        if let Some(v) = self.get("accessibility_capture_enabled").await? {
+            settings.accessibility_capture_enabled = v == "true";
+        }
+        if let Some(v) = self.get("accessibility_capture_interval_secs").await? {
+            settings.accessibility_capture_interval_secs = v.parse().unwrap_or(10);
+        }
+
+        // AI Provider settings
+        if let Some(v) = self.get("ai_provider").await? {
+            settings.ai_provider = v;
+        }
+        if let Some(v) = self.get("ai_remote_url").await? {
+            settings.ai_remote_url = Some(v);
+        }
+        if let Some(v) = self.get("ai_remote_key").await? {
+            settings.ai_remote_key = Some(v);
         }
 
         Ok(settings)
@@ -380,6 +418,28 @@ impl SettingsManager {
     }
 
     // ============================================
+    // Accessibility Capture Settings
+    // ============================================
+
+    /// Set accessibility capture enabled
+    pub async fn set_accessibility_capture_enabled(
+        &self,
+        enabled: bool,
+    ) -> Result<(), sqlx::Error> {
+        self.set(
+            "accessibility_capture_enabled",
+            if enabled { "true" } else { "false" },
+        )
+        .await
+    }
+
+    /// Set accessibility capture interval
+    pub async fn set_accessibility_capture_interval(&self, secs: u32) -> Result<(), sqlx::Error> {
+        self.set("accessibility_capture_interval_secs", &secs.to_string())
+            .await
+    }
+
+    // ============================================
     // Knowledge Base Settings
     // ============================================
 
@@ -398,6 +458,11 @@ impl SettingsManager {
         self.set("pinecone_index_host", host).await
     }
 
+    /// Set Pinecone namespace
+    pub async fn set_pinecone_namespace(&self, namespace: &str) -> Result<(), sqlx::Error> {
+        self.set("pinecone_namespace", namespace).await
+    }
+
     // ============================================
     // VLM Auto-Processing Settings
     // ============================================
@@ -413,6 +478,11 @@ impl SettingsManager {
         let clamped = secs.clamp(30, 600); // 30s to 10min
         self.set("vlm_process_interval_secs", &clamped.to_string())
             .await
+    }
+
+    /// Set VLM base URL
+    pub async fn set_vlm_base_url(&self, url: &str) -> Result<(), sqlx::Error> {
+        self.set("vlm_base_url", url).await
     }
 
     // ============================================
@@ -472,5 +542,21 @@ impl SettingsManager {
             .await?
             .and_then(|v| v.parse().ok())
             .unwrap_or(default))
+    }
+
+    // ============================================
+    // AI Provider Settings
+    // ============================================
+
+    pub async fn set_ai_provider(&self, provider: &str) -> Result<(), sqlx::Error> {
+        self.set("ai_provider", provider).await
+    }
+
+    pub async fn set_ai_remote_url(&self, url: &str) -> Result<(), sqlx::Error> {
+        self.set("ai_remote_url", url).await
+    }
+
+    pub async fn set_ai_remote_key(&self, key: &str) -> Result<(), sqlx::Error> {
+        self.set("ai_remote_key", key).await
     }
 }

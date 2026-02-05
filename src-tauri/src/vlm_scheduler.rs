@@ -170,6 +170,8 @@ impl VLMScheduler {
 
             // Check if VLM processing is enabled in settings
             if !app_settings.vlm_auto_process {
+                // Still update last_run so UI shows we checked
+                *last_run.write() = Some(Utc::now());
                 continue;
             }
 

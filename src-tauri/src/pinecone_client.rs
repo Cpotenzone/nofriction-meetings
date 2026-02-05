@@ -2,9 +2,9 @@
 //!
 //! Uses Pinecone's integrated embedding (llama-text-embed-v2) for auto-embedding.
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 /// Configuration for Pinecone
 #[derive(Debug, Clone)]
@@ -90,10 +90,14 @@ impl PineconeClient {
         text: &str,
         metadata: &ActivityMetadata,
     ) -> Result<(), String> {
-        let config = self.config.read().clone()
+        let config = self
+            .config
+            .read()
+            .clone()
             .ok_or("Pinecone not configured")?;
 
-        let url = format!("{}/records/namespaces/{}/upsert",
+        let url = format!(
+            "{}/records/namespaces/{}/upsert",
             config.index_host,
             config.namespace.as_deref().unwrap_or("default")
         );
@@ -132,10 +136,14 @@ impl PineconeClient {
 
     /// Semantic search using text query (auto-embedded)
     pub async fn search(&self, query: &str, top_k: u32) -> Result<Vec<VectorMatch>, String> {
-        let config = self.config.read().clone()
+        let config = self
+            .config
+            .read()
+            .clone()
             .ok_or("Pinecone not configured")?;
 
-        let url = format!("{}/records/namespaces/{}/search",
+        let url = format!(
+            "{}/records/namespaces/{}/search",
             config.index_host,
             config.namespace.as_deref().unwrap_or("default")
         );
@@ -182,10 +190,13 @@ impl PineconeClient {
             fields: Option<serde_json::Value>,
         }
 
-        let search_resp: SearchResponse = resp.json().await
+        let search_resp: SearchResponse = resp
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse Pinecone response: {}", e))?;
 
-        let matches = search_resp.result
+        let matches = search_resp
+            .result
             .and_then(|r| r.hits)
             .unwrap_or_default()
             .into_iter()
@@ -201,7 +212,10 @@ impl PineconeClient {
 
     /// Delete vectors by ID
     pub async fn delete(&self, ids: &[String]) -> Result<(), String> {
-        let config = self.config.read().clone()
+        let config = self
+            .config
+            .read()
+            .clone()
             .ok_or("Pinecone not configured")?;
 
         let url = format!("{}/vectors/delete", config.index_host);
@@ -231,7 +245,10 @@ impl PineconeClient {
 
     /// Get index stats
     pub async fn describe_index_stats(&self) -> Result<serde_json::Value, String> {
-        let config = self.config.read().clone()
+        let config = self
+            .config
+            .read()
+            .clone()
             .ok_or("Pinecone not configured")?;
 
         let url = format!("{}/describe_index_stats", config.index_host);
@@ -251,7 +268,8 @@ impl PineconeClient {
             return Err(format!("Pinecone stats failed: {}", error_text));
         }
 
-        resp.json().await
+        resp.json()
+            .await
             .map_err(|e| format!("Failed to parse Pinecone stats: {}", e))
     }
 }
@@ -272,7 +290,8 @@ pub async fn pinecone_search(
     query: &str,
     top_k: u32,
 ) -> Result<Vec<VectorMatch>, String> {
-    let url = format!("{}/records/namespaces/{}/search",
+    let url = format!(
+        "{}/records/namespaces/{}/search",
         config.index_host,
         config.namespace.as_deref().unwrap_or("default")
     );
@@ -319,10 +338,13 @@ pub async fn pinecone_search(
         fields: Option<serde_json::Value>,
     }
 
-    let search_resp: SearchResponse = resp.json().await
+    let search_resp: SearchResponse = resp
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse Pinecone response: {}", e))?;
 
-    let matches = search_resp.result
+    let matches = search_resp
+        .result
         .and_then(|r| r.hits)
         .unwrap_or_default()
         .into_iter()
@@ -355,7 +377,8 @@ pub async fn pinecone_stats(config: &PineconeConfig) -> Result<serde_json::Value
         return Err(format!("Pinecone stats failed: {}", error_text));
     }
 
-    resp.json().await
+    resp.json()
+        .await
         .map_err(|e| format!("Failed to parse Pinecone stats: {}", e))
 }
 
@@ -366,7 +389,8 @@ pub async fn pinecone_upsert(
     text: &str,
     metadata: &ActivityMetadata,
 ) -> Result<(), String> {
-    let url = format!("{}/records/namespaces/{}/upsert",
+    let url = format!(
+        "{}/records/namespaces/{}/upsert",
         config.index_host,
         config.namespace.as_deref().unwrap_or("default")
     );
@@ -399,5 +423,57 @@ pub async fn pinecone_upsert(
     }
 
     log::info!("📌 Vector upserted to Pinecone: {}", id);
+    Ok(())
+}
+
+/// Generic upsert to Pinecone with provided config (no guard held)
+/// Allows passing arbitrary metadata as serde_json::Value
+pub async fn pinecone_upsert_generic(
+    config: &PineconeConfig,
+    id: &str,
+    text: &str,
+    metadata: &serde_json::Value,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/records/namespaces/{}/upsert",
+        config.index_host,
+        config.namespace.as_deref().unwrap_or("default")
+    );
+
+    // Construct record with text and ID
+    let mut record = serde_json::Map::new();
+    record.insert("_id".to_string(), serde_json::Value::String(id.to_string()));
+    record.insert(
+        "text".to_string(),
+        serde_json::Value::String(text.to_string()),
+    );
+
+    // Merge metadata fields into the record
+    if let serde_json::Value::Object(map) = metadata {
+        for (k, v) in map {
+            record.insert(k.clone(), v.clone());
+        }
+    }
+
+    let request_body = serde_json::json!({
+        "records": [serde_json::Value::Object(record)]
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Api-Key", &config.api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to upsert to Pinecone: {}", e))?;
+
+    if !resp.status().is_success() {
+        let error_text = resp.text().await.unwrap_or_default();
+        return Err(format!("Pinecone upsert failed: {}", error_text));
+    }
+
+    log::info!("📌 Generic vector upserted to Pinecone: {}", id);
     Ok(())
 }

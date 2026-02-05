@@ -149,6 +149,30 @@ impl PromptManager {
         .execute(&self.pool)
         .await?;
 
+        // MIGRATION: Attempt to add columns that might be missing in older databases
+        // We ignore errors here as they likely mean the column already exists
+        let _ = sqlx::query("ALTER TABLE prompt_library ADD COLUMN theme TEXT")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE prompt_library ADD COLUMN max_tokens INTEGER")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query(
+            "ALTER TABLE prompt_library ADD COLUMN temperature REAL NOT NULL DEFAULT 0.5",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query("ALTER TABLE prompt_library ADD COLUMN model_id TEXT")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE prompt_library ADD COLUMN user_prompt_template TEXT")
+            .execute(&self.pool)
+            .await;
+        let _ =
+            sqlx::query("ALTER TABLE prompt_library ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+                .execute(&self.pool)
+                .await;
+
         // Add indexes for theme and version
         let _ =
             sqlx::query("CREATE INDEX IF NOT EXISTS idx_prompts_theme ON prompt_library(theme)")

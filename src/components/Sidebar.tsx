@@ -38,8 +38,13 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'help', icon: HelpCircle, label: 'Help', title: 'Help & Documentation' },
 ];
 
+import { useAppVersion } from '../hooks/useAppVersion';
+
+// ...
+
 export function Sidebar({ activeTab, onTabChange, recording, onToggleRecording }: SidebarProps) {
     const [_hovered, setHovered] = useState<string | null>(null);
+    const version = useAppVersion();
 
     return (
         <div className="sidebar">
@@ -48,7 +53,7 @@ export function Sidebar({ activeTab, onTabChange, recording, onToggleRecording }
                 <span className="logo-icon">noFriction</span>
                 <span className="logo-text">Meetings</span>
             </div>
-            <div className="edition-label">V2.4 // PROFESSIONAL</div>
+            <div className="edition-label">V{version} // PROFESSIONAL</div>
 
             {/* Navigation */}
             <nav className="sidebar-nav">

@@ -588,10 +588,11 @@ pub async fn get_job_history(
     limit: u32,
 ) -> Result<Vec<JobEntry>, String> {
     // Get recent processed frames as "jobs" from frame_queue
+    // Note: Using 'analyzed' as status indicator (0=pending, 1=completed)
     let rows = sqlx::query(
-        "SELECT id, frame_path, status, queued_at, processed_at, error_message
+        "SELECT id, frame_path, analyzed, created_at, captured_at
          FROM frame_queue
-         ORDER BY queued_at DESC
+         ORDER BY created_at DESC
          LIMIT ?",
     )
     .bind(limit as i32)
@@ -605,39 +606,35 @@ pub async fn get_job_history(
         .map(|row| {
             let id: i64 = row.get("id");
             let frame_path: String = row.get("frame_path");
-            let status: String = row.get("status");
-            let queued_at: String = row.get("queued_at");
-            let processed_at: Option<String> = row.get("processed_at");
-            let error_message: Option<String> = row.get("error_message");
+            let analyzed: i32 = row.get("analyzed");
+            let created_at: String = row.get("created_at");
+            let captured_at: String = row.get("captured_at");
 
-            // Calculate duration if we have both timestamps
-            let duration_ms =
-                if let (Some(processed), Some(_queued)) = (&processed_at, Some(&queued_at)) {
-                    chrono::DateTime::parse_from_rfc3339(processed)
-                        .ok()
-                        .and_then(|p| {
-                            chrono::DateTime::parse_from_rfc3339(&queued_at)
-                                .ok()
-                                .map(|q| (p - q).num_milliseconds())
-                        })
-                } else {
-                    None
-                };
+            // Determine status from analyzed flag
+            let status = if analyzed == 1 {
+                "completed".to_string()
+            } else {
+                "pending".to_string()
+            };
 
             JobEntry {
                 id: id.to_string(),
                 job_type: "frame_process".to_string(),
                 status,
-                started_at: queued_at,
-                completed_at: processed_at,
-                duration_ms,
-                details: Some(format!(
-                    "{}{}",
-                    frame_path.split('/').last().unwrap_or(&frame_path),
-                    error_message
-                        .map(|e| format!(" - Error: {}", e))
-                        .unwrap_or_default()
-                )),
+                started_at: created_at.clone(),
+                completed_at: if analyzed == 1 {
+                    Some(captured_at)
+                } else {
+                    None
+                },
+                duration_ms: None,
+                details: Some(
+                    frame_path
+                        .split('/')
+                        .last()
+                        .unwrap_or(&frame_path)
+                        .to_string(),
+                ),
             }
         })
         .collect())

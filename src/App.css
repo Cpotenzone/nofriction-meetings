@@ -46,16 +46,20 @@
 }
 
 body {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-main);
-  background-image:
-    linear-gradient(var(--hud-scanline) 50%, transparent 50.1%),
-    linear-gradient(90deg, var(--hud-scanline) 50%, transparent 50.1%);
-  background-size: 4px 4px;
+  /* Scanlines removed for cleaner look */
   color: var(--text-primary);
   overflow: hidden;
+  line-height: 1.5;
+}
+
+code,
+pre,
+.mono {
+  font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
 /* App Container - 3 Column Layout */
@@ -289,16 +293,7 @@ body {
   position: relative;
 }
 
-.content-header::after {
-  content: "LOCATION: [SYSTEM_ROOT] // SECTOR: NOFRICTION_INTEL";
-  position: absolute;
-  top: 8px;
-  right: 16px;
-  font-size: 10px;
-  color: var(--text-secondary);
-  opacity: 0.5;
-  letter-spacing: 1px;
-}
+/* Removed pedantic pseudo-element header */
 
 .content-title {
   font-size: 24px;
@@ -419,7 +414,7 @@ body {
 }
 
 .compact-meeting-item:hover {
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   transform: translateX(2px);
 }
 
@@ -463,9 +458,9 @@ body {
    GLASS PANELS & CARDS
    ======================================== */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(23, 23, 23, 0.95);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
 }
@@ -957,7 +952,7 @@ body {
 }
 
 .category-tag {
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   color: #6b7280;
 }
 
@@ -977,7 +972,7 @@ body {
 }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-radius: 12px;
   max-width: 700px;
   width: 100%;
@@ -1018,7 +1013,7 @@ body {
 }
 
 .modal-close:hover {
-  background: #f3f4f6;
+  background: var(--tactical-gray);
 }
 
 .modal-close svg {
@@ -1105,7 +1100,7 @@ body {
 }
 
 .version-item.active {
-  background: #eff6ff;
+  background: rgba(250, 204, 21, 0.1);
   border-color: var(--accent-purple);
 }
 
@@ -1311,7 +1306,7 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--tactical-gray);
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: all var(--transition-fast);
@@ -1325,7 +1320,7 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--tactical-gray);
   cursor: pointer;
   border: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -1338,7 +1333,7 @@ body {
 }
 
 .theme-card {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-radius: 12px;
   padding: 20px;
   box-shadow: var(--shadow-md);
@@ -1419,7 +1414,7 @@ body {
   width: 100%;
   max-width: 400px;
   padding: 12px 16px;
-  background: #ffffff;
+  background: var(--tactical-gray);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   font-size: 15px;
@@ -1435,7 +1430,7 @@ body {
 }
 
 .settings-section {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
@@ -1476,7 +1471,7 @@ body {
 }
 
 .provider-card.active {
-  background: #eff6ff;
+  background: rgba(250, 204, 21, 0.1);
   border-color: var(--accent-purple);
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
 }
@@ -1523,7 +1518,7 @@ body {
 .modern-input {
   width: 100%;
   padding: 10px 14px;
-  background: #ffffff;
+  background: var(--tactical-gray);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 14px;
@@ -1691,7 +1686,7 @@ body {
 .category-bar,
 .app-bar {
   height: 8px;
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -1719,7 +1714,7 @@ body {
 }
 
 .activity-item:hover {
-  background: #ffffff;
+  background: var(--tactical-gray);
   box-shadow: var(--shadow-md);
 }
 
@@ -1863,7 +1858,7 @@ body {
 }
 
 .sidebar-item.active {
-  background: #eff6ff;
+  background: rgba(250, 204, 21, 0.1);
   color: var(--accent-purple);
   font-weight: 600;
 }
@@ -1977,13 +1972,13 @@ body {
 }
 
 .monitor-card:hover {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-color: #d1d5db;
   transform: translateY(-2px);
 }
 
 .monitor-card.selected {
-  background: #eff6ff;
+  background: rgba(250, 204, 21, 0.1);
   border-color: var(--accent-purple);
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
 }
@@ -2024,7 +2019,7 @@ body {
 
 .segmented-control {
   display: inline-flex;
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   border-radius: 8px;
   padding: 4px;
   gap: 4px;
@@ -2047,7 +2042,7 @@ body {
 }
 
 .segment.active {
-  background: #ffffff;
+  background: var(--tactical-gray);
   color: var(--accent-purple);
   box-shadow: var(--shadow-sm);
 }
@@ -2101,7 +2096,7 @@ body {
   left: 3px;
   width: 22px;
   height: 22px;
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-radius: 50%;
   transition: all var(--transition-fast);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -2254,7 +2249,7 @@ body {
 }
 
 .provider-selection {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
@@ -2289,14 +2284,14 @@ body {
 }
 
 .provider-select-card:hover:not(.disabled) {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-color: var(--accent-purple);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
 .provider-select-card.selected {
-  background: #eff6ff;
+  background: rgba(250, 204, 21, 0.1);
   border-color: var(--accent-purple);
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
 }
@@ -2362,7 +2357,7 @@ body {
 }
 
 .comparison-panel {
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-radius: 12px;
   box-shadow: var(--shadow-md);
   overflow: hidden;
@@ -2410,7 +2405,7 @@ body {
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   padding: 20px;
-  background: #ffffff;
+  background: var(--tactical-gray);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -2465,13 +2460,13 @@ body {
 }
 
 .transcript-segment.interim {
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   color: #6b7280;
   font-style: italic;
 }
 
 .transcript-segment.final {
-  background: #ffffff;
+  background: var(--tactical-gray);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
 }
@@ -2876,7 +2871,7 @@ body {
 }
 
 .btn-secondary {
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   color: var(--text-primary);
 }
 
@@ -2988,7 +2983,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   border-radius: 6px;
   font-size: 12px;
 }
@@ -3017,7 +3012,7 @@ body {
 .details-json {
   font-size: 11px;
   padding: 4px 6px;
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   border-radius: 4px;
 }
 
@@ -3413,7 +3408,7 @@ body {
 .data-table .col-id code {
   font-size: 12px;
   padding: 2px 6px;
-  background: #f3f4f6;
+  background: var(--tactical-gray);
   border-radius: 4px;
 }
 
@@ -3766,7 +3761,7 @@ body {
 }
 
 /* ========================================
-   ALWAYS-ON RECORDING SETTINGS (v2.5.0)
+
    ======================================== */
 
 .always-on-container {
@@ -4061,7 +4056,7 @@ body {
 }
 
 /* ========================================
-   AMBIENT TIMELINE (v2.5.0)
+
    ======================================== */
 
 .ambient-timeline {
@@ -4320,7 +4315,7 @@ body {
 }
 
 /* ========================================
-   CAPTURE MODE BADGE (v2.5.0)
+
    ======================================== */
 
 .intel-badges {
@@ -4355,7 +4350,7 @@ body {
 }
 
 /* ========================================
-   MEETING DETECTION BANNER (v2.5.0)
+
    ======================================== */
 
 .meeting-detection-banner {
@@ -4511,4 +4506,121 @@ body {
 .mdb-btn-secondary:hover {
   background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
+}
+
+/* ========================================
+   RAG (Retrieval Augmented Generation) Styles
+   ======================================== */
+
+.rag-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.rag-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rag-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--hazard-yellow);
+}
+
+.status-dot.rag-active {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+.quick-action-btn.history {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.quick-action-btn.history:hover {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+/* Context section for RAG responses */
+.context-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+
+.context-toggle {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.context-toggle:hover {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+.context-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.context-card {
+  background: rgba(34, 197, 94, 0.05);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11px;
+}
+
+.context-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.context-score {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.context-time {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.context-summary {
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.rag-searching {
+  color: #22c55e;
+  font-size: 11px;
+  margin-right: 8px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }

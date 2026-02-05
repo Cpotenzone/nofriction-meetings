@@ -22,6 +22,9 @@ pub mod video_recorder;
 pub mod vlm_client;
 pub mod vlm_scheduler;
 
+// Environment configuration
+pub mod env_config;
+
 // Intelligence Pipeline integration
 pub mod ingest_client;
 pub mod ingest_queue;
@@ -40,6 +43,7 @@ pub mod snapshot_extractor;
 pub mod timeline_builder;
 
 // v2.1.0: Native Text Extraction & Classification
+pub mod accessibility_capture;
 pub mod accessibility_extractor;
 pub mod calendar_client;
 pub mod semantic_classifier;
@@ -106,6 +110,8 @@ pub struct AppState {
     pub ambient_capture: Arc<AmbientCaptureService>,
     pub meeting_trigger: Arc<MeetingTriggerEngine>,
     pub interaction_loop: Arc<InteractionLoop>,
+    // v2.7.0: Continuous Accessibility Capture
+    pub accessibility_capture: Arc<accessibility_capture::AccessibilityCaptureService>,
 }
 
 impl AppState {
@@ -132,6 +138,12 @@ impl AppState {
         let _ = emitter.emit("init-step", "Running Database Migrations...");
         database.run_migrations().await?;
         log::info!("Database initialized.");
+
+        // Load environment configuration
+        log::info!("Loading environment configuration from .env...");
+        let _ = emitter.emit("init-step", "Loading Environment Configuration...");
+        let env_config = env_config::EnvConfig::load();
+        log::info!("Environment configuration loaded.");
 
         // Initialize settings manager (uses same pool)
         log::info!("Initializing Settings Manager...");
@@ -196,8 +208,66 @@ impl AppState {
             crate::vlm_client::vlm_configure(base_url, saved_settings.vlm_bearer_token.as_deref());
         }
 
+        // Auto-populate settings from .env if not already set or empty
+        if saved_settings
+            .supabase_connection_string
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            if let Some(ref conn_str) = env_config.supabase_connection_string {
+                log::info!("✓ Auto-populating Supabase connection string from .env");
+                let _ = settings.set_supabase_connection(conn_str).await;
+            }
+        }
+        if saved_settings
+            .pinecone_api_key
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            if let Some(ref api_key) = env_config.pinecone_api_key {
+                log::info!("✓ Auto-populating Pinecone API key from .env");
+                let _ = settings.set_pinecone_api_key(api_key).await;
+            }
+        }
+        if saved_settings
+            .pinecone_index_host
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            if let Some(ref host) = env_config.pinecone_index_host {
+                log::info!("✓ Auto-populating Pinecone index host from .env");
+                let _ = settings.set_pinecone_index_host(host).await;
+            }
+        }
+        if saved_settings
+            .pinecone_namespace
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            if let Some(ref ns) = env_config.pinecone_namespace {
+                log::info!("✓ Auto-populating Pinecone namespace from .env");
+                let _ = settings.set_pinecone_namespace(ns).await;
+            }
+        }
+        if saved_settings
+            .vlm_base_url
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            if let Some(ref url) = env_config.vlm_base_url {
+                log::info!("✓ Auto-populating VLM base URL from .env");
+                let _ = settings.set_vlm_base_url(url).await;
+            }
+        }
+
         let supabase = SupabaseClient::new();
-        let pinecone = PineconeClient::new();
+
+        let pinecone = Arc::new(RwLock::new(PineconeClient::new()));
 
         // Initialize prompt manager with same pool
         log::info!("Initializing Prompt Manager...");
@@ -292,6 +362,25 @@ impl AppState {
         log::info!("Initializing Interaction Loop...");
         let interaction_loop = InteractionLoop::new();
 
+        // Initialize v2.7.0: Accessibility Capture Service
+        log::info!("Initializing Accessibility Capture Service...");
+        let accessibility_capture =
+            Arc::new(accessibility_capture::AccessibilityCaptureService::new());
+
+        // Auto-start accessibility capture if enabled
+        if saved_settings.accessibility_capture_enabled {
+            log::info!("Starting Accessibility Capture (enabled in settings)...");
+            let acc_cap = accessibility_capture.clone();
+            let db_clone = database.clone();
+            let settings_clone = settings.clone();
+            let pinecone_clone = pinecone.clone();
+            tokio::spawn(async move {
+                if let Err(e) = acc_cap.start(db_clone, settings_clone, pinecone_clone) {
+                    log::warn!("Failed to start accessibility capture: {}", e);
+                }
+            });
+        }
+
         Ok(Self {
             capture_engine: Arc::new(RwLock::new(capture)),
             // deepgram_client: Arc::new(RwLock::new(deepgram)),
@@ -301,7 +390,7 @@ impl AppState {
             vlm_client: Arc::new(RwLock::new(vlm)),
             vlm_scheduler: Arc::new(vlm_scheduler),
             supabase_client: Arc::new(RwLock::new(supabase)),
-            pinecone_client: Arc::new(RwLock::new(pinecone)),
+            pinecone_client: pinecone,
             prompt_manager,
             ingest_client,
             ingest_queue: Arc::new(parking_lot::Mutex::new(ingest_queue)),
@@ -314,6 +403,7 @@ impl AppState {
             ambient_capture: Arc::new(ambient_capture),
             meeting_trigger: Arc::new(meeting_trigger),
             interaction_loop: Arc::new(interaction_loop),
+            accessibility_capture,
         })
     }
 }
@@ -470,7 +560,14 @@ pub fn run() {
             // TheBrain Cloud API Commands
             commands::thebrain_authenticate,
             commands::check_thebrain,
+            commands::set_vlm_api_url,
             commands::get_thebrain_models,
+            commands::capture_accessibility_snapshot,
+            commands::thebrain_chat,
+            commands::thebrain_rag_chat,
+            commands::store_conversation,
+            commands::get_conversation_history,
+            commands::thebrain_rag_chat_with_memory,
             commands::configure_supabase,
             commands::check_supabase,
             commands::sync_activity_to_supabase,
@@ -488,7 +585,11 @@ pub fn run() {
             commands::set_queue_frames_for_vlm,
             commands::set_frame_capture_interval,
             commands::configure_knowledge_base,
+            commands::configure_knowledge_base,
             commands::get_capture_settings,
+            // AI Provider Settings
+            commands::set_ai_provider_settings,
+            commands::get_ai_provider_settings,
             // VLM Processing Commands (Phase 4)
             commands::analyze_pending_frames,
             commands::get_pending_frame_count,
@@ -555,6 +656,10 @@ pub fn run() {
             // AI Chat Model Commands
             commands::set_ai_chat_model,
             commands::get_ai_chat_model,
+            // Accessibility Capture Commands
+            commands::get_accessibility_capture_status,
+            commands::start_accessibility_capture,
+            commands::stop_accessibility_capture,
             // Activity Theme Commands
             commands::set_active_theme,
             commands::get_active_theme,
@@ -615,6 +720,31 @@ pub fn run() {
             commands::check_audio_usage,
             commands::dismiss_meeting_detection,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                #[cfg(target_os = "macos")]
+                {
+                    // Hide the window instead of closing
+                    // To quit, user must use Cmd+Q or Tray -> Quit
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    }
+                    api.prevent_close();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::Reopen { .. } => {
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+            _ => {}
+        });
 }
