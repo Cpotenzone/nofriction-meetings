@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getActiveTheme, setActiveTheme } from '../lib/tauri';
+import { getActiveTheme, setActiveTheme } from '../../lib/tauri';
 
 interface ThemeSelectorProps {
     compact?: boolean;

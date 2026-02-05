@@ -8,7 +8,7 @@ import {
     setAlwaysOnEnabled,
     type CaptureMode,
     type AlwaysOnSettings
-} from '../lib/tauri';
+} from '../../lib/tauri';
 
 interface ModeOption {
     id: CaptureMode;

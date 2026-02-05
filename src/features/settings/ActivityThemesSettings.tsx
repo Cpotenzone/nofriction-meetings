@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getActiveTheme, setActiveTheme, getThemeSettings, setThemeInterval, getThemeTimeToday, type ThemeSettings } from '../lib/tauri';
+import { getActiveTheme, setActiveTheme, getThemeSettings, setThemeInterval, getThemeTimeToday, type ThemeSettings } from '../../lib/tauri';
 
 interface ThemeConfig {
     id: string;

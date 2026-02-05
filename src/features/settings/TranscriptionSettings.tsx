@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import ComparisonLab from "./ComparisonLab";
+import ComparisonLab from "../../components/ComparisonLab";
 
 interface TranscriptionSettingsProps {
     onSave?: () => void;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ThemeSelector from "./ThemeSelector";
+import ThemeSelector from "../features/settings/ThemeSelector";
 import {
     Mic,
     Rewind,

@@ -2,8 +2,8 @@
 // Device selection and API key configuration with persistence
 
 import { useState, useEffect } from "react";
-import type { AudioDevice, MonitorInfo } from "../lib/tauri";
-import * as tauri from "../lib/tauri";
+import type { AudioDevice, MonitorInfo } from "../../lib/tauri";
+import * as tauri from "../../lib/tauri";
 
 interface SettingsProps {
     devices: AudioDevice[];

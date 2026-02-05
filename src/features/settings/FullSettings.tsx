@@ -3,17 +3,17 @@
 // Comprehensive settings with device selection, API config, and preferences
 
 import { useState, useEffect } from "react";
-import * as tauri from "../lib/tauri";
-import type { AudioDevice, MonitorInfo } from "../lib/tauri";
+import * as tauri from "../../lib/tauri";
+import type { AudioDevice, MonitorInfo } from "../../lib/tauri";
 import { AISettings } from "./AISettings";
 import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
 import { PermissionsStatus } from "./PermissionsStatus";
 import { ActivityThemesSettings } from "./ActivityThemesSettings";
-import PromptBrowser from "./PromptBrowser";
+import PromptBrowser from "../../components/PromptBrowser";
 import { TranscriptionSettings } from "./TranscriptionSettings";
 import { IngestSettings } from "./IngestSettings";
 
-import { useAppVersion } from '../hooks/useAppVersion';
+import { useAppVersion } from '../../hooks/useAppVersion';
 
 interface FullSettingsProps {
     onSave?: () => void;
