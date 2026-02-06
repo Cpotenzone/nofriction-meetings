@@ -1,7 +1,6 @@
 // Data Editor Module
 // Provides versioned CRUD operations for learned data (text_snapshots, entities, activity_log)
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;

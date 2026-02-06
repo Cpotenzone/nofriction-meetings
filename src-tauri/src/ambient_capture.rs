@@ -8,9 +8,9 @@
 // - Rolling storage cleanup based on retention period
 // - VLM integration for context tagging
 
-use crate::capture_engine::{CaptureEngine, CapturedFrame, FrameCallback};
+use crate::capture_engine::CapturedFrame;
 use crate::power_manager::{PowerManager, PowerState};
-use crate::vlm_client::VLMClient;
+// use crate::vlm_client::VLMClient;
 use chrono::{DateTime, Duration, Utc};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -128,7 +128,7 @@ impl AmbientCaptureService {
     }
 
     pub fn with_config(config: AmbientCaptureConfig) -> Self {
-        let mut service = Self::new();
+        let service = Self::new();
         *service.config.write() = config;
         service
     }
@@ -223,9 +223,9 @@ impl AmbientCaptureService {
         let mode = self.mode.clone();
         let is_running = self.is_running.clone();
         let frames_captured = self.frames_captured.clone();
-        let frames_skipped = self.frames_skipped.clone();
-        let last_frame_hash = self.last_frame_hash.clone();
-        let frame_history = self.frame_history.clone();
+        let _frames_skipped = self.frames_skipped.clone();
+        let _last_frame_hash = self.last_frame_hash.clone();
+        let _frame_history = self.frame_history.clone();
 
         std::thread::spawn(move || {
             while is_running.load(Ordering::SeqCst) {
@@ -283,6 +283,7 @@ impl AmbientCaptureService {
     }
 
     /// Compute hash for frame deduplication
+    #[allow(dead_code)]
     fn compute_frame_hash(frame: &CapturedFrame) -> String {
         // Use a simple perceptual hash for speed
         // In production, might use average hash or pHash
@@ -307,6 +308,7 @@ impl AmbientCaptureService {
     }
 
     /// Check if frame is similar to previous frame
+    #[allow(dead_code)]
     fn is_duplicate_frame(&self, new_hash: &str) -> bool {
         if !self.config.read().enable_frame_diff {
             return false;

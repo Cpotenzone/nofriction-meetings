@@ -105,7 +105,7 @@ impl CalendarClient {
     /// Check calendar access status
     #[cfg(target_os = "macos")]
     pub fn check_access() -> CalendarAccessStatus {
-        use objc::runtime::{Class, Object};
+        use objc::runtime::Class;
         use objc::{msg_send, sel, sel_impl};
 
         unsafe {
@@ -206,7 +206,6 @@ impl CalendarClient {
     fn fetch_events_internal(&self) -> Result<Vec<CalendarEventNative>, String> {
         use objc::runtime::{Class, Object, BOOL, YES};
         use objc::{msg_send, sel, sel_impl};
-        use std::ptr;
 
         unsafe {
             // Check access first

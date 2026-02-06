@@ -198,7 +198,7 @@ impl MetricsCollector {
     }
 
     /// Record an image being written to disk
-    pub fn record_image_write(&self, bytes: u64) {
+    pub fn record_image_write(&self, _bytes: u64) {
         self.images_written.fetch_add(1, Ordering::SeqCst);
     }
 
@@ -231,7 +231,7 @@ impl MetricsCollector {
     }
 
     /// Create a timer that automatically records CPU time
-    pub fn start_timer(&self) -> MetricsTimer {
+    pub fn start_timer(&self) -> MetricsTimer<'_> {
         MetricsTimer {
             start: Instant::now(),
             collector: self,

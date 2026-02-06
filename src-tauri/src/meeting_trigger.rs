@@ -7,8 +7,8 @@
 // - Manual button/hotkey triggers
 // - Optional audio pattern detection (VAD)
 
-use crate::ambient_capture::{AmbientCaptureService, CaptureMode};
 use crate::calendar_client::{CalendarClient, CalendarEventNative};
+
 use chrono::{DateTime, Duration, Utc};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -147,7 +147,7 @@ impl MeetingTriggerEngine {
     }
 
     pub fn with_config(config: MeetingTriggerConfig) -> Self {
-        let mut engine = Self::new();
+        let engine = Self::new();
         *engine.config.write() = config;
         engine
     }
@@ -193,7 +193,7 @@ impl MeetingTriggerEngine {
         let is_running = self.is_running.clone();
         let config = self.config.clone();
         let current_session = self.current_session.clone();
-        let on_start = self.on_meeting_start.clone();
+        let _on_start = self.on_meeting_start.clone();
         let on_end = self.on_meeting_end.clone();
         let app_handle_cal = self.app_handle.clone();
         let dismissed_cal = self.dismissed_detections.clone();

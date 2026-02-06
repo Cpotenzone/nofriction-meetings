@@ -62,7 +62,7 @@ pub struct PowerManager {
     config: Arc<RwLock<PowerConfig>>,
     current_state: Arc<RwLock<PowerState>>,
     is_running: Arc<AtomicBool>,
-    last_activity: Arc<RwLock<Instant>>,
+    _last_activity: Arc<RwLock<Instant>>,
     power_callback: Arc<RwLock<Option<PowerCallback>>>,
     #[cfg(target_os = "macos")]
     assertion_id: Arc<RwLock<Option<u32>>>,
@@ -74,7 +74,7 @@ impl PowerManager {
             config: Arc::new(RwLock::new(PowerConfig::default())),
             current_state: Arc::new(RwLock::new(PowerState::Active)),
             is_running: Arc::new(AtomicBool::new(false)),
-            last_activity: Arc::new(RwLock::new(Instant::now())),
+            _last_activity: Arc::new(RwLock::new(Instant::now())),
             power_callback: Arc::new(RwLock::new(None)),
             #[cfg(target_os = "macos")]
             assertion_id: Arc::new(RwLock::new(None)),
@@ -82,7 +82,7 @@ impl PowerManager {
     }
 
     pub fn with_config(config: PowerConfig) -> Self {
-        let mut pm = Self::new();
+        let pm = Self::new();
         *pm.config.write() = config;
         pm
     }
@@ -342,7 +342,7 @@ impl PowerManager {
             ];
 
             let process_info: *mut Object = msg_send![class!(NSProcessInfo), processInfo];
-            let activity_token: *mut Object = msg_send![
+            let _activity_token: *mut Object = msg_send![
                 process_info,
                 beginActivityWithOptions: options as u64
                 reason: reason_ns

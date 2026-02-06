@@ -232,8 +232,8 @@ impl DiffBuilder {
         to_lines: &[&'a str],
     ) -> Vec<LineChange<'a>> {
         let mut changes = Vec::new();
-        let mut from_set: std::collections::HashSet<&str> = from_lines.iter().copied().collect();
-        let mut to_set: std::collections::HashSet<&str> = to_lines.iter().copied().collect();
+        let from_set: std::collections::HashSet<&str> = from_lines.iter().copied().collect();
+        let to_set: std::collections::HashSet<&str> = to_lines.iter().copied().collect();
 
         // Lines only in from -> removed
         for line in from_lines {

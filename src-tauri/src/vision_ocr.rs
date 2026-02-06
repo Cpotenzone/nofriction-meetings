@@ -139,7 +139,7 @@ impl VisionOcr {
     /// Core recognition using Vision framework via objc
     #[cfg(target_os = "macos")]
     fn recognize_from_bytes(&self, image_bytes: &[u8]) -> Result<OcrResultInternal, String> {
-        use objc::runtime::{Class, Object, Sel, BOOL, YES};
+        use objc::runtime::{Class, Object, BOOL, YES};
         use objc::{msg_send, sel, sel_impl};
         use std::ptr;
 

@@ -2,7 +2,6 @@
 // Loads default settings from .env file if present
 
 use std::env;
-use std::path::PathBuf;
 
 pub struct EnvConfig {
     pub supabase_connection_string: Option<String>,

@@ -95,7 +95,7 @@ impl GoogleSTTProvider {
         let client_email = sa["client_email"]
             .as_str()
             .ok_or("Missing client_email in service account")?;
-        let private_key = sa["private_key"]
+        let _private_key = sa["private_key"]
             .as_str()
             .ok_or("Missing private_key in service account")?;
 

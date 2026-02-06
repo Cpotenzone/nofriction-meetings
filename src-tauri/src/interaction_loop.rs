@@ -138,7 +138,7 @@ impl InteractionLoop {
     }
 
     pub fn with_config(config: InteractionConfig) -> Self {
-        let mut loop_mgr = Self::new();
+        let loop_mgr = Self::new();
         *loop_mgr.config.write() = config;
         loop_mgr
     }
@@ -250,7 +250,7 @@ impl InteractionLoop {
                 }
 
                 // Clean up expired prompts
-                let timeout = Duration::seconds(cfg.prompt_timeout_secs as i64);
+                let _timeout = Duration::seconds(cfg.prompt_timeout_secs as i64);
                 pending_prompts.write().retain(|p| {
                     if let Some(expires) = p.expires_at {
                         if now > expires {

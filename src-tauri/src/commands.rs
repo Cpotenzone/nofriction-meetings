@@ -2,7 +2,7 @@
 // Frontend-callable commands for recording, transcription, frames, and settings
 
 use crate::capture_engine::{
-    AudioBuffer, AudioDevice, CaptureMode, CapturedFrame, MonitorInfo, RecordingStatus,
+    AudioBuffer, AudioDevice, CapturedFrame, MonitorInfo, RecordingStatus,
 };
 use crate::database::{Frame, Meeting, SearchResult, SyncedTimeline, Transcript};
 use crate::settings::AppSettings;
@@ -82,18 +82,27 @@ fn check_screen_recording_permission() -> bool {
 /// Check microphone permission on macOS
 #[cfg(target_os = "macos")]
 fn check_microphone_permission() -> bool {
-    // Try to get the default input device
-    use cpal::traits::{DeviceTrait, HostTrait};
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::CString;
 
-    let host = cpal::default_host();
-    if let Some(device) = host.default_input_device() {
-        // Try to get supported configs - this requires mic permission
-        match device.supported_input_configs() {
-            Ok(_) => true,
-            Err(_) => false,
-        }
-    } else {
-        false
+    unsafe {
+        // AVMediaTypeAudio is "soun"
+        let media_type_str = CString::new("soun").unwrap();
+        let cls_nsstring = class!(NSString);
+        let media_type: *mut Object =
+            msg_send![cls_nsstring, stringWithUTF8String:media_type_str.as_ptr()];
+
+        // Get AVCaptureDevice class
+        let cls_device = class!(AVCaptureDevice);
+
+        // Check authorization status
+        // 0 = NotDetermined, 1 = Restricted, 2 = Denied, 3 = Authorized
+        let status: i64 = msg_send![cls_device, authorizationStatusForMediaType:media_type];
+
+        // Only return true if strictly Authorized
+        // Returning false for NotDetermined prevents the infinite prompt loop
+        status == 3
     }
 }
 
@@ -502,8 +511,8 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
                             metrics.record_image_write(ESTIMATED_FRAME_BYTES);
 
                             // Get state info for database insertion
-                            let state_record = {
-                                let builder = builder.read();
+                            let _state_record = {
+                                let _builder = builder.read();
                                 // Access current state info from accumulator
                                 // For now we insert with minimal info
                                 None::<crate::state_builder::ScreenState>
@@ -2389,9 +2398,9 @@ pub async fn sync_to_cloud(
 
     // Check configuration status upfront and get configs (drop guards immediately)
     let pinecone_config = state.pinecone_client.read().get_config();
-    let pinecone_configured = pinecone_config.is_some();
+    let _pinecone_configured = pinecone_config.is_some();
     let supabase_pool = state.supabase_client.read().get_pool();
-    let supabase_connected = supabase_pool.is_some();
+    let _supabase_connected = supabase_pool.is_some();
 
     let mut activities_synced = 0;
     let mut pinecone_upserts = 0;
@@ -3302,8 +3311,8 @@ pub async fn pin_insight(
     meeting_id: String,
     insight_type: String,
     insight_text: String,
-    timestamp_ms: i64,
-    state: State<'_, AppState>,
+    _timestamp_ms: i64,
+    _state: State<'_, AppState>,
 ) -> Result<(), String> {
     // Store pinned insight in database
     // TODO: Add pinned_insights table
@@ -3321,8 +3330,8 @@ pub async fn pin_insight(
 pub async fn mark_decision(
     meeting_id: String,
     decision_text: String,
-    context: Option<String>,
-    state: State<'_, AppState>,
+    _context: Option<String>,
+    _state: State<'_, AppState>,
 ) -> Result<(), String> {
     // Store decision in database
     // TODO: Add decisions table
@@ -3697,7 +3706,7 @@ pub async fn set_active_theme(theme: String, state: State<'_, AppState>) -> Resu
 
     // Update capture engine interval (release lock immediately)
     {
-        let mut engine = state.capture_engine.write();
+        let engine = state.capture_engine.write();
         engine.set_frame_interval(interval_ms);
     } // Lock dropped here
 
@@ -3790,7 +3799,7 @@ pub async fn set_theme_interval(
         .map_err(|e| format!("Failed to get active theme: {}", e))?;
 
     if active_theme == theme {
-        let mut engine = state.capture_engine.write();
+        let engine = state.capture_engine.write();
         engine.set_frame_interval(interval_ms);
     }
 
@@ -4385,7 +4394,7 @@ pub async fn start_meeting_capture(
 pub async fn pause_capture(state: State<'_, AppState>) -> Result<(), String> {
     log::info!("⏸️ Pausing capture");
     let engine = state.capture_engine.read();
-    engine.pause();
+    let _ = engine.pause();
     state.power_manager.release_assertion();
     Ok(())
 }

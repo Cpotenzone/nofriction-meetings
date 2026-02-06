@@ -7,7 +7,7 @@
 //
 // The combination eliminates 80-95% of frame storage in static sessions.
 
-use image::{DynamicImage, GenericImageView, GrayImage};
+use image::{DynamicImage, GrayImage};
 
 /// Custom 64-bit average hash that is Send + Sync
 #[derive(Debug, Clone, PartialEq, Eq)]

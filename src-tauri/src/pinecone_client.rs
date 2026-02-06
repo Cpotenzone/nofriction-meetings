@@ -32,25 +32,6 @@ pub struct ActivityMetadata {
     pub summary: String,
 }
 
-/// Pinecone response structures
-#[derive(Debug, Deserialize)]
-struct UpsertResponse {
-    #[serde(rename = "upsertedCount")]
-    upserted_count: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct QueryResponse {
-    matches: Option<Vec<QueryMatch>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct QueryMatch {
-    id: String,
-    score: Option<f32>,
-    metadata: Option<serde_json::Value>,
-}
-
 /// Pinecone client using integrated embeddings
 pub struct PineconeClient {
     config: Arc<RwLock<Option<PineconeConfig>>>,

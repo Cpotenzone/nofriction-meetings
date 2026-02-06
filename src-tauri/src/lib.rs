@@ -1,5 +1,6 @@
 // noFriction Meetings - Main Library
 // Professional macOS meeting transcription app
+#![allow(unexpected_cfgs)]
 
 pub mod ai_client;
 pub mod capture_engine;

@@ -22,7 +22,7 @@ struct GladiaConfig {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GladiaResponse {
-    event: Option<String>,
+    _event: Option<String>,
     transcription: Option<GladiaTranscription>,
 }
 
@@ -31,7 +31,7 @@ struct GladiaTranscription {
     full_transcript: Option<String>,
     is_final: Option<bool>,
     confidence: Option<f32>,
-    language: Option<String>,
+    _language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -61,7 +61,7 @@ struct GeminiModelTurn {
 #[derive(Debug, Deserialize)]
 struct GeminiPart {
     text: Option<String>,
-    inline_data: Option<serde_json::Value>,
+    _inline_data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]

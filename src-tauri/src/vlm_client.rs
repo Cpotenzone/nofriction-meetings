@@ -16,7 +16,7 @@ const THEBRAIN_API_URL: &str = "https://7wk6vrq9achr2djw.caas.targon.com";
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: String,
-    token_type: String,
+    _token_type: String,
 }
 
 /// Model status from /api/models/status
@@ -33,9 +33,9 @@ pub struct ModelStatus {
 #[derive(Debug, Deserialize)]
 struct ModelsStatusResponse {
     models: Vec<ModelStatus>,
-    loaded_models: Vec<String>,
+    _loaded_models: Vec<String>,
     #[serde(default)]
-    gpu_used_gb: Option<f32>,
+    _gpu_used_gb: Option<f32>,
 }
 
 /// Activity context extracted from a screenshot by VLM
@@ -88,30 +88,19 @@ struct ChatOptions {
 /// Response from /api/chat
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
-    model: String,
+    _model: String,
     message: ChatMessageResponse,
-    done: bool,
+    _done: bool,
     #[serde(default)]
-    total_duration: Option<u64>,
+    _total_duration: Option<u64>,
     #[serde(default)]
-    eval_count: Option<u32>,
+    _eval_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatMessageResponse {
-    role: String,
+    _role: String,
     content: String,
-}
-
-/// Response from /api/tags
-#[derive(Debug, Deserialize)]
-struct TagsResponse {
-    models: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelInfo {
-    name: String,
 }
 
 /// VLM Client for TheBrain Cloud API
@@ -421,7 +410,7 @@ impl VLMClient {
     }
 
     /// Parse VLM response into ActivityContext
-    fn parse_response(&self, response: &str, model: &str) -> Result<ActivityContext, String> {
+    fn parse_response(&self, response: &str, _model: &str) -> Result<ActivityContext, String> {
         // Try to extract JSON from response
         let json_start = response.find('{');
         let json_end = response.rfind('}');

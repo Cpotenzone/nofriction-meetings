@@ -457,6 +457,7 @@ impl CaptureEngine {
 
     /// Run system audio capture (ScreenCaptureKit host)
     #[cfg(target_os = "macos")]
+    #[allow(dead_code)]
     fn run_system_audio_capture(
         sys_count: Arc<AtomicUsize>,
         callback: Arc<RwLock<Option<AudioCallback>>>,
@@ -559,6 +560,7 @@ impl CaptureEngine {
 
     /// Get ScreenCaptureKit host with retry (it can be flaky)
     #[cfg(target_os = "macos")]
+    #[allow(dead_code)]
     fn get_sck_host_with_retry(max_retries: usize) -> Result<cpal::Host, String> {
         use rand::Rng;
 

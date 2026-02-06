@@ -1,17 +1,16 @@
-
 use async_trait::async_trait;
+use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::collections::VecDeque;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
 
-use crate::transcription::TranscriptionProvider;
 use crate::database::DatabaseManager;
+use crate::transcription::TranscriptionProvider;
 
 // Reuse the existing structures from deepgram_client.rs
 // (Normally we would import them if they were public, but simpler to redefine or move here)
@@ -38,10 +37,10 @@ struct Alternative {
 
 #[derive(Debug, Deserialize)]
 struct Word {
-    word: String,
-    start: f64,
-    end: f64,
-    confidence: f64,
+    _word: String,
+    _start: f64,
+    _end: f64,
+    _confidence: f64,
     speaker: Option<u32>,
 }
 
@@ -116,11 +115,15 @@ impl DeepgramProvider {
             .header("Upgrade", "websocket")
             .header("Connection", "Upgrade")
             .header("Sec-WebSocket-Version", "13")
-            .header("Sec-WebSocket-Key", tokio_tungstenite::tungstenite::handshake::client::generate_key())
+            .header(
+                "Sec-WebSocket-Key",
+                tokio_tungstenite::tungstenite::handshake::client::generate_key(),
+            )
             .body(())
             .map_err(|e| format!("Failed to build request: {}", e))?;
 
-        let (ws_stream, _response) = connect_async(request).await
+        let (ws_stream, _response) = connect_async(request)
+            .await
             .map_err(|e| format!("Failed to connect to Deepgram: {}", e))?;
 
         is_connected.store(true, Ordering::SeqCst);
@@ -137,17 +140,17 @@ impl DeepgramProvider {
         tokio::spawn(async move {
             let mut buffer: VecDeque<f32> = VecDeque::with_capacity(8000);
             let batch_size = 320usize; // 20ms @ 16kHz
-            
+
             loop {
                 // Wait for audio with short timeout
-                let result = tokio::time::timeout(
-                    std::time::Duration::from_millis(20),
-                    audio_rx.recv()
-                ).await;
+                let result =
+                    tokio::time::timeout(std::time::Duration::from_millis(20), audio_rx.recv())
+                        .await;
 
                 match result {
                     Ok(Some(batch)) => {
-                        let resampled = Self::resample_to_16k_mono(&batch.samples, batch.sample_rate);
+                        let resampled =
+                            Self::resample_to_16k_mono(&batch.samples, batch.sample_rate);
                         buffer.extend(resampled);
                     }
                     Ok(None) => break,
@@ -161,7 +164,7 @@ impl DeepgramProvider {
 
                     let chunk: Vec<f32> = buffer.drain(..batch_size).collect();
                     let bytes = Self::f32_to_i16_bytes(&chunk);
-                    
+
                     let count = samples_sent.fetch_add(1, Ordering::Relaxed);
                     if count % 200 == 0 {
                         log::info!("🎧 Sent audio chunk #{}", count);
@@ -173,7 +176,7 @@ impl DeepgramProvider {
                     }
                 }
             }
-            
+
             let _ = write.close().await;
         });
 
@@ -200,7 +203,9 @@ impl DeepgramProvider {
                                             confidence: alt.confidence,
                                             start: response.start.unwrap_or(0.0),
                                             duration: response.duration.unwrap_or(0.0),
-                                            speaker: alt.words.as_ref()
+                                            speaker: alt
+                                                .words
+                                                .as_ref()
                                                 .and_then(|w| w.first())
                                                 .and_then(|w| w.speaker)
                                                 .map(|s| format!("Speaker {}", s)),
@@ -213,19 +218,24 @@ impl DeepgramProvider {
 
                                         // Save FINAL transcripts
                                         if is_final {
-                                            if let Some(db) = database_recv.read().as_ref().cloned() {
-                                                if let Some(mid) = meeting_id_recv.read().as_ref().cloned() {
+                                            if let Some(db) = database_recv.read().as_ref().cloned()
+                                            {
+                                                if let Some(mid) =
+                                                    meeting_id_recv.read().as_ref().cloned()
+                                                {
                                                     let text_clone = alt.transcript.clone();
                                                     let speaker_clone = segment.speaker.clone();
                                                     let confidence = alt.confidence;
                                                     tokio::spawn(async move {
-                                                        let _ = db.add_transcript(
-                                                            &mid,
-                                                            &text_clone,
-                                                            speaker_clone.as_deref(),
-                                                            true,
-                                                            confidence,
-                                                        ).await;
+                                                        let _ = db
+                                                            .add_transcript(
+                                                                &mid,
+                                                                &text_clone,
+                                                                speaker_clone.as_deref(),
+                                                                true,
+                                                                confidence,
+                                                            )
+                                                            .await;
                                                     });
                                                 }
                                             }
@@ -247,7 +257,8 @@ impl DeepgramProvider {
     }
 
     fn f32_to_i16_bytes(samples: &[f32]) -> Vec<u8> {
-        samples.iter()
+        samples
+            .iter()
             .map(|&s| {
                 let clamped = s.clamp(-1.0, 1.0);
                 (clamped * 32767.0) as i16
@@ -262,7 +273,8 @@ impl DeepgramProvider {
         }
 
         let mono: Vec<f32> = if samples.len() > 1 {
-            samples.chunks(2)
+            samples
+                .chunks(2)
                 .map(|chunk| {
                     if chunk.len() == 2 {
                         (chunk[0] + chunk[1]) / 2.0
@@ -281,7 +293,7 @@ impl DeepgramProvider {
 
         let ratio = 16000.0 / from_rate as f64;
         let new_len = (mono.len() as f64 * ratio) as usize;
-        
+
         if new_len == 0 {
             return vec![];
         }
@@ -291,7 +303,7 @@ impl DeepgramProvider {
             let src_idx = i as f64 / ratio;
             let idx = src_idx.floor() as usize;
             let frac = src_idx - idx as f64;
-            
+
             let sample = if idx + 1 < mono.len() {
                 mono[idx] * (1.0 - frac as f32) + mono[idx + 1] * frac as f32
             } else if idx < mono.len() {
@@ -299,7 +311,7 @@ impl DeepgramProvider {
             } else {
                 0.0
             };
-            
+
             resampled.push(sample);
         }
 
@@ -338,14 +350,16 @@ impl TranscriptionProvider for DeepgramProvider {
 
         tokio::spawn(async move {
             if let Err(e) = Self::connect_internal(
-                api_key, 
-                app, 
-                is_connected, 
-                audio_tx_holder, 
+                api_key,
+                app,
+                is_connected,
+                audio_tx_holder,
                 samples_sent,
                 database,
                 meeting_id,
-            ).await {
+            )
+            .await
+            {
                 log::error!("Deepgram connection failed: {}", e);
             }
         });
@@ -380,10 +394,10 @@ impl TranscriptionProvider for DeepgramProvider {
     }
 
     fn set_context(
-        &self, 
-        app_handle: AppHandle, 
-        database: Arc<DatabaseManager>, 
-        meeting_id: String
+        &self,
+        app_handle: AppHandle,
+        database: Arc<DatabaseManager>,
+        meeting_id: String,
     ) {
         *self.app_handle.write() = Some(app_handle);
         *self.database.write() = Some(database);
