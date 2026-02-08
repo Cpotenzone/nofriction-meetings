@@ -38,6 +38,47 @@ pub struct SearchResult {
     pub relevance: f64,
 }
 
+/// AI-generated meeting notes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingNotes {
+    pub id: String,
+    pub meeting_id: String,
+    pub summary: Option<String>,
+    pub key_topics: Option<String>,
+    pub decisions: Option<String>,
+    pub action_items: Option<String>,
+    pub participants: Option<String>,
+    pub generated_at: DateTime<Utc>,
+    pub model_used: Option<String>,
+}
+
+/// User comment on a meeting
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingComment {
+    pub id: String,
+    pub meeting_id: String,
+    pub user_id: Option<String>,
+    pub comment: String,
+    pub comment_type: String,
+    pub timestamp_ref: Option<f64>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub parent_id: Option<String>,
+}
+
+/// Study materials record (Dork Mode)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudyMaterialsRecord {
+    pub id: String,
+    pub meeting_id: String,
+    pub summary: Option<String>,
+    pub key_concepts: Option<String>,
+    pub quiz_questions: Option<String>,
+    pub flashcards: Option<String>,
+    pub generated_at: DateTime<Utc>,
+    pub model_used: Option<String>,
+}
+
 /// Database manager
 pub struct DatabaseManager {
     pool: Pool<Sqlite>,
@@ -395,15 +436,19 @@ impl DatabaseManager {
                 snapshot_id TEXT PRIMARY KEY,
                 episode_id TEXT,
                 state_id TEXT,
+                meeting_id TEXT,
                 ts TEXT NOT NULL,
                 text TEXT NOT NULL,
                 text_hash TEXT NOT NULL,
                 quality_score REAL DEFAULT 0.0,
                 source TEXT DEFAULT 'ocr',
                 word_count INTEGER DEFAULT 0,
+                app_name TEXT,
+                window_title TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY (episode_id) REFERENCES document_episodes(episode_id) ON DELETE CASCADE,
-                FOREIGN KEY (state_id) REFERENCES screen_states(state_id) ON DELETE CASCADE
+                FOREIGN KEY (state_id) REFERENCES screen_states(state_id) ON DELETE CASCADE,
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
             )
         "#,
         )
@@ -420,6 +465,14 @@ impl DatabaseManager {
         )
         .execute(&self.pool)
         .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_meeting ON text_snapshots(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON text_snapshots(ts)")
+            .execute(&self.pool)
+            .await;
 
         // TextPatch: Diff between snapshots
         sqlx::query(
@@ -576,7 +629,115 @@ impl DatabaseManager {
         .execute(&self.pool)
         .await;
 
-        log::info!("Database migrations completed (v2.1 - Management Suite)");
+        // ═══════════════════════════════════════════════════════════════════════
+        // v2.2.0: Meeting Intelligence System
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // AI-generated meeting notes
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS meeting_notes (
+                id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                summary TEXT,
+                key_topics TEXT,       -- JSON array of topics
+                decisions TEXT,        -- JSON array of decisions
+                action_items TEXT,     -- JSON array of action items
+                participants TEXT,     -- JSON array of detected participants
+                generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                model_used TEXT,
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_meeting_notes_meeting ON meeting_notes(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // User comments and annotations on meetings
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS meeting_comments (
+                id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                user_id TEXT,
+                comment TEXT NOT NULL,
+                comment_type TEXT DEFAULT 'note',  -- 'note', 'decision', 'action', 'question'
+                timestamp_ref REAL,                -- Optional: reference to transcript timestamp
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT,
+                parent_id TEXT,                    -- For threaded comments
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id) REFERENCES meeting_comments(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_meeting_comments_meeting ON meeting_comments(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // Study materials (Dork Mode output)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS study_materials (
+                id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                summary TEXT,
+                key_concepts TEXT,     -- JSON array of {term, definition}
+                quiz_questions TEXT,   -- JSON array of quiz questions
+                flashcards TEXT,       -- JSON array of flashcards
+                generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                model_used TEXT,
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_study_materials_meeting ON study_materials(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // Transcript clusters for grouping segments into logical meetings
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS transcript_clusters (
+                id TEXT PRIMARY KEY,
+                meeting_id TEXT NOT NULL,
+                cluster_name TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                transcript_ids TEXT,   -- JSON array of transcript IDs in this cluster
+                auto_generated INTEGER DEFAULT 1,
+                confidence REAL DEFAULT 0.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_transcript_clusters_meeting ON transcript_clusters(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        log::info!("Database migrations completed (v2.2 - Meeting Intelligence)");
         Ok(())
     }
 
@@ -1230,7 +1391,7 @@ impl DatabaseManager {
             .collect())
     }
 
-    /// Add a text snapshot
+    /// Add a text snapshot (legacy signature for backwards compatibility)
     pub async fn add_text_snapshot(
         &self,
         snapshot_id: &str,
@@ -1242,24 +1403,58 @@ impl DatabaseManager {
         quality_score: f32,
         source: &str,
     ) -> Result<(), sqlx::Error> {
+        self.add_text_snapshot_full(
+            snapshot_id,
+            episode_id,
+            state_id,
+            None,
+            ts,
+            text,
+            text_hash,
+            quality_score,
+            source,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Add a text snapshot with full metadata including meeting and app context
+    pub async fn add_text_snapshot_full(
+        &self,
+        snapshot_id: &str,
+        episode_id: Option<&str>,
+        state_id: Option<&str>,
+        meeting_id: Option<&str>,
+        ts: DateTime<Utc>,
+        text: &str,
+        text_hash: &str,
+        quality_score: f32,
+        source: &str,
+        app_name: Option<&str>,
+        window_title: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
         let word_count = text.split_whitespace().count() as i32;
 
         sqlx::query(
             r#"
             INSERT INTO text_snapshots 
-            (snapshot_id, episode_id, state_id, ts, text, text_hash, quality_score, source, word_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (snapshot_id, episode_id, state_id, meeting_id, ts, text, text_hash, quality_score, source, word_count, app_name, window_title)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(snapshot_id)
         .bind(episode_id)
         .bind(state_id)
+        .bind(meeting_id)
         .bind(ts.to_rfc3339())
         .bind(text)
         .bind(text_hash)
         .bind(quality_score)
         .bind(source)
         .bind(word_count)
+        .bind(app_name)
+        .bind(window_title)
         .execute(&self.pool)
         .await?;
 
@@ -1273,8 +1468,8 @@ impl DatabaseManager {
     ) -> Result<Option<TextSnapshotRecord>, sqlx::Error> {
         let row = sqlx::query(
             r#"
-            SELECT snapshot_id, episode_id, state_id, ts, text, text_hash, 
-                   quality_score, source, word_count
+            SELECT snapshot_id, episode_id, state_id, meeting_id, ts, text, text_hash, 
+                   quality_score, source, word_count, app_name, window_title
             FROM text_snapshots 
             WHERE episode_id = ?
             ORDER BY ts DESC
@@ -1289,13 +1484,53 @@ impl DatabaseManager {
             snapshot_id: r.get("snapshot_id"),
             episode_id: r.try_get("episode_id").ok(),
             state_id: r.try_get("state_id").ok(),
+            meeting_id: r.try_get("meeting_id").ok(),
             ts: r.get("ts"),
             text: r.get("text"),
             text_hash: r.get("text_hash"),
             quality_score: r.try_get("quality_score").unwrap_or(0.0),
             source: r.try_get("source").unwrap_or_else(|_| "ocr".to_string()),
             word_count: r.try_get("word_count").unwrap_or(0),
+            app_name: r.try_get("app_name").ok(),
+            window_title: r.try_get("window_title").ok(),
         }))
+    }
+
+    /// Get all text snapshots for a meeting (ordered by timestamp)
+    pub async fn get_text_snapshots_by_meeting(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<TextSnapshotRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT snapshot_id, episode_id, state_id, meeting_id, ts, text, text_hash, 
+                   quality_score, source, word_count, app_name, window_title
+            FROM text_snapshots 
+            WHERE meeting_id = ?
+            ORDER BY ts ASC
+            "#,
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TextSnapshotRecord {
+                snapshot_id: r.get("snapshot_id"),
+                episode_id: r.try_get("episode_id").ok(),
+                state_id: r.try_get("state_id").ok(),
+                meeting_id: r.try_get("meeting_id").ok(),
+                ts: r.get("ts"),
+                text: r.get("text"),
+                text_hash: r.get("text_hash"),
+                quality_score: r.try_get("quality_score").unwrap_or(0.0),
+                source: r.try_get("source").unwrap_or_else(|_| "ocr".to_string()),
+                word_count: r.try_get("word_count").unwrap_or(0),
+                app_name: r.try_get("app_name").ok(),
+                window_title: r.try_get("window_title").ok(),
+            })
+            .collect())
     }
 
     /// Add a text patch (diff between snapshots)
@@ -1566,12 +1801,15 @@ pub struct TextSnapshotRecord {
     pub snapshot_id: String,
     pub episode_id: Option<String>,
     pub state_id: Option<String>,
+    pub meeting_id: Option<String>,
     pub ts: String,
     pub text: String,
     pub text_hash: String,
     pub quality_score: f32,
     pub source: String,
     pub word_count: i32,
+    pub app_name: Option<String>,
+    pub window_title: Option<String>,
 }
 
 /// Text patch database record (Phase 2)
@@ -2510,5 +2748,229 @@ impl DatabaseManager {
             .collect();
 
         Ok(entities)
+    }
+
+    // ============================================
+    // Meeting Intelligence System Methods
+    // ============================================
+
+    /// Save AI-generated meeting notes
+    pub async fn save_meeting_notes(
+        &self,
+        id: &str,
+        meeting_id: &str,
+        summary: Option<&str>,
+        key_topics: Option<&str>,
+        decisions: Option<&str>,
+        action_items: Option<&str>,
+        participants: Option<&str>,
+        model_used: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO meeting_notes 
+            (id, meeting_id, summary, key_topics, decisions, action_items, participants, model_used, generated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            "#,
+        )
+        .bind(id)
+        .bind(meeting_id)
+        .bind(summary)
+        .bind(key_topics)
+        .bind(decisions)
+        .bind(action_items)
+        .bind(participants)
+        .bind(model_used)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get meeting notes by meeting ID
+    pub async fn get_meeting_notes(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Option<MeetingNotes>, sqlx::Error> {
+        let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>)>(
+            "SELECT id, meeting_id, summary, key_topics, decisions, action_items, participants, generated_at, model_used FROM meeting_notes WHERE meeting_id = ? ORDER BY generated_at DESC LIMIT 1"
+        )
+        .bind(meeting_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(
+                id,
+                meeting_id,
+                summary,
+                key_topics,
+                decisions,
+                action_items,
+                participants,
+                generated_at,
+                model_used,
+            )| {
+                MeetingNotes {
+                    id,
+                    meeting_id,
+                    summary,
+                    key_topics,
+                    decisions,
+                    action_items,
+                    participants,
+                    generated_at: DateTime::parse_from_rfc3339(&generated_at)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now()),
+                    model_used,
+                }
+            },
+        ))
+    }
+
+    /// Add a comment to a meeting
+    pub async fn add_meeting_comment(
+        &self,
+        id: &str,
+        meeting_id: &str,
+        comment: &str,
+        comment_type: Option<&str>,
+        timestamp_ref: Option<f64>,
+        parent_id: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO meeting_comments (id, meeting_id, comment, comment_type, timestamp_ref, parent_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id)
+        .bind(meeting_id)
+        .bind(comment)
+        .bind(comment_type.unwrap_or("note"))
+        .bind(timestamp_ref)
+        .bind(parent_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get comments for a meeting
+    pub async fn get_meeting_comments(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<MeetingComment>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, Option<f64>, String, Option<String>, Option<String>)>(
+            "SELECT id, meeting_id, user_id, comment, comment_type, timestamp_ref, created_at, updated_at, parent_id FROM meeting_comments WHERE meeting_id = ? ORDER BY created_at ASC"
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    meeting_id,
+                    user_id,
+                    comment,
+                    comment_type,
+                    timestamp_ref,
+                    created_at,
+                    updated_at,
+                    parent_id,
+                )| {
+                    MeetingComment {
+                        id,
+                        meeting_id,
+                        user_id,
+                        comment,
+                        comment_type,
+                        timestamp_ref,
+                        created_at: DateTime::parse_from_rfc3339(&created_at)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .unwrap_or_else(|_| Utc::now()),
+                        updated_at: updated_at.and_then(|s| {
+                            DateTime::parse_from_rfc3339(&s)
+                                .ok()
+                                .map(|dt| dt.with_timezone(&Utc))
+                        }),
+                        parent_id,
+                    }
+                },
+            )
+            .collect())
+    }
+
+    /// Save study materials (Dork Mode)
+    pub async fn save_study_materials(
+        &self,
+        id: &str,
+        meeting_id: &str,
+        summary: Option<&str>,
+        key_concepts: Option<&str>,
+        quiz_questions: Option<&str>,
+        flashcards: Option<&str>,
+        model_used: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO study_materials 
+            (id, meeting_id, summary, key_concepts, quiz_questions, flashcards, model_used, generated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            "#,
+        )
+        .bind(id)
+        .bind(meeting_id)
+        .bind(summary)
+        .bind(key_concepts)
+        .bind(quiz_questions)
+        .bind(flashcards)
+        .bind(model_used)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get study materials for a meeting
+    pub async fn get_study_materials(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Option<StudyMaterialsRecord>, sqlx::Error> {
+        let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>)>(
+            "SELECT id, meeting_id, summary, key_concepts, quiz_questions, flashcards, generated_at, model_used FROM study_materials WHERE meeting_id = ? ORDER BY generated_at DESC LIMIT 1"
+        )
+        .bind(meeting_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(
+                id,
+                meeting_id,
+                summary,
+                key_concepts,
+                quiz_questions,
+                flashcards,
+                generated_at,
+                model_used,
+            )| {
+                StudyMaterialsRecord {
+                    id,
+                    meeting_id,
+                    summary,
+                    key_concepts,
+                    quiz_questions,
+                    flashcards,
+                    generated_at: DateTime::parse_from_rfc3339(&generated_at)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now()),
+                    model_used,
+                }
+            },
+        ))
     }
 }

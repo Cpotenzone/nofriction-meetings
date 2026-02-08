@@ -6,8 +6,11 @@ pub mod ai_client;
 pub mod capture_engine;
 pub mod catch_up_agent;
 pub mod chunk_manager;
+pub mod clustering;
 pub mod commands;
 pub mod database;
+pub mod dork_mode;
+pub mod meeting_notes;
 
 // pub mod deepgram_client; // Deprecated
 pub mod frame_extractor;
@@ -65,6 +68,9 @@ pub mod power_manager;
 pub mod privacy_filter;
 pub mod tray_builder;
 
+// v3.0.0: Obsidian Vault Integration
+pub mod obsidian_vault;
+
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -113,6 +119,11 @@ pub struct AppState {
     pub interaction_loop: Arc<InteractionLoop>,
     // v2.7.0: Continuous Accessibility Capture
     pub accessibility_capture: Arc<accessibility_capture::AccessibilityCaptureService>,
+    // v2.8.0: Dork Mode (Study Mode)
+    pub dork_mode_session: Arc<RwLock<Option<dork_mode::DorkModeSession>>>,
+    pub ai_client: Arc<RwLock<ai_client::AIClient>>,
+    // v3.0.0: Obsidian Vault Integration
+    pub vault_manager: Arc<obsidian_vault::VaultManager>,
 }
 
 impl AppState {
@@ -387,7 +398,7 @@ impl AppState {
             // deepgram_client: Arc::new(RwLock::new(deepgram)),
             transcription_manager,
             database,
-            settings,
+            settings: settings.clone(),
             vlm_client: Arc::new(RwLock::new(vlm)),
             vlm_scheduler: Arc::new(vlm_scheduler),
             supabase_client: Arc::new(RwLock::new(supabase)),
@@ -405,6 +416,24 @@ impl AppState {
             meeting_trigger: Arc::new(meeting_trigger),
             interaction_loop: Arc::new(interaction_loop),
             accessibility_capture,
+            // v2.8.0: Dork Mode (Study Mode)
+            dork_mode_session: Arc::new(RwLock::new(None)),
+            ai_client: Arc::new(RwLock::new(ai_client::AIClient::new())),
+            // v3.0.0: Obsidian Vault Integration
+            vault_manager: {
+                let vm = Arc::new(obsidian_vault::VaultManager::new());
+                // Load vault path from settings if configured
+                let settings_clone = settings.clone();
+                let vm_clone = vm.clone();
+                tokio::spawn(async move {
+                    if let Ok(saved_settings) = settings_clone.get_all().await {
+                        if let Some(vault_path) = saved_settings.obsidian_vault_path {
+                            vm_clone.set_vault_path(vault_path);
+                        }
+                    }
+                });
+                vm
+            },
         })
     }
 }
@@ -578,6 +607,10 @@ pub fn run() {
             commands::upsert_to_pinecone,
             commands::semantic_search,
             commands::get_pinecone_stats,
+            commands::index_meeting_transcripts,
+            commands::index_all_transcripts_to_pinecone,
+            commands::get_accessibility_snapshots,
+            commands::get_meeting_timeline,
             // Capture Mode Commands
             commands::set_capture_microphone,
             commands::set_capture_system_audio,
@@ -661,6 +694,7 @@ pub fn run() {
             commands::get_accessibility_capture_status,
             commands::start_accessibility_capture,
             commands::stop_accessibility_capture,
+            commands::set_accessibility_meeting_id,
             // Activity Theme Commands
             commands::set_active_theme,
             commands::get_active_theme,
@@ -720,18 +754,55 @@ pub fn run() {
             commands::get_running_meeting_apps,
             commands::check_audio_usage,
             commands::dismiss_meeting_detection,
+            commands::set_genie_mode,
+            // v2.8.0: Dork Mode (Study Mode) Commands
+            commands::set_session_mode,
+            commands::get_session_mode,
+            commands::start_dork_session,
+            commands::add_dork_content,
+            commands::end_dork_session,
+            commands::get_study_materials,
+            // v3.0.0: Obsidian Vault Commands
+            commands::get_vault_status,
+            commands::list_vault_topics,
+            commands::get_vault_topic,
+            commands::create_vault_topic,
+            commands::export_meeting_to_vault,
+            commands::read_vault_file,
+            commands::write_vault_note,
+            commands::upload_to_vault,
+            commands::list_vault_files,
+            commands::search_vault,
+            commands::get_vault_tree,
+            commands::delete_vault_item,
+            commands::set_vault_path,
         ])
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                #[cfg(target_os = "macos")]
-                {
-                    // Hide the window instead of closing
-                    // To quit, user must use Cmd+Q or Tray -> Quit
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.hide();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        // Hide the window instead of closing
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        }
+                        api.prevent_close();
                     }
-                    api.prevent_close();
                 }
+                tauri::WindowEvent::Resized(_) => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        if window.is_minimized().unwrap_or(false) {
+                            // Instead of standard minimizing, enter Genie mode
+                            let window_clone = window.clone();
+                            tauri::async_runtime::spawn(async move {
+                                // Emit event to frontend to update state
+                                let _ = window_clone.emit("enter-genie-mode", ());
+                            });
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())

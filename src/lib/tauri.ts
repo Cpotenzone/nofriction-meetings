@@ -92,12 +92,12 @@ export async function getRecordingStatus(): Promise<RecordingStatus> {
 
 // Screenshot command (for preview)
 export async function captureScreenshot(monitorId?: number): Promise<string> {
-    return invoke<string>("capture_screenshot", { monitor_id: monitorId });
+    return invoke<string>("capture_screenshot", { monitorId });
 }
 
 // Transcript commands
 export async function getTranscripts(meetingId: string): Promise<Transcript[]> {
-    return invoke<Transcript[]>("get_transcripts", { meeting_id: meetingId });
+    return invoke<Transcript[]>("get_transcripts", { meetingId });
 }
 
 export async function searchTranscripts(query: string): Promise<SearchResult[]> {
@@ -106,11 +106,11 @@ export async function searchTranscripts(query: string): Promise<SearchResult[]> 
 
 // Frame commands (for rewind timeline)
 export async function getFrames(meetingId: string, limit?: number): Promise<Frame[]> {
-    return invoke<Frame[]>("get_frames", { meeting_id: meetingId, limit });
+    return invoke<Frame[]>("get_frames", { meetingId, limit });
 }
 
 export async function getFrameCount(meetingId: string): Promise<number> {
-    return invoke<number>("get_frame_count", { meeting_id: meetingId });
+    return invoke<number>("get_frame_count", { meetingId });
 }
 
 // Device commands
@@ -119,7 +119,7 @@ export async function getAudioDevices(): Promise<AudioDevice[]> {
 }
 
 export async function setAudioDevice(deviceId: string): Promise<void> {
-    return invoke("set_audio_device", { device_id: deviceId });
+    return invoke("set_audio_device", { deviceId });
 }
 
 export async function getMonitors(): Promise<MonitorInfo[]> {
@@ -127,12 +127,12 @@ export async function getMonitors(): Promise<MonitorInfo[]> {
 }
 
 export async function setMonitor(monitorId: number): Promise<void> {
-    return invoke("set_monitor", { monitor_id: monitorId });
+    return invoke("set_monitor", { monitorId });
 }
 
 // Settings commands
 export async function setDeepgramApiKey(apiKey: string): Promise<void> {
-    return invoke("set_deepgram_api_key", { api_key: apiKey });
+    return invoke("set_deepgram_api_key", { apiKey });
 }
 
 export async function getDeepgramApiKey(): Promise<string | null> {
@@ -145,7 +145,7 @@ export async function getSettings(): Promise<AppSettings> {
 
 // Set frame capture interval (milliseconds)
 export async function setFrameCaptureInterval(intervalMs: number): Promise<void> {
-    return invoke("set_frame_capture_interval", { interval_ms: intervalMs });
+    return invoke("set_frame_capture_interval", { intervalMs });
 }
 
 // Meeting commands
@@ -154,11 +154,11 @@ export async function getMeetings(limit?: number): Promise<Meeting[]> {
 }
 
 export async function getMeeting(meetingId: string): Promise<Meeting | null> {
-    return invoke<Meeting | null>("get_meeting", { meeting_id: meetingId });
+    return invoke<Meeting | null>("get_meeting", { meetingId });
 }
 
 export async function deleteMeeting(meetingId: string): Promise<void> {
-    return invoke("delete_meeting", { meeting_id: meetingId });
+    return invoke("delete_meeting", { meetingId });
 }
 
 // Synced Timeline types
@@ -220,7 +220,7 @@ export async function getSavedSettings(): Promise<{ microphone: string | null; m
 
 // Supabase commands
 export async function configureSupabase(connectionString: string): Promise<void> {
-    return invoke("configure_supabase", { connection_string: connectionString });
+    return invoke("configure_supabase", { connectionString });
 }
 
 export async function checkSupabase(): Promise<boolean> {
@@ -229,7 +229,7 @@ export async function checkSupabase(): Promise<boolean> {
 
 // Pinecone commands
 export async function configurePinecone(apiKey: string, indexHost: string, namespace?: string): Promise<void> {
-    return invoke("configure_pinecone", { api_key: apiKey, index_host: indexHost, namespace });
+    return invoke("configure_pinecone", { apiKey, indexHost, namespace });
 }
 
 export async function checkPinecone(): Promise<boolean> {
@@ -336,7 +336,7 @@ export interface StorageStats {
 
 // Start video recording for a meeting
 export async function startVideoRecording(meetingId: string): Promise<void> {
-    return invoke("start_video_recording", { meeting_id: meetingId });
+    return invoke("start_video_recording", { meetingId });
 }
 
 // Stop video recording
@@ -361,9 +361,9 @@ export async function extractFrameAt(
     timestampSecs: number
 ): Promise<ExtractedFrame> {
     return invoke<ExtractedFrame>("extract_frame_at", {
-        meeting_id: meetingId,
-        chunk_number: chunkNumber,
-        timestamp_secs: timestampSecs,
+        meetingId,
+        chunkNumber,
+        timestampSecs,
     });
 }
 
@@ -375,9 +375,9 @@ export async function extractThumbnail(
     size?: number
 ): Promise<string> {
     return invoke<string>("extract_thumbnail", {
-        meeting_id: meetingId,
-        chunk_number: chunkNumber,
-        timestamp_secs: timestampSecs,
+        meetingId,
+        chunkNumber,
+        timestampSecs,
         size,
     });
 }
@@ -394,7 +394,7 @@ export async function applyRetention(): Promise<[number, number]> {
 
 // Delete a meeting's video storage
 export async function deleteVideoStorage(meetingId: string): Promise<number> {
-    return invoke<number>("delete_video_storage", { meeting_id: meetingId });
+    return invoke<number>("delete_video_storage", { meetingId });
 }
 
 // ============================================
@@ -427,7 +427,7 @@ export async function getThemeSettings(): Promise<ThemeSettings> {
 
 // Set screenshot interval for a specific theme
 export async function setThemeInterval(theme: string, intervalMs: number): Promise<void> {
-    return invoke<void>("set_theme_interval", { theme, interval_ms: intervalMs });
+    return invoke<void>("set_theme_interval", { theme, intervalMs });
 }
 
 // Get time spent in a theme today (in hours)
@@ -438,7 +438,7 @@ export async function getThemeTimeToday(theme: string): Promise<number> {
 
 // Trigger manual ingest for a meeting
 export async function triggerMeetingIngest(meetingId: string): Promise<string> {
-    return invoke<string>("trigger_meeting_ingest", { meeting_id: meetingId });
+    return invoke<string>("trigger_meeting_ingest", { meetingId });
 }
 
 // Debug logging to terminal
@@ -449,9 +449,9 @@ export async function debugLog(message: string): Promise<void> {
 // AI / LLM Commands
 export async function aiChat(presetId: string, message: string, meetingId?: string): Promise<string> {
     return invoke<string>("ai_chat", {
-        preset_id: presetId,
+        presetId,
         message,
-        meeting_id: meetingId
+        meetingId
     });
 }
 
@@ -520,27 +520,27 @@ export async function getMeetingState(): Promise<MeetingState> {
 }
 
 export async function generateCatchUp(meetingId: string): Promise<CatchUpCapsule> {
-    return invoke<CatchUpCapsule>("generate_catch_up", { meeting_id: meetingId });
+    return invoke<CatchUpCapsule>("generate_catch_up", { meetingId });
 }
 
 export async function getLiveInsights(meetingId: string): Promise<LiveInsightEvent[]> {
-    return invoke<LiveInsightEvent[]>("get_live_insights", { meeting_id: meetingId });
+    return invoke<LiveInsightEvent[]>("get_live_insights", { meetingId });
 }
 
 export async function pinInsight(meetingId: string, insightType: string, insightText: string, timestampMs: number): Promise<void> {
     return invoke("pin_insight", {
-        meeting_id: meetingId,
-        insight_type: insightType,
-        insight_text: insightText,
-        timestamp_ms: timestampMs
+        meetingId,
+        insightType,
+        insightText,
+        timestampMs
     });
 }
 
 export async function markDecision(meetingId: string, decisionText: string, context: string | null): Promise<void> {
     return invoke("mark_decision", {
-        meeting_id: meetingId,
-        decision_text: decisionText,
-        context: context
+        meetingId,
+        decisionText,
+        context
     });
 }
 
@@ -576,10 +576,133 @@ export async function pauseCapture(): Promise<void> {
     return invoke("pause_capture");
 }
 
+// Link accessibility captures to the current meeting
+export async function setAccessibilityMeetingId(meetingId: string | null): Promise<void> {
+    return invoke("set_accessibility_meeting_id", { meetingId });
+}
+
 export async function getAlwaysOnSettings(): Promise<AlwaysOnSettings> {
     return invoke<AlwaysOnSettings>("get_always_on_settings");
 }
 
 export async function setAlwaysOnEnabled(enabled: boolean): Promise<void> {
     return invoke("set_always_on_enabled", { enabled });
+}
+
+
+// ============================================
+// Meeting Intelligence & Window Management
+// ============================================
+
+export async function dismissMeetingDetection(detectionId: string): Promise<void> {
+    return invoke("dismiss_meeting_detection", { detectionId });
+}
+
+export async function setGenieMode(isGenie: boolean): Promise<void> {
+    return invoke("set_genie_mode", { isGenie });
+}
+
+// ============================================
+// v3.0.0: Obsidian Vault Commands
+// ============================================
+
+export interface VaultTopic {
+    name: string;
+    path: string;
+    meetings: string[];
+    noteCount: number;
+    createdAt: string;
+    tags: string[];
+}
+
+export interface VaultFile {
+    name: string;
+    path: string;
+    relativePath: string;
+    isDir: boolean;
+    modified: string;
+    size: number;
+    extension: string | null;
+}
+
+export interface VaultFileContent {
+    path: string;
+    content: string;
+    frontmatter: Record<string, any>;
+    body: string;
+}
+
+export interface VaultTreeNode {
+    name: string;
+    path: string;
+    isDir: boolean;
+    children: VaultTreeNode[];
+}
+
+export interface VaultStatus {
+    configured: boolean;
+    path: string | null;
+    valid: boolean;
+    topicCount: number;
+    totalFiles: number;
+}
+
+export interface VaultSearchResult {
+    filePath: string;
+    fileName: string;
+    matchingLine: string;
+    lineNumber: number;
+    context: string;
+}
+
+export async function getVaultStatus(): Promise<VaultStatus> {
+    return invoke<VaultStatus>("get_vault_status");
+}
+
+export async function listVaultTopics(): Promise<VaultTopic[]> {
+    return invoke<VaultTopic[]>("list_vault_topics");
+}
+
+export async function getVaultTopic(topicName: string): Promise<VaultTopic> {
+    return invoke<VaultTopic>("get_vault_topic", { topicName });
+}
+
+export async function createVaultTopic(name: string, tags: string[]): Promise<VaultTopic> {
+    return invoke<VaultTopic>("create_vault_topic", { name, tags });
+}
+
+export async function exportMeetingToVault(topicName: string, meetingId: string): Promise<string> {
+    return invoke<string>("export_meeting_to_vault", { topicName, meetingId });
+}
+
+export async function readVaultFile(filePath: string): Promise<VaultFileContent> {
+    return invoke<VaultFileContent>("read_vault_file", { filePath });
+}
+
+export async function writeVaultNote(topicName: string, fileName: string, content: string): Promise<string> {
+    return invoke<string>("write_vault_note", { topicName, fileName, content });
+}
+
+export async function uploadToVault(topicName: string, sourcePath: string, destName?: string): Promise<string> {
+    return invoke<string>("upload_to_vault", { topicName, sourcePath, destName });
+}
+
+export async function listVaultFiles(subPath?: string): Promise<VaultFile[]> {
+    return invoke<VaultFile[]>("list_vault_files", { subPath });
+}
+
+export async function searchVault(query: string): Promise<VaultSearchResult[]> {
+    return invoke<VaultSearchResult[]>("search_vault", { query });
+}
+
+export async function getVaultTree(): Promise<VaultTreeNode> {
+    return invoke<VaultTreeNode>("get_vault_tree");
+}
+
+export async function deleteVaultItem(itemPath: string): Promise<void> {
+    return invoke("delete_vault_item", { itemPath });
+}
+
+export async function setVaultPath(vaultPath: string): Promise<void> {
+    return invoke("set_vault_path", { vaultPath });
 }

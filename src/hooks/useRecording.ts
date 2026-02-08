@@ -60,6 +60,13 @@ export function useRecording() {
             setError(null);
             const meetingId = await tauri.startRecording();
 
+            // Link accessibility captures to this meeting
+            try {
+                await tauri.setAccessibilityMeetingId(meetingId);
+            } catch (accErr) {
+                console.warn('Failed to link accessibility captures:', accErr);
+            }
+
             // Also start video recording
             try {
                 await tauri.startVideoRecording(meetingId);
@@ -95,6 +102,13 @@ export function useRecording() {
                 await tauri.stopVideoRecording();
             } catch (videoErr) {
                 console.warn('Video recording failed to stop:', videoErr);
+            }
+
+            // Unlink accessibility captures from meeting
+            try {
+                await tauri.setAccessibilityMeetingId(null);
+            } catch (accErr) {
+                console.warn('Failed to unlink accessibility captures:', accErr);
             }
 
             await tauri.stopRecording();

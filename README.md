@@ -1,42 +1,71 @@
 # noFriction Meetings
 
-noFriction Meetings is a professional AI-powered meeting companion for macOS. It records, transcribes, and analyzes your meetings in real-time, providing searchable transcripts, visual timelines with synchronized screenshots, and deep insights.
+**Version 1.0.0 RC 1** — Your AI-powered meeting companion for macOS
+
+---
+
+## ✨ What's New in 1.0
+
+- **Synced Rewind View** — Visual timeline with synchronized audio + screen
+- **Screenshot Integration** — Thumbnails with expand-to-view modal
+- **Keyboard Navigation** — Use ↑↓ or j/k to navigate, / to search
+- **Search Everything** — Full-text search across transcripts and screen text
+- **AI Intelligence** — Summaries, action items, and key insights
+
+---
 
 ## Features
 
-- **Live Transcription:** Real-time speech-to-text for all your meetings.
-- **Rewind:** Visual playback with synchronized screenshots and audio using "stateful capture" technology.
-- **Deep Intel:** AI-generated summaries, action items, and insights powered by local and cloud LLMs.
-- **Knowledge Base:** Search across all your past meetings instantly.
-- **Privacy First:** All recording and processing happens locally or via secure, private connections.
+| Feature | Description |
+|---------|-------------|
+| 🎤 **Live Transcription** | Real-time speech-to-text for all your meetings |
+| ⏪ **Rewind** | Visual playback with synchronized screenshots and audio |
+| 🧠 **Deep Intel** | AI-generated summaries, action items, and insights |
+| 🔍 **Knowledge Base** | Search across all your past meetings instantly |
+| 🔒 **Privacy First** | All processing happens locally on your Mac |
+
+---
 
 ## Getting Started
 
-1. **Install:** Download the `.dmg` and drag `noFriction Meetings` to your Applications folder.
-2. **Permissions:** On first launch, grant Microphone, Screen Recording, and Accessibility permissions.
-3. **Record:** Click "Record" in the sidebar or tray menu to start capturing.
-4. **Review:** Use the **Rewind** tab to review past meetings with visual context.
+1. **Install:** Download the `.dmg` and drag `noFriction Meetings` to Applications
+2. **Permissions:** Grant Microphone, Screen Recording, and Accessibility
+3. **Record:** Click "Record" in the sidebar to start capturing
+4. **Review:** Use the **⏪ Rewind** tab to review with visual context
+
+---
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Navigate timeline | ↑↓ or J/K |
+| Open search | / |
+| Clear | Esc |
+| Sync scrolling | 🔗 button |
+
+---
 
 ## Troubleshooting
 
-- **No Audio:** Check System Settings > Privacy & Security > Microphone.
-- **No Screenshots:** Check System Settings > Privacy & Security > Screen Recording.
-- **Support:** Contact `support@nofriction.ai` or check the in-app Help section.
+- **No Audio:** System Settings → Privacy → Microphone
+- **No Screenshots:** System Settings → Privacy → Screen Recording
+- **Support:** support@nofriction.ai
+
+---
 
 ## Development
 
 ### Prerequisites
-
 - Rust (latest stable)
 - Node.js (v18+)
 - Xcode (for macOS build tools)
 
 ### Build
-
 ```bash
 npm install
-npm run tauri dev   # Run locally
-npm run tauri build # Build release DMG
+npm run tauri dev    # Run locally
+npm run tauri build  # Build release DMG
 ```
 
 ---

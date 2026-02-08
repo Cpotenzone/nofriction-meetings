@@ -1,17 +1,13 @@
 
 // noFriction Meetings - Full Settings Component
-// Comprehensive settings with device selection, API config, and preferences
+// Streamlined settings: General, Transcription, TheBrain, Data
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as tauri from "../../lib/tauri";
-import type { AudioDevice, MonitorInfo } from "../../lib/tauri";
-import { AISettings } from "./AISettings";
+import type { AudioDevice } from "../../lib/tauri";
 import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
 import { PermissionsStatus } from "./PermissionsStatus";
-import { ActivityThemesSettings } from "./ActivityThemesSettings";
-import PromptBrowser from "../../components/PromptBrowser";
 import { TranscriptionSettings } from "./TranscriptionSettings";
-import { IngestSettings } from "./IngestSettings";
 
 import { useAppVersion } from '../../hooks/useAppVersion';
 
@@ -21,23 +17,24 @@ interface FullSettingsProps {
 
 export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
     const version = useAppVersion();
-    // API Settings
-    const [apiKey, setApiKey] = useState("");
-    const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
-    const [savedApiKey, setSavedApiKey] = useState("");
-
     // Devices
     const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
-    const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
     const [selectedMic, setSelectedMic] = useState<string>("");
-    const [selectedMonitor, setSelectedMonitor] = useState<number | null>(null);
+    const [vaultPath, setVaultPath] = useState<string>("");
+    const [vaultStatus, setVaultStatus] = useState<any>(null);
 
-    // Loading states
+    // Loading & feedback
     const [isLoadingDevices, setIsLoadingDevices] = useState(true);
-    const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+    const [saveToast, setSaveToast] = useState<string | null>(null);
 
     // Sidebar State
-    const [activeCategory, setActiveCategory] = useState<"general" | "transcription" | "intelligence" | "capture" | "data">("general");
+    const [activeCategory, setActiveCategory] = useState<"general" | "transcription" | "obsidian" | "thebrain" | "data">("general");
+
+    // Auto-dismiss save toast
+    const showToast = useCallback((msg: string) => {
+        setSaveToast(msg);
+        setTimeout(() => setSaveToast(null), 2000);
+    }, []);
 
     // Load current settings
     useEffect(() => {
@@ -47,25 +44,14 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
     const loadSettings = async () => {
         setIsLoadingDevices(true);
         try {
-            // Load API key
-            const key = await tauri.getApiKey();
-            if (key) {
-                setSavedApiKey(key);
-                setApiKey(maskApiKey(key));
-                setApiKeyValid(true);
-            }
-
-            // Load devices
-            const [devices, mons, savedSettings] = await Promise.all([
+            const [devices, savedSettings] = await Promise.all([
                 tauri.getAudioDevices(),
-                tauri.getMonitors(),
                 tauri.getSavedSettings(),
             ]);
 
             setAudioDevices(devices);
-            setMonitors(mons);
 
-            // Set saved selections
+            // Set saved mic selection
             if (savedSettings.microphone) {
                 setSelectedMic(savedSettings.microphone);
             } else if (devices.length > 0) {
@@ -73,11 +59,11 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                 setSelectedMic(defaultDevice.id);
             }
 
-            if (savedSettings.monitor_id) {
-                setSelectedMonitor(savedSettings.monitor_id);
-            } else if (mons.length > 0) {
-                const primaryMon = mons.find(m => m.is_primary) || mons[0];
-                setSelectedMonitor(primaryMon.id);
+            // Load vault status
+            const status = await tauri.getVaultStatus();
+            setVaultStatus(status);
+            if (status.path) {
+                setVaultPath(status.path);
             }
         } catch (err) {
             console.error("Failed to load settings:", err);
@@ -86,57 +72,40 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         }
     };
 
-    const maskApiKey = (key: string) => {
-        if (key.length <= 8) return key;
-        return key.slice(0, 4) + "..." + key.slice(-4);
-    };
-
-    const handleSaveApiKey = async () => {
-        if (!apiKey || apiKey === maskApiKey(savedApiKey)) {
-            return;
-        }
-
-        setIsSavingApiKey(true);
-        try {
-            await tauri.setDeepgramApiKey(apiKey);
-            setSavedApiKey(apiKey);
-            setApiKey(maskApiKey(apiKey));
-            setApiKeyValid(true);
-        } catch (err) {
-            console.error("Failed to save API key:", err);
-            setApiKeyValid(false);
-        } finally {
-            setIsSavingApiKey(false);
-        }
-    };
-
     const handleSelectMic = async (deviceId: string) => {
         setSelectedMic(deviceId);
         try {
             await tauri.setAudioDevice(deviceId);
+            console.log("✅ Microphone saved:", deviceId);
+            showToast("✅ Microphone saved");
         } catch (err) {
-            console.error("Failed to set microphone:", err);
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            console.error("❌ Failed to save microphone:", errorMsg);
+            showToast(`❌ Failed to save: ${errorMsg}`);
         }
     };
 
-    const handleSelectMonitor = async (monitorId: number) => {
-        setSelectedMonitor(monitorId);
+    const handleSaveVaultPath = async () => {
         try {
-            await tauri.setMonitor(monitorId);
+            await tauri.setVaultPath(vaultPath);
+            const status = await tauri.getVaultStatus();
+            setVaultStatus(status);
+            showToast("✅ Vault path saved");
         } catch (err) {
-            console.error("Failed to set monitor:", err);
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            showToast(`❌ Failed to save: ${errorMsg}`);
         }
     };
 
     const categories = [
         { id: "general", label: "General", icon: "⚙️" },
         { id: "transcription", label: "Transcription", icon: "🎙️" },
-        { id: "capture", label: "Capture", icon: "🎥" },
-        { id: "intelligence", label: "Intelligence", icon: "🧠" },
+        { id: "obsidian", label: "Obsidian", icon: "📚" },
+        { id: "thebrain", label: "TheBrain", icon: "🧠" },
         { id: "data", label: "Data", icon: "💾" },
     ];
 
-    const renderSidbar = () => (
+    const renderSidebar = () => (
         <div className="settings-sidebar glass-panel">
             <div className="sidebar-header">
                 <h2>Settings</h2>
@@ -208,76 +177,70 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                 );
             case "transcription":
                 return <TranscriptionSettings />;
-            case "capture":
+            case "obsidian":
                 return (
                     <div className="settings-content-panel fade-in">
                         <section className="settings-section">
-                            <h3>Screen Capture</h3>
-                            <p className="section-desc">Select which monitor to record.</p>
-                            {isLoadingDevices ? (
-                                <div className="loading-spinner" style={{ margin: "20px auto" }} />
-                            ) : (
-                                <div className="monitor-preview-grid">
-                                    {monitors.map((monitor) => (
-                                        <div
-                                            key={monitor.id}
-                                            className={`monitor-card ${selectedMonitor === monitor.id ? "selected" : ""}`}
-                                            onClick={() => handleSelectMonitor(monitor.id)}
-                                        >
-                                            <div className="monitor-screen">
-                                                <span className="monitor-res">{monitor.width}x{monitor.height}</span>
+                            <h3>Obsidian Integration</h3>
+                            <p className="section-desc">Connect noFriction to your Obsidian vault for meeting knowledge management.</p>
+
+                            <div className="input-group">
+                                <label>Vault Root Path</label>
+                                <div className="input-with-button">
+                                    <input
+                                        type="text"
+                                        value={vaultPath}
+                                        onChange={(e) => setVaultPath(e.target.value)}
+                                        placeholder="/Users/name/Documents/MyVault"
+                                    />
+                                    <button className="btn-primary" onClick={handleSaveVaultPath}>Save</button>
+                                </div>
+                                <p className="input-help">The absolute path to your Obsidian vault folder.</p>
+                            </div>
+
+                            {vaultStatus && vaultStatus.configured && (
+                                <div className={`status-card ${vaultStatus.valid ? 'success' : 'error'}`}>
+                                    <div className="status-header">
+                                        <span className="status-icon">{vaultStatus.valid ? '✅' : '❌'}</span>
+                                        <span className="status-text">{vaultStatus.valid ? 'Vault Connected' : 'Invalid Path'}</span>
+                                    </div>
+                                    {vaultStatus.valid && (
+                                        <div className="status-details">
+                                            <div className="detail-item">
+                                                <span className="detail-label">Topics:</span>
+                                                <span className="detail-value">{vaultStatus.topicCount}</span>
                                             </div>
-                                            <div className="monitor-name">{monitor.name}</div>
-                                            {monitor.is_primary && <span className="monitor-tag">Primary</span>}
+                                            <div className="detail-item">
+                                                <span className="detail-label">Total Files:</span>
+                                                <span className="detail-value">{vaultStatus.totalFiles}</span>
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             )}
                         </section>
+
                         <section className="settings-section">
-                            <h3>Recording Mode</h3>
-                            <div className="segmented-control">
-                                <button className="segment active">Video Mode</button>
-                                <button className="segment">Frame Mode</button>
+                            <h3>Auto-Export</h3>
+                            <div className="settings-row">
+                                <div className="settings-label">
+                                    <span className="label-main">Auto-Export Meetings</span>
+                                    <span className="label-sub">Automatically save meetings to vault when capture stops.</span>
+                                </div>
+                                <div className="toggle-switch disabled">
+                                    <div className="toggle-knob"></div>
+                                </div>
                             </div>
-                            <ScreenshotFrequencySlider />
                         </section>
                     </div>
                 );
-            case "intelligence":
+            case "thebrain":
                 return (
                     <div className="settings-content-panel fade-in">
                         <section className="settings-section">
-                            <h3>Activity Themes</h3>
-                            <ActivityThemesSettings />
-                        </section>
-                        {/* AISettings included here to fix unused variable error */}
-                        <div className="settings-section-divider"></div>
-                        <AISettings />
-                        <div className="settings-section-divider"></div>
-                        <IngestSettings />
-                        <section className="settings-section">
-                            <h3>Deepgram API</h3>
-                            <div className="settings-input-group">
-                                <input
-                                    type="password"
-                                    placeholder="Enter API Key"
-                                    value={apiKey}
-                                    onChange={(e) => { setApiKey(e.target.value); setApiKeyValid(null); }}
-                                    className="modern-input"
-                                />
-                                <button className="btn-primary" onClick={handleSaveApiKey} disabled={isSavingApiKey}>
-                                    {isSavingApiKey ? "Saving..." : apiKeyValid ? "Saved" : "Save"}
-                                </button>
-                            </div>
-                        </section>
-                        <section className="settings-section">
-                            <h3>Knowledge Base</h3>
+                            <h3>TheBrain Connection</h3>
+                            <p className="section-desc">Connect to TheBrain Cloud for AI, chat, and vision intelligence.</p>
                             <KnowledgeBaseSettings />
-                        </section>
-                        <section className="settings-section">
-                            <h3>Prompt Library</h3>
-                            <PromptBrowser />
                         </section>
                     </div>
                 );
@@ -337,7 +300,7 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
 
     return (
         <div className="full-settings-layout">
-            {renderSidbar()}
+            {renderSidebar()}
             <div className="settings-main-content">
                 <div className="content-header">
                     <h1>{categories.find(c => c.id === activeCategory)?.label}</h1>
@@ -346,77 +309,26 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                     {renderContent()}
                 </div>
             </div>
-        </div>
-    );
-}
-
-// Internal component for Screenshot Frequency slider with dynamic display
-function ScreenshotFrequencySlider() {
-    const [intervalMs, setIntervalMs] = useState(1000);
-
-    // Load saved setting on mount
-    useEffect(() => {
-        const loadSetting = async () => {
-            try {
-                const { invoke } = await import("@tauri-apps/api/core");
-                const settings = await invoke<{ frame_capture_interval_ms?: number }>("get_capture_settings");
-                if (settings.frame_capture_interval_ms) {
-                    setIntervalMs(settings.frame_capture_interval_ms);
-                }
-            } catch (err) {
-                console.error("Failed to load frame interval:", err);
-            }
-        };
-        loadSetting();
-    }, []);
-
-    const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newInterval = parseInt(e.target.value, 10);
-        setIntervalMs(newInterval);
-        try {
-            await tauri.setFrameCaptureInterval(newInterval);
-        } catch (err) {
-            console.error("Failed to set frame interval:", err);
-        }
-    };
-
-    // Format the interval for display
-    const formatInterval = (ms: number): string => {
-        if (ms <= 500) {
-            return `${Math.round(1000 / ms)} per second`;
-        } else if (ms === 1000) {
-            return "1 per second";
-        } else {
-            return `1 every ${(ms / 1000).toFixed(1)}s`;
-        }
-    };
-
-    return (
-        <div className="settings-row" style={{ marginTop: "var(--spacing-md)" }}>
-            <div className="settings-label">
-                <span className="label-main">Screenshot Frequency</span>
-                <span className="label-sub">
-                    How often to capture screenshots during recording
-                </span>
-            </div>
-            <div className="settings-control" style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
-                <input
-                    type="range"
-                    min={100}
-                    max={5000}
-                    step={100}
-                    value={intervalMs}
-                    onChange={handleChange}
-                    style={{ width: "150px" }}
-                />
-                <span style={{
-                    fontSize: "0.75rem",
-                    color: "var(--text-secondary)",
-                    fontWeight: intervalMs === 1000 ? 400 : 600
+            {/* Save confirmation toast */}
+            {saveToast && (
+                <div style={{
+                    position: "fixed",
+                    bottom: "24px",
+                    right: "24px",
+                    background: saveToast.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+                    border: `1px solid ${saveToast.startsWith("✅") ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
+                    color: saveToast.startsWith("✅") ? "#22c55e" : "#ef4444",
+                    padding: "10px 20px",
+                    borderRadius: "8px",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    backdropFilter: "blur(12px)",
+                    zIndex: 9999,
+                    animation: "fadeIn 0.2s ease-out",
                 }}>
-                    {formatInterval(intervalMs)}{intervalMs === 1000 ? " (default)" : ""}
-                </span>
-            </div>
+                    {saveToast}
+                </div>
+            )}
         </div>
     );
 }

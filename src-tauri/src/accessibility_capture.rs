@@ -70,6 +70,7 @@ pub struct AccessibilityCaptureService {
     last_capture: Arc<RwLock<Option<DateTime<Utc>>>>,
     last_app: Arc<RwLock<Option<String>>>,
     config: Arc<RwLock<AccessibilityCaptureConfig>>,
+    current_meeting_id: Arc<RwLock<Option<String>>>,
 }
 
 impl AccessibilityCaptureService {
@@ -83,7 +84,18 @@ impl AccessibilityCaptureService {
             last_capture: Arc::new(RwLock::new(None)),
             last_app: Arc::new(RwLock::new(None)),
             config: Arc::new(RwLock::new(AccessibilityCaptureConfig::default())),
+            current_meeting_id: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Set the current meeting ID for linking captures
+    pub fn set_meeting_id(&self, meeting_id: Option<String>) {
+        *self.current_meeting_id.write() = meeting_id;
+    }
+
+    /// Get the current meeting ID
+    pub fn get_meeting_id(&self) -> Option<String> {
+        self.current_meeting_id.read().clone()
     }
 
     /// Check if service is running
@@ -140,6 +152,7 @@ impl AccessibilityCaptureService {
         let last_app = self.last_app.clone();
         let config = self.config.clone();
         let pinecone = pinecone.clone();
+        let current_meeting_id = self.current_meeting_id.clone();
 
         // Spawn background task
         tokio::spawn(async move {
@@ -213,16 +226,23 @@ impl AccessibilityCaptureService {
                                 } else {
                                     0.3
                                 };
+
+                                // Get current meeting ID for linking
+                                let meeting_id_opt = current_meeting_id.read().clone();
+
                                 if let Err(e) = database
-                                    .add_text_snapshot(
+                                    .add_text_snapshot_full(
                                         &Uuid::new_v4().to_string(),
                                         None, // episode_id
                                         None, // state_id
+                                        meeting_id_opt.as_deref(),
                                         Utc::now(),
                                         &result.text,
                                         &format!("{:x}", new_hash),
                                         quality_score,
                                         "accessibility",
+                                        result.app_name.as_deref(),
+                                        result.window_title.as_deref(),
                                     )
                                     .await
                                 {
@@ -230,19 +250,21 @@ impl AccessibilityCaptureService {
                                 } else {
                                     saved_count.fetch_add(1, Ordering::SeqCst);
                                     log::debug!(
-                                        "📝 Saved snapshot: {} words from {}",
+                                        "📝 Saved snapshot: {} words from {} (meeting: {:?})",
                                         word_count,
-                                        result.app_name.as_deref().unwrap_or("unknown")
+                                        result.app_name.as_deref().unwrap_or("unknown"),
+                                        meeting_id_opt
                                     );
 
-                                    // Trigger Pinecone embedding
                                     // Trigger Pinecone embedding
                                     let pinecone_config_opt = { pinecone.read().get_config() };
 
                                     if let Some(pinecone_config) = pinecone_config_opt {
                                         let id = format!("acc_{}", Uuid::new_v4());
                                         let metadata = serde_json::json!({
+                                            "type": "accessibility",
                                             "source": "accessibility",
+                                            "meeting_id": meeting_id_opt,
                                             "app_name": result.app_name,
                                             "window_title": result.window_title,
                                             "timestamp": Utc::now().to_rfc3339(),
@@ -285,16 +307,22 @@ impl AccessibilityCaptureService {
                                 0.3
                             };
 
+                            // Get current meeting ID for linking
+                            let meeting_id_opt = current_meeting_id.read().clone();
+
                             if let Err(e) = database
-                                .add_text_snapshot(
+                                .add_text_snapshot_full(
                                     &Uuid::new_v4().to_string(),
                                     None,
                                     None,
+                                    meeting_id_opt.as_deref(),
                                     Utc::now(),
                                     &result.text,
                                     &format!("{:x}", hash),
                                     quality_score,
                                     "accessibility",
+                                    result.app_name.as_deref(),
+                                    result.window_title.as_deref(),
                                 )
                                 .await
                             {
@@ -308,7 +336,9 @@ impl AccessibilityCaptureService {
                                 if let Some(pinecone_config) = pinecone_config_opt {
                                     let id = format!("acc_{}", Uuid::new_v4());
                                     let metadata = serde_json::json!({
+                                        "type": "accessibility",
                                         "source": "accessibility",
+                                        "meeting_id": meeting_id_opt,
                                         "app_name": result.app_name,
                                         "window_title": result.window_title,
                                         "timestamp": Utc::now().to_rfc3339(),

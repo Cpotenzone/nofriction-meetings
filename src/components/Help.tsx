@@ -75,8 +75,12 @@ export function HelpSection() {
                             </thead>
                             <tbody>
                                 {[
-                                    { action: 'Wait for next release', shortcut: 'Coming Soon' },
-                                    { action: 'Currently keyboard shortcuts are in beta', shortcut: '-' }
+                                    { action: 'Navigate up in timeline', shortcut: '↑ or K' },
+                                    { action: 'Navigate down in timeline', shortcut: '↓ or J' },
+                                    { action: 'Open search', shortcut: '/' },
+                                    { action: 'Clear selection/search', shortcut: 'Esc' },
+                                    { action: 'Toggle sync scrolling', shortcut: 'Click 🔗' },
+                                    { action: 'Expand screenshot', shortcut: 'Click thumbnail' }
                                 ].map((row, i) => (
                                     <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                         <td style={{ padding: '12px', color: '#d1d5db' }}>{row.action}</td>

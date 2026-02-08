@@ -37,10 +37,14 @@ struct Alternative {
 
 #[derive(Debug, Deserialize)]
 struct Word {
-    _word: String,
-    _start: f64,
-    _end: f64,
-    _confidence: f64,
+    #[allow(dead_code)]
+    word: String,
+    #[allow(dead_code)]
+    start: f64,
+    #[allow(dead_code)]
+    end: f64,
+    #[allow(dead_code)]
+    confidence: f64,
     speaker: Option<u32>,
 }
 
@@ -92,20 +96,12 @@ impl DeepgramProvider {
         meeting_id: Arc<RwLock<Option<String>>>,
     ) -> Result<(), String> {
         // Use nova-3 model with advanced features
-        let url = "wss://api.deepgram.com/v1/listen?\
-                   model=nova-3&\
-                   language=en-US&\
-                   smart_format=true&\
-                   punctuate=true&\
-                   diarize=true&\
-                   dictation=true&\
-                   endpointing=10&\
-                   utterance_end_ms=1000&\
-                   vad_events=true&\
-                   interim_results=true&\
-                   encoding=linear16&\
-                   sample_rate=16000&\
-                   channels=1";
+        // Build a clean URL without escape characters
+        let url = format!(
+            "wss://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&punctuate=true&diarize=true&dictation=true&endpointing=10&utterance_end_ms=1000&vad_events=true&interim_results=true&encoding=linear16&sample_rate=16000&channels=1"
+        );
+
+        log::info!("🔗 Deepgram URL: {}", url);
 
         let request = http::Request::builder()
             .method("GET")
@@ -163,9 +159,23 @@ impl DeepgramProvider {
                     }
 
                     let chunk: Vec<f32> = buffer.drain(..batch_size).collect();
+
+                    // Log audio amplitude for debugging
+                    let count = samples_sent.fetch_add(1, Ordering::Relaxed);
+                    if count % 50 == 0 {
+                        let max_amp = chunk.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+                        let rms: f32 =
+                            (chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32).sqrt();
+                        log::info!(
+                            "🔊 Audio #{}: max_amp={:.4}, rms={:.4}",
+                            count,
+                            max_amp,
+                            rms
+                        );
+                    }
+
                     let bytes = Self::f32_to_i16_bytes(&chunk);
 
-                    let count = samples_sent.fetch_add(1, Ordering::Relaxed);
                     if count % 200 == 0 {
                         log::info!("🎧 Sent audio chunk #{}", count);
                     }
@@ -192,9 +202,27 @@ impl DeepgramProvider {
 
                 match msg {
                     Ok(Message::Text(text)) => {
+                        // Log raw response for debugging
+                        log::info!("🔍 Deepgram raw: {}", &text[..text.len().min(500)]);
+
                         if let Ok(response) = serde_json::from_str::<DeepgramResponse>(&text) {
+                            // Log parsed response structure
+                            if response.channel.is_some() {
+                                log::info!(
+                                    "🎤 Deepgram response: channel present, is_final={:?}",
+                                    response.is_final
+                                );
+                            }
+
                             if let Some(channel) = response.channel {
                                 if let Some(alt) = channel.alternatives.first() {
+                                    // Log the transcript text for debugging
+                                    log::info!(
+                                        "📜 Transcript text: '{}' (len={})",
+                                        alt.transcript,
+                                        alt.transcript.len()
+                                    );
+
                                     if !alt.transcript.is_empty() {
                                         let is_final = response.is_final.unwrap_or(false);
                                         let segment = TranscriptSegment {
@@ -210,6 +238,16 @@ impl DeepgramProvider {
                                                 .and_then(|w| w.speaker)
                                                 .map(|s| format!("Speaker {}", s)),
                                         };
+
+                                        // Log transcript reception
+                                        if is_final {
+                                            log::info!("📝 TRANSCRIPT [FINAL]: {}", alt.transcript);
+                                        } else {
+                                            log::debug!(
+                                                "📝 transcript [interim]: {}",
+                                                alt.transcript
+                                            );
+                                        }
 
                                         // Emit to frontend
                                         if let Err(e) = app.emit("live_transcript", &segment) {
@@ -372,7 +410,21 @@ impl TranscriptionProvider for DeepgramProvider {
     }
 
     fn process_audio(&self, samples: &[f32], sample_rate: u32) {
-        if !self.is_connected.load(Ordering::SeqCst) || samples.is_empty() {
+        if samples.is_empty() {
+            return;
+        }
+
+        if !self.is_connected.load(Ordering::SeqCst) {
+            // Log periodically to help debug connection issues
+            static DROPPED_COUNT: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
+            let count = DROPPED_COUNT.fetch_add(1, Ordering::Relaxed);
+            if count % 500 == 0 {
+                log::warn!(
+                    "⚠️ Deepgram not connected - dropped {} audio batches",
+                    count
+                );
+            }
             return;
         }
 
@@ -381,7 +433,9 @@ impl TranscriptionProvider for DeepgramProvider {
                 samples: samples.to_vec(),
                 sample_rate,
             };
-            let _ = tx.try_send(batch);
+            if tx.try_send(batch).is_err() {
+                log::trace!("Audio queue full, batch dropped");
+            }
         }
     }
 

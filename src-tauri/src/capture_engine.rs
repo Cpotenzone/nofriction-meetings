@@ -285,8 +285,6 @@ impl CaptureEngine {
         });
 
         // Start system audio capture (ScreenCaptureKit)
-        // Temporarily disabled to debug permission loop/conflict
-        /*
         SYSTEM_AUDIO_RUNNING.store(true, Ordering::SeqCst);
         let sys_count = self.system_audio_count.clone();
         let audio_callback_sys = self.audio_callback.clone();
@@ -294,7 +292,6 @@ impl CaptureEngine {
         std::thread::spawn(move || {
             Self::run_system_audio_capture(sys_count, audio_callback_sys);
         });
-        */
 
         // Start screen capture with configurable interval
         SCREEN_RUNNING.store(true, Ordering::SeqCst);
@@ -310,10 +307,8 @@ impl CaptureEngine {
             1000.0 / interval_ms as f32
         );
         tokio::spawn(async move {
-            // Delay screen capture startup to prevent permission prompt race with audio
-            // This ensures audio permission prompt (system modal) doesn't dismiss/hide screen recording prompt
-            // increased to 3s as 1s was not enough
-            tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+            // Short delay to prevent permission prompt race - 500ms is sufficient
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
             Self::run_screen_capture(
                 frame_count,
@@ -677,6 +672,15 @@ impl CaptureEngine {
 
     /// List available audio input devices
     pub fn list_audio_devices() -> Result<Vec<AudioDevice>, String> {
+        // PERMISSION SAFEGUARD: Only list devices if permission is already granted.
+        // This prevents the macOS "infinite prompt loop" on app startup.
+        #[cfg(target_os = "macos")]
+        {
+            if !crate::commands::check_microphone_permission() {
+                return Ok(Vec::new());
+            }
+        }
+
         let host = cpal::default_host();
         let default_device = host.default_input_device();
         let default_name = default_device.as_ref().and_then(|d| d.name().ok());

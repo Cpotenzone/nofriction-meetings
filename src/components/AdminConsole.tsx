@@ -37,7 +37,72 @@ interface FeatureFlags {
     queue_frames_for_vlm: boolean;
 }
 
-type AdminTab = 'recordings' | 'data' | 'audit' | 'health' | 'tools' | 'diagnostics' | 'flags';
+type AdminTab = 'recordings' | 'data' | 'audit' | 'health' | 'tools' | 'diagnostics' | 'flags' | 'about';
+
+// =============================================================================
+// About Panel Component
+// =============================================================================
+
+function AboutPanel() {
+    return (
+        <div className="about-panel">
+            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚀</div>
+                <h2 style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>
+                    noFriction Meetings
+                </h2>
+                <p style={{ color: '#a78bfa', fontSize: '16px', fontWeight: 600, marginBottom: '24px' }}>
+                    Version 1.0.0 RC 1
+                </p>
+                <p style={{ color: '#9ca3af', fontSize: '14px', maxWidth: '500px', margin: '0 auto 32px', lineHeight: 1.7 }}>
+                    Your AI-powered meeting companion that captures everything—audio, screen content, and visual context—so you can focus on the conversation, not on taking notes.
+                </p>
+            </div>
+
+            {/* Value Props */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', maxWidth: '700px', margin: '0 auto 40px' }}>
+                {[
+                    { icon: '⏪', title: 'Total Recall', desc: 'Synchronized audio + screen + screenshots' },
+                    { icon: '🎯', title: 'Zero Effort', desc: 'One-click recording, automatic transcription' },
+                    { icon: '🔒', title: 'Privacy First', desc: 'All processing happens locally on your Mac' },
+                ].map((prop, i) => (
+                    <div key={i} style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        padding: '20px',
+                        borderRadius: '12px',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{ fontSize: '28px', marginBottom: '12px' }}>{prop.icon}</div>
+                        <h4 style={{ color: '#fff', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>{prop.title}</h4>
+                        <p style={{ color: '#9ca3af', fontSize: '12px', margin: 0, lineHeight: 1.5 }}>{prop.desc}</p>
+                    </div>
+                ))}
+            </div>
+
+            {/* Core Features */}
+            <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '700px', margin: '0 auto 32px' }}>
+                <h3 style={{ color: '#c4b5fd', fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>✨ What's New in 1.0</h3>
+                <ul style={{ color: '#e9d5ff', fontSize: '13px', lineHeight: 1.8, paddingLeft: '20px', margin: 0 }}>
+                    <li><strong>Synced Rewind View</strong> — Visual timeline with synchronized audio + screen</li>
+                    <li><strong>Screenshot Integration</strong> — Thumbnails with expand-to-view modal</li>
+                    <li><strong>Keyboard Navigation</strong> — Use ↑↓ or j/k to navigate, / to search</li>
+                    <li><strong>Search Everything</strong> — Full-text search across transcripts and screen text</li>
+                    <li><strong>AI Intelligence</strong> — Summaries, action items, and key insights</li>
+                </ul>
+            </div>
+
+            {/* Links */}
+            <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '12px' }}>
+                <p style={{ marginBottom: '8px' }}>
+                    <a href="mailto:support@nofriction.ai" style={{ color: '#7c3aed', textDecoration: 'none' }}>support@nofriction.ai</a>
+                    {' • '}
+                    <a href="https://nofriction.ai" style={{ color: '#7c3aed', textDecoration: 'none' }}>nofriction.ai</a>
+                </p>
+                <p style={{ margin: 0 }}>© 2026 noFriction AI. All rights reserved.</p>
+            </div>
+        </div>
+    );
+}
 
 // =============================================================================
 // SystemHealth Component
@@ -67,7 +132,7 @@ function SystemHealth() {
 
     useEffect(() => {
         loadHealth();
-        const interval = setInterval(loadHealth, 10000); // Refresh every 10s
+        const interval = setInterval(loadHealth, 10000);
         return () => clearInterval(interval);
     }, []);
 
@@ -114,7 +179,6 @@ function SystemHealth() {
                 </div>
             )}
 
-            {/* Services Grid */}
             <div className="services-grid">
                 {services.map((service, idx) => (
                     <div key={idx} className={`service-card ${getStatusClass(service.status)}`}>
@@ -130,7 +194,6 @@ function SystemHealth() {
                 ))}
             </div>
 
-            {/* Queue Stats */}
             {queueStats && (
                 <div className="queue-stats">
                     <h4>📊 Ingest Queue</h4>
@@ -273,6 +336,7 @@ export function AdminConsole() {
         { id: 'tools' as AdminTab, label: 'Tools', icon: '🛠️' },
         { id: 'diagnostics' as AdminTab, label: 'Video Diagnostics', icon: '📹' },
         { id: 'flags' as AdminTab, label: 'Feature Flags', icon: '🚩' },
+        { id: 'about' as AdminTab, label: 'About', icon: '💜' },
     ];
 
     return (
@@ -300,6 +364,7 @@ export function AdminConsole() {
                 {activeTab === 'tools' && <ToolsConsole />}
                 {activeTab === 'diagnostics' && <VideoDiagnostics />}
                 {activeTab === 'flags' && <FeatureFlagsPanel />}
+                {activeTab === 'about' && <AboutPanel />}
             </div>
         </div>
     );

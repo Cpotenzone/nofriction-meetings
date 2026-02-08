@@ -40,7 +40,21 @@ export function KnowledgeBaseSettings() {
     useEffect(() => {
         checkHealth();
         loadPendingCount();
+        loadSavedCredentials();
     }, []);
+
+    const loadSavedCredentials = async () => {
+        try {
+            const [savedUsername, savedUrl] = await Promise.all([
+                invoke<string | null>("get_setting", { key: "thebrain_username" }),
+                invoke<string | null>("get_setting", { key: "vlm_base_url" }),
+            ]);
+            if (savedUsername) setThebrainEmail(savedUsername);
+            if (savedUrl) setThebrainApiUrl(savedUrl);
+        } catch (err) {
+            console.error("Failed to load saved TheBrain credentials:", err);
+        }
+    };
 
     const checkHealth = async () => {
         setIsLoading(true);

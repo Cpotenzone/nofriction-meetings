@@ -62,6 +62,12 @@ pub struct AppSettings {
     pub ai_provider: String, // "local" or "remote"
     pub ai_remote_url: Option<String>,
     pub ai_remote_key: Option<String>,
+    // Session Mode settings
+    pub session_mode: String, // "standard" or "dork" (study mode)
+    // Obsidian Vault settings
+    pub obsidian_vault_path: Option<String>,
+    pub obsidian_auto_export: bool,
+    pub obsidian_template: String, // "default" or "zettelkasten"
 }
 
 impl AppSettings {
@@ -115,6 +121,12 @@ impl AppSettings {
             ai_provider: "remote".to_string(), // Default to remote for reliability
             ai_remote_url: None,
             ai_remote_key: None,
+            // Session Mode defaults
+            session_mode: "standard".to_string(), // Default to standard recording
+            // Obsidian Vault defaults
+            obsidian_vault_path: None,
+            obsidian_auto_export: false,
+            obsidian_template: "default".to_string(),
         }
     }
 }
@@ -318,6 +330,22 @@ impl SettingsManager {
             settings.ai_remote_key = Some(v);
         }
 
+        // Session Mode settings
+        if let Some(v) = self.get("session_mode").await? {
+            settings.session_mode = v;
+        }
+
+        // Obsidian Vault settings
+        if let Some(v) = self.get("obsidian_vault_path").await? {
+            settings.obsidian_vault_path = Some(v);
+        }
+        if let Some(v) = self.get("obsidian_auto_export").await? {
+            settings.obsidian_auto_export = v == "true";
+        }
+        if let Some(v) = self.get("obsidian_template").await? {
+            settings.obsidian_template = v;
+        }
+
         Ok(settings)
     }
 
@@ -380,6 +408,29 @@ impl SettingsManager {
     pub async fn set_capture_microphone(&self, enabled: bool) -> Result<(), sqlx::Error> {
         self.set("capture_microphone", if enabled { "true" } else { "false" })
             .await
+    }
+
+    // ============================================
+    // Obsidian Vault Settings
+    // ============================================
+
+    /// Set obsidian vault path
+    pub async fn set_vault_path(&self, path: &str) -> Result<(), sqlx::Error> {
+        self.set("obsidian_vault_path", path).await
+    }
+
+    /// Set obsidian auto export
+    pub async fn set_obsidian_auto_export(&self, enabled: bool) -> Result<(), sqlx::Error> {
+        self.set(
+            "obsidian_auto_export",
+            if enabled { "true" } else { "false" },
+        )
+        .await
+    }
+
+    /// Set obsidian template
+    pub async fn set_obsidian_template(&self, template: &str) -> Result<(), sqlx::Error> {
+        self.set("obsidian_template", template).await
     }
 
     /// Set capture system audio toggle
@@ -558,5 +609,22 @@ impl SettingsManager {
 
     pub async fn set_ai_remote_key(&self, key: &str) -> Result<(), sqlx::Error> {
         self.set("ai_remote_key", key).await
+    }
+
+    // ============================================
+    // Session Mode Settings
+    // ============================================
+
+    /// Set session mode ("standard" or "dork")
+    pub async fn set_session_mode(&self, mode: &str) -> Result<(), sqlx::Error> {
+        self.set("session_mode", mode).await
+    }
+
+    /// Get session mode
+    pub async fn get_session_mode(&self) -> Result<String, sqlx::Error> {
+        Ok(self
+            .get("session_mode")
+            .await?
+            .unwrap_or_else(|| "standard".to_string()))
     }
 }

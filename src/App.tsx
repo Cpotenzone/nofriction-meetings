@@ -1,31 +1,20 @@
 // noFriction Meetings - Sidebar Layout
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { HelpSection } from "./components/Help";
+import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { debugLog } from "./lib/tauri";
 import "./App.css";
-import { Sidebar } from "./components/Sidebar";
-import { LiveTranscriptView } from "./components/LiveTranscript";
-import { MeetingHistory } from "./components/MeetingHistory";
-import { SearchBar } from "./components/SearchBar";
-import { RewindGallery } from "./components/RewindGallery";
-import { FullSettings } from "./features/settings/FullSettings";
-import { KBSearch } from "./components/KBSearch";
-import { InsightsView } from "./components/InsightsView";
-import { ActivityTimeline } from "./components/ActivityTimeline";
-import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
-import { SetupWizard, useSetupRequired } from "./features/onboarding/SetupWizard";
-import { AdminConsole } from "./components/AdminConsole";
-import { MeetingIntelPanel } from "./components/MeetingIntelPanel";
 import { MeetingDetectionBanner } from "./components/MeetingDetectionBanner";
+import { SetupWizard, useSetupRequired } from "./features/onboarding/SetupWizard";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
+import { GenieView } from "./components/GenieView";
+import { AgencyLayout, AgencyMode } from "./components/agency/AgencyLayout";
 
-type Tab = "live" | "rewind" | "kb" | "insights" | "intel" | "timeline" | "admin" | "settings" | "help";
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("live");
+  const [activeMode, setActiveMode] = useState<AgencyMode>("flow");
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [meetingListRefreshKey, setMeetingListRefreshKey] = useState(0);
 
@@ -33,15 +22,18 @@ function App() {
   const transcripts = useTranscripts(recording.meetingId);
   const commandPalette = useCommandPalette();
   const setupRequired = useSetupRequired();
+  const [isGenieMode, setIsGenieMode] = useState(false);
+  const isGenieModeRef = useRef(isGenieMode);
+  isGenieModeRef.current = isGenieMode;
 
   // Menu event listeners
   useEffect(() => {
     const listeners: (() => void)[] = [];
 
     const setupListeners = async () => {
-      listeners.push(await listen("menu:search", () => setActiveTab("kb")));
-      listeners.push(await listen("menu:insights", () => setActiveTab("insights")));
-      listeners.push(await listen("menu:settings", () => setActiveTab("settings")));
+      listeners.push(await listen("menu:search", () => setActiveMode("deck")));
+      listeners.push(await listen("menu:insights", () => setActiveMode("deck")));
+      listeners.push(await listen("menu:settings", () => setActiveMode("deck")));
       // Tray menu events
       listeners.push(await listen("tray:start_recording", async () => {
         if (!recording.isRecording) {
@@ -53,6 +45,12 @@ function App() {
         if (recording.isRecording) {
           await recording.stopRecording();
           setMeetingListRefreshKey((k) => k + 1);
+        }
+      }));
+      listeners.push(await listen("enter-genie-mode", async () => {
+        if (!isGenieModeRef.current) {
+          await invoke("set_genie_mode", { isGenie: true });
+          setIsGenieMode(true);
         }
       }));
     };
@@ -190,147 +188,46 @@ function App() {
     debugLog(`Meeting selected: ${meetingId}`);
     setSelectedMeetingId(meetingId);
     transcripts.loadTranscripts(meetingId);
-
-    // Only switch to rewind if we're not already on timeline
-    // This preserves the current tab when selecting meetings from Timeline view
-    if (activeTab !== "timeline") {
-      setActiveTab("rewind");
-    }
+    setActiveMode("deck");
   };
 
-  const rewindMeetingId = selectedMeetingId || (recording.isRecording ? recording.meetingId : null);
 
-  // Tab content titles
-  const tabTitles: Record<Tab, string> = {
-    live: "Live Transcription",
-    rewind: "Meeting Playback",
-    kb: "Knowledge Base",
-    insights: "Activity Insights",
-    intel: "Deep Intel",
-    timeline: "Activity Timeline",
-    admin: "Management Suite",
-    settings: "Settings",
-    help: "Help & Documentation",
-  };
+  if (isGenieMode) {
+    return (
+      <GenieView
+        onRestore={() => setIsGenieMode(false)}
+        liveTranscripts={transcripts.liveTranscripts.map(t => t.text)}
+        isRecording={recording.isRecording}
+        onStop={async () => {
+          await recording.stopRecording();
+          setMeetingListRefreshKey((k) => k + 1);
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="app-container">
-      {/* Left Sidebar */}
-      <Sidebar
-        activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab as Tab)}
+    <div className={`app-container ${isBackendReady ? 'ready' : ''}`}>
+      <AgencyLayout
+        activeMode={activeMode}
+        onModeChange={setActiveMode}
         recording={recording}
+        transcripts={transcripts}
+        onSelectMeeting={handleMeetingSelect}
+        selectedMeetingId={selectedMeetingId}
         onToggleRecording={handleToggleRecording}
+        refreshKey={meetingListRefreshKey}
       />
 
-      {/* Main Content Area */}
-      <div className="main-content">
-        <div className="content-header">
-          <h1 className="content-title">{tabTitles[activeTab]}</h1>
-          <p className="content-subtitle">
-            {recording.isRecording && "● Recording in progress"}
-            {recording.error && `⚠️ ${recording.error}`}
-          </p>
-        </div>
-
-        {/* Meeting Detection Banner - shows when meetings detected */}
-        {!recording.isRecording && (
+      {/* Meeting Detection Banner - shows when meetings detected */}
+      {!recording.isRecording && activeMode === 'flow' && (
+        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
           <MeetingDetectionBanner
             onStartRecording={async () => {
               transcripts.clearLiveTranscripts();
               await recording.startRecording();
             }}
           />
-        )}
-
-        <div className="content-body">
-          {/* Live View */}
-          {activeTab === "live" && (
-            <>
-              <div className="search-container">
-                <SearchBar
-                  onSearch={transcripts.search}
-                  isSearching={transcripts.isSearching}
-                />
-              </div>
-              {transcripts.searchResults.length > 0 ? (
-                <div className="search-results">
-                  {transcripts.searchResults.map((result, idx) => (
-                    <div
-                      key={idx}
-                      className="meeting-card"
-                      onClick={() => handleMeetingSelect(result.meeting_id)}
-                    >
-                      <div className="meeting-title">{result.meeting_title}</div>
-                      <div className="meeting-date">
-                        {new Date(result.timestamp).toLocaleDateString()}
-                      </div>
-                      <p style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                        {result.transcript_text}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <LiveTranscriptView
-                  transcripts={transcripts.liveTranscripts}
-                  isRecording={recording.isRecording}
-                />
-              )}
-            </>
-          )}
-
-          {/* Rewind View */}
-          {activeTab === "rewind" && (
-            <RewindGallery
-              meetingId={rewindMeetingId}
-              isRecording={recording.isRecording}
-            />
-          )}
-
-          {/* Knowledge Base */}
-          {activeTab === "kb" && <KBSearch />}
-
-          {/* Insights */}
-          {activeTab === "insights" && <InsightsView />}
-
-          {/* Settings */}
-          {activeTab === "settings" && <FullSettings />}
-
-          {/* Intel */}
-          {activeTab === "intel" && (
-            <MeetingIntelPanel
-              meetingId={selectedMeetingId || (recording.isRecording && recording.meetingId ? recording.meetingId : undefined)}
-              isRecording={recording.isRecording}
-              onStartRecording={handleToggleRecording}
-            />
-          )}
-
-          {/* Activity Timeline */}
-          {activeTab === "timeline" && (
-            <ActivityTimeline meetingId={rewindMeetingId} />
-          )}
-
-          {/* Admin Console */}
-          {activeTab === "admin" && <AdminConsole />}
-          {activeTab === "help" && <HelpSection />}
-        </div>
-      </div>
-
-      {/* Right Panel - Meeting History (on Rewind and Timeline tabs) */}
-      {(activeTab === "rewind" || activeTab === "timeline") && (
-        <div className="right-panel">
-          <div className="panel-header">
-            <h2 className="panel-title">Recent Meetings</h2>
-          </div>
-          <div className="panel-body">
-            <MeetingHistory
-              onSelectMeeting={handleMeetingSelect}
-              selectedMeetingId={selectedMeetingId}
-              refreshKey={meetingListRefreshKey}
-              compact
-            />
-          </div>
         </div>
       )}
 
@@ -338,7 +235,11 @@ function App() {
       <CommandPalette
         isOpen={commandPalette.isOpen}
         onClose={commandPalette.close}
-        onNavigate={(tab) => setActiveTab(tab as Tab)}
+        onNavigate={(tab: string) => {
+          // Map legacy tabs to modes roughly
+          if (tab === 'live') setActiveMode('flow');
+          else setActiveMode('deck');
+        }}
         onStartRecording={async () => {
           transcripts.clearLiveTranscripts();
           await recording.startRecording();

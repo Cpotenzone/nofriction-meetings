@@ -9,10 +9,10 @@ use crate::settings::AppSettings;
 use crate::{AppState, InitStatus, InitializationState};
 use base64::Engine;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Window};
 
 /// Check initialization status (safe to call before AppState is ready)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_init_status(
     state: State<'_, InitializationState>,
 ) -> Result<InitStatus, String> {
@@ -27,7 +27,7 @@ pub struct PermissionStatus {
 }
 
 /// Check macOS permissions (without triggering prompts)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_permissions() -> Result<PermissionStatus, String> {
     #[cfg(target_os = "macos")]
     {
@@ -81,7 +81,7 @@ fn check_screen_recording_permission() -> bool {
 
 /// Check microphone permission on macOS
 #[cfg(target_os = "macos")]
-fn check_microphone_permission() -> bool {
+pub fn check_microphone_permission() -> bool {
     use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};
     use std::ffi::CString;
@@ -115,7 +115,7 @@ pub struct ScreenTestResult {
 }
 
 /// Test screen capture - attempts to capture a single frame
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn test_screen_capture() -> Result<ScreenTestResult, String> {
     #[cfg(target_os = "macos")]
     {
@@ -187,9 +187,21 @@ pub struct MicTestResult {
 }
 
 /// Test microphone - attempts to initialize the mic
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn test_microphone() -> Result<MicTestResult, String> {
     use cpal::traits::{DeviceTrait, HostTrait};
+
+    // Safeguard: Check permission PASSIVELY before triggering CPAL initialization
+    // This prevents the "infinite loop" of prompts if the app hasn't been granted access.
+    if !check_microphone_permission() {
+        return Ok(MicTestResult {
+            success: false,
+            device_name: None,
+            sample_rate: None,
+            channels: None,
+            error: Some("Microphone permission not granted (passive check)".to_string()),
+        });
+    }
 
     let host = cpal::default_host();
     match host.default_input_device() {
@@ -233,7 +245,7 @@ pub struct AccessibilityTestResult {
 }
 
 /// Test accessibility - attempts to extract text from focused window
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn test_accessibility() -> Result<AccessibilityTestResult, String> {
     #[cfg(target_os = "macos")]
     {
@@ -293,7 +305,7 @@ pub async fn test_accessibility() -> Result<AccessibilityTestResult, String> {
 }
 
 /// Request a specific permission (triggers macOS prompt)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn request_permission(permission_type: String) -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
@@ -318,8 +330,12 @@ pub async fn request_permission(permission_type: String) -> Result<bool, String>
             }
             "microphone" => {
                 // Trigger microphone permission by trying to access device
-                use cpal::traits::{DeviceTrait, HostTrait};
+                // ONLY if not already determined or denied
+                if check_microphone_permission() {
+                    return Ok(true);
+                }
 
+                use cpal::traits::{DeviceTrait, HostTrait};
                 let host = cpal::default_host();
                 match host.default_input_device() {
                     Some(device) => match device.default_input_config() {
@@ -349,7 +365,7 @@ pub async fn request_permission(permission_type: String) -> Result<bool, String>
 }
 
 /// Start recording with frame capture and live transcription
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     // Generate a new meeting ID
     let meeting_id = uuid::Uuid::new_v4().to_string();
@@ -406,7 +422,15 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     {
         // Use transcription manager
         let tm = &state.transcription_manager;
-        // Assume API key is already set or provider will handle it
+
+        // Load API key from settings and set it on the provider
+        if let Ok(Some(api_key)) = state.settings.get_deepgram_api_key().await {
+            tm.set_api_key(api_key.clone());
+            log::info!("Loaded Deepgram API key from settings");
+        } else {
+            log::warn!("No Deepgram API key found in settings - transcription may fail");
+        }
+
         log::info!("Setting up Transcription connection...");
         tm.set_context(app.clone(), state.database.clone(), meeting_id.clone());
         tm.start();
@@ -617,7 +641,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
 }
 
 /// Stop recording
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
     let was_recording = {
         let engine = state.capture_engine.read();
@@ -777,20 +801,57 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
         }
 
         log::info!("🎬 Recording stopped successfully (Phase 1-3 finalized)");
+
+        // v3.0.0: Obsidian Auto-Export
+        if let Ok(settings) = state.settings.get_all().await {
+            if settings.obsidian_auto_export && settings.obsidian_vault_path.is_some() {
+                // Determine the meeting ID that just ended
+                let meeting_id = {
+                    let timeline = state.timeline_builder.get_events();
+                    timeline
+                        .first()
+                        .map(|e| e.meeting_id.clone())
+                        .unwrap_or_default()
+                };
+
+                if !meeting_id.is_empty() {
+                    log::info!(
+                        "🚀 Triggering Obsidian Auto-Export for meeting: {}",
+                        meeting_id
+                    );
+                    let db_clone = state.database.clone();
+                    let vm_clone = state.vault_manager.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = internal_export_meeting(
+                            db_clone,
+                            vm_clone,
+                            "Inbox".to_string(),
+                            meeting_id,
+                        )
+                        .await
+                        {
+                            log::error!("❌ Obsidian Auto-Export failed: {}", e);
+                        } else {
+                            log::info!("✅ Obsidian Auto-Export complete");
+                        }
+                    });
+                }
+            }
+        }
     }
 
     Ok(())
 }
 
 /// Get recording status
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_recording_status(state: State<'_, AppState>) -> Result<RecordingStatus, String> {
     let engine = state.capture_engine.read();
     Ok(engine.get_status())
 }
 
 /// Capture a single screenshot (for preview)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn capture_screenshot(monitor_id: Option<u32>) -> Result<String, String> {
     let image = crate::capture_engine::CaptureEngine::capture_screenshot(monitor_id)?;
 
@@ -807,7 +868,7 @@ pub async fn capture_screenshot(monitor_id: Option<u32>) -> Result<String, Strin
 }
 
 /// Get transcripts for a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_transcripts(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -820,7 +881,7 @@ pub async fn get_transcripts(
 }
 
 /// Search transcripts across all meetings
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn search_transcripts(
     query: String,
     state: State<'_, AppState>,
@@ -837,12 +898,12 @@ pub async fn search_transcripts(
 
 /// Get frames for a meeting (rewind timeline)
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn debug_log(message: String) {
     eprintln!("[FRONTEND] {}", message);
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_frames(
     meeting_id: String,
     limit: Option<i32>,
@@ -857,7 +918,7 @@ pub async fn get_frames(
 }
 
 /// Get frame count for a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_frame_count(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -871,7 +932,7 @@ pub async fn get_frame_count(
 
 /// Get a frame thumbnail as base64
 /// Supports both legacy frames (integer IDs) and screen_states (UUID state_ids)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_frame_thumbnail(
     frame_id: String,
     _thumbnail: bool,
@@ -938,13 +999,13 @@ pub async fn get_frame_thumbnail(
 }
 
 /// Get available audio devices
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_audio_devices() -> Result<Vec<AudioDevice>, String> {
     crate::capture_engine::CaptureEngine::list_audio_devices()
 }
 
 /// Set the audio input device (persisted)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_audio_device(device_id: String, state: State<'_, AppState>) -> Result<(), String> {
     {
         let engine = state.capture_engine.read();
@@ -962,13 +1023,13 @@ pub async fn set_audio_device(device_id: String, state: State<'_, AppState>) -> 
 }
 
 /// Get available monitors
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
     crate::capture_engine::CaptureEngine::list_monitors()
 }
 
 /// Set the monitor (persisted)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_monitor(monitor_id: u32, state: State<'_, AppState>) -> Result<(), String> {
     {
         let engine = state.capture_engine.read();
@@ -986,7 +1047,7 @@ pub async fn set_monitor(monitor_id: u32, state: State<'_, AppState>) -> Result<
 }
 
 /// Set the Deepgram API key (persisted)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_deepgram_api_key(
     api_key: String,
     state: State<'_, AppState>,
@@ -1006,7 +1067,7 @@ pub async fn set_deepgram_api_key(
 }
 
 /// Set the Gemini API key
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_gemini_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), String> {
     state
         .settings
@@ -1017,7 +1078,7 @@ pub async fn set_gemini_api_key(api_key: String, state: State<'_, AppState>) -> 
 }
 
 /// Set the Gladia API key
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_gladia_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), String> {
     state
         .settings
@@ -1028,7 +1089,7 @@ pub async fn set_gladia_api_key(api_key: String, state: State<'_, AppState>) -> 
 }
 
 /// Set the Google STT key
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_google_stt_key(
     key_json: String,
     state: State<'_, AppState>,
@@ -1042,7 +1103,7 @@ pub async fn set_google_stt_key(
 }
 
 /// Set active transcription provider
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_active_provider(
     provider: String,
     state: State<'_, AppState>,
@@ -1070,7 +1131,7 @@ pub async fn set_active_provider(
 }
 
 /// Get the Deepgram API key (masked for display)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_deepgram_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
     let key = state
         .settings
@@ -1088,7 +1149,7 @@ pub async fn get_deepgram_api_key(state: State<'_, AppState>) -> Result<Option<S
 }
 
 /// Get all settings
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     state
         .settings
@@ -1098,7 +1159,7 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
 }
 
 /// Get a single setting value
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_setting(
     key: String,
     state: State<'_, AppState>,
@@ -1111,7 +1172,7 @@ pub async fn get_setting(
 }
 
 /// Get all meetings
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_meetings(
     limit: Option<i32>,
     state: State<'_, AppState>,
@@ -1125,7 +1186,7 @@ pub async fn get_meetings(
 }
 
 /// Get a single meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_meeting(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -1138,7 +1199,7 @@ pub async fn get_meeting(
 }
 
 /// Delete a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn delete_meeting(meeting_id: String, state: State<'_, AppState>) -> Result<(), String> {
     state
         .database
@@ -1151,7 +1212,7 @@ pub async fn delete_meeting(meeting_id: String, state: State<'_, AppState>) -> R
 }
 
 /// Get synced timeline for rewind (frames + transcripts aligned by timestamp)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_synced_timeline(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -1165,7 +1226,7 @@ pub async fn get_synced_timeline(
 }
 
 /// Get timeline events for a meeting (Phase 3)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_timeline_events(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -1178,7 +1239,7 @@ pub async fn get_timeline_events(
 }
 
 /// Get topic clusters for a meeting (Phase 3)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_topic_clusters(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -1202,27 +1263,27 @@ use crate::meeting_intel::{CalendarEvent, MeetingState, MeetingStateResolver};
 use crate::ai_client::{AIClient, AIPreset, ChatMessage, OllamaModel};
 
 /// Check if Ollama is available
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_ollama() -> Result<bool, String> {
     let client = AIClient::new();
     Ok(client.is_available().await)
 }
 
 /// Get available Ollama models
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_ollama_models() -> Result<Vec<OllamaModel>, String> {
     let client = AIClient::new();
     client.list_models().await
 }
 
 /// Get AI presets
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_ai_presets() -> Result<Vec<AIPreset>, String> {
     Ok(AIPreset::get_all_presets())
 }
 
 /// Chat with AI using a preset
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn ai_chat(
     preset_id: String,
     message: String,
@@ -1275,7 +1336,7 @@ pub async fn ai_chat(
 }
 
 /// Summarize a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn summarize_meeting(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -1304,7 +1365,7 @@ pub async fn summarize_meeting(
 }
 
 /// Extract action items from a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn extract_action_items(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -1341,19 +1402,19 @@ use crate::supabase_client::Activity;
 use crate::vlm_client::ActivityContext;
 
 /// Check if VLM API is available
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_vlm(_state: State<'_, AppState>) -> Result<bool, String> {
     Ok(crate::vlm_client::vlm_is_available().await)
 }
 
 /// Check if VLM has vision model
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_vlm_vision(_state: State<'_, AppState>) -> Result<bool, String> {
     crate::vlm_client::vlm_has_vision_model().await
 }
 
 /// Analyze a frame with VLM
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn analyze_frame(
     frame_path: String,
     _state: State<'_, AppState>,
@@ -1376,7 +1437,7 @@ Only respond with valid JSON."#;
 }
 
 /// Analyze multiple frames (batch)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn analyze_frames_batch(
     frame_paths: Vec<String>,
     _state: State<'_, AppState>,
@@ -1398,7 +1459,7 @@ pub async fn analyze_frames_batch(
 // =============================================================================
 
 /// Authenticate with TheBrain API
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn thebrain_authenticate(
     username: String,
     password: String,
@@ -1418,13 +1479,13 @@ pub async fn thebrain_authenticate(
 }
 
 /// Check if TheBrain API is connected
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_thebrain(_state: State<'_, AppState>) -> Result<bool, String> {
     Ok(crate::vlm_client::vlm_is_authenticated() && crate::vlm_client::vlm_is_available().await)
 }
 
 /// Set VLM API URL and reconfigure the client
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_vlm_api_url(url: String, state: State<'_, AppState>) -> Result<(), String> {
     // Save to settings
     state
@@ -1441,7 +1502,7 @@ pub async fn set_vlm_api_url(url: String, state: State<'_, AppState>) -> Result<
 }
 
 /// Get available models from TheBrain API
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_thebrain_models(
     _state: State<'_, AppState>,
 ) -> Result<Vec<crate::vlm_client::ModelStatus>, String> {
@@ -1450,7 +1511,7 @@ pub async fn get_thebrain_models(
 
 /// Capture text from the current focused window using accessibility APIs
 /// and store it as a text snapshot in the database
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn capture_accessibility_snapshot(
     state: State<'_, AppState>,
 ) -> Result<CapturedSnapshotResult, String> {
@@ -1528,7 +1589,7 @@ pub struct CapturedSnapshotResult {
 }
 
 /// Chat with TheBrain API using specified model
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn thebrain_chat(
     message: String,
     model: String,
@@ -1566,7 +1627,7 @@ pub struct ContextItem {
 }
 
 /// Chat with TheBrain using RAG - retrieves relevant context before answering
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn thebrain_rag_chat(
     message: String,
     model: String,
@@ -1701,7 +1762,7 @@ pub struct ConversationRecord {
 }
 
 /// Store a conversation to both Supabase and Pinecone
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn store_conversation(
     user_query: String,
     assistant_response: String,
@@ -1770,7 +1831,7 @@ pub async fn store_conversation(
 }
 
 /// Get recent conversation history
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_conversation_history(
     limit: Option<i32>,
     state: State<'_, AppState>,
@@ -1839,7 +1900,7 @@ pub async fn get_conversation_history(
 }
 
 /// Combined RAG chat with automatic conversation storage
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn thebrain_rag_chat_with_memory(
     message: String,
     model: String,
@@ -1868,7 +1929,7 @@ pub async fn thebrain_rag_chat_with_memory(
 }
 
 /// Configure Supabase connection
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn configure_supabase(
     connection_string: String,
     state: State<'_, AppState>,
@@ -1886,14 +1947,14 @@ pub async fn configure_supabase(
 }
 
 /// Check Supabase connection
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_supabase(state: State<'_, AppState>) -> Result<bool, String> {
     let client = state.supabase_client.read();
     Ok(client.is_connected())
 }
 
 /// Sync an activity to Supabase
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn sync_activity_to_supabase(
     activity: Activity,
     state: State<'_, AppState>,
@@ -1907,7 +1968,7 @@ pub async fn sync_activity_to_supabase(
 }
 
 /// Query activities by time range
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn query_activities(
     start_iso: String,
     end_iso: String,
@@ -1931,7 +1992,7 @@ pub async fn query_activities(
 }
 
 /// Configure Pinecone
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn configure_pinecone(
     api_key: String,
     index_host: String,
@@ -1944,14 +2005,14 @@ pub async fn configure_pinecone(
 }
 
 /// Check if Pinecone is configured
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_pinecone(state: State<'_, AppState>) -> Result<bool, String> {
     let client = state.pinecone_client.read();
     Ok(client.is_configured())
 }
 
 /// Upsert activity to Pinecone
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn upsert_to_pinecone(
     id: String,
     text: String,
@@ -1967,7 +2028,7 @@ pub async fn upsert_to_pinecone(
 }
 
 /// Semantic search in Pinecone
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn semantic_search(
     query: String,
     top_k: Option<u32>,
@@ -1984,7 +2045,7 @@ pub async fn semantic_search(
 }
 
 /// Get Pinecone index stats
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_pinecone_stats(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let config = state
         .pinecone_client
@@ -1995,12 +2056,378 @@ pub async fn get_pinecone_stats(state: State<'_, AppState>) -> Result<serde_json
     crate::pinecone_client::pinecone_stats(&config).await
 }
 
+/// Index result for transcript embedding
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TranscriptIndexResult {
+    pub meeting_id: String,
+    pub transcripts_indexed: usize,
+    pub errors: Vec<String>,
+}
+
+/// Index all transcripts from a meeting to Pinecone
+#[tauri::command(rename_all = "camelCase")]
+pub async fn index_meeting_transcripts(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<TranscriptIndexResult, String> {
+    // Get Pinecone config
+    let config = state.pinecone_client.read().get_config().ok_or(
+        "Pinecone not configured. Please configure Pinecone in Settings → Knowledge Base.",
+    )?;
+
+    // Get all transcripts for this meeting
+    let transcripts = state
+        .database
+        .get_transcripts(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+
+    if transcripts.is_empty() {
+        return Ok(TranscriptIndexResult {
+            meeting_id,
+            transcripts_indexed: 0,
+            errors: vec!["No transcripts found for this meeting".to_string()],
+        });
+    }
+
+    // Get meeting info for metadata
+    let meeting_title = match state.database.get_meeting(&meeting_id).await {
+        Ok(Some(m)) => m.title,
+        _ => "Unknown Meeting".to_string(),
+    };
+
+    let mut indexed = 0;
+    let mut errors = Vec::new();
+
+    // Batch transcripts for efficiency (group by 5 for embedding)
+    for (i, transcript) in transcripts.iter().enumerate() {
+        // Only index final transcripts
+        if !transcript.is_final {
+            continue;
+        }
+
+        let id = format!("transcript_{}_{}", meeting_id, transcript.id);
+        let text = &transcript.text;
+
+        // Build metadata for the vector
+        let metadata = serde_json::json!({
+            "type": "transcript",
+            "meeting_id": meeting_id,
+            "meeting_title": meeting_title,
+            "transcript_id": transcript.id,
+            "speaker": transcript.speaker.as_deref().unwrap_or("Unknown"),
+            "timestamp": transcript.timestamp.to_rfc3339(),
+            "text": text,
+            "index": i,
+        });
+
+        match crate::pinecone_client::pinecone_upsert_generic(&config, &id, text, &metadata).await {
+            Ok(_) => {
+                indexed += 1;
+                if indexed % 10 == 0 {
+                    log::info!("📌 Indexed {} transcripts to Pinecone", indexed);
+                }
+            }
+            Err(e) => {
+                errors.push(format!(
+                    "Failed to index transcript {}: {}",
+                    transcript.id, e
+                ));
+            }
+        }
+    }
+
+    log::info!(
+        "✅ Indexed {} transcripts from meeting '{}' to Pinecone",
+        indexed,
+        meeting_title
+    );
+
+    Ok(TranscriptIndexResult {
+        meeting_id,
+        transcripts_indexed: indexed,
+        errors,
+    })
+}
+
+/// Index all meetings' transcripts to Pinecone
+#[tauri::command(rename_all = "camelCase")]
+pub async fn index_all_transcripts_to_pinecone(
+    limit: Option<i32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<TranscriptIndexResult>, String> {
+    // Get Pinecone config
+    let config = state.pinecone_client.read().get_config().ok_or(
+        "Pinecone not configured. Please configure Pinecone in Settings → Knowledge Base.",
+    )?;
+
+    // Get all meetings
+    let meetings = state
+        .database
+        .list_meetings(limit.unwrap_or(50))
+        .await
+        .map_err(|e| format!("Failed to list meetings: {}", e))?;
+
+    let mut results = Vec::new();
+
+    for meeting in meetings {
+        let meeting_id = meeting.id.clone();
+
+        // Get transcripts
+        let transcripts = match state.database.get_transcripts(&meeting_id).await {
+            Ok(t) => t,
+            Err(e) => {
+                results.push(TranscriptIndexResult {
+                    meeting_id: meeting_id.clone(),
+                    transcripts_indexed: 0,
+                    errors: vec![format!("Failed to get transcripts: {}", e)],
+                });
+                continue;
+            }
+        };
+
+        if transcripts.is_empty() {
+            continue;
+        }
+
+        let meeting_title = meeting.title.clone();
+        let mut indexed = 0;
+        let mut errors = Vec::new();
+
+        for (i, transcript) in transcripts.iter().enumerate() {
+            if !transcript.is_final {
+                continue;
+            }
+
+            let id = format!("transcript_{}_{}", meeting_id, transcript.id);
+            let metadata = serde_json::json!({
+                "type": "transcript",
+                "meeting_id": meeting_id,
+                "meeting_title": meeting_title,
+                "transcript_id": transcript.id,
+                "speaker": transcript.speaker.as_deref().unwrap_or("Unknown"),
+                "timestamp": transcript.timestamp.to_rfc3339(),
+                "text": transcript.text,
+                "index": i,
+            });
+
+            match crate::pinecone_client::pinecone_upsert_generic(
+                &config,
+                &id,
+                &transcript.text,
+                &metadata,
+            )
+            .await
+            {
+                Ok(_) => indexed += 1,
+                Err(e) => errors.push(format!("transcript {} failed: {}", transcript.id, e)),
+            }
+        }
+
+        if indexed > 0 {
+            log::info!(
+                "📌 Indexed {} transcripts from meeting '{}'",
+                indexed,
+                meeting_title
+            );
+        }
+
+        results.push(TranscriptIndexResult {
+            meeting_id,
+            transcripts_indexed: indexed,
+            errors,
+        });
+    }
+
+    let total: usize = results.iter().map(|r| r.transcripts_indexed).sum();
+    log::info!(
+        "✅ Total: Indexed {} transcripts across {} meetings",
+        total,
+        results.len()
+    );
+
+    Ok(results)
+}
+
+// ============================================
+// Accessibility & Meeting Timeline Commands
+// ============================================
+
+/// Response for accessibility snapshots
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AccessibilitySnapshot {
+    pub snapshot_id: String,
+    pub meeting_id: Option<String>,
+    pub ts: String,
+    pub text: String,
+    pub app_name: Option<String>,
+    pub window_title: Option<String>,
+    pub quality_score: f32,
+    pub word_count: i32,
+}
+
+/// Unified timeline entry for synced Rewind view
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TimelineEntry {
+    pub id: String,
+    pub entry_type: String, // "transcript", "accessibility", "screenshot"
+    pub timestamp: String,
+    pub text: Option<String>,
+    pub speaker: Option<String>,
+    pub app_name: Option<String>,
+    pub window_title: Option<String>,
+    pub image_path: Option<String>,
+    pub confidence: Option<f32>,
+}
+
+/// Full meeting timeline response
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MeetingTimeline {
+    pub meeting_id: String,
+    pub title: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub entries: Vec<TimelineEntry>,
+    pub transcript_count: usize,
+    pub accessibility_count: usize,
+    pub screenshot_count: usize,
+}
+
+/// Get accessibility snapshots for a meeting
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_accessibility_snapshots(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<AccessibilitySnapshot>, String> {
+    let snapshots = state
+        .database
+        .get_text_snapshots_by_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get snapshots: {}", e))?;
+
+    Ok(snapshots
+        .into_iter()
+        .map(|s| AccessibilitySnapshot {
+            snapshot_id: s.snapshot_id,
+            meeting_id: s.meeting_id,
+            ts: s.ts,
+            text: s.text,
+            app_name: s.app_name,
+            window_title: s.window_title,
+            quality_score: s.quality_score,
+            word_count: s.word_count,
+        })
+        .collect())
+}
+
+/// Get unified meeting timeline with transcripts, accessibility snapshots, and screenshots
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_meeting_timeline(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<MeetingTimeline, String> {
+    // Get meeting info
+    let meeting = state
+        .database
+        .get_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get meeting: {}", e))?
+        .ok_or_else(|| format!("Meeting not found: {}", meeting_id))?;
+
+    // Get transcripts
+    let transcripts = state
+        .database
+        .get_transcripts(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+
+    // Get accessibility snapshots
+    let acc_snapshots = state
+        .database
+        .get_text_snapshots_by_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get accessibility snapshots: {}", e))?;
+
+    // Get frames/screenshots
+    let frames = state
+        .database
+        .get_frames(&meeting_id, 1000)
+        .await
+        .map_err(|e| format!("Failed to get frames: {}", e))?;
+
+    // Build timeline entries
+    let mut entries: Vec<TimelineEntry> = Vec::new();
+
+    // Add transcripts
+    for t in &transcripts {
+        if t.is_final && !t.text.trim().is_empty() {
+            entries.push(TimelineEntry {
+                id: format!("t_{}", t.id),
+                entry_type: "transcript".to_string(),
+                timestamp: t.timestamp.to_rfc3339(),
+                text: Some(t.text.clone()),
+                speaker: t.speaker.clone(),
+                app_name: None,
+                window_title: None,
+                image_path: None,
+                confidence: Some(t.confidence),
+            });
+        }
+    }
+
+    // Add accessibility snapshots
+    for s in &acc_snapshots {
+        entries.push(TimelineEntry {
+            id: format!("a_{}", s.snapshot_id),
+            entry_type: "accessibility".to_string(),
+            timestamp: s.ts.clone(),
+            text: Some(s.text.clone()),
+            speaker: None,
+            app_name: s.app_name.clone(),
+            window_title: s.window_title.clone(),
+            image_path: None,
+            confidence: None,
+        });
+    }
+
+    // Add screenshots/frames
+    for f in &frames {
+        if let Some(path) = &f.file_path {
+            entries.push(TimelineEntry {
+                id: format!("s_{}", f.id),
+                entry_type: "screenshot".to_string(),
+                timestamp: f.timestamp.to_rfc3339(),
+                text: f.ocr_text.clone(),
+                speaker: None,
+                app_name: None,
+                window_title: None,
+                image_path: Some(path.clone()),
+                confidence: None,
+            });
+        }
+    }
+
+    // Sort by timestamp
+    entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+    Ok(MeetingTimeline {
+        meeting_id: meeting.id,
+        title: meeting.title,
+        started_at: meeting.started_at.to_rfc3339(),
+        ended_at: meeting.ended_at.map(|e| e.to_rfc3339()),
+        transcript_count: transcripts.iter().filter(|t| t.is_final).count(),
+        accessibility_count: acc_snapshots.len(),
+        screenshot_count: frames.iter().filter(|f| f.file_path.is_some()).count(),
+        entries,
+    })
+}
+
 // ============================================
 // Capture Mode Settings Commands
 // ============================================
 
 /// Set capture microphone toggle
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_capture_microphone(
     enabled: bool,
     state: State<'_, AppState>,
@@ -2013,7 +2440,7 @@ pub async fn set_capture_microphone(
 }
 
 /// Set capture system audio toggle
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_capture_system_audio(
     enabled: bool,
     state: State<'_, AppState>,
@@ -2026,7 +2453,7 @@ pub async fn set_capture_system_audio(
 }
 
 /// Set capture screen toggle
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_capture_screen(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
     state
         .settings
@@ -2036,7 +2463,7 @@ pub async fn set_capture_screen(enabled: bool, state: State<'_, AppState>) -> Re
 }
 
 /// Set always-on capture toggle
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_always_on_capture(
     enabled: bool,
     state: State<'_, AppState>,
@@ -2049,7 +2476,7 @@ pub async fn set_always_on_capture(
 }
 
 /// Set queue frames for VLM toggle
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_queue_frames_for_vlm(
     enabled: bool,
     state: State<'_, AppState>,
@@ -2062,7 +2489,7 @@ pub async fn set_queue_frames_for_vlm(
 }
 
 /// Set frame capture interval (ms)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_frame_capture_interval(
     interval_ms: u32,
     state: State<'_, AppState>,
@@ -2079,7 +2506,7 @@ pub async fn set_frame_capture_interval(
 // ============================================
 
 /// Configure all knowledge base settings at once
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn configure_knowledge_base(
     supabase_connection: Option<String>,
     pinecone_api_key: Option<String>,
@@ -2122,7 +2549,7 @@ pub async fn configure_knowledge_base(
 }
 
 /// Get all capture settings
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_capture_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let settings = state
         .settings
@@ -2157,7 +2584,7 @@ pub struct AnalysisResult {
 }
 
 /// Analyze pending frames with VLM
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn analyze_pending_frames(
     limit: Option<i32>,
     state: State<'_, AppState>,
@@ -2326,7 +2753,7 @@ pub async fn analyze_pending_frames(
 }
 
 /// Get pending frame count
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_pending_frame_count(state: State<'_, AppState>) -> Result<i64, String> {
     state
         .database
@@ -2336,7 +2763,7 @@ pub async fn get_pending_frame_count(state: State<'_, AppState>) -> Result<i64, 
 }
 
 /// Get activity stats for today
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_activity_stats(
     date: Option<String>,
     state: State<'_, AppState>,
@@ -2351,7 +2778,7 @@ pub async fn get_activity_stats(
 }
 
 /// Get unsynced activities
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_unsynced_activities(
     limit: Option<i32>,
     state: State<'_, AppState>,
@@ -2373,7 +2800,7 @@ pub struct SyncResult {
 }
 
 /// Sync activities to cloud (Pinecone + Supabase)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn sync_to_cloud(
     limit: Option<i32>,
     state: State<'_, AppState>,
@@ -2527,7 +2954,7 @@ pub struct SearchOptions {
 }
 
 /// Combined search across local SQLite, Pinecone, and Supabase
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn search_knowledge_base(
     options: SearchOptions,
     state: State<'_, AppState>,
@@ -2673,7 +3100,7 @@ pub async fn search_knowledge_base(
 }
 
 /// Quick semantic search (just Pinecone)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn quick_semantic_search(
     query: String,
     limit: Option<u32>,
@@ -2691,7 +3118,7 @@ pub async fn quick_semantic_search(
 }
 
 /// Get local activity history (from activity_log)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_local_activities(
     start_date: Option<String>,
     end_date: Option<String>,
@@ -2712,7 +3139,7 @@ pub async fn get_local_activities(
 }
 
 /// Clear cache - remove pending frames and temporary data
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn clear_cache(state: State<'_, AppState>) -> Result<(), String> {
     // Clear frame queue
     state
@@ -2733,7 +3160,7 @@ pub async fn clear_cache(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 /// Export all data as JSON
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn export_data(state: State<'_, AppState>) -> Result<String, String> {
     // Get all meetings
     let meetings = state
@@ -2791,7 +3218,7 @@ pub async fn export_data(state: State<'_, AppState>) -> Result<String, String> {
 // ============================================
 
 /// List all prompts, optionally filtered by category
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn list_prompts(
     category: Option<String>,
     state: State<'_, AppState>,
@@ -2804,7 +3231,7 @@ pub async fn list_prompts(
 }
 
 /// Get a single prompt by ID
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_prompt(
     id: String,
     state: State<'_, AppState>,
@@ -2817,7 +3244,7 @@ pub async fn get_prompt(
 }
 
 /// Create a new prompt
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn create_prompt(
     input: crate::prompt_manager::PromptCreate,
     state: State<'_, AppState>,
@@ -2830,7 +3257,7 @@ pub async fn create_prompt(
 }
 
 /// Update an existing prompt
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn update_prompt(
     id: String,
     updates: crate::prompt_manager::PromptUpdate,
@@ -2844,7 +3271,7 @@ pub async fn update_prompt(
 }
 
 /// Delete a prompt (only non-builtin prompts can be deleted)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn delete_prompt(id: String, state: State<'_, AppState>) -> Result<bool, String> {
     state
         .prompt_manager
@@ -2854,7 +3281,7 @@ pub async fn delete_prompt(id: String, state: State<'_, AppState>) -> Result<boo
 }
 
 /// Duplicate a prompt with a new name
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn duplicate_prompt(
     id: String,
     new_name: String,
@@ -2868,7 +3295,7 @@ pub async fn duplicate_prompt(
 }
 
 /// Export all custom prompts as JSON
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn export_prompts(state: State<'_, AppState>) -> Result<String, String> {
     state
         .prompt_manager
@@ -2878,7 +3305,7 @@ pub async fn export_prompts(state: State<'_, AppState>) -> Result<String, String
 }
 
 /// Import prompts from JSON
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn import_prompts(
     json: String,
     state: State<'_, AppState>,
@@ -2895,7 +3322,7 @@ pub async fn import_prompts(
 // ============================================
 
 /// List all model configurations
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn list_model_configs(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::prompt_manager::ModelConfig>, String> {
@@ -2907,7 +3334,7 @@ pub async fn list_model_configs(
 }
 
 /// Get a model config by ID
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_model_config(
     id: String,
     state: State<'_, AppState>,
@@ -2920,7 +3347,7 @@ pub async fn get_model_config(
 }
 
 /// Create a new model configuration
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn create_model_config(
     input: crate::prompt_manager::ModelConfigCreate,
     state: State<'_, AppState>,
@@ -2933,7 +3360,7 @@ pub async fn create_model_config(
 }
 
 /// Refresh model availability by checking Ollama
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn refresh_model_availability(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::prompt_manager::ModelConfig>, String> {
@@ -2991,7 +3418,7 @@ pub async fn refresh_model_availability(
 }
 
 /// List available models from VLM API
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn list_ollama_models(
     state: State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
@@ -3028,7 +3455,7 @@ pub async fn list_ollama_models(
 // ============================================
 
 /// List all use case mappings
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn list_use_cases(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::prompt_manager::UseCase>, String> {
@@ -3040,7 +3467,7 @@ pub async fn list_use_cases(
 }
 
 /// Get a specific use case with resolved prompt and model
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_resolved_use_case(
     use_case: String,
     state: State<'_, AppState>,
@@ -3053,7 +3480,7 @@ pub async fn get_resolved_use_case(
 }
 
 /// Update use case mapping
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn update_use_case_mapping(
     use_case: String,
     prompt_id: Option<String>,
@@ -3068,7 +3495,7 @@ pub async fn update_use_case_mapping(
 }
 
 /// Test a prompt with sample input
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn test_prompt(
     prompt_id: String,
     test_input: String,
@@ -3142,7 +3569,7 @@ pub async fn test_prompt(
 use crate::calendar_client::{CalendarClient, CalendarEventNative};
 
 /// Get calendar events for today/tomorrow
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_calendar_events(
     state: State<'_, AppState>,
 ) -> Result<Vec<CalendarEventNative>, String> {
@@ -3163,7 +3590,7 @@ use crate::catch_up_agent::{CatchUpAgent, CatchUpCapsule, MeetingMetadata, Trans
 use crate::live_intel_agent::{LiveInsightEvent, LiveIntelAgent};
 
 /// Get current meeting state (mode, timing, confidence)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_meeting_state(state: State<'_, AppState>) -> Result<MeetingState, String> {
     let resolver = MeetingStateResolver::new();
     let now = chrono::Utc::now();
@@ -3215,7 +3642,7 @@ pub async fn get_meeting_state(state: State<'_, AppState>) -> Result<MeetingStat
 }
 
 /// Generate a catch-up capsule for late joiners
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn generate_catch_up(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -3277,7 +3704,7 @@ pub async fn generate_catch_up(
 }
 
 /// Get live insights stream for current recording
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_live_insights(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -3306,7 +3733,7 @@ pub async fn get_live_insights(
 }
 
 /// Pin an insight for later reference
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn pin_insight(
     meeting_id: String,
     insight_type: String,
@@ -3326,7 +3753,7 @@ pub async fn pin_insight(
 }
 
 /// Mark a decision point explicitly
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn mark_decision(
     meeting_id: String,
     decision_text: String,
@@ -3370,7 +3797,7 @@ fn get_chunk_manager() -> &'static ChunkManager {
 }
 
 /// Start video recording for a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn start_video_recording(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -3387,7 +3814,7 @@ pub async fn start_video_recording(
 }
 
 /// Stop video recording
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn stop_video_recording(state: State<'_, AppState>) -> Result<RecordingSession, String> {
     let recorder = get_video_recorder();
     let result = recorder.write().stop();
@@ -3399,21 +3826,21 @@ pub async fn stop_video_recording(state: State<'_, AppState>) -> Result<Recordin
 }
 
 /// Get current video recording status
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_video_recording_status() -> Result<Option<RecordingSession>, String> {
     let recorder = get_video_recorder();
     Ok(recorder.read().get_status())
 }
 
 /// Pin the current moment in recording
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn video_pin_moment(label: Option<String>) -> Result<PinMoment, String> {
     let recorder = get_video_recorder();
     recorder.read().pin_moment(label)
 }
 
 /// Extract a frame at a specific timestamp
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn extract_frame_at(
     meeting_id: String,
     chunk_number: u32,
@@ -3432,7 +3859,7 @@ pub async fn extract_frame_at(
 }
 
 /// Extract thumbnail for timeline view
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn extract_thumbnail(
     meeting_id: String,
     chunk_number: u32,
@@ -3459,21 +3886,21 @@ pub async fn extract_thumbnail(
 }
 
 /// Get storage statistics
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_storage_stats() -> Result<StorageStats, String> {
     let manager = get_chunk_manager();
     manager.get_stats()
 }
 
 /// Apply retention policies
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn apply_retention() -> Result<(u32, u64), String> {
     let manager = get_chunk_manager();
     manager.apply_retention()
 }
 
 /// Delete a meeting's video storage
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn delete_video_storage(meeting_id: String) -> Result<u64, String> {
     let manager = get_chunk_manager();
     manager.delete_meeting(&meeting_id)
@@ -3484,7 +3911,7 @@ pub async fn delete_video_storage(meeting_id: String) -> Result<u64, String> {
 // ============================================
 
 /// Set VLM auto-processing enabled/disabled
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_vlm_auto_process(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
     // Save to settings
     state
@@ -3505,7 +3932,7 @@ pub async fn set_vlm_auto_process(enabled: bool, state: State<'_, AppState>) -> 
 }
 
 /// Set VLM processing interval in seconds
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_vlm_process_interval(secs: u32, state: State<'_, AppState>) -> Result<(), String> {
     // Save to settings
     state
@@ -3522,7 +3949,7 @@ pub async fn set_vlm_process_interval(secs: u32, state: State<'_, AppState>) -> 
 }
 
 /// Get VLM scheduler status
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_vlm_scheduler_status(
     state: State<'_, AppState>,
 ) -> Result<crate::vlm_scheduler::VLMSchedulerStatus, String> {
@@ -3534,7 +3961,7 @@ pub async fn get_vlm_scheduler_status(
 // ============================================
 
 /// Set the AI chat model
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_ai_chat_model(model: String, state: State<'_, AppState>) -> Result<(), String> {
     state
         .settings
@@ -3547,7 +3974,7 @@ pub async fn set_ai_chat_model(model: String, state: State<'_, AppState>) -> Res
 }
 
 /// Get the AI chat model
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_ai_chat_model(state: State<'_, AppState>) -> Result<Option<String>, String> {
     state
         .settings
@@ -3557,7 +3984,7 @@ pub async fn get_ai_chat_model(state: State<'_, AppState>) -> Result<Option<Stri
 }
 
 /// Set AI provider configuration
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_ai_provider_settings(
     provider: String,
     url: Option<String>,
@@ -3590,7 +4017,7 @@ pub async fn set_ai_provider_settings(
 }
 
 /// Get AI provider configuration
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_ai_provider_settings(
     state: State<'_, AppState>,
 ) -> Result<(String, Option<String>, Option<String>), String> {
@@ -3607,7 +4034,7 @@ pub async fn get_ai_provider_settings(
 // ============================================
 
 /// Get accessibility capture status
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_accessibility_capture_status(
     state: State<'_, AppState>,
 ) -> Result<crate::accessibility_capture::AccessibilityCaptureStats, String> {
@@ -3615,7 +4042,7 @@ pub async fn get_accessibility_capture_status(
 }
 
 /// Start accessibility capture
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn start_accessibility_capture(state: State<'_, AppState>) -> Result<(), String> {
     // Also enable in settings
     state
@@ -3648,7 +4075,7 @@ pub async fn start_accessibility_capture(state: State<'_, AppState>) -> Result<(
 }
 
 /// Stop accessibility capture
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn stop_accessibility_capture(state: State<'_, AppState>) -> Result<(), String> {
     // Disable in settings
     state
@@ -3657,10 +4084,28 @@ pub async fn stop_accessibility_capture(state: State<'_, AppState>) -> Result<()
         .await
         .map_err(|e| format!("Failed to disable setting: {}", e))?;
 
-    // Stop the service
+    // Stop the service and clear meeting ID
+    state.accessibility_capture.set_meeting_id(None);
     state.accessibility_capture.stop();
 
     log::info!("📝 Accessibility capture stopped");
+    Ok(())
+}
+
+/// Set the current meeting ID for accessibility captures
+/// Call this when starting a meeting to link captures to the meeting
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_accessibility_meeting_id(
+    meeting_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .accessibility_capture
+        .set_meeting_id(meeting_id.clone());
+    log::info!(
+        "📝 Accessibility capture meeting ID set to: {:?}",
+        meeting_id
+    );
     Ok(())
 }
 
@@ -3668,7 +4113,7 @@ pub async fn stop_accessibility_capture(state: State<'_, AppState>) -> Result<()
 // Activity Theme Commands
 // ============================================
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_active_theme(theme: String, state: State<'_, AppState>) -> Result<(), String> {
     // Validate theme name
     let valid_themes = [
@@ -3728,7 +4173,7 @@ pub async fn set_active_theme(theme: String, state: State<'_, AppState>) -> Resu
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_recent_entities(
     state: State<'_, AppState>,
     limit: Option<i64>,
@@ -3741,7 +4186,7 @@ pub async fn get_recent_entities(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_active_theme(state: State<'_, AppState>) -> Result<String, String> {
     state
         .settings
@@ -3760,7 +4205,7 @@ pub struct ThemeSettings {
     personal_interval_ms: u32,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_theme_settings(state: State<'_, AppState>) -> Result<ThemeSettings, String> {
     let settings = state
         .settings
@@ -3778,7 +4223,7 @@ pub async fn get_theme_settings(state: State<'_, AppState>) -> Result<ThemeSetti
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_theme_interval(
     theme: String,
     interval_ms: u32,
@@ -3806,7 +4251,7 @@ pub async fn set_theme_interval(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_theme_time_today(
     theme: String,
     state: State<'_, AppState>,
@@ -3827,7 +4272,7 @@ pub async fn get_theme_time_today(
 use crate::prompt_manager::{Prompt, PromptUpdate};
 
 /// List all prompts for a specific theme
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn list_prompts_by_theme(
     theme: String,
     state: State<'_, AppState>,
@@ -3840,7 +4285,7 @@ pub async fn list_prompts_by_theme(
 }
 
 /// Get the latest version of a prompt by name and optional theme
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_latest_prompt(
     name: String,
     theme: Option<String>,
@@ -3854,7 +4299,7 @@ pub async fn get_latest_prompt(
 }
 
 /// Get all versions of a prompt
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_prompt_versions(
     name: String,
     theme: Option<String>,
@@ -3868,7 +4313,7 @@ pub async fn get_prompt_versions(
 }
 
 /// Create a new version of an existing prompt
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn create_prompt_version(
     prompt_id: String,
     updates: PromptUpdate,
@@ -3882,7 +4327,7 @@ pub async fn create_prompt_version(
 }
 
 /// Create a theme-specific prompt
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn create_theme_prompt(
     theme: String,
     name: String,
@@ -3912,7 +4357,7 @@ pub async fn create_theme_prompt(
 // ============================================================================
 
 /// Set enable ingest flag
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_enable_ingest(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
     state
         .settings
@@ -3922,7 +4367,7 @@ pub async fn set_enable_ingest(enabled: bool, state: State<'_, AppState>) -> Res
 }
 
 /// Set ingest configuration (base URL and bearer token)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_ingest_config(
     base_url: String,
     bearer_token: String,
@@ -3942,14 +4387,14 @@ pub async fn set_ingest_config(
 }
 
 /// Get ingest queue statistics
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_ingest_queue_stats(state: State<'_, AppState>) -> Result<(usize, usize), String> {
     let queue = state.ingest_queue.lock();
     queue.get_stats().map_err(|e| e.to_string())
 }
 
 /// Test ingest connection
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn test_ingest_connection(state: State<'_, AppState>) -> Result<bool, String> {
     if let Some(ref client) = state.ingest_client {
         client.health_check().await.map_err(|e| e.to_string())
@@ -3959,7 +4404,7 @@ pub async fn test_ingest_connection(state: State<'_, AppState>) -> Result<bool, 
 }
 
 /// Trigger manual ingest of a meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn trigger_meeting_ingest(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -4062,7 +4507,7 @@ pub async fn trigger_meeting_ingest(
 // ===== Calendar Integration Commands =====
 
 /// Check if calendar access is authorized (macOS EventKit)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_calendar_access() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
@@ -4078,7 +4523,7 @@ pub async fn check_calendar_access() -> Result<bool, String> {
 }
 
 /// Request calendar access permission
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn request_calendar_access() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
@@ -4094,7 +4539,7 @@ pub async fn request_calendar_access() -> Result<bool, String> {
 }
 
 /// Get the current/active meeting from calendar (if any)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_current_meeting() -> Result<Option<serde_json::Value>, String> {
     #[cfg(target_os = "macos")]
     {
@@ -4123,7 +4568,7 @@ pub async fn get_current_meeting() -> Result<Option<serde_json::Value>, String> 
 }
 
 /// Get upcoming meetings for today
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_upcoming_meetings(hours: Option<i64>) -> Result<Vec<serde_json::Value>, String> {
     #[cfg(target_os = "macos")]
     {
@@ -4165,7 +4610,7 @@ pub async fn get_upcoming_meetings(hours: Option<i64>) -> Result<Vec<serde_json:
 // ===== Capture Metrics Commands =====
 
 /// Get capture metrics report for the current or last meeting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_capture_metrics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     match state.metrics_collector.snapshot() {
         Some(metrics) => Ok(serde_json::json!({
@@ -4224,7 +4669,7 @@ pub struct CaptureDiagnostics {
 }
 
 /// Get comprehensive capture diagnostics for troubleshooting
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_capture_diagnostics(
     state: State<'_, AppState>,
 ) -> Result<CaptureDiagnostics, String> {
@@ -4271,7 +4716,7 @@ pub struct TestCaptureResult {
 }
 
 /// Capture a single test frame for diagnostics
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn test_live_capture(_state: State<'_, AppState>) -> Result<TestCaptureResult, String> {
     use xcap::Monitor;
 
@@ -4321,7 +4766,7 @@ pub async fn test_live_capture(_state: State<'_, AppState>) -> Result<TestCaptur
 }
 
 /// Start real-time transcription (without recording/saving to disk)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn start_realtime_transcription(
     meeting_id: String,
     state: State<'_, AppState>,
@@ -4333,7 +4778,7 @@ pub async fn start_realtime_transcription(
 }
 
 /// Stop real-time transcription
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn stop_realtime_transcription(state: State<'_, AppState>) -> Result<(), String> {
     log::info!("🛑 Stopping real-time transcription");
     let tm = state.transcription_manager.clone();
@@ -4346,7 +4791,7 @@ pub async fn stop_realtime_transcription(state: State<'_, AppState>) -> Result<(
 // ============================================
 
 /// Get current capture mode
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_capture_mode(state: State<'_, AppState>) -> Result<String, String> {
     let engine = state.capture_engine.read();
     let mode = engine.get_mode();
@@ -4354,7 +4799,7 @@ pub async fn get_capture_mode(state: State<'_, AppState>) -> Result<String, Stri
 }
 
 /// Start ambient capture (screen only, 30s intervals, no audio)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn start_ambient_capture(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -4372,7 +4817,7 @@ pub async fn start_ambient_capture(
 }
 
 /// Start meeting capture (full audio + screen, 2s intervals)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn start_meeting_capture(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -4390,7 +4835,7 @@ pub async fn start_meeting_capture(
 }
 
 /// Pause capture (stop all without ending session)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn pause_capture(state: State<'_, AppState>) -> Result<(), String> {
     log::info!("⏸️ Pausing capture");
     let engine = state.capture_engine.read();
@@ -4411,7 +4856,7 @@ pub struct AlwaysOnSettings {
     pub app_detection: bool,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_always_on_settings() -> Result<AlwaysOnSettings, String> {
     // TODO: Load from persistent settings
     Ok(AlwaysOnSettings {
@@ -4425,7 +4870,7 @@ pub async fn get_always_on_settings() -> Result<AlwaysOnSettings, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn set_always_on_enabled(enabled: bool) -> Result<(), String> {
     log::info!("Setting Always-On enabled: {}", enabled);
     // TODO: Persist and actually start/stop services
@@ -4433,7 +4878,7 @@ pub async fn set_always_on_enabled(enabled: bool) -> Result<(), String> {
 }
 
 /// Get all running meeting apps
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_running_meeting_apps() -> Result<Vec<String>, String> {
     use crate::meeting_trigger::MeetingTriggerEngine;
 
@@ -4455,18 +4900,518 @@ pub async fn get_running_meeting_apps() -> Result<Vec<String>, String> {
 }
 
 /// Check if audio is being used (microphone active)
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn check_audio_usage() -> Result<bool, String> {
     use crate::meeting_trigger::MeetingTriggerEngine;
     Ok(MeetingTriggerEngine::check_audio_usage())
 }
 
 /// Dismiss a meeting detection suggestion
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn dismiss_meeting_detection(
     state: State<'_, AppState>,
     detection_id: String,
 ) -> Result<(), String> {
     state.meeting_trigger.dismiss_detection(&detection_id);
+    Ok(())
+}
+
+/// Transform window between Insight Deck and Genie mode
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_genie_mode(window: Window, is_genie: bool) -> Result<(), String> {
+    log::info!("Setting Genie mode: {}", is_genie);
+
+    if is_genie {
+        // Genie Mode: Minimized, always on top, no decorations
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_decorations(false).map_err(|e| e.to_string())?;
+        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        window.set_resizable(false).map_err(|e| e.to_string())?;
+
+        // Set size to a compact bubble
+        let genie_size = LogicalSize::new(320.0, 400.0);
+        window.set_size(genie_size).map_err(|e| e.to_string())?;
+
+        // Position in bottom right
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let monitor_size = monitor.size();
+            let scale_factor = window.scale_factor().unwrap_or(1.0);
+
+            // Calculate bottom-right position (with 40px margin)
+            let x = (monitor_size.width as f64 / scale_factor) - 320.0 - 40.0;
+            let y = (monitor_size.height as f64 / scale_factor) - 400.0 - 40.0;
+
+            window
+                .set_position(LogicalPosition::new(x, y))
+                .map_err(|e| e.to_string())?;
+        }
+    } else {
+        // Insight Deck Mode: Full size, decorated
+        window.set_decorations(true).map_err(|e| e.to_string())?;
+        window.set_always_on_top(false).map_err(|e| e.to_string())?;
+        window.set_resizable(true).map_err(|e| e.to_string())?;
+
+        // Restore to default large size
+        let deck_size = LogicalSize::new(1400.0, 900.0);
+        window.set_size(deck_size).map_err(|e| e.to_string())?;
+
+        // Center the window
+        window.center().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Dork Mode (Study Mode) Commands
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Set session mode ("standard" or "dork")
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_session_mode(state: State<'_, AppState>, mode: String) -> Result<(), String> {
+    // Validate mode
+    if mode != "standard" && mode != "dork" {
+        return Err(format!(
+            "Invalid session mode: {}. Use 'standard' or 'dork'",
+            mode
+        ));
+    }
+
+    // Save to settings
+    state
+        .settings
+        .set_session_mode(&mode)
+        .await
+        .map_err(|e| format!("Failed to set session mode: {}", e))?;
+
+    log::info!("📚 Session mode set to: {}", mode);
+    Ok(())
+}
+
+/// Get current session mode
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_session_mode(state: State<'_, AppState>) -> Result<String, String> {
+    state
+        .settings
+        .get_session_mode()
+        .await
+        .map_err(|e| format!("Failed to get session mode: {}", e))
+}
+
+/// Start a dork mode study session
+#[tauri::command(rename_all = "camelCase")]
+pub async fn start_dork_session(state: State<'_, AppState>) -> Result<String, String> {
+    let session = crate::dork_mode::DorkModeSession::new(uuid::Uuid::new_v4().to_string());
+    let session_id = session.session_id.clone();
+
+    *state.dork_mode_session.write() = Some(session);
+
+    log::info!("📚 Dork Mode session started: {}", session_id);
+    Ok(session_id)
+}
+
+/// Add content to the current dork mode session
+#[tauri::command(rename_all = "camelCase")]
+pub async fn add_dork_content(state: State<'_, AppState>, content: String) -> Result<(), String> {
+    let session_guard = state.dork_mode_session.read();
+    if let Some(session) = session_guard.as_ref() {
+        session.accumulate_content(&content);
+        Ok(())
+    } else {
+        Err("No active dork mode session".to_string())
+    }
+}
+
+/// End dork mode session and generate study materials
+#[tauri::command(rename_all = "camelCase")]
+pub async fn end_dork_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::dork_mode::StudyMaterials, String> {
+    // Get and end the session
+    let (session_id, content) = {
+        let session_guard = state.dork_mode_session.read();
+        if let Some(session) = session_guard.as_ref() {
+            session.end_session();
+            (session.session_id.clone(), session.get_all_content())
+        } else {
+            return Err("No active dork mode session".to_string());
+        }
+    };
+
+    if content.trim().is_empty() {
+        return Err("No content captured during session".to_string());
+    }
+
+    log::info!(
+        "📚 Generating study materials for session {} ({} chars)",
+        session_id,
+        content.len()
+    );
+
+    // Emit progress event
+    let _ = app.emit(
+        "dork:generating",
+        serde_json::json!({
+            "session_id": session_id,
+            "content_length": content.len()
+        }),
+    );
+
+    // Generate study materials using AI
+    // Clone the client to avoid holding the RwLockReadGuard across await
+    let ai_client = state.ai_client.read().clone();
+    let materials =
+        crate::dork_mode::generate_study_materials(&ai_client, &session_id, &content).await?;
+
+    // Save to database (if we add the table)
+    // TODO: state.database.save_study_materials(...).await?;
+
+    // Emit completion event
+    let _ = app.emit("dork:materials_ready", &materials);
+
+    // Clear the session
+    *state.dork_mode_session.write() = None;
+
+    log::info!("📚 Study materials generated for session {}", session_id);
+    Ok(materials)
+}
+
+/// Get study materials for a previous session
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_study_materials(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<Option<crate::dork_mode::StudyMaterials>, String> {
+    // TODO: Implement database retrieval
+    let _ = state;
+    let _ = meeting_id;
+    Ok(None)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Meeting Intelligence System Commands
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Generate AI meeting notes from transcripts
+#[tauri::command(rename_all = "camelCase")]
+pub async fn generate_meeting_notes(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<crate::meeting_notes::GeneratedNotes, String> {
+    let ai_client = state.ai_client.read().clone();
+    let generator = crate::meeting_notes::MeetingNotesGenerator::new(ai_client);
+
+    generator.generate_notes(&meeting_id, &state.database).await
+}
+
+/// Get existing meeting notes
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_meeting_notes(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<Option<crate::database::MeetingNotes>, String> {
+    state
+        .database
+        .get_meeting_notes(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get meeting notes: {}", e))
+}
+
+/// Add a comment to a meeting
+#[tauri::command(rename_all = "camelCase")]
+pub async fn add_meeting_comment(
+    state: State<'_, AppState>,
+    meeting_id: String,
+    comment: String,
+    comment_type: Option<String>,
+    timestamp_ref: Option<f64>,
+    parent_id: Option<String>,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+
+    state
+        .database
+        .add_meeting_comment(
+            &id,
+            &meeting_id,
+            &comment,
+            comment_type.as_deref(),
+            timestamp_ref,
+            parent_id.as_deref(),
+        )
+        .await
+        .map_err(|e| format!("Failed to add comment: {}", e))?;
+
+    Ok(id)
+}
+
+/// Get comments for a meeting
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_meeting_comments(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<Vec<crate::database::MeetingComment>, String> {
+    state
+        .database
+        .get_meeting_comments(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get comments: {}", e))
+}
+
+/// Get full meeting analysis (notes + comments + transcripts)
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_meeting_analysis(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<serde_json::Value, String> {
+    let meeting = state
+        .database
+        .get_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get meeting: {}", e))?
+        .ok_or("Meeting not found")?;
+
+    let transcripts = state
+        .database
+        .get_transcripts(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+
+    let notes = state
+        .database
+        .get_meeting_notes(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get notes: {}", e))?;
+
+    let comments = state
+        .database
+        .get_meeting_comments(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get comments: {}", e))?;
+
+    Ok(serde_json::json!({
+        "meeting": meeting,
+        "transcripts": transcripts,
+        "notes": notes,
+        "comments": comments,
+        "transcript_count": transcripts.len(),
+        "comment_count": comments.len(),
+        "has_notes": notes.is_some(),
+    }))
+}
+
+// ============================================================================
+// v3.0.0: Obsidian Vault Commands
+// ============================================================================
+
+/// Get vault configuration status
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_vault_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let status = state.vault_manager.get_status().await;
+    serde_json::to_value(&status).map_err(|e| e.to_string())
+}
+
+/// List all topics in the vault
+#[tauri::command(rename_all = "camelCase")]
+pub async fn list_vault_topics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let topics = state.vault_manager.list_topics().await?;
+    serde_json::to_value(&topics).map_err(|e| e.to_string())
+}
+
+/// Get details for a single topic
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_vault_topic(
+    state: State<'_, AppState>,
+    topic_name: String,
+) -> Result<serde_json::Value, String> {
+    let topic = state.vault_manager.get_topic(&topic_name).await?;
+    serde_json::to_value(&topic).map_err(|e| e.to_string())
+}
+
+/// Create a new topic
+#[tauri::command(rename_all = "camelCase")]
+pub async fn create_vault_topic(
+    state: State<'_, AppState>,
+    name: String,
+    tags: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let topic = state.vault_manager.create_topic(&name, tags).await?;
+    serde_json::to_value(&topic).map_err(|e| e.to_string())
+}
+
+/// Export an existing meeting to the vault
+#[tauri::command(rename_all = "camelCase")]
+pub async fn export_meeting_to_vault(
+    state: State<'_, AppState>,
+    topic_name: String,
+    meeting_id: String,
+) -> Result<String, String> {
+    internal_export_meeting(
+        state.database.clone(),
+        state.vault_manager.clone(),
+        topic_name,
+        meeting_id,
+    )
+    .await
+}
+
+/// Internal helper for exporting a meeting to the vault
+pub async fn internal_export_meeting(
+    database: Arc<crate::database::DatabaseManager>,
+    vault_manager: Arc<crate::obsidian_vault::VaultManager>,
+    topic_name: String,
+    meeting_id: String,
+) -> Result<String, String> {
+    // Get meeting data from database
+    let meeting = database
+        .get_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get meeting: {}", e))?
+        .ok_or_else(|| format!("Meeting {} not found", meeting_id))?;
+
+    let transcripts = database
+        .get_transcripts(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+
+    // Get meeting notes if available
+    let notes = database
+        .get_meeting_notes(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get notes: {}", e))?;
+
+    // Get frames for screenshot paths
+    let frames = database
+        .get_frames(&meeting_id, 1000)
+        .await
+        .map_err(|e| format!("Failed to get frames: {}", e))?;
+
+    let transcript_tuples: Vec<(String, Option<String>, String)> = transcripts
+        .iter()
+        .map(|t| (t.text.clone(), t.speaker.clone(), t.timestamp.to_rfc3339()))
+        .collect();
+
+    let screenshot_paths: Vec<String> = frames.iter().filter_map(|f| f.file_path.clone()).collect();
+
+    let summary = notes.as_ref().and_then(|n| n.summary.as_deref());
+    let key_topics = notes.as_ref().and_then(|n| n.key_topics.as_deref());
+    let action_items = notes.as_ref().and_then(|n| n.action_items.as_deref());
+
+    vault_manager
+        .export_meeting(
+            &topic_name,
+            &meeting_id,
+            &meeting.title,
+            &meeting.started_at.to_rfc3339(),
+            meeting.duration_seconds,
+            &transcript_tuples,
+            summary,
+            key_topics,
+            action_items,
+            &screenshot_paths,
+        )
+        .await
+}
+
+/// Read a file from the vault
+#[tauri::command(rename_all = "camelCase")]
+pub async fn read_vault_file(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let content = state.vault_manager.read_file(&file_path).await?;
+    serde_json::to_value(&content).map_err(|e| e.to_string())
+}
+
+/// Write a note to a topic
+#[tauri::command(rename_all = "camelCase")]
+pub async fn write_vault_note(
+    state: State<'_, AppState>,
+    topic_name: String,
+    file_name: String,
+    content: String,
+) -> Result<String, String> {
+    state
+        .vault_manager
+        .write_note(&topic_name, &file_name, &content)
+        .await
+}
+
+/// Upload a file to a topic
+#[tauri::command(rename_all = "camelCase")]
+pub async fn upload_to_vault(
+    state: State<'_, AppState>,
+    topic_name: String,
+    source_path: String,
+    dest_name: Option<String>,
+) -> Result<String, String> {
+    state
+        .vault_manager
+        .upload_file(&topic_name, &source_path, dest_name.as_deref())
+        .await
+}
+
+/// List files in the vault
+#[tauri::command(rename_all = "camelCase")]
+pub async fn list_vault_files(
+    state: State<'_, AppState>,
+    sub_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let files = state.vault_manager.list_files(sub_path.as_deref()).await?;
+    serde_json::to_value(&files).map_err(|e| e.to_string())
+}
+
+/// Search the vault
+#[tauri::command(rename_all = "camelCase")]
+pub async fn search_vault(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<serde_json::Value, String> {
+    let results = state.vault_manager.search(&query).await?;
+    serde_json::to_value(&results).map_err(|e| e.to_string())
+}
+
+/// Get the vault tree structure
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_vault_tree(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let tree = state.vault_manager.get_tree().await?;
+    serde_json::to_value(&tree).map_err(|e| e.to_string())
+}
+
+/// Delete a file or folder from the vault
+#[tauri::command(rename_all = "camelCase")]
+pub async fn delete_vault_item(
+    state: State<'_, AppState>,
+    item_path: String,
+) -> Result<(), String> {
+    state.vault_manager.delete_item(&item_path).await
+}
+
+/// Set the vault path and persist to settings
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_vault_path(state: State<'_, AppState>, vault_path: String) -> Result<(), String> {
+    // Validate the path exists
+    let path = std::path::Path::new(&vault_path);
+    if !path.exists() || !path.is_dir() {
+        return Err(format!(
+            "Invalid vault path: {} (must be an existing directory)",
+            vault_path
+        ));
+    }
+
+    // Update the vault manager
+    state.vault_manager.set_vault_path(vault_path.clone());
+
+    // Ensure folder structure
+    state.vault_manager.ensure_structure().await?;
+
+    // Persist to settings
+    state
+        .settings
+        .set_vault_path(&vault_path)
+        .await
+        .map_err(|e| format!("Failed to save setting: {}", e))?;
+
     Ok(())
 }

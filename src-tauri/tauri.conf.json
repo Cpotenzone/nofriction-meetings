@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "noFriction Meetings",
-  "version": "2.9.0",
-  "identifier": "com.nofriction.meetings",
+  "version": "1.5.0",
+  "identifier": "ai.nofriction.meetings",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -18,7 +18,7 @@
         "minWidth": 1200,
         "minHeight": 700,
         "decorations": true,
-        "transparent": false,
+        "transparent": true,
         "resizable": true,
         "center": true
       }

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import ComparisonLab from "../../components/ComparisonLab";
 
 interface TranscriptionSettingsProps {
     onSave?: () => void;
@@ -15,7 +14,7 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
 
     const [isSaving, setIsSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
-    const [showComparisonLab, setShowComparisonLab] = useState(false);
+
 
     useEffect(() => {
         loadSettings();
@@ -46,28 +45,74 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
         try {
             // Save keys if changed (length > 0 && not masked)
             if (deepgramKey && !deepgramKey.includes("****")) {
-                await invoke("set_deepgram_api_key", { api_key: deepgramKey });
+                try {
+                    await invoke("set_deepgram_api_key", { apiKey: deepgramKey });
+                    console.log("✅ Deepgram API key saved");
+                } catch (err) {
+                    const errorMsg = err instanceof Error ? err.message : String(err);
+                    console.error("❌ Failed to save Deepgram key:", errorMsg);
+                    setStatus(`Failed to save Deepgram key: ${errorMsg}`);
+                    setIsSaving(false);
+                    return;
+                }
             }
             if (geminiKey && !geminiKey.includes("****")) {
-                await invoke("set_gemini_api_key", { api_key: geminiKey });
+                try {
+                    await invoke("set_gemini_api_key", { apiKey: geminiKey });
+                    console.log("✅ Gemini API key saved");
+                } catch (err) {
+                    const errorMsg = err instanceof Error ? err.message : String(err);
+                    console.error("❌ Failed to save Gemini key:", errorMsg);
+                    setStatus(`Failed to save Gemini key: ${errorMsg}`);
+                    setIsSaving(false);
+                    return;
+                }
             }
             if (gladiaKey && !gladiaKey.includes("****")) {
-                await invoke("set_gladia_api_key", { api_key: gladiaKey });
+                try {
+                    await invoke("set_gladia_api_key", { apiKey: gladiaKey });
+                    console.log("✅ Gladia API key saved");
+                } catch (err) {
+                    const errorMsg = err instanceof Error ? err.message : String(err);
+                    console.error("❌ Failed to save Gladia key:", errorMsg);
+                    setStatus(`Failed to save Gladia key: ${errorMsg}`);
+                    setIsSaving(false);
+                    return;
+                }
             }
             if (googleKey && !googleKey.includes("****")) {
-                await invoke("set_google_stt_key", { key_json: googleKey });
+                try {
+                    await invoke("set_google_stt_key", { keyJson: googleKey });
+                    console.log("✅ Google STT key saved");
+                } catch (err) {
+                    const errorMsg = err instanceof Error ? err.message : String(err);
+                    console.error("❌ Failed to save Google STT key:", errorMsg);
+                    setStatus(`Failed to save Google STT key: ${errorMsg}`);
+                    setIsSaving(false);
+                    return;
+                }
             }
 
             // Set active provider
-            await invoke("set_active_provider", { provider: activeProvider });
-            setProvider(activeProvider);
+            try {
+                await invoke("set_active_provider", { provider: activeProvider });
+                setProvider(activeProvider);
+                console.log(`✅ Active provider set to: ${activeProvider}`);
+            } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                console.error("❌ Failed to set active provider:", errorMsg);
+                setStatus(`Failed to set active provider: ${errorMsg}`);
+                setIsSaving(false);
+                return;
+            }
 
-            setStatus("Settings saved successfully");
+            setStatus("✅ Settings saved successfully");
             setTimeout(() => setStatus(null), 3000);
             onSave?.();
         } catch (err) {
-            console.error("Failed to save:", err);
-            setStatus("Failed to save settings");
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            console.error("❌ Unexpected error saving settings:", errorMsg);
+            setStatus(`Failed to save settings: ${errorMsg}`);
         } finally {
             setIsSaving(false);
         }
@@ -186,41 +231,7 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                 </div>
             </section>
 
-            <section className="settings-section">
-                <h3>Comparison Lab 🧪</h3>
-                <p className="section-desc">Test different providers side-by-side.</p>
-                <div className="lab-placeholder">
-                    <div className="lab-icon">🔬</div>
-                    <p>Record a sample to compare transcript quality and latency.</p>
-                    <button
-                        className="btn-primary"
-                        onClick={() => setShowComparisonLab(true)}
-                    >
-                        Open Comparison Lab
-                    </button>
-                </div>
-            </section>
 
-            {showComparisonLab && (
-                <div className="modal-overlay" onClick={() => setShowComparisonLab(false)}>
-                    <div className="modal-content" style={{ maxWidth: '95vw', width: '1600px' }} onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <div>
-                                <h2>Comparison Lab</h2>
-                                <p className="modal-subtitle">Test multiple providers side-by-side</p>
-                            </div>
-                            <button className="modal-close" onClick={() => setShowComparisonLab(false)}>
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path d="M18 6L6 18M6 6l12 12" strokeWidth="2" strokeLinecap="round" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div className="modal-body" style={{ padding: 0 }}>
-                            <ComparisonLab />
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

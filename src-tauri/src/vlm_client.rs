@@ -16,7 +16,8 @@ const THEBRAIN_API_URL: &str = "https://7wk6vrq9achr2djw.caas.targon.com";
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: String,
-    _token_type: String,
+    #[serde(rename = "token_type")]
+    token_type: String,
 }
 
 /// Model status from /api/models/status
@@ -33,8 +34,9 @@ pub struct ModelStatus {
 #[derive(Debug, Deserialize)]
 struct ModelsStatusResponse {
     models: Vec<ModelStatus>,
+    #[serde(rename = "loaded_models")]
     _loaded_models: Vec<String>,
-    #[serde(default)]
+    #[serde(default, rename = "gpu_used_gb")]
     _gpu_used_gb: Option<f32>,
 }
 
@@ -88,17 +90,20 @@ struct ChatOptions {
 /// Response from /api/chat
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
+    #[serde(rename = "model")]
     _model: String,
     message: ChatMessageResponse,
+    #[serde(rename = "done")]
     _done: bool,
-    #[serde(default)]
+    #[serde(default, rename = "total_duration")]
     _total_duration: Option<u64>,
-    #[serde(default)]
+    #[serde(default, rename = "eval_count")]
     _eval_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatMessageResponse {
+    #[serde(rename = "role")]
     _role: String,
     content: String,
 }
@@ -138,34 +143,58 @@ impl VLMClient {
 
     /// Authenticate with TheBrain API using username/password
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<String, String> {
-        let url = format!("{}/api/token", self.base_url.read());
-
-        let form_data = format!(
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let body = format!(
             "username={}&password={}",
             urlencoding::encode(username),
             urlencoding::encode(password)
         );
 
-        let resp = self
+        let url_primary = format!("{}/api/token", base);
+        let url_fallback = format!("{}/token", base);
+
+        let mut resp: reqwest::Response = match self
             .client
-            .post(&url)
+            .post(&url_primary)
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(form_data)
+            .body(body.clone())
             .send()
             .await
-            .map_err(|e| format!("Authentication request failed: {}", e))?;
+        {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Authentication request failed: {}", e)),
+        };
+
+        // Fallback to /token if /api/token is not found
+        if resp.status() == 404 {
+            match self
+                .client
+                .post(&url_fallback)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(body)
+                .send()
+                .await
+            {
+                Ok(r) => resp = r,
+                Err(e) => return Err(format!("Authentication retry failed: {}", e)),
+            }
+        }
 
         if resp.status() == 401 {
             return Err("Invalid username or password".to_string());
         }
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format!("Authentication failed: {}", body));
+            let status = resp.status();
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(format!(
+                "Authentication failed with status {}: {}",
+                status, err_body
+            ));
         }
 
         let token_resp: TokenResponse = resp
-            .json()
+            .json::<TokenResponse>()
             .await
             .map_err(|e| format!("Failed to parse token response: {}", e))?;
 
@@ -190,7 +219,8 @@ impl VLMClient {
 
     /// Get available models from TheBrain API
     pub async fn get_models(&self) -> Result<Vec<ModelStatus>, String> {
-        let url = format!("{}/api/models/status", self.base_url.read());
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let url = format!("{}/api/models/status", base);
 
         let mut request = self.client.get(&url);
         if let Some(auth) = self.get_auth_header() {
@@ -216,14 +246,14 @@ impl VLMClient {
                 .await
                 .map_err(|e| format!("Retry failed: {}", e))?;
             let status: ModelsStatusResponse = resp2
-                .json()
+                .json::<ModelsStatusResponse>()
                 .await
                 .map_err(|e| format!("Failed to parse models response: {}", e))?;
             return Ok(status.models);
         }
 
         let status: ModelsStatusResponse = resp
-            .json()
+            .json::<ModelsStatusResponse>()
             .await
             .map_err(|e| format!("Failed to parse models response: {}", e))?;
 
@@ -267,7 +297,8 @@ impl VLMClient {
 
     /// Check if the API is available (uses TheBrain /api/models/status)
     pub async fn is_available(&self) -> bool {
-        let url = format!("{}/api/models/status", self.base_url.read());
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let url = format!("{}/api/models/status", base);
 
         let mut request = self.client.get(&url);
         if let Some(auth) = self.get_auth_header() {
@@ -343,7 +374,8 @@ impl VLMClient {
         prompt: &str,
         model: &str,
     ) -> Result<String, String> {
-        let url = format!("{}/api/chat", self.base_url.read());
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let url = format!("{}/api/chat", base);
 
         let request_body = ChatRequest {
             model: model.to_string(),
@@ -392,7 +424,7 @@ impl VLMClient {
                     }
 
                     let chat_resp: ChatResponse = resp
-                        .json()
+                        .json::<ChatResponse>()
                         .await
                         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
@@ -474,7 +506,8 @@ impl VLMClient {
 
     /// Simple text chat (no image)
     pub async fn chat(&self, prompt: &str) -> Result<String, String> {
-        let url = format!("{}/api/chat", self.base_url.read());
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let url = format!("{}/api/chat", base);
         let model = self.model_primary.read().clone();
 
         let request_body = ChatRequest {
@@ -516,7 +549,7 @@ impl VLMClient {
         }
 
         let chat_resp: ChatResponse = resp
-            .json()
+            .json::<ChatResponse>()
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
@@ -525,7 +558,8 @@ impl VLMClient {
 
     /// Chat with a specific model (non-streaming)
     pub async fn chat_with_model(&self, prompt: &str, model: &str) -> Result<String, String> {
-        let url = format!("{}/api/chat", self.base_url.read());
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let url = format!("{}/api/chat", base);
 
         let request_body = ChatRequest {
             model: model.to_string(),
@@ -571,7 +605,7 @@ impl VLMClient {
         }
 
         let chat_resp: ChatResponse = resp
-            .json()
+            .json::<ChatResponse>()
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
@@ -581,7 +615,8 @@ impl VLMClient {
     /// Streaming chat with TheBrain API (collects full response)
     /// Uses POST /api/chat/stream with SSE
     pub async fn chat_stream(&self, prompt: &str, model: &str) -> Result<String, String> {
-        let url = format!("{}/api/chat/stream", self.base_url.read());
+        let base = self.base_url.read().trim_end_matches('/').to_string();
+        let url = format!("{}/api/chat/stream", base);
 
         let request_body = serde_json::json!({
             "model": model,

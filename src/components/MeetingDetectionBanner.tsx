@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 interface MeetingDetection {
@@ -46,7 +45,8 @@ export const MeetingDetectionBanner: React.FC<MeetingDetectionBannerProps> = ({
     const handleDismiss = useCallback(async () => {
         if (detection) {
             try {
-                await invoke('dismiss_meeting_detection', { detectionId: detection.id });
+                const { dismissMeetingDetection } = await import("../lib/tauri");
+                await dismissMeetingDetection(detection.id);
             } catch (e) {
                 console.error('Failed to dismiss detection:', e);
             }
@@ -61,7 +61,8 @@ export const MeetingDetectionBanner: React.FC<MeetingDetectionBannerProps> = ({
 
     const handleStartRecording = useCallback(async () => {
         try {
-            await invoke('start_meeting_capture');
+            const { startMeetingCapture } = await import("../lib/tauri");
+            await startMeetingCapture();
             onStartRecording?.();
         } catch (e) {
             console.error('Failed to start recording:', e);

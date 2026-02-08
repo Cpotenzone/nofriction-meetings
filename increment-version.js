@@ -30,10 +30,10 @@ const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
 const currentVersion = tauriConf.version;
 let newVersion;
 
-// If version is 2.x.x or higher (not an RC), keep it as-is
-if (currentVersion && !currentVersion.includes('-rc.') && currentVersion.match(/^[2-9]\./)) {
+// If version is 1.5.0 or higher (not an RC), keep it as-is
+if (currentVersion && !currentVersion.includes('-rc.') && (currentVersion.match(/^[2-9]\./) || currentVersion.startsWith('1.5.'))) {
     newVersion = currentVersion;
-    console.log(`✓ Preserving major version ${newVersion} (build #${buildNumber})`);
+    console.log(`✓ Preserving version ${newVersion} (build #${buildNumber})`);
 } else {
     // Default behavior for RC versions
     newVersion = `1.0.0-rc.${buildNumber}`;
