@@ -8,7 +8,9 @@ interface TranscriptionSettingsProps {
 export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
     const [provider, setProvider] = useState("deepgram");
     const [deepgramKey, setDeepgramKey] = useState("");
+    const [deepgramModel, setDeepgramModel] = useState("nova-3");
     const [geminiKey, setGeminiKey] = useState("");
+    const [geminiModel, setGeminiModel] = useState("models/gemini-2.0-flash-exp");
     const [gladiaKey, setGladiaKey] = useState("");
     const [googleKey, setGoogleKey] = useState("");
 
@@ -33,7 +35,15 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             const dgKey = await invoke<string | null>("get_deepgram_api_key");
             if (dgKey) setDeepgramKey(dgKey);
 
-            // TODO: Implement get_gemini_api_key etc if needed for masked display
+            const dgModel = await invoke<string | null>("get_deepgram_model");
+            if (dgModel) setDeepgramModel(dgModel);
+
+
+            const gModel = await invoke<string | null>("get_gemini_model");
+            if (gModel) setGeminiModel(gModel);
+
+            const gKey = await invoke<string | null>("get_gemini_api_key");
+            if (gKey) setGeminiKey(gKey);
         } catch (err) {
             console.error("Failed to load settings:", err);
         }
@@ -67,6 +77,14 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                     setIsSaving(false);
                     return;
                 }
+            }
+
+            // Save models
+            try {
+                await invoke("set_deepgram_model", { model: deepgramModel });
+                await invoke("set_gemini_model", { model: geminiModel });
+            } catch (err) {
+                console.error("Failed to save models", err);
             }
             if (gladiaKey && !gladiaKey.includes("****")) {
                 try {
@@ -159,6 +177,19 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                                 className="modern-input"
                             />
                         </div>
+                        <div className="input-group">
+                            <label>Model</label>
+                            <select
+                                value={deepgramModel}
+                                onChange={(e) => setDeepgramModel(e.target.value)}
+                                className="modern-select"
+                            >
+                                <option value="nova-3">Nova-3 (Latest, Smart)</option>
+                                <option value="nova-2-meeting">Nova-2 Meeting (Speaker ID Optimized)</option>
+                                <option value="nova-2">Nova-2 (General)</option>
+                                <option value="enhanced">Enhanced (Legacy)</option>
+                            </select>
+                        </div>
                     </div>
 
                     {/* Gemini */}
@@ -177,6 +208,18 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                                 placeholder="Enter Gemini Key"
                                 className="modern-input"
                             />
+                        </div>
+                        <div className="input-group">
+                            <label>Model</label>
+                            <select
+                                value={geminiModel}
+                                onChange={(e) => setGeminiModel(e.target.value)}
+                                className="modern-select"
+                            >
+                                <option value="models/gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                                <option value="models/gemini-1.5-flash-latest">Gemini 1.5 Flash</option>
+                                <option value="models/gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+                            </select>
                         </div>
                     </div>
 

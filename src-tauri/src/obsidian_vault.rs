@@ -67,6 +67,52 @@ pub struct VaultSearchResult {
     pub context: String,
 }
 
+/// A wikilink found in a file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultLink {
+    pub source_file: String,
+    pub target: String,
+    pub display_text: String,
+    pub line_number: usize,
+}
+
+/// Backlinks pointing to a specific file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BacklinkResult {
+    pub target_file: String,
+    pub backlinks: Vec<VaultLink>,
+}
+
+/// A tag with usage statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultTag {
+    pub name: String,
+    pub file_count: i32,
+    pub files: Vec<String>,
+}
+
+/// Node in the knowledge graph
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphNode {
+    pub id: String,
+    pub label: String,
+    pub file_type: String,
+}
+
+/// Edge in the knowledge graph
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphEdge {
+    pub source: String,
+    pub target: String,
+}
+
+/// Complete graph structure for visualization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultGraph {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
 /// The Vault Manager — handles all filesystem operations on the Obsidian vault
 pub struct VaultManager {
     vault_path: parking_lot::RwLock<Option<PathBuf>>,
@@ -583,6 +629,152 @@ impl VaultManager {
         }
         Ok(())
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Obsidian-style Knowledge Management APIs
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Extract wikilinks from markdown content
+    pub fn extract_wikilinks(content: &str, source_file: &str) -> Vec<VaultLink> {
+        let mut links = Vec::new();
+        let re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
+
+        for (line_num, line) in content.lines().enumerate() {
+            for cap in re.captures_iter(line) {
+                let target = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                let display = cap.get(2).map(|m| m.as_str()).unwrap_or(target);
+
+                links.push(VaultLink {
+                    source_file: source_file.to_string(),
+                    target: target.to_string(),
+                    display_text: display.to_string(),
+                    line_number: line_num + 1,
+                });
+            }
+        }
+        links
+    }
+
+    /// Get all backlinks pointing to a specific file
+    pub async fn get_backlinks(&self, target_file: &str) -> Result<BacklinkResult, String> {
+        let vault = self.get_vault_path().ok_or("Vault path not configured")?;
+        let nf_root = vault.join("noFriction");
+
+        if !nf_root.exists() {
+            return Ok(BacklinkResult {
+                target_file: target_file.to_string(),
+                backlinks: vec![],
+            });
+        }
+
+        // Extract target name for matching (without extension)
+        let target_name = Path::new(target_file)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let mut backlinks = Vec::new();
+        collect_backlinks(&nf_root, &target_name, &mut backlinks).await?;
+
+        Ok(BacklinkResult {
+            target_file: target_file.to_string(),
+            backlinks,
+        })
+    }
+
+    /// List all tags in the vault with file counts
+    pub async fn list_tags(&self) -> Result<Vec<VaultTag>, String> {
+        let vault = self.get_vault_path().ok_or("Vault path not configured")?;
+        let nf_root = vault.join("noFriction");
+
+        if !nf_root.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut tag_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        collect_tags(&nf_root, &mut tag_map).await?;
+
+        let mut tags: Vec<VaultTag> = tag_map
+            .into_iter()
+            .map(|(name, files)| VaultTag {
+                name,
+                file_count: files.len() as i32,
+                files,
+            })
+            .collect();
+
+        tags.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+        Ok(tags)
+    }
+
+    /// Get files that have a specific tag
+    pub async fn get_files_by_tag(&self, tag: &str) -> Result<Vec<VaultFile>, String> {
+        let tags = self.list_tags().await?;
+        let tag_lower = tag.to_lowercase().trim_start_matches('#').to_string();
+
+        if let Some(vault_tag) = tags.iter().find(|t| t.name.to_lowercase() == tag_lower) {
+            let vault = self.get_vault_path().ok_or("Vault path not configured")?;
+            let mut files = Vec::new();
+
+            for file_path in &vault_tag.files {
+                let path = Path::new(file_path);
+                if path.exists() {
+                    if let Ok(metadata) = tokio::fs::metadata(path).await {
+                        let modified = metadata
+                            .modified()
+                            .map(|t| DateTime::<Utc>::from(t).to_rfc3339())
+                            .unwrap_or_default();
+
+                        files.push(VaultFile {
+                            name: path
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                            path: file_path.clone(),
+                            relative_path: path
+                                .strip_prefix(&vault)
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                            is_dir: false,
+                            modified,
+                            size: metadata.len(),
+                            extension: path.extension().map(|e| e.to_string_lossy().to_string()),
+                        });
+                    }
+                }
+            }
+            Ok(files)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Build the knowledge graph for visualization
+    pub async fn build_graph(&self) -> Result<VaultGraph, String> {
+        let vault = self.get_vault_path().ok_or("Vault path not configured")?;
+        let nf_root = vault.join("noFriction");
+
+        if !nf_root.exists() {
+            return Ok(VaultGraph {
+                nodes: vec![],
+                edges: vec![],
+            });
+        }
+
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+        let mut file_ids: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        // Collect all markdown files as nodes
+        collect_graph_nodes(&nf_root, &mut nodes, &mut file_ids).await?;
+
+        // Collect all edges (wikilinks)
+        collect_graph_edges(&nf_root, &file_ids, &mut edges).await?;
+
+        Ok(VaultGraph { nodes, edges })
+    }
 }
 
 // ─── Helper Functions ──────────────────────────────────────────────
@@ -790,6 +982,220 @@ async fn search_files(
                         if results.len() >= 100 {
                             return Ok(());
                         }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ─── Obsidian Knowledge Graph Helpers ──────────────────────────────
+
+/// Extract wikilinks from content using regex
+fn extract_wikilinks_from_content(content: &str, source_file: &str) -> Vec<VaultLink> {
+    let mut links = Vec::new();
+    let re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
+
+    for (line_num, line) in content.lines().enumerate() {
+        for cap in re.captures_iter(line) {
+            let target = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            let display = cap.get(2).map(|m| m.as_str()).unwrap_or(target);
+
+            links.push(VaultLink {
+                source_file: source_file.to_string(),
+                target: target.to_string(),
+                display_text: display.to_string(),
+                line_number: line_num + 1,
+            });
+        }
+    }
+    links
+}
+
+/// Collect backlinks recursively
+async fn collect_backlinks(
+    dir: &Path,
+    target_name: &str,
+    backlinks: &mut Vec<VaultLink>,
+) -> Result<(), String> {
+    let mut entries = fs::read_dir(dir).await.map_err(|e| e.to_string())?;
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if name.starts_with('.') {
+            continue;
+        }
+
+        if path.is_dir() {
+            Box::pin(collect_backlinks(&path, target_name, backlinks)).await?;
+        } else if name.ends_with(".md") {
+            if let Ok(content) = fs::read_to_string(&path).await {
+                let links = extract_wikilinks_from_content(&content, &path.to_string_lossy());
+                for link in links {
+                    // Match target by name (case-insensitive)
+                    if link.target.to_lowercase() == target_name.to_lowercase()
+                        || link
+                            .target
+                            .to_lowercase()
+                            .ends_with(&format!("/{}", target_name.to_lowercase()))
+                    {
+                        backlinks.push(link);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Collect tags from files recursively
+async fn collect_tags(
+    dir: &Path,
+    tag_map: &mut std::collections::HashMap<String, Vec<String>>,
+) -> Result<(), String> {
+    let mut entries = fs::read_dir(dir).await.map_err(|e| e.to_string())?;
+    let tag_re = regex::Regex::new(r"#([a-zA-Z][a-zA-Z0-9_-]*)").unwrap();
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if name.starts_with('.') {
+            continue;
+        }
+
+        if path.is_dir() {
+            Box::pin(collect_tags(&path, tag_map)).await?;
+        } else if name.ends_with(".md") {
+            if let Ok(content) = fs::read_to_string(&path).await {
+                let file_path = path.to_string_lossy().to_string();
+
+                // Extract tags from frontmatter
+                let (frontmatter, body) = parse_frontmatter(&content);
+                if let Some(tags) = frontmatter.get("tags").and_then(|v| v.as_array()) {
+                    for tag in tags {
+                        if let Some(tag_str) = tag.as_str() {
+                            let normalized = tag_str.trim_start_matches('#').to_string();
+                            tag_map
+                                .entry(normalized)
+                                .or_default()
+                                .push(file_path.clone());
+                        }
+                    }
+                }
+
+                // Extract inline #tags from body
+                for cap in tag_re.captures_iter(&body) {
+                    if let Some(tag) = cap.get(1) {
+                        let normalized = tag.as_str().to_string();
+                        let files = tag_map.entry(normalized).or_default();
+                        if !files.contains(&file_path) {
+                            files.push(file_path.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Collect graph nodes (markdown files)
+async fn collect_graph_nodes(
+    dir: &Path,
+    nodes: &mut Vec<GraphNode>,
+    file_ids: &mut std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    let mut entries = fs::read_dir(dir).await.map_err(|e| e.to_string())?;
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if name.starts_with('.') {
+            continue;
+        }
+
+        if path.is_dir() {
+            Box::pin(collect_graph_nodes(&path, nodes, file_ids)).await?;
+        } else if name.ends_with(".md") {
+            let file_path = path.to_string_lossy().to_string();
+            let stem = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            // Determine file type from path or frontmatter
+            let file_type = if file_path.contains("/meetings/") {
+                "meeting"
+            } else if file_path.contains("/topics/") && name == "_index.md" {
+                "topic"
+            } else {
+                "note"
+            };
+
+            let node_id = stem.clone();
+            file_ids.insert(stem.to_lowercase(), node_id.clone());
+
+            nodes.push(GraphNode {
+                id: node_id,
+                label: stem,
+                file_type: file_type.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Collect graph edges (wikilinks between files)
+async fn collect_graph_edges(
+    dir: &Path,
+    file_ids: &std::collections::HashMap<String, String>,
+    edges: &mut Vec<GraphEdge>,
+) -> Result<(), String> {
+    let mut entries = fs::read_dir(dir).await.map_err(|e| e.to_string())?;
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if name.starts_with('.') {
+            continue;
+        }
+
+        if path.is_dir() {
+            Box::pin(collect_graph_edges(&path, file_ids, edges)).await?;
+        } else if name.ends_with(".md") {
+            if let Ok(content) = fs::read_to_string(&path).await {
+                let source_stem = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let links = extract_wikilinks_from_content(&content, &path.to_string_lossy());
+
+                for link in links {
+                    let target_key = link.target.to_lowercase();
+                    // Find target node ID
+                    if let Some(target_id) = file_ids.get(&target_key) {
+                        edges.push(GraphEdge {
+                            source: source_stem.clone(),
+                            target: target_id.clone(),
+                        });
                     }
                 }
             }

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -8,6 +9,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use crate::database::DatabaseManager;
+use crate::live_intel_agent::LiveIntelAgent;
 use crate::transcription::TranscriptionProvider;
 
 #[derive(Debug, Serialize)]
@@ -62,6 +64,7 @@ pub struct TranscriptSegment {
 struct AudioBatch {
     samples: Vec<f32>,
     sample_rate: u32,
+    channels: u16,
 }
 
 pub struct GoogleSTTProvider {
@@ -72,6 +75,7 @@ pub struct GoogleSTTProvider {
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
     meeting_id: Arc<RwLock<Option<String>>>,
+    live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
 }
 
 impl GoogleSTTProvider {
@@ -84,6 +88,7 @@ impl GoogleSTTProvider {
             app_handle: Arc::new(RwLock::new(None)),
             database: Arc::new(RwLock::new(None)),
             meeting_id: Arc::new(RwLock::new(None)),
+            live_intel_agent: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -95,7 +100,7 @@ impl GoogleSTTProvider {
         let client_email = sa["client_email"]
             .as_str()
             .ok_or("Missing client_email in service account")?;
-        let _private_key = sa["private_key"]
+        let private_key = sa["private_key"]
             .as_str()
             .ok_or("Missing private_key in service account")?;
 
@@ -105,26 +110,47 @@ impl GoogleSTTProvider {
             .unwrap()
             .as_secs();
 
-        let claims = serde_json::json!({
-            "iss": client_email,
-            "scope": "https://www.googleapis.com/auth/cloud-platform",
-            "aud": "https://oauth2.googleapis.com/token",
-            "exp": now + 3600,
-            "iat": now,
-        });
+        // Claims for Google OAuth
+        #[derive(Debug, Serialize)]
+        struct Claims {
+            iss: String,
+            scope: String,
+            aud: String,
+            exp: u64,
+            iat: u64,
+        }
 
-        // Sign JWT (simplified - in production use proper JWT library)
-        // For now, we'll use a simpler approach with reqwest
+        let claims = Claims {
+            iss: client_email.to_string(),
+            scope: "https://www.googleapis.com/auth/cloud-platform".to_string(),
+            aud: "https://oauth2.googleapis.com/token".to_string(),
+            exp: now + 3600,
+            iat: now,
+        };
+
+        // Sign JWT using RS256
+        let header = Header::new(Algorithm::RS256);
+        let encoding_key = EncodingKey::from_rsa_pem(private_key.as_bytes())
+            .map_err(|e| format!("Invalid private key: {}", e))?;
+
+        let assertion = jsonwebtoken::encode(&header, &claims, &encoding_key)
+            .map_err(|e| format!("Failed to sign JWT: {}", e))?;
+
         let client = reqwest::Client::new();
-        let response: reqwest::Response = client
+        let response = client
             .post("https://oauth2.googleapis.com/token")
-            .json(&[
+            .form(&[
                 ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                ("assertion", &format!("{}", claims)), // Simplified
+                ("assertion", assertion.as_str()),
             ])
             .send()
             .await
             .map_err(|e| format!("Failed to get access token: {}", e))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(format!("Google OAuth error: {}", error_text));
+        }
 
         let token_response: serde_json::Value = response
             .json::<serde_json::Value>()
@@ -144,6 +170,7 @@ impl GoogleSTTProvider {
         audio_tx_holder: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
         database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
         meeting_id: Arc<RwLock<Option<String>>>,
+        live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
     ) -> Result<(), String> {
         is_connected.store(true, Ordering::SeqCst);
         log::info!("✅ Google Cloud STT ready");
@@ -154,6 +181,7 @@ impl GoogleSTTProvider {
         let client = reqwest::Client::new();
 
         // Process audio in batches
+        let intel_agent_recv = live_intel_agent.clone();
         tokio::spawn(async move {
             let mut buffer: VecDeque<f32> = VecDeque::with_capacity(16000); // 1 second buffer
 
@@ -164,8 +192,11 @@ impl GoogleSTTProvider {
 
                 match result {
                     Ok(Some(batch)) => {
-                        let resampled =
-                            Self::resample_to_16k_mono(&batch.samples, batch.sample_rate);
+                        let resampled = Self::resample_to_16k_mono(
+                            &batch.samples,
+                            batch.sample_rate,
+                            batch.channels,
+                        );
                         buffer.extend(resampled);
                     }
                     Ok(None) => break,
@@ -196,56 +227,86 @@ impl GoogleSTTProvider {
                         },
                     };
 
-                    // Send to Google Cloud STT API
-                    let response = client
-                        .post("https://speech.googleapis.com/v1/speech:recognize")
-                        .bearer_auth(&access_token)
-                        .json(&request)
-                        .send()
-                        .await;
+                    // Clone handles for the async task
+                    let client = client.clone();
+                    let access_token = access_token.clone();
+                    let app = app.clone();
+                    let intel_agent_recv = intel_agent_recv.clone();
+                    let database = database.clone();
+                    let meeting_id = meeting_id.clone();
 
-                    if let Ok(resp) = response {
-                        if let Ok(stt_response) = resp.json::<GoogleSTTResponse>().await {
-                            if let Some(results) = stt_response.results {
-                                for result in results {
-                                    if let Some(alt) = result.alternatives.first() {
-                                        if !alt.transcript.trim().is_empty() {
-                                            let is_final = result.is_final.unwrap_or(true);
-                                            let segment = TranscriptSegment {
-                                                text: alt.transcript.clone(),
-                                                is_final,
-                                                confidence: alt.confidence.unwrap_or(0.9),
-                                                start: 0.0,
-                                                duration: 0.0,
-                                                speaker: None,
-                                            };
+                    // Spawn task to send request and handle response without blocking audio loop
+                    tokio::spawn(async move {
+                        // Send to Google Cloud STT API
+                        let response = client
+                            .post("https://speech.googleapis.com/v1/speech:recognize")
+                            .bearer_auth(&access_token)
+                            .json(&request)
+                            .send()
+                            .await;
 
-                                            // Emit to frontend
-                                            if let Err(e) = app.emit("live_transcript", &segment) {
-                                                log::error!("Failed to emit transcript: {}", e);
-                                            }
+                        if let Ok(resp) = response {
+                            if let Ok(stt_response) = resp.json::<GoogleSTTResponse>().await {
+                                if let Some(results) = stt_response.results {
+                                    for result in results {
+                                        if let Some(alt) = result.alternatives.first() {
+                                            if !alt.transcript.trim().is_empty() {
+                                                let is_final = result.is_final.unwrap_or(true);
+                                                let segment = TranscriptSegment {
+                                                    text: alt.transcript.clone(),
+                                                    is_final,
+                                                    confidence: alt.confidence.unwrap_or(0.9),
+                                                    start: 0.0,
+                                                    duration: 0.0,
+                                                    speaker: None,
+                                                };
 
-                                            // Save transcripts
-                                            if is_final {
-                                                if let Some(db) = database.read().as_ref().cloned()
+                                                // Emit to frontend
+                                                if let Err(e) =
+                                                    app.emit("live_transcript", &segment)
                                                 {
-                                                    if let Some(mid) =
-                                                        meeting_id.read().as_ref().cloned()
+                                                    log::error!("Failed to emit transcript: {}", e);
+                                                }
+
+                                                // Process with LiveIntelAgent
+                                                if let Some(agent) =
+                                                    intel_agent_recv.read().as_ref()
+                                                {
+                                                    let mut agent = agent.write();
+                                                    let intel_segment =
+                                                        crate::catch_up_agent::TranscriptSegment {
+                                                            id: uuid::Uuid::new_v4().to_string(),
+                                                            timestamp_ms: chrono::Utc::now()
+                                                                .timestamp_millis(),
+                                                            speaker: segment.speaker.clone(),
+                                                            text: segment.text.clone(),
+                                                        };
+                                                    agent.process_segment(intel_segment);
+                                                }
+
+                                                // Save transcripts
+                                                if is_final {
+                                                    if let Some(db) =
+                                                        database.read().as_ref().cloned()
                                                     {
-                                                        let text_clone = alt.transcript.clone();
-                                                        let confidence =
-                                                            alt.confidence.unwrap_or(0.9);
-                                                        tokio::spawn(async move {
-                                                            let _ = db
-                                                                .add_transcript(
-                                                                    &mid,
-                                                                    &text_clone,
-                                                                    None,
-                                                                    true,
-                                                                    confidence,
-                                                                )
-                                                                .await;
-                                                        });
+                                                        if let Some(mid) =
+                                                            meeting_id.read().as_ref().cloned()
+                                                        {
+                                                            let text_clone = alt.transcript.clone();
+                                                            let confidence =
+                                                                alt.confidence.unwrap_or(0.9);
+                                                            tokio::spawn(async move {
+                                                                let _ = db
+                                                                    .add_transcript(
+                                                                        &mid,
+                                                                        &text_clone,
+                                                                        None,
+                                                                        true,
+                                                                        confidence,
+                                                                    )
+                                                                    .await;
+                                                            });
+                                                        }
                                                     }
                                                 }
                                             }
@@ -254,7 +315,7 @@ impl GoogleSTTProvider {
                                 }
                             }
                         }
-                    }
+                    });
                 }
             }
         });
@@ -273,17 +334,17 @@ impl GoogleSTTProvider {
             .collect()
     }
 
-    fn resample_to_16k_mono(samples: &[f32], from_rate: u32) -> Vec<f32> {
+    fn resample_to_16k_mono(samples: &[f32], from_rate: u32, channels: u16) -> Vec<f32> {
         if samples.is_empty() {
             return vec![];
         }
 
-        let mono: Vec<f32> = if samples.len() > 1 {
+        let mono: Vec<f32> = if channels > 1 {
             samples
-                .chunks(2)
+                .chunks(channels as usize)
                 .map(|chunk| {
-                    if chunk.len() == 2 {
-                        (chunk[0] + chunk[1]) / 2.0
+                    if chunk.len() == channels as usize {
+                        chunk.iter().sum::<f32>() / channels as f32
                     } else {
                         chunk[0]
                     }
@@ -352,6 +413,7 @@ impl TranscriptionProvider for GoogleSTTProvider {
         let audio_tx_holder = self.audio_tx.clone();
         let database = self.database.clone();
         let meeting_id = self.meeting_id.clone();
+        let live_intel_agent = self.live_intel_agent.clone();
         let access_token_holder = self.access_token.clone();
 
         tokio::spawn(async move {
@@ -366,6 +428,7 @@ impl TranscriptionProvider for GoogleSTTProvider {
                         audio_tx_holder,
                         database,
                         meeting_id,
+                        live_intel_agent,
                     )
                     .await
                     {
@@ -385,7 +448,7 @@ impl TranscriptionProvider for GoogleSTTProvider {
         log::info!("Google STT disconnected");
     }
 
-    fn process_audio(&self, samples: &[f32], sample_rate: u32) {
+    fn process_audio(&self, samples: &[f32], sample_rate: u32, channels: u16) {
         if !self.is_connected.load(Ordering::SeqCst) || samples.is_empty() {
             return;
         }
@@ -394,6 +457,7 @@ impl TranscriptionProvider for GoogleSTTProvider {
             let batch = AudioBatch {
                 samples: samples.to_vec(),
                 sample_rate,
+                channels,
             };
             let _ = tx.try_send(batch);
         }
@@ -412,9 +476,11 @@ impl TranscriptionProvider for GoogleSTTProvider {
         app_handle: AppHandle,
         database: Arc<DatabaseManager>,
         meeting_id: String,
+        live_intel_agent: Arc<RwLock<LiveIntelAgent>>,
     ) {
         *self.app_handle.write() = Some(app_handle);
         *self.database.write() = Some(database);
         *self.meeting_id.write() = Some(meeting_id);
+        *self.live_intel_agent.write() = Some(live_intel_agent);
     }
 }

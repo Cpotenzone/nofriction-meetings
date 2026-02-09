@@ -80,6 +80,7 @@ use database::DatabaseManager;
 // use deepgram_client::DeepgramClient; // Deprecated
 use ambient_capture::AmbientCaptureService;
 use interaction_loop::InteractionLoop;
+use live_intel_agent::LiveIntelAgent;
 use meeting_trigger::MeetingTriggerEngine;
 use pinecone_client::PineconeClient;
 use power_manager::PowerManager;
@@ -124,6 +125,7 @@ pub struct AppState {
     pub ai_client: Arc<RwLock<ai_client::AIClient>>,
     // v3.0.0: Obsidian Vault Integration
     pub vault_manager: Arc<obsidian_vault::VaultManager>,
+    pub live_intel_agent: Arc<RwLock<LiveIntelAgent>>,
 }
 
 impl AppState {
@@ -173,13 +175,56 @@ impl AppState {
         let _ = emitter.emit("init-step", "Initializing Transcription Service...");
         let transcription_manager = Arc::new(TranscriptionManager::new());
 
-        // Configure transcription provider
+        // Load ALL provider API keys from settings (persists across restarts)
         if let Some(ref api_key) = saved_settings.deepgram_api_key {
-            transcription_manager.set_api_key(api_key.clone());
+            transcription_manager
+                .set_api_key_for_provider(transcription::ProviderType::Deepgram, api_key.clone());
+            log::info!("Loaded Deepgram API key from settings");
+        }
+        if let Some(ref api_key) = saved_settings.gemini_api_key {
+            transcription_manager
+                .set_api_key_for_provider(transcription::ProviderType::Gemini, api_key.clone());
+            log::info!("Loaded Gemini API key from settings");
         }
 
-        // Load other keys if present (placeholder for now)
-        // TODO: In full implementation, load provider choice and other keys
+        // Auto-populate transcription keys from .env if not already saved
+        if saved_settings.deepgram_api_key.is_none() {
+            if let Some(ref key) = env_config.deepgram_api_key {
+                log::info!("✓ Auto-populating Deepgram API key from .env");
+                let _ = settings.set_deepgram_api_key(key).await;
+                transcription_manager
+                    .set_api_key_for_provider(transcription::ProviderType::Deepgram, key.clone());
+            }
+        }
+        if saved_settings.gemini_api_key.is_none() {
+            if let Some(ref key) = env_config.gemini_api_key {
+                log::info!("✓ Auto-populating Gemini API key from .env");
+                let _ = settings.set_gemini_api_key(key).await;
+                transcription_manager
+                    .set_api_key_for_provider(transcription::ProviderType::Gemini, key.clone());
+            }
+        }
+
+        // Restore saved transcription provider choice
+        let saved_provider = &saved_settings.transcription_provider;
+        match saved_provider.as_str() {
+            "gemini" => {
+                transcription_manager.switch_provider(transcription::ProviderType::Gemini);
+                log::info!("Restored saved transcription provider: Gemini");
+            }
+            "gladia" => {
+                transcription_manager.switch_provider(transcription::ProviderType::Gladia);
+                log::info!("Restored saved transcription provider: Gladia");
+            }
+            "google_stt" => {
+                transcription_manager.switch_provider(transcription::ProviderType::GoogleSTT);
+                log::info!("Restored saved transcription provider: GoogleSTT");
+            }
+            _ => {
+                // Default is Deepgram, already set in TranscriptionManager::new()
+                log::info!("Transcription provider: Deepgram (default)");
+            }
+        }
 
         // Initialize capture engine with saved preferences
         log::info!("Initializing Capture Engine...");
@@ -393,6 +438,18 @@ impl AppState {
             });
         }
 
+        // Initialize Live Intelligence Agent
+        log::info!("Initializing Live Intelligence Agent...");
+        let live_intel_agent = Arc::new(RwLock::new(LiveIntelAgent::new()));
+
+        // Wire up audio callback to TranscriptionManager
+        let tm_clone = transcription_manager.clone();
+        capture.set_audio_callback(Arc::new(move |buffer| {
+            // Always forward audio to the provider — the provider handles
+            // buffering/dropping based on its own connection state.
+            tm_clone.process_audio(&buffer.samples, buffer.sample_rate, buffer.channels);
+        }));
+
         Ok(Self {
             capture_engine: Arc::new(RwLock::new(capture)),
             // deepgram_client: Arc::new(RwLock::new(deepgram)),
@@ -434,6 +491,7 @@ impl AppState {
                 });
                 vm
             },
+            live_intel_agent,
         })
     }
 }
@@ -454,6 +512,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -566,6 +625,7 @@ pub fn run() {
             commands::set_deepgram_api_key,
             commands::get_deepgram_api_key,
             commands::set_gemini_api_key,
+            commands::get_gemini_api_key,
             commands::set_gladia_api_key,
             commands::set_google_stt_key,
             commands::set_active_provider,
@@ -776,6 +836,11 @@ pub fn run() {
             commands::get_vault_tree,
             commands::delete_vault_item,
             commands::set_vault_path,
+            // Obsidian Knowledge Management
+            commands::get_vault_backlinks,
+            commands::list_vault_tags,
+            commands::get_files_by_tag,
+            commands::get_vault_graph,
         ])
         .on_window_event(|window, event| {
             match event {

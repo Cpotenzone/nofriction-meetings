@@ -1,0 +1,47 @@
+
+> nofriction-meetings@1.5.0 tauri
+> tauri build
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> nofriction-meetings@1.5.0 prebuild
+> node increment-version.js
+
+✓ Preserving version 1.5.0 (build #228)
+
+> nofriction-meetings@1.5.0 build
+> tsc && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 3179 modules transformed.
+[plugin vite:reporter] 
+(!) /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/node_modules/@tauri-apps/api/core.js is dynamically imported by /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/FullSettings.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/FullSettings.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/FullSettings.tsx but also statically imported by /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/node_modules/@tauri-apps/api/app.js, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/node_modules/@tauri-apps/api/event.js, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/node_modules/@tauri-apps/api/image.js, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/node_modules/@tauri-apps/plugin-dialog/dist-js/index.js, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/App.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/AdminConsole.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/AuditLog.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/CommandPalette.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/GenieView.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/InsightsView.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/KBSearch.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/LearnedDataEditor.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/RecordingsLibrary.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/ToolsConsole.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/VideoDiagnostics.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/agency/views/FlowStateView.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/onboarding/SetupWizard.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/KnowledgeBaseSettings.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/PermissionsStatus.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/TranscriptionSettings.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/lib/tauri.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/lib/tauri.ts is dynamically imported by /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/GenieView.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/MeetingDetectionBanner.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/MeetingDetectionBanner.tsx but also statically imported by /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/App.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/MeetingHistory.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/RewindGallery.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/agency/views/BacklinksPanel.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/agency/views/VaultGraph.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/agency/views/VaultTags.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/components/agency/views/VaultView.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/features/settings/FullSettings.tsx, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/hooks/useRecording.ts, /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src/hooks/useTranscripts.ts, dynamic import will not move module into another chunk.
+
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.45 kB │ gzip:   0.31 kB
+dist/assets/index-BUHplWvL.css  105.87 kB │ gzip:  17.97 kB
+dist/assets/index-CGXW_GCN.js   660.58 kB │ gzip: 202.60 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.13s
+   Compiling nofriction-meetings v1.5.0 (/Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src-tauri)
+    Finished `release` profile [optimized] target(s) in 3m 55s
+warning: the following packages contain code that will be rejected by a future version of Rust: sqlx-postgres v0.7.2
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 3`
+       Built application at: /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src-tauri/target/release/nofriction-meetings
+    Bundling noFriction Meetings.app (/Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src-tauri/target/release/bundle/macos/noFriction Meetings.app)
+    Bundling noFriction Meetings_1.5.0_aarch64.dmg (/Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src-tauri/target/release/bundle/dmg/noFriction Meetings_1.5.0_aarch64.dmg)
+     Running bundle_dmg.sh
+    Finished 2 bundles at:
+        /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src-tauri/target/release/bundle/macos/noFriction Meetings.app
+        /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings/src-tauri/target/release/bundle/dmg/noFriction Meetings_1.5.0_aarch64.dmg
+

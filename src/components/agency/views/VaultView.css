@@ -274,6 +274,7 @@
     width: 16px;
     text-align: center;
 }
+
 /* Export Modal */
 .export-modal-overlay {
     position: fixed;
@@ -358,4 +359,59 @@
 .export-modal .cancel-btn:hover {
     background: rgba(255, 255, 255, 0.05);
     color: #fff;
+}
+
+/* Obsidian Features Support */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.section-header h3 {
+    margin-bottom: 0 !important;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
+    color: #FFB800;
+    background: rgba(255, 184, 0, 0.1);
+}
+
+.wikilink {
+    color: #FFB800;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.wikilink:hover {
+    opacity: 0.8;
+}
+
+.tag-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.empty-text {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.3);
+    padding: 8px;
+    font-style: italic;
 }

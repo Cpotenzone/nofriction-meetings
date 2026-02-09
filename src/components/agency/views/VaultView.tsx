@@ -1,12 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    Folder,
+    FileText,
+    Plus,
+    Ship,
+    Upload,
+    RefreshCcw,
+    X,
+    File as FileIcon,
+    FolderOpen,
+    Settings,
+    Maximize2
+} from 'lucide-react';
 import * as tauri from '../../../lib/tauri';
 import {
     VaultTopic,
     VaultTreeNode,
     VaultFileContent,
     VaultStatus,
-    Meeting
+    Meeting,
+    VaultFile
 } from '../../../lib/tauri';
+import { BacklinksPanel } from './BacklinksPanel';
+import { VaultTags } from './VaultTags';
+import { VaultGraph } from './VaultGraph';
 import './VaultView.css';
 
 interface VaultViewProps {
@@ -25,9 +42,23 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
     const [meetingList, setMeetingList] = useState<Meeting[]>([]);
     const [isExporting, setIsExporting] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
+    const [activeTag, setActiveTag] = useState<string | null>(null);
+    const [tagFiles, setTagFiles] = useState<VaultFile[]>([]);
+    const [showGraph, setShowGraph] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         loadVaultData();
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+                e.preventDefault();
+                setShowGraph(prev => !prev);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
     const loadVaultData = async () => {
@@ -93,11 +124,11 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         }
     };
 
-    const handleUploadFile = async () => {
-        if (!selectedTopic) return;
-        // In a real app, we'd use @tauri-apps/plugin-dialog
-        // Since we are refining, we use a simple prompt for now or assume internal path
-        const sourcePath = prompt("Enter the absolute path of the file to upload:");
+    const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!selectedTopic || !e.target.files?.length) return;
+        const file = e.target.files[0];
+
+        const sourcePath = prompt(`Upload "${file.name}" to topic "${selectedTopic.name}"? \n\nPlease enter the absolute path of this file to confirm:`);
         if (!sourcePath) return;
 
         try {
@@ -105,7 +136,11 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
             loadVaultData();
         } catch (err) {
             console.error("Failed to upload file:", err);
-            alert("Upload failed. Ensure the path is valid and accessible.");
+            alert("Upload failed. Ensure the path is valid.");
+        } finally {
+            if (e.target) {
+                e.target.value = '';
+            }
         }
     };
 
@@ -125,6 +160,46 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         _onSelectMeeting(cleanId);
     };
 
+    const findFileInTree = (node: VaultTreeNode, name: string): string | null => {
+        if (!node.isDir && (node.name === name || node.name === `${name}.md`)) {
+            return node.path;
+        }
+        if (node.children) {
+            for (const child of node.children) {
+                const found = findFileInTree(child, name);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    const handleWikilinkClick = (target: string) => {
+        if (!tree) return;
+        const path = findFileInTree(tree, target);
+        if (path) {
+            handleSelectFile(path);
+        } else {
+            console.warn(`File not found for wikilink: ${target}`);
+        }
+    };
+
+    const handleSelectTag = async (tag: string) => {
+        if (activeTag === tag) {
+            setActiveTag(null);
+            setTagFiles([]);
+            return;
+        }
+        setActiveTag(tag);
+        try {
+            const files = await tauri.getFilesByTag(tag);
+            setTagFiles(files);
+            // Optionally clear selected topic to focus on tag results
+            setSelectedTopic(null);
+        } catch (err) {
+            console.error("Failed to load tag files:", err);
+        }
+    };
+
     const renderTree = (node: VaultTreeNode) => {
         return (
             <div key={node.path} className="tree-node">
@@ -132,7 +207,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                     className={`node-row ${selectedFile?.path === node.path ? 'active' : ''}`}
                     onClick={() => node.isDir ? null : handleSelectFile(node.path)}
                 >
-                    <span className="node-icon">{node.isDir ? '📁' : '📄'}</span>
+                    <span className="node-icon">
+                        {node.isDir ? <Folder size={14} /> : <FileText size={14} />}
+                    </span>
                     <span className="node-name">{node.name}</span>
                 </div>
                 {node.isDir && node.children && node.children.length > 0 && (
@@ -156,7 +233,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
     if (!status?.configured || !status?.valid) {
         return (
             <div className="vault-empty-state">
-                <div className="empty-icon">📂</div>
+                <div className="empty-icon"><Settings size={48} /></div>
                 <h2 className="empty-title">Vault Not Configured</h2>
                 <p className="empty-desc">
                     Connect your Obsidian vault in Settings to start managing meeting knowledge.
@@ -176,7 +253,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
 
     return (
         <div className="vault-view">
-            {/* Left Sidebar: Topics */}
+            {/* Left Sidebar: Topics & Tags */}
             <aside className="vault-sidebar">
                 <div className="sidebar-section">
                     <h3>Topics</h3>
@@ -184,10 +261,15 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                         {topics.map(topic => (
                             <div
                                 key={topic.name}
-                                className={`topic-item ${selectedTopic?.name === topic.name ? 'active' : ''}`}
-                                onClick={() => setSelectedTopic(topic)}
+                                className={`topic-item ${selectedTopic?.name === topic.name && !activeTag ? 'active' : ''}`}
+                                onClick={() => {
+                                    setSelectedTopic(topic);
+                                    setActiveTag(null); // Clear tag selection when picking a topic
+                                }}
                             >
-                                <span className="topic-icon">📁</span>
+                                <span className="topic-icon">
+                                    {selectedTopic?.name === topic.name && !activeTag ? <FolderOpen size={16} /> : <Folder size={16} />}
+                                </span>
                                 <span className="topic-name">{topic.name}</span>
                                 <span className="topic-count">{topic.noteCount + topic.meetings.length}</span>
                             </div>
@@ -206,7 +288,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                             />
                             <div className="form-actions">
                                 <button onClick={handleCreateTopic}>Add</button>
-                                <button onClick={() => setIsCreatingTopic(false)}>×</button>
+                                <button onClick={() => setIsCreatingTopic(false)}><X size={14} /></button>
                             </div>
                         </div>
                     ) : (
@@ -214,15 +296,41 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                             className="add-topic-btn"
                             onClick={() => setIsCreatingTopic(true)}
                         >
-                            + New Topic
+                            <Plus size={14} /> New Topic
                         </button>
                     )}
                 </div>
 
+                <VaultTags onSelectTag={handleSelectTag} activeTag={activeTag} />
+
                 <div className="sidebar-section file-tree-section">
-                    <h3>Vault Explorer</h3>
+                    <div className="section-header">
+                        <h3>{activeTag ? `Tagged: #${activeTag}` : 'Vault Explorer'}</h3>
+                        <button className="icon-btn" onClick={() => setShowGraph(true)} title="View Knowledge Graph (Cmd+G)">
+                            <Maximize2 size={14} />
+                        </button>
+                    </div>
                     <div className="vault-file-tree">
-                        {tree && renderTree(tree)}
+                        {activeTag ? (
+                            <div className="tag-file-list">
+                                {tagFiles.length > 0 ? (
+                                    tagFiles.map(file => (
+                                        <div
+                                            key={file.path}
+                                            className={`node-row ${selectedFile?.path === file.path ? 'active' : ''}`}
+                                            onClick={() => handleSelectFile(file.path)}
+                                        >
+                                            <span className="node-icon"><FileText size={14} /></span>
+                                            <span className="node-name">{file.name}</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="empty-text">No files found with this tag</div>
+                                )}
+                            </div>
+                        ) : (
+                            tree && renderTree(tree)
+                        )}
                     </div>
                 </div>
             </aside>
@@ -254,13 +362,47 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                                     if (line.startsWith('### ')) return <h3 key={i}>{line.substring(4)}</h3>;
                                     if (line.startsWith('- ')) return <li key={i}>{line.substring(2)}</li>;
                                     if (line.trim() === '') return <br key={i} />;
+                                    // Basic wikilink rendering [[Page]] -> clickable
+                                    const parts = line.split(/(\[\[.*?\]\])/g);
+                                    if (parts.length > 1) {
+                                        return (
+                                            <p key={i}>
+                                                {parts.map((part, idx) => {
+                                                    if (part.startsWith('[[') && part.endsWith(']]')) {
+                                                        const linkContent = part.slice(2, -2);
+                                                        const [target, alias] = linkContent.split('|');
+                                                        const displayText = alias || target;
+                                                        // Simple navigation handler - assumes file exists in vault
+                                                        // In a real app we'd need to resolve the path
+                                                        // For now we just use the name and hope it matches (basic limitation)
+                                                        // Improved logic: try to find file with this name in the tree?
+                                                        // Simpler: Just make it look like a link
+                                                        return (
+                                                            <span
+                                                                key={idx}
+                                                                className="wikilink"
+                                                                title={`Navigate to ${target}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleWikilinkClick(target);
+                                                                }}
+                                                            >
+                                                                {displayText}
+                                                            </span>
+                                                        );
+                                                    }
+                                                    return part;
+                                                })}
+                                            </p>
+                                        );
+                                    }
                                     return <p key={i}>{line}</p>;
                                 })}
                             </div>
                         </div>
                     ) : (
                         <div className="vault-empty-state">
-                            <div className="empty-icon">📄</div>
+                            <div className="empty-icon"><FileText size={48} /></div>
                             <h2 className="empty-title">No File Selected</h2>
                             <p className="empty-desc">Select a meeting or note from the sidebar to preview its content.</p>
                         </div>
@@ -271,7 +413,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
             {/* Right Panel: Inspector & Actions */}
             <section className="vault-inspector">
                 <div className="inspector-header">
-                    <h3>{selectedTopic ? selectedTopic.name : 'Topic Details'}</h3>
+                    <h3>{selectedFile ? 'File Details' : (selectedTopic ? selectedTopic.name : 'Topic Details')}</h3>
                     <p>Managed via noFriction</p>
                 </div>
 
@@ -282,15 +424,22 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                         disabled={!selectedTopic || isExportLoading}
                         onClick={handleOpenExportModal}
                     >
-                        {isExportLoading ? '🚢 Exporting...' : '🚢 Export Meeting'}
+                        {isExportLoading ? <RefreshCcw className="spinning" size={16} /> : <Ship size={16} />}
+                        {isExportLoading ? ' Exporting...' : ' Export Meeting'}
                     </button>
                     <button
                         className="action-btn"
                         disabled={!selectedTopic}
-                        onClick={handleUploadFile}
+                        onClick={() => fileInputRef.current?.click()}
                     >
-                        📤 Upload File
+                        <Upload size={16} /> Upload File
                     </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        style={{ display: 'none' }}
+                        onChange={handleUploadFile}
+                    />
                 </div>
 
                 {isExporting && (
@@ -310,14 +459,20 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                     </div>
                 )}
 
-                {selectedTopic && (
+                {selectedFile && (
+                    <BacklinksPanel filePath={selectedFile.path} onNavigate={handleSelectFile} />
+                )}
+
+                {!selectedFile && selectedTopic && (
                     <div className="inspector-section">
                         <h4>Linked Meetings</h4>
                         <div className="inspector-list">
                             {selectedTopic.meetings.length > 0 ? (
                                 selectedTopic.meetings.map(m => (
                                     <div key={m} className="inspector-item" onClick={() => handleJumpToMeeting(m)}>
-                                        <span className="item-icon">📅</span>
+                                        <span className="item-icon">
+                                            <FileIcon size={14} />
+                                        </span>
                                         <span className="item-text">{m}</span>
                                     </div>
                                 ))
@@ -329,11 +484,21 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                 )}
 
                 <div className="inspector-footer">
+                    <button className="action-btn" onClick={() => setShowGraph(true)}>
+                        Graph View
+                    </button>
                     <button className="action-btn" onClick={() => loadVaultData()}>
-                        🔄 Refresh Vault
+                        <RefreshCcw size={14} /> Refresh Vault
                     </button>
                 </div>
             </section>
+
+            {showGraph && (
+                <VaultGraph
+                    onClose={() => setShowGraph(false)}
+                    onSelectNode={handleSelectFile}
+                />
+            )}
         </div>
     );
 };

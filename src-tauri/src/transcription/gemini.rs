@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::database::DatabaseManager;
+use crate::live_intel_agent::LiveIntelAgent;
 use crate::transcription::TranscriptionProvider;
 
 #[derive(Debug, Serialize)]
@@ -77,6 +78,7 @@ pub struct TranscriptSegment {
 struct AudioBatch {
     samples: Vec<f32>,
     sample_rate: u32,
+    channels: u16,
 }
 
 pub struct GeminiProvider {
@@ -86,6 +88,7 @@ pub struct GeminiProvider {
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
     meeting_id: Arc<RwLock<Option<String>>>,
+    live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
 }
 
 impl GeminiProvider {
@@ -97,16 +100,19 @@ impl GeminiProvider {
             app_handle: Arc::new(RwLock::new(None)),
             database: Arc::new(RwLock::new(None)),
             meeting_id: Arc::new(RwLock::new(None)),
+            live_intel_agent: Arc::new(RwLock::new(None)),
         }
     }
 
     async fn connect_internal(
         api_key: String,
+        model: String,
         app: AppHandle,
         is_connected: Arc<AtomicBool>,
         audio_tx_holder: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
         database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
         meeting_id: Arc<RwLock<Option<String>>>,
+        live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
     ) -> Result<(), String> {
         let url = format!(
             "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={}",
@@ -118,15 +124,13 @@ impl GeminiProvider {
             .map_err(|e| format!("Failed to connect to Gemini: {}", e))?;
 
         is_connected.store(true, Ordering::SeqCst);
-        log::info!("✅ Connected to Gemini Live API");
+        log::info!("✅ Connected to Gemini Live API (Model: {})", model);
 
         let (mut write, mut read) = ws_stream.split();
 
         // Send setup message
         let setup = GeminiSetupMessage {
-            setup: GeminiSetup {
-                model: "models/gemini-2.0-flash-exp".to_string(),
-            },
+            setup: GeminiSetup { model },
         };
         let setup_json = serde_json::to_string(&setup)
             .map_err(|e| format!("Failed to serialize setup: {}", e))?;
@@ -152,8 +156,11 @@ impl GeminiProvider {
 
                 match result {
                     Ok(Some(batch)) => {
-                        let resampled =
-                            Self::resample_to_16k_mono(&batch.samples, batch.sample_rate);
+                        let resampled = Self::resample_to_16k_mono(
+                            &batch.samples,
+                            batch.sample_rate,
+                            batch.channels,
+                        );
                         buffer.extend(resampled);
                     }
                     Ok(None) => break,
@@ -195,6 +202,7 @@ impl GeminiProvider {
         let is_connected_recv = is_connected.clone();
         let database_recv = database.clone();
         let meeting_id_recv = meeting_id.clone();
+        let intel_agent_recv = live_intel_agent.clone();
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 if !is_connected_recv.load(Ordering::SeqCst) {
@@ -225,6 +233,22 @@ impl GeminiProvider {
                                                     app.emit("live_transcript", &segment)
                                                 {
                                                     log::error!("Failed to emit transcript: {}", e);
+                                                }
+
+                                                // Process with LiveIntelAgent
+                                                if let Some(agent) =
+                                                    intel_agent_recv.read().as_ref()
+                                                {
+                                                    let mut agent = agent.write();
+                                                    let intel_segment =
+                                                        crate::catch_up_agent::TranscriptSegment {
+                                                            id: uuid::Uuid::new_v4().to_string(),
+                                                            timestamp_ms: chrono::Utc::now()
+                                                                .timestamp_millis(),
+                                                            speaker: segment.speaker.clone(),
+                                                            text: segment.text.clone(),
+                                                        };
+                                                    agent.process_segment(intel_segment);
                                                 }
 
                                                 // Save FINAL transcripts
@@ -280,17 +304,17 @@ impl GeminiProvider {
             .collect()
     }
 
-    fn resample_to_16k_mono(samples: &[f32], from_rate: u32) -> Vec<f32> {
+    fn resample_to_16k_mono(samples: &[f32], from_rate: u32, channels: u16) -> Vec<f32> {
         if samples.is_empty() {
             return vec![];
         }
 
-        let mono: Vec<f32> = if samples.len() > 1 {
+        let mono: Vec<f32> = if channels > 1 {
             samples
-                .chunks(2)
+                .chunks(channels as usize)
                 .map(|chunk| {
-                    if chunk.len() == 2 {
-                        (chunk[0] + chunk[1]) / 2.0
+                    if chunk.len() == channels as usize {
+                        chunk.iter().sum::<f32>() / channels as f32
                     } else {
                         chunk[0]
                     }
@@ -359,15 +383,29 @@ impl TranscriptionProvider for GeminiProvider {
         let audio_tx_holder = self.audio_tx.clone();
         let database = self.database.clone();
         let meeting_id = self.meeting_id.clone();
+        let live_intel_agent = self.live_intel_agent.clone();
 
+        let app_handle_clone = app.clone();
+
+        // Fetch model from settings (needs async)
         tokio::spawn(async move {
+            let model = {
+                let state: tauri::State<crate::AppState> = app_handle_clone.state();
+                match state.settings.get_gemini_model().await {
+                    Ok(Some(m)) => m,
+                    _ => "models/gemini-2.0-flash-exp".to_string(),
+                }
+            };
+
             if let Err(e) = Self::connect_internal(
                 api_key,
+                model,
                 app,
                 is_connected,
                 audio_tx_holder,
                 database,
                 meeting_id,
+                live_intel_agent,
             )
             .await
             {
@@ -382,17 +420,47 @@ impl TranscriptionProvider for GeminiProvider {
         log::info!("Gemini disconnected");
     }
 
-    fn process_audio(&self, samples: &[f32], sample_rate: u32) {
-        if !self.is_connected.load(Ordering::SeqCst) || samples.is_empty() {
+    fn process_audio(&self, samples: &[f32], sample_rate: u32, channels: u16) {
+        if samples.is_empty() {
             return;
         }
 
-        if let Some(tx) = self.audio_tx.read().as_ref() {
-            let batch = AudioBatch {
-                samples: samples.to_vec(),
+        // Debug logging
+        static LOG_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let count = LOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+        if count < 5 || count % 200 == 0 {
+            log::debug!(
+                "Gemini Audio Input: {} samples, {} Hz, {} channels",
+                samples.len(),
                 sample_rate,
-            };
-            let _ = tx.try_send(batch);
+                channels
+            );
+        }
+
+        if !self.is_connected.load(Ordering::Relaxed) {
+            // Log periodically
+            static DROPPED_COUNT: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
+            let drop_count = DROPPED_COUNT.fetch_add(1, Ordering::Relaxed);
+            if drop_count % 500 == 0 {
+                log::warn!(
+                    "⚠️ Gemini not connected - dropped {} audio batches",
+                    drop_count
+                );
+            }
+            return;
+        }
+
+        let batch = AudioBatch {
+            samples: samples.to_vec(),
+            sample_rate,
+            channels: if channels == 0 { 1 } else { channels },
+        };
+
+        if let Some(tx) = self.audio_tx.write().clone() {
+            if tx.try_send(batch).is_err() {
+                log::trace!("Audio queue full, batch dropped");
+            }
         }
     }
 
@@ -409,9 +477,11 @@ impl TranscriptionProvider for GeminiProvider {
         app_handle: AppHandle,
         database: Arc<DatabaseManager>,
         meeting_id: String,
+        live_intel_agent: Arc<RwLock<LiveIntelAgent>>,
     ) {
         *self.app_handle.write() = Some(app_handle);
         *self.database.write() = Some(database);
         *self.meeting_id.write() = Some(meeting_id);
+        *self.live_intel_agent.write() = Some(live_intel_agent);
     }
 }

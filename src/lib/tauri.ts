@@ -706,3 +706,57 @@ export async function deleteVaultItem(itemPath: string): Promise<void> {
 export async function setVaultPath(vaultPath: string): Promise<void> {
     return invoke("set_vault_path", { vaultPath });
 }
+
+// ============================================================================
+// Obsidian Knowledge Management APIs
+// ============================================================================
+
+export interface VaultLink {
+    sourceFile: string;
+    target: string;
+    displayText: string;
+    lineNumber: number;
+}
+
+export interface BacklinkResult {
+    targetFile: string;
+    backlinks: VaultLink[];
+}
+
+export interface VaultTag {
+    name: string;
+    fileCount: number;
+    files: string[];
+}
+
+export interface GraphNode {
+    id: string;
+    label: string;
+    fileType: string;
+}
+
+export interface GraphEdge {
+    source: string;
+    target: string;
+}
+
+export interface VaultGraph {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+}
+
+export async function getVaultBacklinks(filePath: string): Promise<BacklinkResult> {
+    return invoke<BacklinkResult>("get_vault_backlinks", { filePath });
+}
+
+export async function listVaultTags(): Promise<VaultTag[]> {
+    return invoke<VaultTag[]>("list_vault_tags");
+}
+
+export async function getFilesByTag(tag: string): Promise<VaultFile[]> {
+    return invoke<VaultFile[]>("get_files_by_tag", { tag });
+}
+
+export async function getVaultGraph(): Promise<VaultGraph> {
+    return invoke<VaultGraph>("get_vault_graph");
+}

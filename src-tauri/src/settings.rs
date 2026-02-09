@@ -12,6 +12,8 @@ pub struct AppSettings {
     pub gemini_api_key: Option<String>,
     pub gladia_api_key: Option<String>,
     pub google_stt_key_json: Option<String>,
+    pub deepgram_model: Option<String>,
+    pub gemini_model: Option<String>,
     pub transcription_provider: String, // "deepgram", "gemini", "gladia", "google_stt"
     pub selected_microphone: Option<String>,
     pub selected_monitor: Option<u32>,
@@ -78,6 +80,8 @@ impl AppSettings {
             gemini_api_key: None,
             gladia_api_key: None,
             google_stt_key_json: None,
+            deepgram_model: Some("nova-3".to_string()),
+            gemini_model: Some("models/gemini-2.0-flash-exp".to_string()),
             transcription_provider: "deepgram".to_string(),
             selected_microphone: None,
             selected_monitor: None,
@@ -207,6 +211,12 @@ impl SettingsManager {
         }
         if let Some(key) = self.get("google_stt_key_json").await? {
             settings.google_stt_key_json = Some(key);
+        }
+        if let Some(model) = self.get("deepgram_model").await? {
+            settings.deepgram_model = Some(model);
+        }
+        if let Some(model) = self.get("gemini_model").await? {
+            settings.gemini_model = Some(model);
         }
         if let Some(prov) = self.get("transcription_provider").await? {
             settings.transcription_provider = prov;
@@ -364,14 +374,54 @@ impl SettingsManager {
         self.set("gemini_api_key", key).await
     }
 
+    /// Get Gemini API key
+    pub async fn get_gemini_api_key(&self) -> Result<Option<String>, sqlx::Error> {
+        self.get("gemini_api_key").await
+    }
+
     /// Save Gladia API key
     pub async fn set_gladia_api_key(&self, key: &str) -> Result<(), sqlx::Error> {
         self.set("gladia_api_key", key).await
     }
 
+    /// Get Gladia API key
+    pub async fn get_gladia_api_key(&self) -> Result<Option<String>, sqlx::Error> {
+        self.get("gladia_api_key").await
+    }
+
     /// Save Google STT key JSON
     pub async fn set_google_stt_key(&self, key: &str) -> Result<(), sqlx::Error> {
         self.set("google_stt_key_json", key).await
+    }
+
+    pub async fn get_google_stt_key(&self) -> Result<Option<String>, sqlx::Error> {
+        self.get("google_stt_key_json").await
+    }
+
+    /// Save Deepgram Model
+    pub async fn set_deepgram_model(&self, model: &str) -> Result<(), sqlx::Error> {
+        self.set("deepgram_model", model).await
+    }
+
+    /// Get Deepgram Model
+    pub async fn get_deepgram_model(&self) -> Result<Option<String>, sqlx::Error> {
+        Ok(self
+            .get("deepgram_model")
+            .await?
+            .or_else(|| Some("nova-3".to_string())))
+    }
+
+    /// Save Gemini Model
+    pub async fn set_gemini_model(&self, model: &str) -> Result<(), sqlx::Error> {
+        self.set("gemini_model", model).await
+    }
+
+    /// Get Gemini Model
+    pub async fn get_gemini_model(&self) -> Result<Option<String>, sqlx::Error> {
+        Ok(self
+            .get("gemini_model")
+            .await?
+            .or_else(|| Some("models/gemini-2.0-flash-exp".to_string())))
     }
 
     /// Set transcription provider

@@ -14,6 +14,9 @@ pub struct EnvConfig {
     pub remote_intelligence_enabled: bool,
     pub remote_intelligence_url: Option<String>,
     pub remote_intelligence_token: Option<String>,
+    // Transcription API Keys
+    pub deepgram_api_key: Option<String>,
+    pub gemini_api_key: Option<String>,
 }
 
 impl Default for EnvConfig {
@@ -29,6 +32,8 @@ impl Default for EnvConfig {
             remote_intelligence_enabled: false,
             remote_intelligence_url: None,
             remote_intelligence_token: None,
+            deepgram_api_key: None,
+            gemini_api_key: None,
         }
     }
 }
@@ -65,6 +70,8 @@ impl EnvConfig {
                 .unwrap_or(false),
             remote_intelligence_url: env::var("REMOTE_INTELLIGENCE_URL").ok(),
             remote_intelligence_token: env::var("REMOTE_INTELLIGENCE_TOKEN").ok(),
+            deepgram_api_key: env::var("DEEPGRAM_API_KEY").ok().filter(|s| !s.is_empty()),
+            gemini_api_key: env::var("GEMINI_API_KEY").ok().filter(|s| !s.is_empty()),
         }
     }
 

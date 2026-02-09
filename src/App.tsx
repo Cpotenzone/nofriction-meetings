@@ -202,6 +202,7 @@ function App() {
           await recording.stopRecording();
           setMeetingListRefreshKey((k) => k + 1);
         }}
+        meetingId={recording.meetingId}
       />
     );
   }

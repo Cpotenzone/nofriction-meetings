@@ -1,93 +1,54 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
+import { LiveInsightEvent } from "../lib/tauri";
 
 interface GenieViewProps {
     onRestore: () => void;
     liveTranscripts: string[];
     isRecording: boolean;
     onStop: () => void;
+    meetingId: string | null;
 }
 
-interface GenieInsight {
-    type: 'context' | 'action' | 'connection';
-    text: string;
-}
-
-export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts, isRecording, onStop }) => {
-    const [insight, setInsight] = useState<GenieInsight | null>(null);
+export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts, isRecording, onStop, meetingId }) => {
+    const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const lastInsightRef = useRef<string>("");
+    const lastFetchRef = useRef<number>(0);
 
     // Get the last 2 transcripts for display
     const recentTranscripts = liveTranscripts.slice(-2);
 
-    // Generate AI insight periodically based on recent transcripts
+    // Fetch real AI insights periodically
     useEffect(() => {
-        // Only generate insights if we have enough transcripts and not already analyzing
-        if (liveTranscripts.length < 3 || isAnalyzing) return;
-
-        const latestText = liveTranscripts.slice(-3).join(" ");
-        // Avoid re-analyzing the same content
-        if (latestText === lastInsightRef.current) return;
-        lastInsightRef.current = latestText;
-
-        // Generate insight (mock AI for now - can be replaced with real API call)
-        generateInsight(latestText);
-    }, [liveTranscripts, isAnalyzing]);
-
-    const generateInsight = async (context: string) => {
-        setIsAnalyzing(true);
-
-        // Simulate AI thinking time
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        // Smart insight generation based on keywords
-        const insights: GenieInsight[] = [];
-
-        // Check for action items
-        if (/should|need to|have to|must|will|action|task|todo/i.test(context)) {
-            insights.push({
-                type: 'action',
-                text: '📋 Potential action item detected. Consider noting this decision.'
-            });
+        if (!isRecording || !meetingId) {
+            setInsights([]);
+            return;
         }
 
-        // Check for questions
-        if (/\?|how|what|when|where|why|who/i.test(context)) {
-            insights.push({
-                type: 'context',
-                text: '❓ Discussion topic identified. Related meeting context may be relevant.'
-            });
-        }
+        const fetchInsights = async () => {
+            const now = Date.now();
+            if (now - lastFetchRef.current < 4000) return; // Rate limit polling
+            lastFetchRef.current = now;
 
-        // Check for agreements/decisions
-        if (/agree|decide|confirm|approve|ok|yes|let's/i.test(context)) {
-            insights.push({
-                type: 'connection',
-                text: '✅ Decision point reached. This may connect to previous discussions.'
-            });
-        }
+            setIsAnalyzing(true);
+            try {
+                const result = await invoke<LiveInsightEvent[]>("get_live_insights", {
+                    meetingId
+                });
+                setInsights(result.slice(-5)); // Keep latest 5
+            } catch (err) {
+                console.error("Genie failed to fetch insights:", err);
+            } finally {
+                setIsAnalyzing(false);
+            }
+        };
 
-        // Check for important topics
-        if (/important|critical|priority|urgent|key|main/i.test(context)) {
-            insights.push({
-                type: 'context',
-                text: '⚡ High-priority topic flagged for attention.'
-            });
-        }
+        const interval = setInterval(fetchInsights, 5000);
+        fetchInsights();
 
-        // Default insight if nothing specific
-        if (insights.length === 0) {
-            insights.push({
-                type: 'context',
-                text: '💭 Monitoring conversation flow for insights...'
-            });
-        }
-
-        // Pick a relevant insight
-        setInsight(insights[0]);
-        setIsAnalyzing(false);
-    };
+        return () => clearInterval(interval);
+    }, [isRecording, meetingId]);
 
     const formatTime = () => {
         const now = new Date();
@@ -99,6 +60,20 @@ export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts
         await setGenieMode(false);
         onRestore();
     };
+
+    const getInsightColorClass = (type: string) => {
+        switch (type.toLowerCase()) {
+            case 'action_item': return 'insight-action';
+            case 'decision': return 'insight-connection';
+            case 'risk_signal': return 'insight-risk';
+            case 'question_suggestion': return 'insight-question';
+            case 'commitment': return 'insight-commitment';
+            case 'topic_shift': return 'insight-topic';
+            default: return 'insight-context';
+        }
+    };
+
+    const latestInsight = insights[insights.length - 1];
 
     return (
         <motion.div
@@ -153,16 +128,19 @@ export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts
                         {isAnalyzing && <span className="insight-analyzing">analyzing...</span>}
                     </div>
                     <AnimatePresence mode="wait">
-                        {insight ? (
+                        {latestInsight ? (
                             <motion.div
-                                key={insight.text}
-                                className={`insight-content insight-${insight.type}`}
+                                key={latestInsight.id}
+                                className={`insight-content ${getInsightColorClass(latestInsight.type)}`}
                                 initial={{ opacity: 0, x: -10 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: 10 }}
                                 transition={{ duration: 0.3 }}
                             >
-                                {insight.text}
+                                <span style={{ marginRight: '8px', fontWeight: 'bold' }}>
+                                    {latestInsight.type.replace('_', ' ').toUpperCase()}:
+                                </span>
+                                {latestInsight.text || latestInsight.context}
                             </motion.div>
                         ) : (
                             <motion.div
@@ -170,7 +148,7 @@ export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 0.6 }}
                             >
-                                Waiting for enough context...
+                                {isRecording ? "Waiting for enough context..." : "Ready to provide insights"}
                             </motion.div>
                         )}
                     </AnimatePresence>

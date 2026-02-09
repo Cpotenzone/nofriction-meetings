@@ -17,7 +17,7 @@ const THEBRAIN_API_URL: &str = "https://7wk6vrq9achr2djw.caas.targon.com";
 struct TokenResponse {
     access_token: String,
     #[serde(rename = "token_type")]
-    token_type: String,
+    _token_type: String,
 }
 
 /// Model status from /api/models/status

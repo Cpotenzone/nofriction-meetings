@@ -1,8 +1,8 @@
-
 // noFriction Meetings - Full Settings Component
 // Streamlined settings: General, Transcription, TheBrain, Data
 
 import { useState, useEffect, useCallback } from "react";
+import { open } from "@tauri-apps/plugin-dialog"; // Import dialog plugin
 import * as tauri from "../../lib/tauri";
 import type { AudioDevice } from "../../lib/tauri";
 import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
@@ -128,6 +128,23 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         </div>
     );
 
+    const handleSelectVault = async () => {
+        try {
+            const selected = await open({
+                directory: true,
+                multiple: false,
+                title: "Select Obsidian Vault Folder",
+            });
+            if (selected && typeof selected === "string") {
+                setVaultPath(selected);
+                showToast("✅ Folder selected. Click Save to apply.");
+            }
+        } catch (err) {
+            console.error("Failed to open dialog:", err);
+            showToast("❌ Permission Error: Could not open folder picker.");
+        }
+    };
+
     const renderContent = () => {
         switch (activeCategory) {
             case "general":
@@ -192,7 +209,11 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                                         value={vaultPath}
                                         onChange={(e) => setVaultPath(e.target.value)}
                                         placeholder="/Users/name/Documents/MyVault"
+                                        readOnly // Make read-only to encourage using the picker
+                                        style={{ cursor: "pointer" }}
+                                        onClick={handleSelectVault}
                                     />
+                                    <button className="btn-secondary" onClick={handleSelectVault} style={{ marginRight: "8px" }}>Select Folder</button>
                                     <button className="btn-primary" onClick={handleSaveVaultPath}>Save</button>
                                 </div>
                                 <p className="input-help">The absolute path to your Obsidian vault folder.</p>

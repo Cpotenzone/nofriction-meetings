@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::database::DatabaseManager;
+use crate::live_intel_agent::LiveIntelAgent;
 use crate::transcription::TranscriptionProvider;
 
 #[derive(Debug, Serialize)]
@@ -47,6 +48,7 @@ pub struct TranscriptSegment {
 struct AudioBatch {
     samples: Vec<f32>,
     sample_rate: u32,
+    channels: u16,
 }
 
 pub struct GladiaProvider {
@@ -56,6 +58,7 @@ pub struct GladiaProvider {
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
     meeting_id: Arc<RwLock<Option<String>>>,
+    live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
 }
 
 impl GladiaProvider {
@@ -67,6 +70,7 @@ impl GladiaProvider {
             app_handle: Arc::new(RwLock::new(None)),
             database: Arc::new(RwLock::new(None)),
             meeting_id: Arc::new(RwLock::new(None)),
+            live_intel_agent: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -77,6 +81,7 @@ impl GladiaProvider {
         audio_tx_holder: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
         database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
         meeting_id: Arc<RwLock<Option<String>>>,
+        live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
     ) -> Result<(), String> {
         let url = "wss://api.gladia.io/audio/text/audio-transcription";
 
@@ -134,8 +139,11 @@ impl GladiaProvider {
 
                 match result {
                     Ok(Some(batch)) => {
-                        let resampled =
-                            Self::resample_to_16k_mono(&batch.samples, batch.sample_rate);
+                        let resampled = Self::resample_to_16k_mono(
+                            &batch.samples,
+                            batch.sample_rate,
+                            batch.channels,
+                        );
                         buffer.extend(resampled);
                     }
                     Ok(None) => break,
@@ -173,6 +181,7 @@ impl GladiaProvider {
         let is_connected_recv = is_connected.clone();
         let database_recv = database.clone();
         let meeting_id_recv = meeting_id.clone();
+        let intel_agent_recv = live_intel_agent.clone();
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 if !is_connected_recv.load(Ordering::SeqCst) {
@@ -198,6 +207,20 @@ impl GladiaProvider {
                                         // Emit to frontend
                                         if let Err(e) = app.emit("live_transcript", &segment) {
                                             log::error!("Failed to emit transcript: {}", e);
+                                        }
+
+                                        // Process with LiveIntelAgent
+                                        if let Some(agent) = intel_agent_recv.read().as_ref() {
+                                            let mut agent = agent.write();
+                                            let intel_segment =
+                                                crate::catch_up_agent::TranscriptSegment {
+                                                    id: uuid::Uuid::new_v4().to_string(),
+                                                    timestamp_ms: chrono::Utc::now()
+                                                        .timestamp_millis(),
+                                                    speaker: segment.speaker.clone(),
+                                                    text: segment.text.clone(),
+                                                };
+                                            agent.process_segment(intel_segment);
                                         }
 
                                         // Save FINAL transcripts
@@ -251,17 +274,17 @@ impl GladiaProvider {
             .collect()
     }
 
-    fn resample_to_16k_mono(samples: &[f32], from_rate: u32) -> Vec<f32> {
+    fn resample_to_16k_mono(samples: &[f32], from_rate: u32, channels: u16) -> Vec<f32> {
         if samples.is_empty() {
             return vec![];
         }
 
-        let mono: Vec<f32> = if samples.len() > 1 {
+        let mono: Vec<f32> = if channels > 1 {
             samples
-                .chunks(2)
+                .chunks(channels as usize)
                 .map(|chunk| {
-                    if chunk.len() == 2 {
-                        (chunk[0] + chunk[1]) / 2.0
+                    if chunk.len() == channels as usize {
+                        chunk.iter().sum::<f32>() / channels as f32
                     } else {
                         chunk[0]
                     }
@@ -330,6 +353,7 @@ impl TranscriptionProvider for GladiaProvider {
         let audio_tx_holder = self.audio_tx.clone();
         let database = self.database.clone();
         let meeting_id = self.meeting_id.clone();
+        let live_intel_agent = self.live_intel_agent.clone();
 
         tokio::spawn(async move {
             if let Err(e) = Self::connect_internal(
@@ -339,6 +363,7 @@ impl TranscriptionProvider for GladiaProvider {
                 audio_tx_holder,
                 database,
                 meeting_id,
+                live_intel_agent,
             )
             .await
             {
@@ -353,7 +378,7 @@ impl TranscriptionProvider for GladiaProvider {
         log::info!("Gladia disconnected");
     }
 
-    fn process_audio(&self, samples: &[f32], sample_rate: u32) {
+    fn process_audio(&self, samples: &[f32], sample_rate: u32, channels: u16) {
         if !self.is_connected.load(Ordering::SeqCst) || samples.is_empty() {
             return;
         }
@@ -362,6 +387,7 @@ impl TranscriptionProvider for GladiaProvider {
             let batch = AudioBatch {
                 samples: samples.to_vec(),
                 sample_rate,
+                channels,
             };
             let _ = tx.try_send(batch);
         }
@@ -380,9 +406,11 @@ impl TranscriptionProvider for GladiaProvider {
         app_handle: AppHandle,
         database: Arc<DatabaseManager>,
         meeting_id: String,
+        live_intel_agent: Arc<RwLock<LiveIntelAgent>>,
     ) {
         *self.app_handle.write() = Some(app_handle);
         *self.database.write() = Some(database);
         *self.meeting_id.write() = Some(meeting_id);
+        *self.live_intel_agent.write() = Some(live_intel_agent);
     }
 }

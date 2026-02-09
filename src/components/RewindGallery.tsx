@@ -1,9 +1,6 @@
-// noFriction Meetings - Rewind Gallery Component
-// Full meeting review with frame gallery, timeline, and synced transcripts
-
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getSyncedTimeline, getFrameThumbnail, debugLog } from "../lib/tauri";
-import type { SyncedTimeline, TimelineFrame } from "../lib/tauri";
+import * as tauri from "../lib/tauri";
+import './RewindTab.css';
 
 interface RewindGalleryProps {
     meetingId: string | null;
@@ -11,9 +8,9 @@ interface RewindGalleryProps {
 }
 
 export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
-    const [timeline, setTimeline] = useState<SyncedTimeline | null>(null);
+    const [timeline, setTimeline] = useState<tauri.SyncedTimeline | null>(null);
     const [currentTime, setCurrentTime] = useState(0);
-    const [selectedFrame, setSelectedFrame] = useState<TimelineFrame | null>(null);
+    const [selectedFrame, setSelectedFrame] = useState<tauri.TimelineFrame | null>(null);
     const [frameImage, setFrameImage] = useState<string | null>(null);
     const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
@@ -34,27 +31,17 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
         }
 
         const loadTimeline = async () => {
-            debugLog(`🔄 RewindGallery: Loading timeline for meetingId: ${meetingId}`);
-            console.log("🔄 RewindGallery: Loading timeline for meetingId:", meetingId);
             setIsLoading(true);
             try {
-                const data = await getSyncedTimeline(meetingId);
-                debugLog(`✅ RewindGallery: Received timeline data with ${data.frames.length} frames`);
-                console.log("✅ RewindGallery: Received timeline data:", data);
+                const data = await tauri.getSyncedTimeline(meetingId);
                 setTimeline(data);
 
                 // Select first frame if available
                 if (data.frames.length > 0) {
-                    debugLog(`📸 RewindGallery: Selecting first frame of ${data.frames.length} frames`);
-                    console.log(`📸 RewindGallery: Selecting first frame of ${data.frames.length} frames`);
                     setSelectedFrame(data.frames[0]);
                     setCurrentTime(data.frames[0].timestamp_ms);
-                } else {
-                    debugLog("⚠️ RewindGallery: No frames found in timeline data");
-                    console.warn("⚠️ RewindGallery: No frames found in timeline data");
                 }
             } catch (err) {
-                debugLog(`❌ RewindGallery: Failed to load timeline: ${err}`);
                 console.error("Failed to load timeline:", err);
             } finally {
                 setIsLoading(false);
@@ -83,7 +70,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
 
         const loadFrame = async () => {
             try {
-                const base64 = await getFrameThumbnail(selectedFrame.id, false);
+                const base64 = await tauri.getFrameThumbnail(selectedFrame.id, false);
                 if (base64) {
                     setFrameImage(`data:image/jpeg;base64,${base64}`);
                 }
@@ -103,14 +90,12 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
             for (const frame of timeline.frames) {
                 if (!thumbnails.has(frame.id)) {
                     try {
-                        const base64 = await getFrameThumbnail(frame.id, true);
+                        const base64 = await tauri.getFrameThumbnail(frame.id, true);
                         if (base64) {
-                            // debugLog(`framedata: ${base64.substring(0, 50)}...`);
                             setThumbnails((prev) => new Map(prev).set(frame.id, `data:image/jpeg;base64,${base64}`));
                         }
                     } catch (err) {
                         console.error(`Failed to load thumbnail for frame ${frame.id}:`, err);
-                        // debugLog(`❌ Failed to load thumbnail for frame ${frame.id}: ${err}`);
                     }
                 }
             }
@@ -126,17 +111,15 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
 
         // Find nearest frame
         if (timeline) {
-            const nearestFrame = timeline.frames.reduce((prev, curr) =>
+            const nearestFrame = timeline.frames.reduce((prev: tauri.TimelineFrame, curr: tauri.TimelineFrame) =>
                 Math.abs(curr.timestamp_ms - time) < Math.abs(prev.timestamp_ms - time) ? curr : prev
             );
             setSelectedFrame(nearestFrame);
         }
     }, [timeline]);
 
-    // Transcripts visible at current time are filtered for display below
-
     // Find current transcript
-    const currentTranscript = timeline?.transcripts.find((t) => {
+    const currentTranscript = timeline?.transcripts.find((t: tauri.TimelineTranscript) => {
         const start = t.timestamp_ms;
         const end = start + (t.duration_seconds * 1000);
         return currentTime >= start && currentTime <= end;
@@ -152,8 +135,8 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
 
     // Calculate max time
     const maxTime = timeline ? Math.max(
-        ...timeline.frames.map((f) => f.timestamp_ms),
-        ...timeline.transcripts.map((t) => t.timestamp_ms + t.duration_seconds * 1000),
+        ...timeline.frames.map((f: tauri.TimelineFrame) => f.timestamp_ms),
+        ...timeline.transcripts.map((t: tauri.TimelineTranscript) => t.timestamp_ms + t.duration_seconds * 1000),
         1000
     ) : 1000;
 
@@ -203,14 +186,14 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                         <p className="no-transcripts">No transcripts yet</p>
                     ) : (
                         <div className="transcript-entries">
-                            {timeline?.transcripts.map((t) => (
+                            {timeline?.transcripts.map((t: tauri.TimelineTranscript) => (
                                 <div
                                     key={t.id}
                                     className={`transcript-entry ${t.id === currentTranscript?.id ? "active" : ""}`}
                                     onClick={() => {
                                         setCurrentTime(t.timestamp_ms);
                                         // Find frame at this time
-                                        const nearestFrame = timeline.frames.reduce((prev, curr) =>
+                                        const nearestFrame = timeline.frames.reduce((prev: tauri.TimelineFrame, curr: tauri.TimelineFrame) =>
                                             Math.abs(curr.timestamp_ms - t.timestamp_ms) < Math.abs(prev.timestamp_ms - t.timestamp_ms) ? curr : prev
                                         );
                                         setSelectedFrame(nearestFrame);
@@ -240,7 +223,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                     />
                     {/* Frame markers */}
                     <div className="timeline-markers">
-                        {timeline?.frames.map((f) => (
+                        {timeline?.frames.map((f: tauri.TimelineFrame) => (
                             <div
                                 key={f.id}
                                 className="timeline-marker frame-marker"
@@ -249,7 +232,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                             />
                         ))}
                         {/* Transcript markers */}
-                        {timeline?.transcripts.filter(t => t.is_final).map((t) => (
+                        {timeline?.transcripts.filter((t: tauri.TimelineTranscript) => t.is_final).map((t: tauri.TimelineTranscript) => (
                             <div
                                 key={t.id}
                                 className="timeline-marker transcript-marker"
@@ -264,7 +247,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
 
             {/* Thumbnail gallery */}
             <div className="rewind-thumbnails scrollable" ref={galleryRef}>
-                {timeline?.frames.map((frame) => (
+                {timeline?.frames.map((frame: tauri.TimelineFrame) => (
                     <div
                         key={frame.id}
                         className={`thumbnail ${frame.id === selectedFrame?.id ? "selected" : ""}`}
@@ -286,7 +269,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
             </div>
 
             {/* Stats bar */}
-            <div className="rewind-stats">
+            <div className="rewind-stats-bar">
                 <span>📷 {timeline?.frames.length || 0} frames</span>
                 <span>💬 {timeline?.transcripts.length || 0} transcripts</span>
                 <span>⏱️ {formatTime(maxTime)} duration</span>

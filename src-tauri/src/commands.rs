@@ -6,6 +6,7 @@ use crate::capture_engine::{
 };
 use crate::database::{Frame, Meeting, SearchResult, SyncedTimeline, Transcript};
 use crate::settings::AppSettings;
+use crate::transcription::ProviderType;
 use crate::{AppState, InitStatus, InitializationState};
 use base64::Engine;
 use std::sync::Arc;
@@ -422,17 +423,68 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     {
         // Use transcription manager
         let tm = &state.transcription_manager;
+        let mut provider_type = tm.get_provider_type();
 
-        // Load API key from settings and set it on the provider
-        if let Ok(Some(api_key)) = state.settings.get_deepgram_api_key().await {
-            tm.set_api_key(api_key.clone());
-            log::info!("Loaded Deepgram API key from settings");
-        } else {
-            log::warn!("No Deepgram API key found in settings - transcription may fail");
+        // Check if the current provider has a stored key (already loaded at startup)
+        let has_key = tm.has_key_for_provider(provider_type);
+
+        if !has_key {
+            log::warn!(
+                "No API key stored for {:?} — checking other providers for fallback",
+                provider_type
+            );
+
+            // Try to auto-switch to a provider that has a key
+            let fallback_providers = [
+                ProviderType::Deepgram,
+                ProviderType::Gemini,
+                ProviderType::Gladia,
+                ProviderType::GoogleSTT,
+            ];
+
+            let mut found_fallback = false;
+            for alt in &fallback_providers {
+                if *alt != provider_type && tm.has_key_for_provider(*alt) {
+                    log::info!(
+                        "Auto-switching transcription from {:?} to {:?} (has key)",
+                        provider_type,
+                        alt
+                    );
+                    tm.switch_provider(*alt);
+                    provider_type = *alt;
+                    // Also persist the switch
+                    let provider_str = match alt {
+                        ProviderType::Deepgram => "deepgram",
+                        ProviderType::Gemini => "gemini",
+                        ProviderType::Gladia => "gladia",
+                        ProviderType::GoogleSTT => "google_stt",
+                    };
+                    let _ = state
+                        .settings
+                        .set_transcription_provider(provider_str)
+                        .await;
+                    found_fallback = true;
+                    break;
+                }
+            }
+
+            if !found_fallback {
+                log::warn!(
+                    "No transcription API key configured for any provider - transcription disabled"
+                );
+            }
         }
 
-        log::info!("Setting up Transcription connection...");
-        tm.set_context(app.clone(), state.database.clone(), meeting_id.clone());
+        log::info!(
+            "Setting up Transcription connection for {:?}...",
+            provider_type
+        );
+        tm.set_context(
+            app.clone(),
+            state.database.clone(),
+            meeting_id.clone(),
+            state.live_intel_agent.clone(),
+        );
         tm.start();
     }
 
@@ -445,7 +497,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         }
 
         // Queue audio to provider (non-blocking)
-        transcription_manager.process_audio(&buffer.samples, buffer.sample_rate);
+        transcription_manager.process_audio(&buffer.samples, buffer.sample_rate, buffer.channels);
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1052,9 +1104,10 @@ pub async fn set_deepgram_api_key(
     api_key: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    {
-        state.transcription_manager.set_api_key(api_key.clone());
-    }
+    // Store on the per-provider key map (survives provider switches)
+    state
+        .transcription_manager
+        .set_api_key_for_provider(ProviderType::Deepgram, api_key.clone());
 
     state
         .settings
@@ -1062,29 +1115,104 @@ pub async fn set_deepgram_api_key(
         .await
         .map_err(|e| format!("Failed to save API key: {}", e))?;
 
-    log::info!("Deepgram API key saved");
+    log::info!("Deepgram API key saved and applied");
     Ok(())
+}
+
+/// Set the Deepgram Model
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_deepgram_model(model: String, state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .settings
+        .set_deepgram_model(&model)
+        .await
+        .map_err(|e| format!("Failed to save settings: {}", e))?;
+    Ok(())
+}
+
+/// Get the Deepgram Model
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_deepgram_model(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    state
+        .settings
+        .get_deepgram_model()
+        .await
+        .map_err(|e| format!("Failed to get settings: {}", e))
 }
 
 /// Set the Gemini API key
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_gemini_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Store on the per-provider key map (survives provider switches)
+    state
+        .transcription_manager
+        .set_api_key_for_provider(ProviderType::Gemini, api_key.clone());
+
     state
         .settings
         .set_gemini_api_key(&api_key)
         .await
         .map_err(|e| format!("Failed to save API key: {}", e))?;
+
+    log::info!("Gemini API key saved and applied");
     Ok(())
+}
+
+/// Get the Gemini API key (masked)
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_gemini_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    state
+        .settings
+        .get("gemini_api_key")
+        .await
+        .map(|opt| {
+            opt.map(|key| {
+                if key.len() > 4 {
+                    format!("****{}", &key[key.len() - 4..])
+                } else {
+                    "****".to_string()
+                }
+            })
+        })
+        .map_err(|e| format!("Failed to get settings: {}", e))
+}
+
+/// Set the Gemini Model
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_gemini_model(model: String, state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .settings
+        .set_gemini_model(&model)
+        .await
+        .map_err(|e| format!("Failed to save settings: {}", e))?;
+    Ok(())
+}
+
+/// Get the Gemini Model
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_gemini_model(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    state
+        .settings
+        .get_gemini_model()
+        .await
+        .map_err(|e| format!("Failed to get settings: {}", e))
 }
 
 /// Set the Gladia API key
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_gladia_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Store on the per-provider key map (survives provider switches)
+    state
+        .transcription_manager
+        .set_api_key_for_provider(ProviderType::Gladia, api_key.clone());
+
     state
         .settings
         .set_gladia_api_key(&api_key)
         .await
         .map_err(|e| format!("Failed to save API key: {}", e))?;
+
+    log::info!("Gladia API key saved and applied");
     Ok(())
 }
 
@@ -1094,11 +1222,18 @@ pub async fn set_google_stt_key(
     key_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    // Store on the per-provider key map (survives provider switches)
+    state
+        .transcription_manager
+        .set_api_key_for_provider(ProviderType::GoogleSTT, key_json.clone());
+
     state
         .settings
         .set_google_stt_key(&key_json)
         .await
         .map_err(|e| format!("Failed to save API key: {}", e))?;
+
+    log::info!("Google STT key saved and applied");
     Ok(())
 }
 
@@ -4768,12 +4903,43 @@ pub async fn test_live_capture(_state: State<'_, AppState>) -> Result<TestCaptur
 /// Start real-time transcription (without recording/saving to disk)
 #[tauri::command(rename_all = "camelCase")]
 pub async fn start_realtime_transcription(
+    app: AppHandle,
     meeting_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     log::info!("🎤 Starting real-time transcription for: {}", meeting_id);
     let tm = state.transcription_manager.clone();
+
+    // Load API key from settings and set it on the provider
+    let provider_type = tm.get_provider_type();
+    let api_key = match provider_type {
+        ProviderType::Deepgram => state.settings.get_deepgram_api_key().await.ok().flatten(),
+        ProviderType::Gemini => state.settings.get_gemini_api_key().await.ok().flatten(),
+        ProviderType::Gladia => state.settings.get_gladia_api_key().await.ok().flatten(),
+        ProviderType::GoogleSTT => state.settings.get_google_stt_key().await.ok().flatten(),
+    };
+
+    if let Some(key) = api_key {
+        tm.set_api_key(key);
+        log::info!("Loaded API key for {:?} from settings", provider_type);
+    } else {
+        log::warn!(
+            "No API key found in settings for {:?} - transcription will fail",
+            provider_type
+        );
+        return Err(format!("No API key configured for {:?}", provider_type));
+    }
+
+    // Set context so the provider has app_handle, database, meeting_id, etc.
+    tm.set_context(
+        app,
+        state.database.clone(),
+        meeting_id.clone(),
+        state.live_intel_agent.clone(),
+    );
+
     tm.start();
+    log::info!("✅ Real-time transcription started for: {}", meeting_id);
     Ok(())
 }
 
@@ -5414,4 +5580,42 @@ pub async fn set_vault_path(state: State<'_, AppState>, vault_path: String) -> R
         .map_err(|e| format!("Failed to save setting: {}", e))?;
 
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Obsidian Knowledge Management Commands
+// ═══════════════════════════════════════════════════════════════════
+
+/// Get backlinks pointing to a specific file
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_vault_backlinks(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let result = state.vault_manager.get_backlinks(&file_path).await?;
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// List all tags in the vault with file counts
+#[tauri::command(rename_all = "camelCase")]
+pub async fn list_vault_tags(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let tags = state.vault_manager.list_tags().await?;
+    serde_json::to_value(&tags).map_err(|e| e.to_string())
+}
+
+/// Get files with a specific tag
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_files_by_tag(
+    state: State<'_, AppState>,
+    tag: String,
+) -> Result<serde_json::Value, String> {
+    let files = state.vault_manager.get_files_by_tag(&tag).await?;
+    serde_json::to_value(&files).map_err(|e| e.to_string())
+}
+
+/// Build the knowledge graph for visualization
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_vault_graph(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let graph = state.vault_manager.build_graph().await?;
+    serde_json::to_value(&graph).map_err(|e| e.to_string())
 }

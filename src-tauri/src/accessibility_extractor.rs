@@ -241,6 +241,22 @@ impl AccessibilityExtractor {
                 None
             };
 
+            // Filter out Incognito/Private windows
+            if let Some(title) = &window_title {
+                let lower = title.to_lowercase();
+                if lower.contains("incognito") || lower.contains("private") {
+                    log::info!("Ignoring Incognito/Private window: {}", title);
+                    return Ok(AccessibilityResult {
+                        app_name: Some(app_name),
+                        window_title,
+                        is_accessible: false,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        extracted_at: Utc::now(),
+                        ..Default::default()
+                    });
+                }
+            }
+
             // Extract text from window hierarchy
             let text = self.extract_text_from_element(focused_window, 0)?;
 
