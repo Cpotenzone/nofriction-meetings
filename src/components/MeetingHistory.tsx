@@ -148,7 +148,6 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                                     e.stopPropagation();
                                     // TODO: Add visual feedback for ingest trigger
                                     tauri.triggerMeetingIngest(meeting.id)
-                                        .then(msg => console.log(msg))
                                         .catch(err => console.error(err));
                                 }}
                                 title="Send to Intel Workflow"

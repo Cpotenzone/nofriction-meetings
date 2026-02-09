@@ -101,7 +101,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ duration: 0.3 }}
                         >
-                            <VaultView onSelectMeeting={onSelectMeeting} />
+                            <VaultView onSelectMeeting={onSelectMeeting} onOpenSettings={() => setIsSettingsOpen(true)} />
                         </motion.div>
                     )}
                 </AnimatePresence>

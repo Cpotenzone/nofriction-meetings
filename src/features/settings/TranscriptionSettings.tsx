@@ -57,7 +57,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             if (deepgramKey && !deepgramKey.includes("****")) {
                 try {
                     await invoke("set_deepgram_api_key", { apiKey: deepgramKey });
-                    console.log("✅ Deepgram API key saved");
                 } catch (err) {
                     const errorMsg = err instanceof Error ? err.message : String(err);
                     console.error("❌ Failed to save Deepgram key:", errorMsg);
@@ -69,7 +68,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             if (geminiKey && !geminiKey.includes("****")) {
                 try {
                     await invoke("set_gemini_api_key", { apiKey: geminiKey });
-                    console.log("✅ Gemini API key saved");
                 } catch (err) {
                     const errorMsg = err instanceof Error ? err.message : String(err);
                     console.error("❌ Failed to save Gemini key:", errorMsg);
@@ -89,7 +87,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             if (gladiaKey && !gladiaKey.includes("****")) {
                 try {
                     await invoke("set_gladia_api_key", { apiKey: gladiaKey });
-                    console.log("✅ Gladia API key saved");
                 } catch (err) {
                     const errorMsg = err instanceof Error ? err.message : String(err);
                     console.error("❌ Failed to save Gladia key:", errorMsg);
@@ -101,7 +98,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             if (googleKey && !googleKey.includes("****")) {
                 try {
                     await invoke("set_google_stt_key", { keyJson: googleKey });
-                    console.log("✅ Google STT key saved");
                 } catch (err) {
                     const errorMsg = err instanceof Error ? err.message : String(err);
                     console.error("❌ Failed to save Google STT key:", errorMsg);
@@ -115,7 +111,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             try {
                 await invoke("set_active_provider", { provider: activeProvider });
                 setProvider(activeProvider);
-                console.log(`✅ Active provider set to: ${activeProvider}`);
             } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
                 console.error("❌ Failed to set active provider:", errorMsg);

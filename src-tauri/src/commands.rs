@@ -5464,6 +5464,96 @@ pub async fn internal_export_meeting(
     let key_topics = notes.as_ref().and_then(|n| n.key_topics.as_deref());
     let action_items = notes.as_ref().and_then(|n| n.action_items.as_deref());
 
+    // Generate AI Intelligence from transcripts
+    let mut intel_agent = LiveIntelAgent::new();
+    for transcript in transcripts.iter() {
+        let segment = TranscriptSegment {
+            id: transcript.id.to_string(),
+            timestamp_ms: transcript.timestamp.timestamp_millis(),
+            speaker: transcript.speaker.clone(),
+            text: transcript.text.clone(),
+        };
+        intel_agent.process_segment(segment);
+    }
+    let insights = intel_agent.get_all_events().to_vec();
+
+    // Categorize insights into markdown sections
+    let mut ai_action_items = Vec::new();
+    let mut ai_decisions = Vec::new();
+    let mut ai_risks = Vec::new();
+    let mut ai_commitments = Vec::new();
+    let mut ai_questions = Vec::new();
+    let mut ai_topic_shifts = Vec::new();
+
+    for insight in &insights {
+        match insight {
+            LiveInsightEvent::ActionItem { text, assignee, .. } => {
+                if let Some(a) = assignee {
+                    ai_action_items.push(format!("- {} *(assigned: {})*", text, a));
+                } else {
+                    ai_action_items.push(format!("- {}", text));
+                }
+            }
+            LiveInsightEvent::Decision { text, .. } => {
+                ai_decisions.push(format!("- {}", text));
+            }
+            LiveInsightEvent::RiskSignal { text, .. } => {
+                ai_risks.push(format!("- ⚠️ {}", text));
+            }
+            LiveInsightEvent::Commitment { text, .. } => {
+                ai_commitments.push(format!("- 🤝 {}", text));
+            }
+            LiveInsightEvent::QuestionSuggestion { text, .. } => {
+                ai_questions.push(format!("- ❓ {}", text));
+            }
+            LiveInsightEvent::TopicShift {
+                from_topic,
+                to_topic,
+                ..
+            } => {
+                ai_topic_shifts.push(format!("- 🎯 {} → {}", from_topic, to_topic));
+            }
+        }
+    }
+
+    let mut intelligence_md = String::new();
+    if !ai_action_items.is_empty() {
+        intelligence_md.push_str("### Action Items\n\n");
+        intelligence_md.push_str(&ai_action_items.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_decisions.is_empty() {
+        intelligence_md.push_str("### Decisions\n\n");
+        intelligence_md.push_str(&ai_decisions.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_risks.is_empty() {
+        intelligence_md.push_str("### Risk Signals\n\n");
+        intelligence_md.push_str(&ai_risks.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_commitments.is_empty() {
+        intelligence_md.push_str("### Commitments\n\n");
+        intelligence_md.push_str(&ai_commitments.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_questions.is_empty() {
+        intelligence_md.push_str("### Questions & Suggestions\n\n");
+        intelligence_md.push_str(&ai_questions.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_topic_shifts.is_empty() {
+        intelligence_md.push_str("### Topic Shifts\n\n");
+        intelligence_md.push_str(&ai_topic_shifts.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+
+    let intelligence = if intelligence_md.is_empty() {
+        None
+    } else {
+        Some(intelligence_md.as_str())
+    };
+
     vault_manager
         .export_meeting(
             &topic_name,
@@ -5475,6 +5565,7 @@ pub async fn internal_export_meeting(
             summary,
             key_topics,
             action_items,
+            intelligence,
             &screenshot_paths,
         )
         .await
@@ -5618,4 +5709,163 @@ pub async fn get_files_by_tag(
 pub async fn get_vault_graph(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let graph = state.vault_manager.build_graph().await?;
     serde_json::to_value(&graph).map_err(|e| e.to_string())
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// v3.1.0: Calendar Intelligence Commands
+// ═══════════════════════════════════════════════════════════════════
+
+/// Generate meeting intelligence — AI briefings for all attendees and their companies
+#[tauri::command(rename_all = "camelCase")]
+pub async fn generate_meeting_intel(
+    state: State<'_, AppState>,
+    event_id: String,
+    topic_name: String,
+) -> Result<serde_json::Value, String> {
+    use crate::attendee_intel;
+
+    // Fetch calendar events to find the target event
+    let event = {
+        let client = state.calendar_client.read();
+        let events = client
+            .fetch_events()
+            .map_err(|e| format!("Calendar error: {}", e))?;
+        events
+            .into_iter()
+            .find(|e| e.event_id == event_id)
+            .ok_or_else(|| format!("Calendar event '{}' not found", event_id))?
+    };
+
+    if event.attendees.is_empty() {
+        return Err("No attendees found for this calendar event".to_string());
+    }
+
+    // Generate AI intelligence for all attendees
+    let ai_client = state.ai_client.read().clone();
+    let intel_package =
+        attendee_intel::generate_meeting_intel(&ai_client, &event.title, &event.attendees).await?;
+
+    // Ensure vault structure
+    state.vault_manager.ensure_structure().await?;
+
+    // Write person notes to vault
+    let meeting_link = event.title.clone();
+    for profile in &intel_package.attendees {
+        state
+            .vault_manager
+            .write_person_note(
+                &profile.name,
+                &profile.email,
+                &profile.company,
+                &profile.briefing,
+                &[meeting_link.clone()],
+            )
+            .await?;
+    }
+
+    // Write company notes to vault
+    for company in &intel_package.companies {
+        let people_in_company: Vec<String> = intel_package
+            .attendees
+            .iter()
+            .filter(|a| a.company_domain == company.domain)
+            .map(|a| a.name.clone())
+            .collect();
+
+        state
+            .vault_manager
+            .write_company_note(
+                &company.name,
+                &company.domain,
+                &company.briefing,
+                &people_in_company,
+            )
+            .await?;
+    }
+
+    // Write meeting prep to vault
+    let attendee_names: Vec<String> = intel_package
+        .attendees
+        .iter()
+        .map(|a| a.name.clone())
+        .collect();
+    let event_date = event.start_time.to_rfc3339();
+    state
+        .vault_manager
+        .write_meeting_prep(
+            &topic_name,
+            &event.title,
+            &event_date,
+            &attendee_names,
+            &intel_package.meeting_prep,
+        )
+        .await?;
+
+    // Return summary
+    let summary = serde_json::json!({
+        "event_title": event.title,
+        "attendees_count": intel_package.attendees.len(),
+        "companies_count": intel_package.companies.len(),
+        "attendees": intel_package.attendees.iter().map(|a| serde_json::json!({
+            "name": a.name,
+            "email": a.email,
+            "company": a.company,
+        })).collect::<Vec<_>>(),
+        "companies": intel_package.companies.iter().map(|c| serde_json::json!({
+            "name": c.name,
+            "domain": c.domain,
+        })).collect::<Vec<_>>(),
+    });
+
+    Ok(summary)
+}
+
+/// Get calendar events enriched with parsed attendee names and company info
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_enriched_calendar_events(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    use crate::attendee_intel;
+
+    let events = {
+        let client = state.calendar_client.read();
+        client
+            .fetch_events()
+            .map_err(|e| format!("Calendar error: {}", e))?
+    };
+
+    let enriched: Vec<serde_json::Value> = events
+        .iter()
+        .filter(|e| !e.is_all_day) // Skip all-day events
+        .map(|event| {
+            let enriched_attendees: Vec<serde_json::Value> = event
+                .attendees
+                .iter()
+                .map(|email| {
+                    let name = attendee_intel::extract_name_from_email(email);
+                    let (domain, company) = attendee_intel::extract_company_from_email(email);
+                    serde_json::json!({
+                        "email": email,
+                        "name": name,
+                        "company": company,
+                        "domain": domain,
+                    })
+                })
+                .collect();
+
+            serde_json::json!({
+                "event_id": event.event_id,
+                "title": event.title,
+                "start_time": event.start_time.to_rfc3339(),
+                "end_time": event.end_time.to_rfc3339(),
+                "location": event.location,
+                "meeting_url": event.meeting_url,
+                "calendar_name": event.calendar_name,
+                "attendees": enriched_attendees,
+                "attendee_count": event.attendees.len(),
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!(enriched))
 }

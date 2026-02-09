@@ -95,7 +95,6 @@ export function useRecording() {
     const stopRecording = useCallback(async () => {
         try {
             setError(null);
-            const currentMeetingId = state.meetingId; // Capture ID before reset
 
             // Stop video recording first
             try {
@@ -119,13 +118,6 @@ export function useRecording() {
                 isPaused: false,
             }));
 
-            // Trigger Intelligence Pipeline
-            if (currentMeetingId) {
-                console.log(`[Recording] Triggering intelligence pipeline for ${currentMeetingId}`);
-                // Note: Intelligence pipeline removed (was stub code)
-                // IntelligenceService.runPostMeetingAnalysis(currentMeetingId)
-                //     .catch((e: Error) => console.error("[Intel] Pipeline failed:", e));
-            }
 
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

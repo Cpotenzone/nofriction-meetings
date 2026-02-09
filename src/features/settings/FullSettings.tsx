@@ -76,7 +76,6 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         setSelectedMic(deviceId);
         try {
             await tauri.setAudioDevice(deviceId);
-            console.log("✅ Microphone saved:", deviceId);
             showToast("✅ Microphone saved");
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);

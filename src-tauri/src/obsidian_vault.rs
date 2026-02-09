@@ -186,11 +186,19 @@ impl VaultManager {
         let root = self.nofriction_root().ok_or("Vault path not configured")?;
         let topics = root.join("topics");
         let templates = root.join("templates");
+        let people = root.join("people");
+        let companies = root.join("companies");
 
         fs::create_dir_all(&topics)
             .await
             .map_err(|e| e.to_string())?;
         fs::create_dir_all(&templates)
+            .await
+            .map_err(|e| e.to_string())?;
+        fs::create_dir_all(&people)
+            .await
+            .map_err(|e| e.to_string())?;
+        fs::create_dir_all(&companies)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -375,6 +383,7 @@ impl VaultManager {
         summary: Option<&str>,
         key_topics: Option<&str>,
         action_items: Option<&str>,
+        intelligence: Option<&str>,
         screenshot_paths: &[String],
     ) -> Result<String, String> {
         let root = self.nofriction_root().ok_or("Vault path not configured")?;
@@ -422,6 +431,11 @@ impl VaultManager {
         }
         if let Some(ai) = action_items {
             content.push_str(&format!("## Action Items\n\n{}\n\n", ai));
+        }
+
+        if let Some(intel) = intelligence {
+            content.push_str("## AI Intelligence\n\n");
+            content.push_str(intel);
         }
 
         content.push_str("## Transcript\n\n");
@@ -628,6 +642,169 @@ impl VaultManager {
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // People & Company Intelligence APIs
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Write or update a person note in the people/ directory
+    pub async fn write_person_note(
+        &self,
+        name: &str,
+        email: &str,
+        company: &str,
+        briefing: &str,
+        meeting_links: &[String],
+    ) -> Result<String, String> {
+        let root = self.nofriction_root().ok_or("Vault path not configured")?;
+        let people_dir = root.join("people");
+        fs::create_dir_all(&people_dir)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Sanitize filename
+        let safe_name: String = name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == ' ' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let file_path = people_dir.join(format!("{}.md", safe_name));
+
+        // Build meeting links section
+        let meetings_section = if meeting_links.is_empty() {
+            "*No meetings recorded yet*".to_string()
+        } else {
+            meeting_links
+                .iter()
+                .map(|link| format!("- [[{}]]", link))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        // Build the note content
+        let content = format!(
+            "---\ntitle: \"{}\"\nemail: \"{}\"\ncompany: \"[[{}]]\"\ntype: person\ntags: [person, contact]\nlast_updated: \"{}\"\n---\n\n# {}\n\n📧 {} | 🏢 [[{}]]\n\n## Briefing\n\n{}\n\n## Meetings\n\n{}\n",
+            name,
+            email,
+            company,
+            Utc::now().format("%Y-%m-%d"),
+            name,
+            email,
+            company,
+            briefing,
+            meetings_section
+        );
+
+        fs::write(&file_path, &content)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(file_path.to_string_lossy().to_string())
+    }
+
+    /// Write or update a company note in the companies/ directory
+    pub async fn write_company_note(
+        &self,
+        company_name: &str,
+        domain: &str,
+        briefing: &str,
+        people_names: &[String],
+    ) -> Result<String, String> {
+        let root = self.nofriction_root().ok_or("Vault path not configured")?;
+        let companies_dir = root.join("companies");
+        fs::create_dir_all(&companies_dir)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Sanitize filename
+        let safe_name: String = company_name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == ' ' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let file_path = companies_dir.join(format!("{}.md", safe_name));
+
+        // Build people section with wikilinks
+        let people_section = if people_names.is_empty() {
+            "*No contacts recorded yet*".to_string()
+        } else {
+            people_names
+                .iter()
+                .map(|name| format!("- [[{}]]", name))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let content = format!(
+            "---\ntitle: \"{}\"\ndomain: \"{}\"\ntype: company\ntags: [company]\nlast_updated: \"{}\"\n---\n\n# {}\n\n🌐 {}\n\n## Overview\n\n{}\n\n## People\n\n{}\n",
+            company_name,
+            domain,
+            Utc::now().format("%Y-%m-%d"),
+            company_name,
+            domain,
+            briefing,
+            people_section
+        );
+
+        fs::write(&file_path, &content)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(file_path.to_string_lossy().to_string())
+    }
+
+    /// Write a meeting prep document under a topic
+    pub async fn write_meeting_prep(
+        &self,
+        topic_name: &str,
+        event_title: &str,
+        event_date: &str,
+        attendee_names: &[String],
+        meeting_prep_content: &str,
+    ) -> Result<String, String> {
+        let root = self.nofriction_root().ok_or("Vault path not configured")?;
+        let topic_dir = root.join("topics").join(topic_name);
+        fs::create_dir_all(&topic_dir)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Build attendee wikilinks
+        let attendees_md = attendee_names
+            .iter()
+            .map(|name| format!("- [[{}]]", name))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let safe_date = event_date.chars().take(10).collect::<String>();
+        let file_name = format!("Meeting Prep - {} - {}.md", event_title, safe_date);
+        let file_path = topic_dir.join(&file_name);
+
+        let content = format!(
+            "---\ntitle: \"Meeting Prep - {}\"\ndate: \"{}\"\ntype: meeting-prep\ntags: [meeting-prep, intel]\n---\n\n# 🎯 Meeting Prep: {}\n\n📅 {}\n\n## Attendees\n\n{}\n\n## Intelligence Brief\n\n{}\n",
+            event_title,
+            event_date,
+            event_title,
+            event_date,
+            attendees_md,
+            meeting_prep_content
+        );
+
+        fs::write(&file_path, &content)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(file_path.to_string_lossy().to_string())
     }
 
     // ═══════════════════════════════════════════════════════════════════

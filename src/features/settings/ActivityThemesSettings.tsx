@@ -125,7 +125,6 @@ export function ActivityThemesSettings() {
             try {
                 const intervalMs = Math.round(newIntervalSecs * 1000);
                 await setThemeInterval(activeTheme, intervalMs);
-                console.log(`Updated ${activeTheme} interval to ${newIntervalSecs}s`);
             } catch (error) {
                 console.error('Failed to save interval:', error);
                 setError('Failed to save interval setting');

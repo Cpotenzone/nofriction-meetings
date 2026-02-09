@@ -760,3 +760,40 @@ export async function getFilesByTag(tag: string): Promise<VaultFile[]> {
 export async function getVaultGraph(): Promise<VaultGraph> {
     return invoke<VaultGraph>("get_vault_graph");
 }
+
+// ─── Calendar Intelligence ─────────────────────────────────────────
+
+export interface EnrichedAttendee {
+    email: string;
+    name: string;
+    company: string;
+    domain: string;
+}
+
+export interface CalendarEventEnriched {
+    event_id: string;
+    title: string;
+    start_time: string;
+    end_time: string;
+    location: string | null;
+    meeting_url: string | null;
+    calendar_name: string;
+    attendees: EnrichedAttendee[];
+    attendee_count: number;
+}
+
+export interface MeetingIntelResult {
+    event_title: string;
+    attendees_count: number;
+    companies_count: number;
+    attendees: { name: string; email: string; company: string }[];
+    companies: { name: string; domain: string }[];
+}
+
+export async function getEnrichedCalendarEvents(): Promise<CalendarEventEnriched[]> {
+    return invoke<CalendarEventEnriched[]>("get_enriched_calendar_events");
+}
+
+export async function generateMeetingIntel(eventId: string, topicName: string): Promise<MeetingIntelResult> {
+    return invoke<MeetingIntelResult>("generate_meeting_intel", { eventId, topicName });
+}

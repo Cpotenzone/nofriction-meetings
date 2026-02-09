@@ -139,7 +139,7 @@ export function KnowledgeBaseSettings() {
         setIsSaving(true);
         try {
             const result = await invoke<{ frames_processed: number; activities_created: number }>("analyze_pending_frames", { limit: 10 });
-            console.log("Analysis result:", result);
+            void result;  // Used for side effects
             await loadPendingCount();
         } catch (err) {
             console.error("Analysis failed:", err);
@@ -152,7 +152,7 @@ export function KnowledgeBaseSettings() {
         setIsSaving(true);
         try {
             const result = await invoke<{ activities_synced: number }>("sync_to_cloud", { limit: 50 });
-            console.log("Sync result:", result);
+            void result;  // Used for side effects
         } catch (err) {
             console.error("Sync failed:", err);
         } finally {

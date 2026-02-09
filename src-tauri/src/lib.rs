@@ -3,6 +3,7 @@
 #![allow(unexpected_cfgs)]
 
 pub mod ai_client;
+pub mod attendee_intel;
 pub mod capture_engine;
 pub mod catch_up_agent;
 pub mod chunk_manager;
@@ -609,7 +610,6 @@ pub fn run() {
             commands::request_permission,
             commands::start_recording,
             commands::stop_recording,
-            commands::stop_recording,
             commands::get_recording_status,
             commands::capture_screenshot,
             commands::get_transcripts,
@@ -679,7 +679,6 @@ pub fn run() {
             commands::set_queue_frames_for_vlm,
             commands::set_frame_capture_interval,
             commands::configure_knowledge_base,
-            commands::configure_knowledge_base,
             commands::get_capture_settings,
             // AI Provider Settings
             commands::set_ai_provider_settings,
@@ -729,8 +728,6 @@ pub fn run() {
             commands::get_live_insights,
             commands::pin_insight,
             commands::mark_decision,
-            // Calendar
-            commands::get_calendar_events,
             // Realtime Transcription (Deepgram)
             commands::start_realtime_transcription,
             // Video Recording Commands
@@ -841,6 +838,9 @@ pub fn run() {
             commands::list_vault_tags,
             commands::get_files_by_tag,
             commands::get_vault_graph,
+            // v3.1.0: Calendar Intelligence Commands
+            commands::generate_meeting_intel,
+            commands::get_enriched_calendar_events,
         ])
         .on_window_event(|window, event| {
             match event {

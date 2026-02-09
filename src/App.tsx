@@ -72,9 +72,7 @@ function App() {
 
     const setupListeners = async () => {
       try {
-        console.log("Setting up event listeners...");
         unlistenReady = await listen("app-ready", () => {
-          console.log("Event: app-ready");
           setIsBackendReady(true);
         });
         unlistenError = await listen<string>("init-error", (e) => {
@@ -91,10 +89,8 @@ function App() {
     const pollBackend = async () => {
       try {
         const status = await invoke<{ "Ready": null } | { "Depending": null } | { "Failed": string } | "Initializing" | "Ready">("check_init_status");
-        console.log("Poll status:", status);
 
         if (status === "Ready" || (typeof status === 'object' && 'Ready' in status)) {
-          console.log("Backend Ready confirmed via poll");
           setIsBackendReady(true);
         } else if (typeof status === 'object' && 'Failed' in status) {
           // @ts-ignore

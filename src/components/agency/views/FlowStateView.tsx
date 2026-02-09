@@ -17,19 +17,17 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
 
     // Poll for live insights during recording
     useEffect(() => {
-        if (!recording.isRecording || !recording.meetingId) {
-            setInsights([]);
-            return;
-        }
+        const activeMeetingId = recording.isRecording ? recording.meetingId : null;
+        if (!activeMeetingId) return;
 
         const fetchInsights = async () => {
             if (isPolling) return;
             setIsPolling(true);
             try {
                 const result = await invoke<LiveInsightEvent[]>("get_live_insights", {
-                    meetingId: recording.meetingId
+                    meetingId: activeMeetingId
                 });
-                setInsights(result.slice(-10).reverse()); // Show latest 10, newest first
+                setInsights(result.slice(-20).reverse()); // Show latest 20, newest first
             } catch (err) {
                 console.error("Failed to fetch live insights:", err);
             } finally {

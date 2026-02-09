@@ -30,8 +30,6 @@ export function useTranscripts(meetingId: string | null) {
         let unlisten: (() => void) | null = null;
 
         const setupListener = async () => {
-            console.log("Setting up live_transcript listener...");
-
             unlisten = await listen<TranscriptEvent>("live_transcript", (event) => {
                 const { text, is_final, confidence, speaker } = event.payload;
 
@@ -39,8 +37,6 @@ export function useTranscripts(meetingId: string | null) {
                 if (!text || text.trim() === "") {
                     return;
                 }
-
-                console.log(`Transcript received: "${text}" (final: ${is_final})`);
 
                 setLiveTranscripts((prev) => {
                     if (is_final) {
@@ -93,15 +89,12 @@ export function useTranscripts(meetingId: string | null) {
                     }
                 });
             });
-
-            console.log("live_transcript listener ready");
         };
 
         setupListener();
 
         return () => {
             if (unlisten) {
-                console.log("Cleaning up live_transcript listener");
                 unlisten();
             }
         };

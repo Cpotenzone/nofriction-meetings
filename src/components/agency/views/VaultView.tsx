@@ -10,7 +10,13 @@ import {
     File as FileIcon,
     FolderOpen,
     Settings,
-    Maximize2
+    Maximize2,
+    Calendar,
+    Users,
+    Brain,
+    Loader2,
+    Building2,
+    CheckCircle2
 } from 'lucide-react';
 import * as tauri from '../../../lib/tauri';
 import {
@@ -19,7 +25,9 @@ import {
     VaultFileContent,
     VaultStatus,
     Meeting,
-    VaultFile
+    VaultFile,
+    CalendarEventEnriched,
+    MeetingIntelResult
 } from '../../../lib/tauri';
 import { BacklinksPanel } from './BacklinksPanel';
 import { VaultTags } from './VaultTags';
@@ -28,9 +36,10 @@ import './VaultView.css';
 
 interface VaultViewProps {
     onSelectMeeting: (id: string) => void;
+    onOpenSettings?: () => void;
 }
 
-export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelectMeeting }) => {
+export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelectMeeting, onOpenSettings }) => {
     const [status, setStatus] = useState<VaultStatus | null>(null);
     const [topics, setTopics] = useState<VaultTopic[]>([]);
     const [selectedTopic, setSelectedTopic] = useState<VaultTopic | null>(null);
@@ -42,13 +51,21 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
     const [meetingList, setMeetingList] = useState<Meeting[]>([]);
     const [isExporting, setIsExporting] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
+    const [importSuccess, setImportSuccess] = useState<{ title: string; path: string } | null>(null);
     const [activeTag, setActiveTag] = useState<string | null>(null);
     const [tagFiles, setTagFiles] = useState<VaultFile[]>([]);
     const [showGraph, setShowGraph] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Calendar Intelligence State
+    const [calendarEvents, setCalendarEvents] = useState<CalendarEventEnriched[]>([]);
+    const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+    const [isGeneratingIntel, setIsGeneratingIntel] = useState<string | null>(null);
+    const [intelResult, setIntelResult] = useState<MeetingIntelResult | null>(null);
+
     useEffect(() => {
         loadVaultData();
+        loadCalendarEvents();
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
@@ -86,6 +103,40 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         }
     };
 
+    const loadCalendarEvents = async () => {
+        setIsLoadingCalendar(true);
+        try {
+            const events = await tauri.getEnrichedCalendarEvents();
+            // Sort by start time, show upcoming first
+            const sorted = events.sort((a, b) =>
+                new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+            );
+            setCalendarEvents(sorted);
+        } catch (err) {
+            console.error("Failed to load calendar events:", err);
+        } finally {
+            setIsLoadingCalendar(false);
+        }
+    };
+
+    const handleGenerateIntel = async (eventId: string) => {
+        if (!selectedTopic) return;
+        setIsGeneratingIntel(eventId);
+        setIntelResult(null);
+        try {
+            const result = await tauri.generateMeetingIntel(eventId, selectedTopic.name);
+            setIntelResult(result);
+            // Refresh vault to show new files
+            await loadVaultData();
+            // Auto-dismiss after 10s
+            setTimeout(() => setIntelResult(null), 10000);
+        } catch (err) {
+            console.error("Intel generation failed:", err);
+        } finally {
+            setIsGeneratingIntel(null);
+        }
+    };
+
     const handleSelectFile = async (path: string) => {
         if (path.endsWith('.md')) {
             try {
@@ -109,16 +160,19 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         }
     };
 
-    const handleExportMeeting = async (meetingId: string) => {
+    const handleExportMeeting = async (meetingId: string, meetingTitle: string) => {
         if (!selectedTopic) return;
         setIsExportLoading(true);
         try {
-            await tauri.exportMeetingToVault(selectedTopic.name, meetingId);
+            const resultPath = await tauri.exportMeetingToVault(selectedTopic.name, meetingId);
             setIsExporting(false);
+            setImportSuccess({ title: meetingTitle || 'Meeting', path: resultPath });
             loadVaultData();
+            // Auto-dismiss after 5s
+            setTimeout(() => setImportSuccess(null), 5000);
         } catch (err) {
-            console.error("Failed to export meeting:", err);
-            alert("Export failed. See console for details.");
+            console.error("Failed to import meeting:", err);
+            alert("Import failed. See console for details.");
         } finally {
             setIsExportLoading(false);
         }
@@ -146,12 +200,20 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
 
     const handleOpenExportModal = async () => {
         try {
-            const meetings = await tauri.getMeetings(10);
+            const meetings = await tauri.getMeetings(25);
             setMeetingList(meetings);
             setIsExporting(true);
         } catch (err) {
             console.error("Failed to load meetings:", err);
         }
+    };
+
+    const formatDuration = (seconds: number | null) => {
+        if (!seconds) return '';
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins > 0) return `${mins}m ${secs}s`;
+        return `${secs}s`;
     };
 
     const handleJumpToMeeting = (meetingId: string) => {
@@ -240,10 +302,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                 </p>
                 <button
                     className="action-btn primary"
-                    onClick={() => {
-                        // This usually triggers a custom event or handled by parent
-                        // For now we just tell the user to use settings
-                    }}
+                    onClick={() => onOpenSettings?.()}
                 >
                     Open Settings
                 </button>
@@ -425,7 +484,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                         onClick={handleOpenExportModal}
                     >
                         {isExportLoading ? <RefreshCcw className="spinning" size={16} /> : <Ship size={16} />}
-                        {isExportLoading ? ' Exporting...' : ' Export Meeting'}
+                        {isExportLoading ? ' Importing...' : ' Import to Obsidian'}
                     </button>
                     <button
                         className="action-btn"
@@ -442,17 +501,123 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                     />
                 </div>
 
+                {/* Meeting Intelligence Card */}
+                <div className="intel-card">
+                    <div className="intel-card-header">
+                        <Calendar size={16} />
+                        <h4>Meeting Intel</h4>
+                        <button
+                            className="intel-refresh-btn"
+                            onClick={loadCalendarEvents}
+                            disabled={isLoadingCalendar}
+                            title="Refresh calendar"
+                        >
+                            <RefreshCcw size={13} className={isLoadingCalendar ? 'spinning' : ''} />
+                        </button>
+                    </div>
+
+                    {calendarEvents.length > 0 ? (
+                        <div className="intel-events-list">
+                            {calendarEvents.slice(0, 6).map(event => (
+                                <div key={event.event_id} className="intel-event-item">
+                                    <div className="intel-event-info">
+                                        <span className="intel-event-title">{event.title}</span>
+                                        <span className="intel-event-time">
+                                            {new Date(event.start_time).toLocaleTimeString('en-US', {
+                                                hour: 'numeric', minute: '2-digit'
+                                            })}
+                                            {' · '}
+                                            {event.attendee_count} {event.attendee_count === 1 ? 'person' : 'people'}
+                                        </span>
+                                        <div className="intel-attendee-chips">
+                                            {event.attendees.slice(0, 4).map((a, i) => (
+                                                <span key={i} className="attendee-chip" title={`${a.email} · ${a.company}`}>
+                                                    {a.name.split(' ').map(n => n[0]).join('')}
+                                                </span>
+                                            ))}
+                                            {event.attendees.length > 4 && (
+                                                <span className="attendee-chip more">+{event.attendees.length - 4}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        className={`intel-gen-btn ${isGeneratingIntel === event.event_id ? 'generating' : ''}`}
+                                        disabled={!selectedTopic || isGeneratingIntel !== null}
+                                        onClick={() => handleGenerateIntel(event.event_id)}
+                                        title={selectedTopic ? 'Generate AI briefings' : 'Select a topic first'}
+                                    >
+                                        {isGeneratingIntel === event.event_id ? (
+                                            <Loader2 size={14} className="spinning" />
+                                        ) : (
+                                            <Brain size={14} />
+                                        )}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="empty-text">No upcoming meetings found</p>
+                    )}
+
+                    {intelResult && (
+                        <div className="intel-result-banner">
+                            <CheckCircle2 size={16} />
+                            <div className="intel-result-info">
+                                <strong>{intelResult.event_title}</strong>
+                                <span>
+                                    <Users size={12} /> {intelResult.attendees_count} people
+                                    {' · '}
+                                    <Building2 size={12} /> {intelResult.companies_count} companies
+                                </span>
+                                <span className="intel-result-detail">Notes saved to Obsidian vault</span>
+                            </div>
+                            <button className="dismiss-btn" onClick={() => setIntelResult(null)}><X size={14} /></button>
+                        </div>
+                    )}
+                </div>
+
+                {importSuccess && (
+                    <div className="import-success-banner">
+                        <div className="success-icon">✅</div>
+                        <div className="success-info">
+                            <strong>Imported!</strong>
+                            <span className="success-title">{importSuccess.title}</span>
+                            <span className="success-detail">Transcripts + AI Intelligence + Screenshots</span>
+                        </div>
+                        <button className="dismiss-btn" onClick={() => setImportSuccess(null)}><X size={14} /></button>
+                    </div>
+                )}
+
                 {isExporting && (
                     <div className="export-modal-overlay">
                         <div className="export-modal">
-                            <h4>Export Recent Meeting to {selectedTopic?.name}</h4>
+                            <div className="import-modal-header">
+                                <h4>Import Meeting to {selectedTopic?.name}</h4>
+                                <p className="import-subtitle">Transcripts, AI Intelligence, and screenshots will be imported to your Obsidian vault.</p>
+                            </div>
                             <div className="meeting-select-list">
                                 {meetingList.map(m => (
-                                    <div key={m.id} className="meeting-select-item" onClick={() => handleExportMeeting(m.id)}>
-                                        <span className="m-title">{m.title || "Untitled Meeting"}</span>
-                                        <span className="m-date">{new Date(m.started_at).toLocaleString()}</span>
+                                    <div
+                                        key={m.id}
+                                        className="meeting-select-item"
+                                        onClick={() => handleExportMeeting(m.id, m.title || 'Untitled Meeting')}
+                                    >
+                                        <div className="m-info">
+                                            <span className="m-title">{m.title || 'Untitled Meeting'}</span>
+                                            <span className="m-date">
+                                                {new Date(m.started_at).toLocaleDateString('en-US', {
+                                                    month: 'short', day: 'numeric', year: 'numeric',
+                                                    hour: '2-digit', minute: '2-digit'
+                                                })}
+                                                {m.duration_seconds ? ` · ${formatDuration(m.duration_seconds)}` : ''}
+                                            </span>
+                                        </div>
+                                        <span className="m-import-label">Import →</span>
                                     </div>
                                 ))}
+                                {meetingList.length === 0 && (
+                                    <div className="empty-text">No meetings found. Start a recording first.</div>
+                                )}
                             </div>
                             <button className="cancel-btn" onClick={() => setIsExporting(false)}>Cancel</button>
                         </div>
