@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.0] - 2026-02-11
+
+### Added
+
+#### Prompt Studio — Master Prompt Management UI
+- **🧠 PROMPTS tab** in Agency view with split-pane editor
+- **Category filtering**: All, Intelligence, Meeting, VLM
+- **Persona filtering**: Prospecting, Fundraising, Product Dev, Admin, Personal
+- **Inline editor**: Edit name, description, system prompt, temperature, active toggle
+- **Test Panel**: Collapsible input/response box — test prompts against AI inline
+- **Duplicate & Delete**: Clone prompts for variants, delete custom prompts
+
+#### Persona-Aware AI Pipeline
+- **20 built-in prompts** seeded across 4 features × 5 personas
+- **Prompt resolution**: All AI surfaces now resolve persona-specific prompts from PromptManager
+- **Prompt fallbacks**: Graceful degradation when persona-specific prompt not found
+
+#### LiveIntelAgent Hybrid AI Upgrade
+- **Rule-based + AI-powered** dual-phase extraction for live meeting insights
+- **`ai_analyze` method**: Sends transcript segments to AI with persona-specific system prompt
+- **Structured parsing**: AI response parsed into ActionItems, Decisions, Risks, and KeyInsights
+- **Graceful degradation**: Falls back to rule-based only if AI fails
+
+#### New/Updated Tauri Commands
+- `test_prompt` — Test any prompt with sample input from the UI
+- `get_live_insights` — Now includes AI-powered phase for deeper insights
+- `generate_catch_up`, `chat_with_data`, `generate_meeting_report` — All wired to PromptManager
+
+### Changed
+- HelpView updated with Prompt Studio documentation (navigation, how-to, tech spec)
+- Meeting report prompt management moved from Settings to Prompt Studio
+- CHANGELOG updated with full v2.6.0 entry
+
+### Fixed
+- CSS `background-clip` and `line-clamp` lint warnings in PromptStudio.css
+
+---
+
 ## [2.5.0] - 2026-02-03
 
 ### Added
@@ -228,6 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Theme |
 |---------|------|-------|
+| 2.6.0 | 2026-02-11 | Prompt Studio + AI Intelligence |
 | 2.5.0 | 2026-02-03 | RAG Pipeline + Always-On |
 | 2.1.0 | 2026-01-20 | Admin Console + Calendar |
 | 2.0.0 | 2026-01-10 | Video Recording + VLM |
@@ -290,6 +329,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.6.0]: https://github.com/nofriction/meetings/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/nofriction/meetings/compare/v2.1.0...v2.5.0
 [2.1.0]: https://github.com/nofriction/meetings/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/nofriction/meetings/compare/v1.5.0...v2.0.0

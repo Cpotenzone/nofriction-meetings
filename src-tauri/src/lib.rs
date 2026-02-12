@@ -262,8 +262,17 @@ impl AppState {
         }
 
         // Also configure the global VLM client for standalone functions
+        // Create AI client and configure from saved VLM URL if available
+        let ai_client = ai_client::AIClient::new();
         if let Some(ref base_url) = saved_settings.vlm_base_url {
             crate::vlm_client::vlm_configure(base_url, saved_settings.vlm_bearer_token.as_deref());
+
+            // Also configure the AI client so chat/summarize/action-items use the remote endpoint
+            ai_client.set_base_url(base_url.clone());
+            if let Some(ref token) = saved_settings.vlm_bearer_token {
+                ai_client.set_bearer_token(token.clone());
+            }
+            log::info!("✅ AI client configured from saved VLM URL: {}", base_url);
         }
 
         // Auto-populate settings from .env if not already set or empty
@@ -476,7 +485,7 @@ impl AppState {
             accessibility_capture,
             // v2.8.0: Dork Mode (Study Mode)
             dork_mode_session: Arc::new(RwLock::new(None)),
-            ai_client: Arc::new(RwLock::new(ai_client::AIClient::new())),
+            ai_client: Arc::new(RwLock::new(ai_client)),
             // v3.0.0: Obsidian Vault Integration
             vault_manager: {
                 let vm = Arc::new(obsidian_vault::VaultManager::new());
@@ -635,6 +644,7 @@ pub fn run() {
             commands::delete_meeting,
             commands::get_settings,
             commands::get_setting,
+            commands::set_setting,
             // AI Commands
             commands::check_ollama,
             commands::get_ollama_models,
@@ -841,6 +851,18 @@ pub fn run() {
             // v3.1.0: Calendar Intelligence Commands
             commands::generate_meeting_intel,
             commands::get_enriched_calendar_events,
+            // v3.0.0: Calendar Integration — Attendees
+            commands::get_meeting_attendees,
+            // v3.2.0: Calendar Access, People Lookup, Recording Overlap
+            commands::update_meeting_title,
+            commands::lookup_attendees,
+            commands::match_recording_to_calendar,
+            // v3.3.0: Data Chatbot (RAG)
+            commands::chat_with_data,
+            // v3.4.0: Meeting Report Prompt Management
+            commands::get_meeting_report_prompt,
+            commands::set_meeting_report_prompt,
+            commands::generate_meeting_report,
         ])
         .on_window_event(|window, event| {
             match event {

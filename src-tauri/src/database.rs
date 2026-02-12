@@ -14,6 +14,18 @@ pub struct Meeting {
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
     pub duration_seconds: Option<i64>,
+    pub calendar_event_id: Option<String>,
+}
+
+/// Meeting attendee record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingAttendee {
+    pub id: i64,
+    pub meeting_id: String,
+    pub name: String,
+    pub email: String,
+    pub company: Option<String>,
+    pub role: String,
 }
 
 /// Transcript record
@@ -737,7 +749,45 @@ impl DatabaseManager {
         .execute(&self.pool)
         .await;
 
-        log::info!("Database migrations completed (v2.2 - Meeting Intelligence)");
+        // ═══════════════════════════════════════════════════════════════════════
+        // v3.0.0: Calendar Integration — Meeting Attendees
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Add calendar_event_id to meetings table
+        let _ = sqlx::query("ALTER TABLE meetings ADD COLUMN calendar_event_id TEXT")
+            .execute(&self.pool)
+            .await;
+
+        // Meeting attendees table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS meeting_attendees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                meeting_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                company TEXT,
+                role TEXT NOT NULL DEFAULT 'attendee',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_attendees_meeting ON meeting_attendees(meeting_id)",
+        )
+        .execute(&self.pool)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_attendees_email ON meeting_attendees(email)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        log::info!("Database migrations completed (v3.0 - Calendar Integration)");
         Ok(())
     }
 
@@ -759,7 +809,79 @@ impl DatabaseManager {
             started_at: now,
             ended_at: None,
             duration_seconds: None,
+            calendar_event_id: None,
         })
+    }
+
+    /// Update a meeting's title
+    pub async fn update_meeting_title(&self, id: &str, title: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE meetings SET title = ? WHERE id = ?")
+            .bind(title)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Set calendar event ID on a meeting
+    pub async fn set_meeting_calendar_event(
+        &self,
+        id: &str,
+        calendar_event_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE meetings SET calendar_event_id = ? WHERE id = ?")
+            .bind(calendar_event_id)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Add an attendee to a meeting
+    pub async fn add_meeting_attendee(
+        &self,
+        meeting_id: &str,
+        name: &str,
+        email: &str,
+        company: Option<&str>,
+        role: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO meeting_attendees (meeting_id, name, email, company, role) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(meeting_id)
+        .bind(name)
+        .bind(email)
+        .bind(company)
+        .bind(role)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get all attendees for a meeting
+    pub async fn get_meeting_attendees(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<MeetingAttendee>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT id, meeting_id, name, email, company, role FROM meeting_attendees WHERE meeting_id = ? ORDER BY role, name"
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .iter()
+            .map(|row| MeetingAttendee {
+                id: row.get("id"),
+                meeting_id: row.get("meeting_id"),
+                name: row.get("name"),
+                email: row.get("email"),
+                company: row.get("company"),
+                role: row.get("role"),
+            })
+            .collect())
     }
 
     /// End a meeting
@@ -809,6 +931,7 @@ impl DatabaseManager {
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
             duration_seconds: r.get("duration_seconds"),
+            calendar_event_id: None,
         }))
     }
 
@@ -835,6 +958,7 @@ impl DatabaseManager {
                     .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                     .map(|dt| dt.with_timezone(&Utc)),
                 duration_seconds: r.get("duration_seconds"),
+                calendar_event_id: None,
             })
             .collect())
     }

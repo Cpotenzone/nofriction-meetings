@@ -25,6 +25,7 @@ pub struct PermissionStatus {
     pub screen_recording: bool,
     pub microphone: bool,
     pub accessibility: bool,
+    pub calendar: bool,
 }
 
 /// Check macOS permissions (without triggering prompts)
@@ -33,6 +34,7 @@ pub async fn check_permissions() -> Result<PermissionStatus, String> {
     #[cfg(target_os = "macos")]
     {
         use crate::accessibility_extractor::AccessibilityExtractor;
+        use crate::calendar_client::{CalendarAccessStatus, CalendarClient};
 
         // Check screen recording permission
         let screen_recording = check_screen_recording_permission();
@@ -43,10 +45,14 @@ pub async fn check_permissions() -> Result<PermissionStatus, String> {
         // Check accessibility permission
         let accessibility = AccessibilityExtractor::is_trusted();
 
+        // Check calendar permission
+        let calendar = CalendarClient::check_access() == CalendarAccessStatus::Authorized;
+
         Ok(PermissionStatus {
             screen_recording,
             microphone,
             accessibility,
+            calendar,
         })
     }
 
@@ -57,6 +63,7 @@ pub async fn check_permissions() -> Result<PermissionStatus, String> {
             screen_recording: true,
             microphone: true,
             accessibility: true,
+            calendar: true,
         })
     }
 }
@@ -379,6 +386,92 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         .await
         .map_err(|e| format!("Failed to create meeting: {}", e))?;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Calendar Integration: Check for matching calendar event
+    // ═══════════════════════════════════════════════════════════════════════════
+    let calendar_event = {
+        let client = state.calendar_client.read();
+
+        // Force refresh on MacOS to ensure fresh data
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(e) = client.fetch_events() {
+                log::warn!("Failed to refresh calendar events: {}", e);
+            }
+        }
+
+        client.get_current_event()
+    }; // Guard dropped here before any .await
+
+    if let Some(event) = calendar_event {
+        log::info!(
+            "📅 Calendar match found: '{}' with {} attendees",
+            event.title,
+            event.attendees.len()
+        );
+
+        // Update meeting title to calendar event title
+        let _ = state
+            .database
+            .update_meeting_title(&meeting_id, &event.title)
+            .await;
+
+        // Store calendar event ID
+        let _ = state
+            .database
+            .set_meeting_calendar_event(&meeting_id, &event.event_id)
+            .await;
+
+        // Extract and store attendees
+        for email in &event.attendees {
+            let name = crate::attendee_intel::extract_name_from_email(email);
+            let (domain, company_name) = crate::attendee_intel::extract_company_from_email(email);
+            let company = if company_name == "Personal" {
+                None
+            } else {
+                Some(company_name.as_str())
+            };
+
+            let _ = state
+                .database
+                .add_meeting_attendee(&meeting_id, &name, email, company, "attendee")
+                .await;
+
+            log::info!("  👤 Attendee: {} <{}> ({})", name, email, domain);
+        }
+
+        // Emit calendar match event to frontend
+        #[derive(serde::Serialize, Clone)]
+        struct CalendarMatchPayload {
+            meeting_id: String,
+            event_title: String,
+            attendee_count: usize,
+            attendee_names: Vec<String>,
+            start_time: String,
+            end_time: String,
+        }
+
+        let attendee_names: Vec<String> = event
+            .attendees
+            .iter()
+            .map(|e| crate::attendee_intel::extract_name_from_email(e))
+            .collect();
+
+        let _ = app.emit(
+            "calendar_match",
+            CalendarMatchPayload {
+                meeting_id: meeting_id.clone(),
+                event_title: event.title.clone(),
+                attendee_count: event.attendees.len(),
+                attendee_names,
+                start_time: event.start_time.to_rfc3339(),
+                end_time: event.end_time.to_rfc3339(),
+            },
+        );
+    } else {
+        log::info!("📅 No matching calendar event found for this recording");
+    }
+
     // Get app data directory for frame storage
     let frames_dir = app
         .path()
@@ -679,6 +772,9 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         engine.set_frame_interval(frame_interval);
     }
 
+    // Clone app handle before engine.start() consumes it
+    let app_for_segment = app.clone();
+
     {
         let engine = state.capture_engine.read();
         engine.start(app)?;
@@ -689,6 +785,31 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         meeting_id,
         frames_dir
     );
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Recording Segmentation: emit event at 75 minutes to prompt user
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
+        let app_seg = app_for_segment;
+        let mid_seg = meeting_id.clone();
+        tokio::spawn(async move {
+            // Wait 75 minutes
+            tokio::time::sleep(std::time::Duration::from_secs(75 * 60)).await;
+            // Emit segmentation prompt — frontend will check if recording is still active
+            log::info!(
+                "⏱️ Recording {} has reached 75 minutes — prompting user",
+                mid_seg
+            );
+            let _ = app_seg.emit(
+                "recording_segment_prompt",
+                serde_json::json!({
+                    "meeting_id": mid_seg,
+                    "elapsed_minutes": 75
+                }),
+            );
+        });
+    }
+
     Ok(meeting_id)
 }
 
@@ -889,6 +1010,153 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
                     });
                 }
             }
+        }
+    }
+
+    // Gap Fix: Embed audio transcripts to Pinecone for semantic search
+    {
+        let meeting_id = {
+            let timeline = state.timeline_builder.get_events();
+            timeline
+                .first()
+                .map(|e| e.meeting_id.clone())
+                .unwrap_or_default()
+        };
+
+        if !meeting_id.is_empty() {
+            let db_clone = state.database.clone();
+            let pinecone_clone = state.pinecone_client.clone();
+            tokio::spawn(async move {
+                let pinecone_config = { pinecone_clone.read().get_config() };
+                if let Some(config) = pinecone_config {
+                    match db_clone.get_transcripts(&meeting_id).await {
+                        Ok(transcripts) => {
+                            let total = transcripts.len();
+                            let mut embedded = 0;
+                            // Batch in groups of 5 for efficiency
+                            for chunk in transcripts.chunks(5) {
+                                let combined_text: String = chunk
+                                    .iter()
+                                    .map(|t| {
+                                        let speaker = t.speaker.as_deref().unwrap_or("Unknown");
+                                        format!("[{}] {}", speaker, t.text)
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+
+                                let first_ts = chunk
+                                    .first()
+                                    .map(|t| t.timestamp.to_rfc3339())
+                                    .unwrap_or_default();
+                                let id = format!("transcript_{}_{}", meeting_id, embedded);
+                                let metadata = serde_json::json!({
+                                    "type": "audio_transcript",
+                                    "source": "deepgram",
+                                    "meeting_id": meeting_id,
+                                    "timestamp": first_ts,
+                                    "segment_count": chunk.len(),
+                                });
+
+                                if crate::pinecone_client::pinecone_upsert_generic(
+                                    &config,
+                                    &id,
+                                    &combined_text,
+                                    &metadata,
+                                )
+                                .await
+                                .is_ok()
+                                {
+                                    embedded += chunk.len();
+                                }
+                            }
+                            log::info!(
+                                "📌 Pinecone: embedded {}/{} audio transcript segments for meeting {}",
+                                embedded, total, meeting_id
+                            );
+                        }
+                        Err(e) => log::warn!("📌 Failed to get transcripts for Pinecone: {}", e),
+                    }
+                }
+            });
+        }
+    }
+
+    // v3.1.0: Auto-generate AI meeting report for recordings > 6 minutes
+    {
+        let meeting_id = {
+            let timeline = state.timeline_builder.get_events();
+            timeline
+                .first()
+                .map(|e| e.meeting_id.clone())
+                .unwrap_or_default()
+        };
+
+        if !meeting_id.is_empty() {
+            let db_clone = state.database.clone();
+            let settings_clone = state.settings.clone();
+            let ai_clone = state.ai_client.clone();
+            tokio::spawn(async move {
+                // Check if auto-report is enabled and meeting duration > 6 min
+                let settings = match settings_clone.get_all().await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::warn!("Failed to load settings for auto-report: {}", e);
+                        return;
+                    }
+                };
+
+                if !settings.auto_generate_report {
+                    log::info!("📊 Auto-report disabled, skipping");
+                    return;
+                }
+
+                // Check meeting duration
+                match db_clone.get_meeting(&meeting_id).await {
+                    Ok(Some(meeting)) => {
+                        let duration = meeting.duration_seconds.unwrap_or(0);
+                        if duration < 360 {
+                            log::info!(
+                                "📊 Meeting {} is {} seconds (< 6 min), skipping auto-report",
+                                meeting_id,
+                                duration
+                            );
+                            return;
+                        }
+
+                        log::info!(
+                            "📊 Generating auto-report for meeting {} ({} seconds)",
+                            meeting_id,
+                            duration
+                        );
+
+                        let ai_client = { ai_clone.read().clone() };
+                        let generator = crate::meeting_notes::MeetingNotesGenerator::new(ai_client);
+                        let prompt = settings.meeting_report_prompt;
+
+                        match generator
+                            .generate_notes_with_prompt(&meeting_id, &db_clone, &prompt)
+                            .await
+                        {
+                            Ok(notes) => {
+                                log::info!(
+                                    "✅ Auto-report generated for meeting {}: {}",
+                                    meeting_id,
+                                    notes.summary.chars().take(80).collect::<String>()
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("❌ Auto-report generation failed: {}", e);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        log::warn!("📊 Meeting {} not found for auto-report", meeting_id);
+                    }
+                    Err(e) => {
+                        log::error!("📊 Failed to get meeting for auto-report: {}", e);
+                    }
+                }
+            });
         }
     }
 
@@ -1306,6 +1574,20 @@ pub async fn get_setting(
         .map_err(|e| format!("Failed to get setting: {}", e))
 }
 
+/// Set a single setting value
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_setting(
+    key: String,
+    value: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .settings
+        .set(&key, &value)
+        .await
+        .map_err(|e| format!("Failed to save setting: {}", e))
+}
+
 /// Get all meetings
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_meetings(
@@ -1632,7 +1914,10 @@ pub async fn set_vlm_api_url(url: String, state: State<'_, AppState>) -> Result<
     // Reconfigure the VLM client with new URL
     crate::vlm_client::vlm_configure(&url, None);
 
-    log::info!("✅ VLM API URL updated to: {}", url);
+    // Also configure the AI client so chat/summarize/action-items use the remote endpoint
+    state.ai_client.read().set_base_url(url.clone());
+
+    log::info!("✅ VLM + AI API URL updated to: {}", url);
     Ok(())
 }
 
@@ -3833,8 +4118,30 @@ pub async fn generate_catch_up(
     let ai_client = crate::ai_client::AIClient::new();
     let agent = CatchUpAgent::new(ai_client);
 
+    // Resolve persona-specific catch-up prompt from PromptManager
+    let active_theme = state
+        .settings
+        .get_active_theme()
+        .await
+        .unwrap_or_else(|_| "personal".to_string());
+
+    let prompt_name = format!("catch_up_capsule_{}", active_theme);
+    let custom_system_prompt = state
+        .prompt_manager
+        .get_prompt_by_name(&prompt_name, Some(&active_theme))
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.system_prompt);
+
     agent
-        .generate(&segments, &metadata, minutes_since_start, None)
+        .generate(
+            &segments,
+            &metadata,
+            minutes_since_start,
+            None,
+            custom_system_prompt.as_deref(),
+        )
         .await
 }
 
@@ -3851,20 +4158,50 @@ pub async fn get_live_insights(
         .await
         .map_err(|e| format!("Failed to get transcripts: {}", e))?;
 
-    // Process through live intel agent
+    // Phase 1: Fast rule-based extraction
     let mut agent = LiveIntelAgent::new();
 
-    for transcript in transcripts.iter().rev().take(50).rev() {
-        let segment = TranscriptSegment {
-            id: transcript.id.to_string(),
-            timestamp_ms: transcript.timestamp.timestamp_millis(),
-            speaker: transcript.speaker.clone(),
-            text: transcript.text.clone(),
-        };
-        agent.process_segment(segment);
+    let segments: Vec<TranscriptSegment> = transcripts
+        .iter()
+        .rev()
+        .take(50)
+        .rev()
+        .map(|t| TranscriptSegment {
+            id: t.id.to_string(),
+            timestamp_ms: t.timestamp.timestamp_millis(),
+            speaker: t.speaker.clone(),
+            text: t.text.clone(),
+        })
+        .collect();
+
+    for segment in &segments {
+        agent.process_segment(segment.clone());
     }
 
-    Ok(agent.get_all_events().to_vec())
+    let mut all_events = agent.get_all_events().to_vec();
+
+    // Phase 2: AI-powered deep analysis (if prompt available)
+    let active_theme = state
+        .settings
+        .get_active_theme()
+        .await
+        .unwrap_or_else(|_| "personal".to_string());
+
+    let intel_prompt_name = format!("live_intel_system_{}", active_theme);
+    if let Ok(Some(db_prompt)) = state
+        .prompt_manager
+        .get_prompt_by_name(&intel_prompt_name, Some(&active_theme))
+        .await
+    {
+        // Run AI analysis on recent segments (last 20 for performance)
+        let recent_segments: Vec<_> = segments.iter().rev().take(20).rev().cloned().collect();
+        let ai_events = agent
+            .ai_analyze(&recent_segments, &db_prompt.system_prompt)
+            .await;
+        all_events.extend(ai_events);
+    }
+
+    Ok(all_events)
 }
 
 /// Pin an insight for later reference
@@ -5088,17 +5425,23 @@ pub async fn set_genie_mode(window: Window, is_genie: bool) -> Result<(), String
     log::info!("Setting Genie mode: {}", is_genie);
 
     if is_genie {
-        // Genie Mode: Minimized, always on top, no decorations
+        // Genie Mode: Compact overlay, always on top, no decorations, resizable
         window.unminimize().map_err(|e| e.to_string())?;
         window.set_decorations(false).map_err(|e| e.to_string())?;
         window.set_always_on_top(true).map_err(|e| e.to_string())?;
-        window.set_resizable(false).map_err(|e| e.to_string())?;
+        window.set_resizable(true).map_err(|e| e.to_string())?;
 
-        // Set size to a compact bubble
+        // Set minimum size so it can't be shrunk to nothing
+        let min_size = LogicalSize::new(280.0, 300.0);
+        window
+            .set_min_size(Some(min_size))
+            .map_err(|e| e.to_string())?;
+
+        // Set initial compact size
         let genie_size = LogicalSize::new(320.0, 400.0);
         window.set_size(genie_size).map_err(|e| e.to_string())?;
 
-        // Position in bottom right
+        // Position in bottom right as default starting position
         if let Ok(Some(monitor)) = window.current_monitor() {
             let monitor_size = monitor.size();
             let scale_factor = window.scale_factor().unwrap_or(1.0);
@@ -5116,6 +5459,11 @@ pub async fn set_genie_mode(window: Window, is_genie: bool) -> Result<(), String
         window.set_decorations(true).map_err(|e| e.to_string())?;
         window.set_always_on_top(false).map_err(|e| e.to_string())?;
         window.set_resizable(true).map_err(|e| e.to_string())?;
+
+        // Clear min-size constraint from genie mode
+        window
+            .set_min_size(None::<LogicalSize<f64>>)
+            .map_err(|e| e.to_string())?;
 
         // Restore to default large size
         let deck_size = LogicalSize::new(1400.0, 900.0);
@@ -5453,6 +5801,29 @@ pub async fn internal_export_meeting(
         .await
         .map_err(|e| format!("Failed to get frames: {}", e))?;
 
+    // Gap Fix: Get accessibility snapshots for screen activity
+    let text_snapshots = database
+        .get_text_snapshots_by_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get text snapshots: {}", e))?;
+
+    // Build screen activity markdown from accessibility snapshots
+    let mut screen_activity_md = String::new();
+    for snapshot in &text_snapshots {
+        let time_str = if snapshot.ts.len() >= 19 {
+            &snapshot.ts[11..19]
+        } else {
+            &snapshot.ts
+        };
+        let app = snapshot.app_name.as_deref().unwrap_or("Unknown");
+        let window = snapshot.window_title.as_deref().unwrap_or("");
+        let text_preview: String = snapshot.text.chars().take(200).collect();
+        screen_activity_md.push_str(&format!(
+            "**[{}] {}** — {}\n> {}\n\n",
+            time_str, app, window, text_preview
+        ));
+    }
+
     let transcript_tuples: Vec<(String, Option<String>, String)> = transcripts
         .iter()
         .map(|t| (t.text.clone(), t.speaker.clone(), t.timestamp.to_rfc3339()))
@@ -5548,10 +5919,17 @@ pub async fn internal_export_meeting(
         intelligence_md.push_str("\n\n");
     }
 
-    let intelligence = if intelligence_md.is_empty() {
+    // Append screen activity to the exported content
+    let mut full_intelligence = intelligence_md.clone();
+    if !screen_activity_md.is_empty() {
+        full_intelligence.push_str("### Screen Activity\n\n");
+        full_intelligence.push_str(&screen_activity_md);
+    }
+
+    let intelligence_final = if full_intelligence.is_empty() {
         None
     } else {
-        Some(intelligence_md.as_str())
+        Some(full_intelligence.as_str())
     };
 
     vault_manager
@@ -5565,7 +5943,7 @@ pub async fn internal_export_meeting(
             summary,
             key_topics,
             action_items,
-            intelligence,
+            intelligence_final,
             &screenshot_paths,
         )
         .await
@@ -5868,4 +6246,305 @@ pub async fn get_enriched_calendar_events(
         .collect();
 
     Ok(serde_json::json!(enriched))
+}
+
+/// Get attendees for a meeting (from calendar integration)
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_meeting_attendees(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::database::MeetingAttendee>, String> {
+    state
+        .database
+        .get_meeting_attendees(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get attendees: {}", e))
+}
+
+/// Update a meeting's title
+#[tauri::command(rename_all = "camelCase")]
+pub async fn update_meeting_title(
+    meeting_id: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .database
+        .update_meeting_title(&meeting_id, &title)
+        .await
+        .map_err(|e| format!("Failed to update title: {}", e))
+}
+
+/// AI-powered attendee lookup — generates person + company briefings
+#[tauri::command(rename_all = "camelCase")]
+pub async fn lookup_attendees(
+    event_title: String,
+    attendee_emails: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    use crate::attendee_intel;
+
+    let ai_client = state.ai_client.read().clone();
+    let package =
+        attendee_intel::generate_meeting_intel(&ai_client, &event_title, &attendee_emails)
+            .await
+            .map_err(|e| format!("Intel generation failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "event_title": package.event_title,
+        "attendees": package.attendees,
+        "companies": package.companies,
+        "meeting_prep": package.meeting_prep,
+    }))
+}
+
+/// Match a recording to an overlapping calendar event
+#[tauri::command(rename_all = "camelCase")]
+pub async fn match_recording_to_calendar(
+    meeting_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    // Get the meeting
+    let meeting = state
+        .database
+        .get_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get meeting: {}", e))?
+        .ok_or_else(|| format!("Meeting not found: {}", meeting_id))?;
+
+    // Fetch calendar events
+    let events = {
+        let client = state.calendar_client.read();
+        client
+            .fetch_events()
+            .map_err(|e| format!("Calendar error: {}", e))?
+    };
+
+    let meeting_start = meeting.started_at;
+    let meeting_end = meeting.ended_at.unwrap_or(chrono::Utc::now());
+
+    // Find overlapping event
+    for event in &events {
+        if event.is_all_day {
+            continue;
+        }
+        // Check if time ranges overlap
+        if event.start_time < meeting_end && event.end_time > meeting_start {
+            let attendee_names: Vec<String> = event
+                .attendees
+                .iter()
+                .map(|e| crate::attendee_intel::extract_name_from_email(e))
+                .collect();
+
+            return Ok(serde_json::json!({
+                "meeting_id": meeting_id,
+                "event_id": event.event_id,
+                "event_title": event.title,
+                "attendee_count": event.attendees.len(),
+                "attendee_names": attendee_names,
+                "attendee_emails": event.attendees,
+                "start_time": event.start_time.to_rfc3339(),
+                "end_time": event.end_time.to_rfc3339(),
+            }));
+        }
+    }
+
+    // No match
+    Ok(serde_json::json!(null))
+}
+
+// ─── Data Chatbot: RAG-powered conversational interface ─────────────────────
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ChatHistoryMessage {
+    pub role: String,
+    pub content: String,
+}
+
+/// RAG chatbot — search knowledge base, inject context, generate AI answer
+#[tauri::command(rename_all = "camelCase")]
+pub async fn chat_with_data(
+    message: String,
+    history: Vec<ChatHistoryMessage>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    use crate::ai_client::{AIPreset, ChatMessage};
+
+    // Step 1: Retrieve — search knowledge base for relevant context
+    let search_options = SearchOptions {
+        query: Some(message.clone()),
+        start_date: None,
+        end_date: None,
+        category: None,
+        limit: Some(10),
+        sources: Some(vec!["local".to_string(), "pinecone".to_string()]),
+    };
+
+    let search_results = search_knowledge_base(search_options, state.clone())
+        .await
+        .unwrap_or_default();
+
+    // Step 2: Augment — build context string from search results
+    let mut context_parts = Vec::new();
+    let mut source_citations = Vec::new();
+
+    for (i, result) in search_results.iter().enumerate().take(8) {
+        let timestamp = result.timestamp.as_deref().unwrap_or("unknown time");
+        let source_label = match result.source.as_str() {
+            "pinecone" => "Vector DB",
+            "local" => "Local DB",
+            "supabase" => "Cloud DB",
+            _ => &result.source,
+        };
+        let app = result.app_name.as_deref().unwrap_or("");
+
+        context_parts.push(format!(
+            "--- Source {} ({}, {}) ---\n{}\n{}",
+            i + 1,
+            source_label,
+            timestamp,
+            if app.is_empty() {
+                String::new()
+            } else {
+                format!("[App: {}] ", app)
+            },
+            result.summary
+        ));
+
+        source_citations.push(serde_json::json!({
+            "id": result.id,
+            "summary": result.summary.chars().take(150).collect::<String>(),
+            "source": result.source,
+            "score": result.score,
+            "timestamp": result.timestamp,
+            "app_name": result.app_name,
+        }));
+    }
+
+    let context = if context_parts.is_empty() {
+        "No relevant meeting data found in the knowledge base for this query.".to_string()
+    } else {
+        context_parts.join("\n\n")
+    };
+
+    // Step 3: Generate — resolve persona-specific Genie prompt from PromptManager
+    let active_theme = state
+        .settings
+        .get_active_theme()
+        .await
+        .unwrap_or_else(|_| "personal".to_string());
+
+    let genie_prompt_name = format!("genie_system_{}", active_theme);
+    let preset = match state
+        .prompt_manager
+        .get_prompt_by_name(&genie_prompt_name, Some(&active_theme))
+        .await
+        .ok()
+        .flatten()
+    {
+        Some(db_prompt) => AIPreset::from_prompt(&db_prompt),
+        None => AIPreset::qa(), // Fallback to hardcoded preset
+    };
+    let mut messages: Vec<ChatMessage> = history
+        .into_iter()
+        .map(|m| ChatMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect();
+
+    // Add the current user message
+    messages.push(ChatMessage {
+        role: "user".to_string(),
+        content: message,
+    });
+
+    let ai_client = state.ai_client.read().clone();
+    let answer = ai_client
+        .chat(&preset, messages, Some(&context))
+        .await
+        .unwrap_or_else(|e| format!("I wasn't able to process your question: {}", e));
+
+    Ok(serde_json::json!({
+        "answer": answer,
+        "sources": source_citations,
+        "context_count": search_results.len(),
+    }))
+}
+
+// ============================================
+// Meeting Report Prompt Commands
+// ============================================
+
+/// Get the current meeting report prompt
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_meeting_report_prompt(state: State<'_, AppState>) -> Result<String, String> {
+    let settings = state
+        .settings
+        .get_all()
+        .await
+        .map_err(|e| format!("Failed to load settings: {}", e))?;
+    Ok(settings.meeting_report_prompt)
+}
+
+/// Set the meeting report prompt
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_meeting_report_prompt(
+    state: State<'_, AppState>,
+    prompt: String,
+) -> Result<(), String> {
+    state
+        .settings
+        .set("meeting_report_prompt", &prompt)
+        .await
+        .map_err(|e| format!("Failed to save prompt: {}", e))?;
+    log::info!("📝 Meeting report prompt updated ({} chars)", prompt.len());
+    Ok(())
+}
+
+/// Manually generate a meeting report for a specific meeting
+#[tauri::command(rename_all = "camelCase")]
+pub async fn generate_meeting_report(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<serde_json::Value, String> {
+    let settings = state
+        .settings
+        .get_all()
+        .await
+        .map_err(|e| format!("Failed to load settings: {}", e))?;
+
+    // Resolve persona-specific report prompt from PromptManager, fallback to settings
+    let active_theme = state
+        .settings
+        .get_active_theme()
+        .await
+        .unwrap_or_else(|_| "personal".to_string());
+
+    let report_prompt_name = format!("meeting_report_{}", active_theme);
+    let prompt_text = match state
+        .prompt_manager
+        .get_prompt_by_name(&report_prompt_name, Some(&active_theme))
+        .await
+        .ok()
+        .flatten()
+    {
+        Some(db_prompt) => db_prompt.system_prompt,
+        None => settings.meeting_report_prompt.clone(),
+    };
+
+    let ai_client = { state.ai_client.read().clone() };
+    let generator = crate::meeting_notes::MeetingNotesGenerator::new(ai_client);
+
+    let notes = generator
+        .generate_notes_with_prompt(&meeting_id, &state.database, &prompt_text)
+        .await?;
+
+    Ok(serde_json::json!({
+        "summary": notes.summary,
+        "key_topics": notes.key_topics,
+        "decisions": notes.decisions,
+        "action_items": notes.action_items,
+        "participants": notes.participants,
+    }))
 }

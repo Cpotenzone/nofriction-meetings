@@ -396,6 +396,194 @@ impl LiveIntelAgent {
         }
         String::new()
     }
+
+    /// AI-powered batch analysis of transcript segments
+    /// Uses the persona-specific live_intel_system prompt for deep extraction
+    pub async fn ai_analyze(
+        &mut self,
+        segments: &[TranscriptSegment],
+        system_prompt: &str,
+    ) -> Vec<LiveInsightEvent> {
+        let ai_client = crate::ai_client::AIClient::new();
+
+        // Build transcript text from segments
+        let transcript_text: String = segments
+            .iter()
+            .map(|s| {
+                if let Some(ref speaker) = s.speaker {
+                    format!("[{}ms] {}: {}", s.timestamp_ms, speaker, s.text)
+                } else {
+                    format!("[{}ms] {}", s.timestamp_ms, s.text)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if transcript_text.is_empty() {
+            return Vec::new();
+        }
+
+        let prompt = format!(
+            "{}\n\nTRANSCRIPT SEGMENTS:\n{}\n\nJSON RESPONSE:",
+            system_prompt, transcript_text
+        );
+
+        let response = match ai_client.complete(&prompt).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!(
+                    "AI live intel analysis failed, using rule-based only: {}",
+                    e
+                );
+                return Vec::new();
+            }
+        };
+
+        // Parse AI response into events
+        self.parse_ai_insights(&response, segments)
+    }
+
+    /// Parse AI JSON response into LiveInsightEvent variants
+    fn parse_ai_insights(
+        &mut self,
+        response: &str,
+        segments: &[TranscriptSegment],
+    ) -> Vec<LiveInsightEvent> {
+        let mut events = Vec::new();
+
+        // Extract JSON from response
+        let json_str = {
+            let trimmed = response.trim();
+            if trimmed.contains("```json") {
+                let start = trimmed.find("```json").unwrap() + 7;
+                let end = trimmed[start..]
+                    .find("```")
+                    .map(|i| start + i)
+                    .unwrap_or(trimmed.len());
+                trimmed[start..end].trim().to_string()
+            } else if let Some(start) = trimmed.find('{') {
+                if let Some(end) = trimmed.rfind('}') {
+                    trimmed[start..=end].to_string()
+                } else {
+                    return events;
+                }
+            } else {
+                return events;
+            }
+        };
+
+        // Parse the JSON
+        #[derive(serde::Deserialize, Default)]
+        struct AiInsights {
+            #[serde(default)]
+            action_items: Vec<AiActionItem>,
+            #[serde(default)]
+            decisions: Vec<AiDecision>,
+            #[serde(default)]
+            risks: Vec<AiRisk>,
+            #[serde(default)]
+            key_insights: Vec<AiKeyInsight>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct AiActionItem {
+            text: String,
+            #[serde(default)]
+            assignee: Option<String>,
+            #[serde(default)]
+            priority: Option<String>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct AiDecision {
+            text: String,
+            #[serde(default)]
+            made_by: Option<String>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct AiRisk {
+            text: String,
+            #[serde(default)]
+            severity: Option<f32>,
+            #[serde(default)]
+            r#type: Option<String>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct AiKeyInsight {
+            text: String,
+            #[serde(default)]
+            importance: Option<f32>,
+        }
+
+        let insights: AiInsights = match serde_json::from_str(&json_str) {
+            Ok(i) => i,
+            Err(e) => {
+                log::warn!("Failed to parse AI live intel response: {}", e);
+                return events;
+            }
+        };
+
+        // Default timestamp from latest segment
+        let default_ts = segments.last().map(|s| s.timestamp_ms).unwrap_or(0);
+
+        for item in insights.action_items {
+            if !item.text.is_empty() {
+                let assignee = item.assignee.filter(|a| !a.is_empty());
+                events.push(LiveInsightEvent::ActionItem {
+                    id: self.generate_id("ai_action"),
+                    text: if let Some(ref p) = item.priority {
+                        format!("[{}] {}", p.to_uppercase(), item.text)
+                    } else {
+                        item.text
+                    },
+                    assignee,
+                    timestamp_ms: default_ts,
+                });
+            }
+        }
+
+        for dec in insights.decisions {
+            if !dec.text.is_empty() {
+                let context = dec.made_by.as_deref().unwrap_or("Unknown").to_string();
+                events.push(LiveInsightEvent::Decision {
+                    id: self.generate_id("ai_decision"),
+                    text: dec.text,
+                    context,
+                    timestamp_ms: default_ts,
+                });
+            }
+        }
+
+        for risk in insights.risks {
+            if !risk.text.is_empty() {
+                events.push(LiveInsightEvent::RiskSignal {
+                    id: self.generate_id("ai_risk"),
+                    text: risk.text,
+                    severity: risk.severity.unwrap_or(0.5).min(1.0),
+                    timestamp_ms: default_ts,
+                });
+            }
+        }
+
+        for insight in insights.key_insights {
+            if !insight.text.is_empty() {
+                // Map key insights as question suggestions (closest event type)
+                events.push(LiveInsightEvent::QuestionSuggestion {
+                    id: self.generate_id("ai_insight"),
+                    text: insight.text,
+                    reason: format!(
+                        "AI insight (importance: {:.0}/5)",
+                        insight.importance.unwrap_or(3.0)
+                    ),
+                    timestamp_ms: default_ts,
+                });
+            }
+        }
+
+        events
+    }
 }
 
 impl Default for LiveIntelAgent {

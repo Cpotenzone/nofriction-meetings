@@ -1,32 +1,12 @@
 // noFriction Meetings - Insights View Component
-// Shows activity stats, category breakdown, and VLM-generated insights
+// Shows meeting stats, duration breakdown, and activity timeline
 
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-
-interface ActivityStats {
-    total_activities: number;
-    by_category: Record<string, number>;
-    by_app: Record<string, number>;
-    avg_confidence: number;
-}
-
-interface Activity {
-    id: number;
-    start_time: string;
-    end_time: string | null;
-    duration_seconds: number | null;
-    app_name: string | null;
-    window_title: string | null;
-    category: string | null;
-    summary: string;
-    focus_area: string | null;
-    confidence: number | null;
-}
+import * as tauri from "../lib/tauri";
+import type { Meeting } from "../lib/tauri";
 
 export function InsightsView() {
-    const [stats, setStats] = useState<ActivityStats | null>(null);
-    const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
+    const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -39,13 +19,8 @@ export function InsightsView() {
         setError(null);
 
         try {
-            // Load activity stats
-            const activityStats = await invoke<ActivityStats>("get_activity_stats");
-            setStats(activityStats);
-
-            // Load recent activities
-            const activities = await invoke<Activity[]>("get_local_activities", { limit: 20 });
-            setRecentActivities(activities);
+            const data = await tauri.getMeetings(1000);
+            setMeetings(data);
         } catch (err) {
             console.error("Failed to load insights:", err);
             setError(String(err));
@@ -84,23 +59,70 @@ export function InsightsView() {
         );
     }
 
-    if (!stats || stats.total_activities === 0) {
+    if (meetings.length === 0) {
         return (
             <div className="insights-view">
                 <div className="empty-state">
                     <div className="empty-state-icon">💡</div>
-                    <p className="empty-state-text">No activity data yet</p>
+                    <p className="empty-state-text">No meeting data yet</p>
                     <p className="empty-state-hint">
-                        Enable VLM processing in settings to see insights
+                        Start recording to see meeting insights
                     </p>
                 </div>
             </div>
         );
     }
 
-    // Calculate total time by category
-    const categoryData = Object.entries(stats.by_category || {});
-    const appData = Object.entries(stats.by_app || {}).slice(0, 10); // Top 10 apps
+    // Compute stats from meetings
+    const totalDuration = meetings.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
+    const avgDuration = meetings.length > 0 ? totalDuration / meetings.length : 0;
+    const meetingsWithDuration = meetings.filter(m => m.duration_seconds && m.duration_seconds > 0);
+    const longestMeeting = meetingsWithDuration.length > 0
+        ? meetingsWithDuration.reduce((max, m) => (m.duration_seconds || 0) > (max.duration_seconds || 0) ? m : max)
+        : null;
+
+    // Group by date
+    const byDate: Record<string, Meeting[]> = {};
+    for (const m of meetings) {
+        const date = new Date(m.started_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+        });
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push(m);
+    }
+
+    // Duration buckets
+    const durationBuckets = {
+        "< 1 min": 0,
+        "1–5 min": 0,
+        "5–15 min": 0,
+        "15–30 min": 0,
+        "30–60 min": 0,
+        "1+ hours": 0,
+    };
+    for (const m of meetings) {
+        const secs = m.duration_seconds || 0;
+        const mins = secs / 60;
+        if (mins < 1) durationBuckets["< 1 min"]++;
+        else if (mins < 5) durationBuckets["1–5 min"]++;
+        else if (mins < 15) durationBuckets["5–15 min"]++;
+        else if (mins < 30) durationBuckets["15–30 min"]++;
+        else if (mins < 60) durationBuckets["30–60 min"]++;
+        else durationBuckets["1+ hours"]++;
+    }
+
+    const bucketColors: Record<string, string> = {
+        "< 1 min": "#6b7280",
+        "1–5 min": "#3b82f6",
+        "5–15 min": "#10b981",
+        "15–30 min": "#f59e0b",
+        "30–60 min": "#ef4444",
+        "1+ hours": "#8b5cf6",
+    };
+
+    const dateEntries = Object.entries(byDate);
 
     return (
         <div className="insights-view">
@@ -116,142 +138,134 @@ export function InsightsView() {
             <div className="insights-stats-grid">
                 <div className="stat-card glass-panel">
                     <div className="stat-icon">📊</div>
-                    <div className="stat-value">{stats.total_activities}</div>
-                    <div className="stat-label">Total Activities</div>
+                    <div className="stat-value">{meetings.length}</div>
+                    <div className="stat-label">Total Meetings</div>
                 </div>
 
                 <div className="stat-card glass-panel">
-                    <div className="stat-icon">🎯</div>
-                    <div className="stat-value">{Math.round(stats.avg_confidence * 100)}%</div>
-                    <div className="stat-label">Avg Confidence</div>
+                    <div className="stat-icon">⏱️</div>
+                    <div className="stat-value">{formatDuration(totalDuration)}</div>
+                    <div className="stat-label">Total Duration</div>
                 </div>
 
                 <div className="stat-card glass-panel">
                     <div className="stat-icon">📁</div>
-                    <div className="stat-value">{Object.keys(stats.by_category || {}).length}</div>
-                    <div className="stat-label">Categories</div>
+                    <div className="stat-value">{dateEntries.length}</div>
+                    <div className="stat-label">Active Days</div>
                 </div>
 
                 <div className="stat-card glass-panel">
-                    <div className="stat-icon">📱</div>
-                    <div className="stat-value">{Object.keys(stats.by_app || {}).length}</div>
-                    <div className="stat-label">Applications</div>
+                    <div className="stat-icon">📏</div>
+                    <div className="stat-value">{formatDuration(Math.round(avgDuration))}</div>
+                    <div className="stat-label">Avg Duration</div>
                 </div>
             </div>
 
-            {/* Category Breakdown */}
+            {/* Duration Breakdown */}
             <div className="insights-section glass-panel">
-                <h3>📊 Time by Category</h3>
+                <h3>📊 Duration Breakdown</h3>
                 <div className="category-list">
-                    {categoryData.length > 0 ? (
-                        categoryData.map(([category, count]) => (
-                            <div key={category} className="category-item">
+                    {Object.entries(durationBuckets).filter(([, count]) => count > 0).map(([bucket, count]) => (
+                        <div key={bucket} className="category-item">
+                            <div className="category-header">
+                                <span className="category-name">{bucket}</span>
+                                <span className="category-count">{count} meeting{count !== 1 ? 's' : ''}</span>
+                            </div>
+                            <div className="category-bar">
+                                <div
+                                    className="category-fill"
+                                    style={{
+                                        width: `${(count / meetings.length) * 100}%`,
+                                        background: bucketColors[bucket] || "#6b7280",
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Meetings by Day */}
+            <div className="insights-section glass-panel">
+                <h3>📅 Meetings by Day</h3>
+                <div className="category-list">
+                    {dateEntries.map(([date, dayMeetings]) => {
+                        const dayDuration = dayMeetings.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
+                        return (
+                            <div key={date} className="category-item">
                                 <div className="category-header">
-                                    <span className="category-name">{category || "Uncategorized"}</span>
-                                    <span className="category-count">{count} activities</span>
+                                    <span className="category-name">{date}</span>
+                                    <span className="category-count">
+                                        {dayMeetings.length} meeting{dayMeetings.length !== 1 ? 's' : ''}{dayDuration > 0 ? ` · ${formatDuration(dayDuration)}` : ''}
+                                    </span>
                                 </div>
                                 <div className="category-bar">
                                     <div
                                         className="category-fill"
                                         style={{
-                                            width: `${(count / stats.total_activities) * 100}%`,
-                                            background: getCategoryColor(category),
+                                            width: `${(dayMeetings.length / Math.max(...dateEntries.map(([, m]) => m.length))) * 100}%`,
+                                            background: "#FFB800",
                                         }}
                                     />
                                 </div>
                             </div>
-                        ))
-                    ) : (
-                        <p className="no-data">No category data available</p>
-                    )}
+                        );
+                    })}
                 </div>
             </div>
 
-            {/* Top Applications */}
-            <div className="insights-section glass-panel">
-                <h3>📱 Top Applications</h3>
-                <div className="app-list">
-                    {appData.length > 0 ? (
-                        appData.map(([app, count]) => (
-                            <div key={app} className="app-item">
-                                <div className="app-header">
-                                    <span className="app-name">{app || "Unknown"}</span>
-                                    <span className="app-count">{count}</span>
-                                </div>
-                                <div className="app-bar">
-                                    <div
-                                        className="app-fill"
-                                        style={{
-                                            width: `${(count / stats.total_activities) * 100}%`,
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        ))
-                    ) : (
-                        <p className="no-data">No application data available</p>
-                    )}
+            {/* Longest Meeting */}
+            {longestMeeting && (
+                <div className="insights-section glass-panel">
+                    <h3>🏆 Longest Meeting</h3>
+                    <div className="activity-item" style={{ cursor: 'default' }}>
+                        <div className="activity-header">
+                            <span className="activity-app">{longestMeeting.title}</span>
+                            <span className="activity-time">
+                                {new Date(longestMeeting.started_at).toLocaleDateString()}
+                            </span>
+                        </div>
+                        <div className="activity-meta">
+                            <span className="activity-duration">
+                                {formatDuration(longestMeeting.duration_seconds)}
+                            </span>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Recent Activities */}
+            {/* Recent Meetings */}
             <div className="insights-section glass-panel">
-                <h3>🕒 Recent Activities</h3>
+                <h3>🕒 Recent Meetings</h3>
                 <div className="activity-list scrollable" style={{ maxHeight: "400px" }}>
-                    {recentActivities.length > 0 ? (
-                        recentActivities.map((activity) => (
-                            <div key={activity.id} className="activity-item">
-                                <div className="activity-header">
-                                    <span className="activity-app">{activity.app_name || "Unknown App"}</span>
-                                    <span className="activity-time">
-                                        {new Date(activity.start_time).toLocaleTimeString()}
-                                    </span>
-                                </div>
-                                {activity.window_title && (
-                                    <div className="activity-window">{activity.window_title}</div>
-                                )}
-                                <div className="activity-summary">{activity.summary}</div>
-                                <div className="activity-meta">
-                                    {activity.category && (
-                                        <span
-                                            className="activity-category"
-                                            style={{ background: getCategoryColor(activity.category) }}
-                                        >
-                                            {activity.category}
-                                        </span>
-                                    )}
-                                    {activity.duration_seconds && (
-                                        <span className="activity-duration">
-                                            {formatDuration(activity.duration_seconds)}
-                                        </span>
-                                    )}
-                                    {activity.confidence && (
-                                        <span className="activity-confidence">
-                                            {Math.round(activity.confidence * 100)}% confidence
-                                        </span>
-                                    )}
-                                </div>
+                    {meetings.slice(0, 20).map((meeting) => (
+                        <div key={meeting.id} className="activity-item">
+                            <div className="activity-header">
+                                <span className="activity-app">{meeting.title}</span>
+                                <span className="activity-time">
+                                    {new Date(meeting.started_at).toLocaleTimeString("en-US", {
+                                        hour: "numeric",
+                                        minute: "2-digit",
+                                    })}
+                                </span>
                             </div>
-                        ))
-                    ) : (
-                        <p className="no-data">No recent activities</p>
-                    )}
+                            <div className="activity-meta">
+                                <span className="activity-category" style={{ background: "#FFB800" }}>
+                                    {new Date(meeting.started_at).toLocaleDateString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                    })}
+                                </span>
+                                {meeting.duration_seconds && (
+                                    <span className="activity-duration">
+                                        {formatDuration(meeting.duration_seconds)}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
     );
-}
-
-// Helper function for category colors
-function getCategoryColor(category: string | null): string {
-    const colors: Record<string, string> = {
-        coding: "#10b981",
-        communication: "#3b82f6",
-        research: "#8b5cf6",
-        meeting: "#f59e0b",
-        design: "#ec4899",
-        writing: "#06b6d4",
-        other: "#6b7280",
-    };
-    return colors[category?.toLowerCase() || "other"] || "#6b7280";
 }

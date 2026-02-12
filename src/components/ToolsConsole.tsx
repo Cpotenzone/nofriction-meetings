@@ -156,7 +156,7 @@ export function ToolsConsole() {
                         </div>
                         <div className="db-stat">
                             <div className="stat-value">{dbStats.frames.toLocaleString()}</div>
-                            <div className="stat-label">Frames</div>
+                            <div className="stat-label">Captures</div>
                         </div>
                         <div className="db-stat">
                             <div className="stat-value">{dbStats.transcripts.toLocaleString()}</div>

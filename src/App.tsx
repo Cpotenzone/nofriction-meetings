@@ -47,11 +47,50 @@ function App() {
           setMeetingListRefreshKey((k) => k + 1);
         }
       }));
+      listeners.push(await listen("tray:pause_recording", async () => {
+        if (recording.isRecording && !recording.isPaused) {
+          await recording.pauseRecording();
+        }
+      }));
+      listeners.push(await listen("tray:resume_recording", async () => {
+        if (recording.isRecording && recording.isPaused) {
+          await recording.resumeRecording();
+        }
+      }));
+      // Capture mode events from tray
+      listeners.push(await listen("menu:mode_ambient", async () => {
+        if (recording.isPaused) {
+          await recording.resumeRecording();
+        } else if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        }
+      }));
+      listeners.push(await listen("menu:mode_meeting", async () => {
+        if (recording.isPaused) {
+          await recording.resumeRecording();
+        } else if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        }
+      }));
+      listeners.push(await listen("menu:mode_pause", async () => {
+        if (recording.isRecording && !recording.isPaused) {
+          await recording.pauseRecording();
+        }
+      }));
       listeners.push(await listen("enter-genie-mode", async () => {
         if (!isGenieModeRef.current) {
           await invoke("set_genie_mode", { isGenie: true });
           setIsGenieMode(true);
         }
+      }));
+      // Calendar integration: log when recording matches a calendar event
+      listeners.push(await listen<{ event_title: string; attendee_count: number; attendee_names: string[] }>("calendar_match", (event) => {
+        const { event_title, attendee_count, attendee_names } = event.payload;
+        const names = attendee_names.slice(0, 3).join(", ");
+        const extra = attendee_count > 3 ? ` +${attendee_count - 3} more` : "";
+        console.log(`📅 Recording linked to "${event_title}" — ${attendee_count} attendees: ${names}${extra}`);
       }));
     };
 

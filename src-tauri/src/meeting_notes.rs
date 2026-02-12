@@ -72,7 +72,7 @@ impl MeetingNotesGenerator {
             .join("\n");
 
         // Generate notes using AI
-        let notes = self.analyze_transcript(&full_transcript).await?;
+        let notes = self.analyze_transcript(&full_transcript, None).await?;
 
         // Save to database
         let notes_id = Uuid::new_v4().to_string();
@@ -99,28 +99,15 @@ impl MeetingNotesGenerator {
     }
 
     /// Analyze transcript and extract structured notes
-    async fn analyze_transcript(&self, transcript: &str) -> Result<GeneratedNotes, String> {
+    async fn analyze_transcript(
+        &self,
+        transcript: &str,
+        custom_prompt: Option<&str>,
+    ) -> Result<GeneratedNotes, String> {
+        let base_prompt = custom_prompt.unwrap_or(crate::settings::DEFAULT_REPORT_PROMPT);
         let prompt = format!(
-            r#"Analyze this meeting transcript and extract:
-1. A brief summary (2-3 sentences)
-2. Key topics discussed (list of 3-7 topics)
-3. Decisions made (who decided what)
-4. Action items (task, assignee if mentioned, priority)
-5. Participants mentioned
-
-Return as JSON:
-{{
-  "summary": "...",
-  "key_topics": ["topic1", "topic2"],
-  "decisions": [{{"text": "...", "made_by": "...", "context": "..."}}],
-  "action_items": [{{"task": "...", "assignee": "...", "priority": "high/medium/low"}}],
-  "participants": ["name1", "name2"]
-}}
-
-TRANSCRIPT:
-{}
-
-JSON RESPONSE:"#,
+            "{}\n\nTRANSCRIPT:\n{}\n\nJSON RESPONSE:",
+            base_prompt,
             transcript.chars().take(8000).collect::<String>()
         );
 
@@ -130,8 +117,11 @@ JSON RESPONSE:"#,
             .await
             .map_err(|e| format!("AI analysis failed: {}", e))?;
 
+        // Try to extract JSON from the response (may be wrapped in markdown code blocks)
+        let json_str = extract_json_from_response(&response);
+
         // Parse JSON response
-        let notes: GeneratedNotes = serde_json::from_str(&response).map_err(|e| {
+        let notes: GeneratedNotes = serde_json::from_str(&json_str).map_err(|e| {
             format!(
                 "Failed to parse AI response: {} - Response: {}",
                 e, response
@@ -175,6 +165,95 @@ JSON ARRAY:"#,
 
         serde_json::from_str(&response).map_err(|e| format!("Failed to parse action items: {}", e))
     }
+
+    /// Generate notes with a custom prompt (for configurable reports)
+    pub async fn generate_notes_with_prompt(
+        &self,
+        meeting_id: &str,
+        database: &Arc<DatabaseManager>,
+        custom_prompt: &str,
+    ) -> Result<GeneratedNotes, String> {
+        let transcripts = database
+            .get_transcripts(meeting_id)
+            .await
+            .map_err(|e| format!("Failed to get transcripts: {}", e))?;
+
+        if transcripts.is_empty() {
+            return Err("No transcripts found for this meeting".to_string());
+        }
+
+        let full_transcript: String = transcripts
+            .iter()
+            .map(|t| {
+                if let Some(ref speaker) = t.speaker {
+                    format!("{}: {}", speaker, t.text)
+                } else {
+                    t.text.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let notes = self
+            .analyze_transcript(&full_transcript, Some(custom_prompt))
+            .await?;
+
+        let notes_id = uuid::Uuid::new_v4().to_string();
+        let key_topics_json = serde_json::to_string(&notes.key_topics).unwrap_or_default();
+        let decisions_json = serde_json::to_string(&notes.decisions).unwrap_or_default();
+        let action_items_json = serde_json::to_string(&notes.action_items).unwrap_or_default();
+        let participants_json = serde_json::to_string(&notes.participants).unwrap_or_default();
+
+        database
+            .save_meeting_notes(
+                &notes_id,
+                meeting_id,
+                Some(&notes.summary),
+                Some(&key_topics_json),
+                Some(&decisions_json),
+                Some(&action_items_json),
+                Some(&participants_json),
+                Some("auto-report"),
+            )
+            .await
+            .map_err(|e| format!("Failed to save notes: {}", e))?;
+
+        Ok(notes)
+    }
+}
+
+/// Extract JSON from an AI response that may contain markdown code blocks
+fn extract_json_from_response(response: &str) -> String {
+    let trimmed = response.trim();
+
+    // Try to find JSON in markdown code block
+    if let Some(start) = trimmed.find("```json") {
+        let json_start = start + 7;
+        if let Some(end) = trimmed[json_start..].find("```") {
+            return trimmed[json_start..json_start + end].trim().to_string();
+        }
+    }
+
+    // Try backtick code block without language
+    if let Some(start) = trimmed.find("```") {
+        let json_start = start + 3;
+        if let Some(end) = trimmed[json_start..].find("```") {
+            let content = trimmed[json_start..json_start + end].trim();
+            if content.starts_with('{') {
+                return content.to_string();
+            }
+        }
+    }
+
+    // Try to find raw JSON object
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            return trimmed[start..=end].to_string();
+        }
+    }
+
+    // Return as-is
+    trimmed.to_string()
 }
 
 /// Cluster transcripts into logical segments based on time gaps and topic similarity

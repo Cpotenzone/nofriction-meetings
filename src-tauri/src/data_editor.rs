@@ -78,7 +78,7 @@ impl DataEditor {
     ) -> Result<i64, sqlx::Error> {
         let (table, search_col) = match entity_type {
             "text_snapshot" => ("text_snapshots", "content"),
-            "entity" => ("entities", "entity_value"),
+            "entity" => ("entities", "name"),
             "activity_log" => ("activity_log", "action"),
             "episode" => ("document_episodes", "document_path"),
             _ => return Ok(0),
@@ -264,10 +264,10 @@ impl DataEditor {
     ) -> Result<Vec<LearnedDataItem>, sqlx::Error> {
         let query = if let Some(s) = search {
             sqlx::query(
-                "SELECT id, entity_type, entity_value, first_seen, last_seen, metadata
+                "SELECT id, entity_type, name, created_at, metadata
                  FROM entities
-                 WHERE entity_value LIKE ? OR entity_type LIKE ?
-                 ORDER BY last_seen DESC
+                 WHERE name LIKE ? OR entity_type LIKE ?
+                 ORDER BY created_at DESC
                  LIMIT ? OFFSET ?",
             )
             .bind(format!("%{}%", s))
@@ -276,9 +276,9 @@ impl DataEditor {
             .bind(offset)
         } else {
             sqlx::query(
-                "SELECT id, entity_type, entity_value, first_seen, last_seen, metadata
+                "SELECT id, entity_type, name, created_at, metadata
                  FROM entities
-                 ORDER BY last_seen DESC
+                 ORDER BY created_at DESC
                  LIMIT ? OFFSET ?",
             )
             .bind(limit)
@@ -292,17 +292,16 @@ impl DataEditor {
             .map(|row| {
                 let id: i64 = row.get("id");
                 let entity_type_val: String = row.get("entity_type");
-                let entity_value: String = row.get("entity_value");
-                let first_seen: String = row.get("first_seen");
-                let last_seen: String = row.get("last_seen");
+                let entity_name: String = row.get("name");
+                let created_at: String = row.get("created_at");
                 LearnedDataItem {
                     entity_type: "entity".to_string(),
                     entity_id: id.to_string(),
-                    title: format!("[{}] {}", entity_type_val, entity_value),
-                    content: entity_value,
+                    title: format!("[{}] {}", entity_type_val, entity_name),
+                    content: entity_name,
                     metadata: row.get("metadata"),
-                    created_at: first_seen,
-                    updated_at: last_seen,
+                    created_at: created_at.clone(),
+                    updated_at: created_at,
                 }
             })
             .collect())
@@ -428,7 +427,7 @@ impl DataEditor {
         // Validate field name to prevent SQL injection
         let valid_fields = match entity_type {
             "text_snapshot" => vec!["content"],
-            "entity" => vec!["entity_value", "entity_type", "metadata"],
+            "entity" => vec!["name", "entity_type", "metadata"],
             "activity_log" => vec!["action", "metadata"],
             "episode" => vec!["document_path"],
             _ => vec![],
@@ -468,7 +467,7 @@ impl DataEditor {
         // Validate field name
         let valid_fields = match entity_type {
             "text_snapshot" => vec!["content"],
-            "entity" => vec!["entity_value", "entity_type", "metadata"],
+            "entity" => vec!["name", "entity_type", "metadata"],
             "activity_log" => vec!["action", "metadata"],
             "episode" => vec!["document_path"],
             _ => vec![],

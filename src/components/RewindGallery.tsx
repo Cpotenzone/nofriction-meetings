@@ -118,12 +118,30 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
         }
     }, [timeline]);
 
-    // Find current transcript
-    const currentTranscript = timeline?.transcripts.find((t: tauri.TimelineTranscript) => {
-        const start = t.timestamp_ms;
-        const end = start + (t.duration_seconds * 1000);
-        return currentTime >= start && currentTime <= end;
-    });
+    // Find the nearest transcript for the current time
+    const currentTranscript = timeline?.transcripts.reduce((best: tauri.TimelineTranscript | null, t: tauri.TimelineTranscript) => {
+        if (t.timestamp_ms > currentTime) return best;
+        if (!best) return t;
+        return Math.abs(t.timestamp_ms - currentTime) < Math.abs(best.timestamp_ms - currentTime) ? t : best;
+    }, null as tauri.TimelineTranscript | null);
+
+    // Auto-scroll transcript panel to the active entry when currentTime changes
+    useEffect(() => {
+        if (!currentTranscript || !transcriptRef.current) return;
+        const el = transcriptRef.current.querySelector(`[data-transcript-id="${currentTranscript.id}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [currentTranscript?.id]);
+
+    // Auto-scroll thumbnail gallery to the selected frame
+    useEffect(() => {
+        if (!selectedFrame || !galleryRef.current) return;
+        const el = galleryRef.current.querySelector(`[data-frame-id="${selectedFrame.id}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    }, [selectedFrame?.id]);
 
     // Format time as MM:SS
     const formatTime = (ms: number) => {
@@ -189,14 +207,17 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                             {timeline?.transcripts.map((t: tauri.TimelineTranscript) => (
                                 <div
                                     key={t.id}
+                                    data-transcript-id={t.id}
                                     className={`transcript-entry ${t.id === currentTranscript?.id ? "active" : ""}`}
                                     onClick={() => {
                                         setCurrentTime(t.timestamp_ms);
                                         // Find frame at this time
-                                        const nearestFrame = timeline.frames.reduce((prev: tauri.TimelineFrame, curr: tauri.TimelineFrame) =>
-                                            Math.abs(curr.timestamp_ms - t.timestamp_ms) < Math.abs(prev.timestamp_ms - t.timestamp_ms) ? curr : prev
-                                        );
-                                        setSelectedFrame(nearestFrame);
+                                        if (timeline.frames.length > 0) {
+                                            const nearestFrame = timeline.frames.reduce((prev: tauri.TimelineFrame, curr: tauri.TimelineFrame) =>
+                                                Math.abs(curr.timestamp_ms - t.timestamp_ms) < Math.abs(prev.timestamp_ms - t.timestamp_ms) ? curr : prev
+                                            );
+                                            setSelectedFrame(nearestFrame);
+                                        }
                                     }}
                                 >
                                     <span className="entry-time">{formatTime(t.timestamp_ms)}</span>
@@ -250,6 +271,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                 {timeline?.frames.map((frame: tauri.TimelineFrame) => (
                     <div
                         key={frame.id}
+                        data-frame-id={frame.id}
                         className={`thumbnail ${frame.id === selectedFrame?.id ? "selected" : ""}`}
                         onClick={() => {
                             setSelectedFrame(frame);

@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { ask } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgencyNavbar } from './AgencyNavbar';
 import { FlowStateView } from './views/FlowStateView';
 import { InsightDeckView } from './views/InsightDeckView';
 import { ZenFocusView } from './views/ZenFocusView';
 import { VaultView } from './views/VaultView';
+import { IntelDashboard } from './views/IntelDashboard';
+import { DataChat } from './views/DataChat';
+import { HelpView } from './views/HelpView';
+import { PromptStudio } from './views/PromptStudio';
 import { useRecording } from '../../hooks/useRecording';
 import { useTranscripts } from '../../hooks/useTranscripts';
 import { AgencySettingsModal } from './AgencySettingsModal';
 
-export type AgencyMode = 'flow' | 'deck' | 'zen' | 'vault';
+export type AgencyMode = 'flow' | 'deck' | 'zen' | 'vault' | 'intel' | 'chat' | 'help' | 'prompts';
 
 interface AgencyLayoutProps {
     activeMode: AgencyMode;
@@ -34,6 +40,35 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
     refreshKey
 }) => {
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+    // const [segmentPrompt, setSegmentPrompt] = useState(false); // Removed for native dialog
+
+    // Listen for recording segmentation prompt (75+ minutes)
+    useEffect(() => {
+        const unlisten = listen('recording_segment_prompt', async () => {
+            if (recording.isRecording) {
+                // Use native system dialog
+                const shouldSegment = await ask(
+                    'Recording has reached 75 minutes. Long recordings may lose quality.\n\nWould you like to start a new segment?',
+                    {
+                        title: 'Recording Limit Reached',
+                        okLabel: 'Start New Segment',
+                        cancelLabel: 'Keep Recording'
+                    }
+                );
+
+                if (shouldSegment) {
+                    handleSegmentConfirm();
+                }
+            }
+        });
+        return () => { unlisten.then(fn => fn()); };
+    }, [recording.isRecording]);
+
+    const handleSegmentConfirm = async () => {
+        // Stop current recording, then start new one
+        onToggleRecording(); // stop
+        setTimeout(() => onToggleRecording(), 1500); // restart after brief pause
+    };
 
     return (
         <div className="agency-layout">
@@ -102,6 +137,58 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                             transition={{ duration: 0.3 }}
                         >
                             <VaultView onSelectMeeting={onSelectMeeting} onOpenSettings={() => setIsSettingsOpen(true)} />
+                        </motion.div>
+                    )}
+
+                    {activeMode === 'intel' && (
+                        <motion.div
+                            key="intel"
+                            className="agency-view-container"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <IntelDashboard />
+                        </motion.div>
+                    )}
+
+                    {activeMode === 'chat' && (
+                        <motion.div
+                            key="chat"
+                            className="agency-view-container"
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -15 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <DataChat />
+                        </motion.div>
+                    )}
+
+                    {activeMode === 'help' && (
+                        <motion.div
+                            key="help"
+                            className="agency-view-container"
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -15 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <HelpView />
+                        </motion.div>
+                    )}
+
+                    {activeMode === 'prompts' && (
+                        <motion.div
+                            key="prompts"
+                            className="agency-view-container"
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -15 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <PromptStudio />
                         </motion.div>
                     )}
                 </AnimatePresence>

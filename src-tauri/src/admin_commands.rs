@@ -688,6 +688,12 @@ pub async fn get_database_stats(state: State<'_, AppState>) -> Result<serde_json
         .map(|r| r.get("count"))
         .unwrap_or(0);
 
+    let text_snapshots_count: i64 = sqlx::query("SELECT COUNT(*) as count FROM text_snapshots")
+        .fetch_one(state.database.get_pool().as_ref())
+        .await
+        .map(|r| r.get("count"))
+        .unwrap_or(0);
+
     let transcripts_count: i64 = sqlx::query("SELECT COUNT(*) as count FROM transcripts")
         .fetch_one(state.database.get_pool().as_ref())
         .await
@@ -714,7 +720,7 @@ pub async fn get_database_stats(state: State<'_, AppState>) -> Result<serde_json
 
     Ok(serde_json::json!({
         "meetings": meetings_count,
-        "frames": frames_count,
+        "frames": frames_count + text_snapshots_count,
         "transcripts": transcripts_count,
         "entities": entities_count,
         "frame_queue": frame_queue_count,

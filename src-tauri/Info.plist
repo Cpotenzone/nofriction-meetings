@@ -13,10 +13,10 @@
     <string>com.nofriction.meetings</string>
     
     <key>CFBundleVersion</key>
-    <string>2.4.0</string>
+    <string>2.5.0</string>
     
     <key>CFBundleShortVersionString</key>
-    <string>2.4.0</string>
+    <string>2.5.0</string>
     
     <key>CFBundlePackageType</key>
     <string>APPL</string>
@@ -53,6 +53,10 @@
     
     <!-- Calendar - for meeting detection -->
     <key>NSCalendarsUsageDescription</key>
+    <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
+    
+    <!-- Calendar Full Access (macOS 14+) -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
     <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
     
     <!-- URL Schemes (optional) -->

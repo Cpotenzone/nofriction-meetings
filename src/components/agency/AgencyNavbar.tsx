@@ -68,6 +68,34 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
                         <span className="mode-icon">📚</span>
                         VAULT
                     </button>
+                    <button
+                        className={`mode-btn ${activeMode === 'intel' ? 'active' : ''}`}
+                        onClick={() => onModeChange('intel')}
+                    >
+                        <span className="mode-icon">🔍</span>
+                        INTEL
+                    </button>
+                    <button
+                        className={`mode-btn ${activeMode === 'chat' ? 'active' : ''}`}
+                        onClick={() => onModeChange('chat')}
+                    >
+                        <span className="mode-icon">💬</span>
+                        CHAT
+                    </button>
+                    <button
+                        className={`mode-btn ${activeMode === 'prompts' ? 'active' : ''}`}
+                        onClick={() => onModeChange('prompts')}
+                    >
+                        <span className="mode-icon">🧠</span>
+                        PROMPTS
+                    </button>
+                    <button
+                        className={`mode-btn ${activeMode === 'help' ? 'active' : ''}`}
+                        onClick={() => onModeChange('help')}
+                    >
+                        <span className="mode-icon">📖</span>
+                        HELP
+                    </button>
                 </div>
             </div>
 

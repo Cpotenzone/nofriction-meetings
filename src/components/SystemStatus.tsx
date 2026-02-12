@@ -98,7 +98,7 @@ export function SystemStatus({ onComplete, onRetry }: { onComplete?: () => void,
             </div>
 
             <div style={{ position: 'fixed', bottom: 20, color: '#4b5563', fontSize: 12 }}>
-                noFriction Meetings v1.0.0-rc.24
+                noFriction Meetings v1.0.0-rc.a2
             </div>
         </div>
     );

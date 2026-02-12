@@ -127,13 +127,17 @@ export function useRecording() {
     }, [state.meetingId]);
 
     const pauseRecording = useCallback(async () => {
-        // Toggle pause state - actual pause implementation would call backend
         setState((prev) => ({
             ...prev,
-            isPaused: !prev.isPaused,
+            isPaused: true,
         }));
-        // TODO: When backend pause_recording command exists, call it here
-        // await tauri.pauseRecording();
+    }, []);
+
+    const resumeRecording = useCallback(async () => {
+        setState((prev) => ({
+            ...prev,
+            isPaused: false,
+        }));
     }, []);
 
     const toggleRecording = useCallback(async () => {
@@ -150,6 +154,7 @@ export function useRecording() {
         startRecording,
         stopRecording,
         pauseRecording,
+        resumeRecording,
         toggleRecording,
     };
 }

@@ -32,6 +32,7 @@ export interface Meeting {
     started_at: string;
     ended_at: string | null;
     duration_seconds: number | null;
+    calendar_event_id: string | null;
 }
 
 export interface Transcript {
@@ -796,4 +797,188 @@ export async function getEnrichedCalendarEvents(): Promise<CalendarEventEnriched
 
 export async function generateMeetingIntel(eventId: string, topicName: string): Promise<MeetingIntelResult> {
     return invoke<MeetingIntelResult>("generate_meeting_intel", { eventId, topicName });
+}
+
+// Calendar Integration — Meeting Attendees
+export interface MeetingAttendee {
+    id: number;
+    meeting_id: string;
+    name: string;
+    email: string;
+    company: string | null;
+    role: string;
+}
+
+export interface CalendarMatchEvent {
+    meeting_id: string;
+    event_id: string;
+    event_title: string;
+    attendee_count: number;
+    attendee_names: string[];
+    attendee_emails: string[];
+    start_time: string;
+    end_time: string;
+}
+
+export async function getMeetingAttendees(meetingId: string): Promise<MeetingAttendee[]> {
+    return invoke<MeetingAttendee[]>("get_meeting_attendees", { meetingId });
+}
+
+// Calendar Access
+export async function checkCalendarAccess(): Promise<boolean> {
+    return invoke<boolean>("check_calendar_access");
+}
+
+export async function requestCalendarAccess(): Promise<boolean> {
+    return invoke<boolean>("request_calendar_access");
+}
+
+// Meeting Title Update
+export async function updateMeetingTitle(meetingId: string, title: string): Promise<void> {
+    return invoke<void>("update_meeting_title", { meetingId, title });
+}
+
+// People Lookup — AI-powered attendee enrichment
+export interface AttendeeProfile {
+    email: string;
+    name: string;
+    company: string;
+    company_domain: string;
+    briefing: string;
+}
+
+export interface CompanyProfile {
+    domain: string;
+    name: string;
+    briefing: string;
+}
+
+export interface MeetingIntelPackage {
+    event_title: string;
+    attendees: AttendeeProfile[];
+    companies: CompanyProfile[];
+    meeting_prep: string;
+}
+
+export async function lookupAttendees(eventTitle: string, attendeeEmails: string[]): Promise<MeetingIntelPackage> {
+    return invoke<MeetingIntelPackage>("lookup_attendees", { eventTitle, attendeeEmails });
+}
+
+// Recording-Calendar Overlap
+export async function matchRecordingToCalendar(meetingId: string): Promise<CalendarMatchEvent | null> {
+    return invoke<CalendarMatchEvent | null>("match_recording_to_calendar", { meetingId });
+}
+
+// Data Chatbot (RAG)
+export interface ChatSource {
+    id: string;
+    summary: string;
+    source: string;
+    score: number | null;
+    timestamp: string | null;
+    app_name: string | null;
+}
+
+export interface ChatResponse {
+    answer: string;
+    sources: ChatSource[];
+    context_count: number;
+}
+
+export interface ChatHistoryMessage {
+    role: "user" | "assistant";
+    content: string;
+}
+
+export async function chatWithData(
+    message: string,
+    history: ChatHistoryMessage[]
+): Promise<ChatResponse> {
+    return invoke<ChatResponse>("chat_with_data", { message, history });
+}
+
+// ============================================
+// Meeting Report Prompt Commands
+// ============================================
+
+export interface MeetingReport {
+    summary: string;
+    key_topics: string[];
+    decisions: { text: string; made_by: string | null; context: string | null }[];
+    action_items: { task: string; assignee: string | null; due_date: string | null; priority: string | null }[];
+    participants: string[];
+}
+
+export async function getMeetingReportPrompt(): Promise<string> {
+    return invoke<string>("get_meeting_report_prompt");
+}
+
+export async function setMeetingReportPrompt(prompt: string): Promise<void> {
+    return invoke("set_meeting_report_prompt", { prompt });
+}
+
+export async function generateMeetingReport(meetingId: string): Promise<MeetingReport> {
+    return invoke<MeetingReport>("generate_meeting_report", { meetingId });
+}
+
+// ============================================
+// Prompt Management Commands
+// ============================================
+
+export interface PromptRecord {
+    id: string;
+    name: string;
+    description: string | null;
+    category: string;
+    system_prompt: string;
+    user_prompt_template: string | null;
+    model_id: string | null;
+    temperature: number;
+    max_tokens: number | null;
+    theme: string | null;
+    version: number;
+    is_builtin: boolean;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface PromptUpdate {
+    name?: string;
+    description?: string;
+    category?: string;
+    system_prompt?: string;
+    user_prompt_template?: string;
+    model_id?: string;
+    temperature?: number;
+    max_tokens?: number;
+    is_active?: boolean;
+}
+
+export async function listPrompts(category?: string): Promise<PromptRecord[]> {
+    return invoke<PromptRecord[]>("list_prompts", { category: category ?? null });
+}
+
+export async function getPrompt(id: string): Promise<PromptRecord | null> {
+    return invoke<PromptRecord | null>("get_prompt", { id });
+}
+
+export async function updatePrompt(id: string, updates: PromptUpdate): Promise<PromptRecord | null> {
+    return invoke<PromptRecord | null>("update_prompt", { id, updates });
+}
+
+export async function deletePrompt(id: string): Promise<boolean> {
+    return invoke<boolean>("delete_prompt", { id });
+}
+
+export async function duplicatePrompt(id: string, newName: string): Promise<PromptRecord | null> {
+    return invoke<PromptRecord | null>("duplicate_prompt", { id, newName });
+}
+
+export async function listPromptsByTheme(theme: string): Promise<PromptRecord[]> {
+    return invoke<PromptRecord[]>("list_prompts_by_theme", { theme });
+}
+
+export async function testPrompt(promptId: string, testInput: string): Promise<string> {
+    return invoke<string>("test_prompt", { promptId, testInput });
 }

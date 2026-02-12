@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog"; // Import dialog plugin
+import { invoke } from "@tauri-apps/api/core";
 import * as tauri from "../../lib/tauri";
 import type { AudioDevice } from "../../lib/tauri";
 import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
@@ -22,6 +23,7 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
     const [selectedMic, setSelectedMic] = useState<string>("");
     const [vaultPath, setVaultPath] = useState<string>("");
     const [vaultStatus, setVaultStatus] = useState<any>(null);
+    const [autoExport, setAutoExport] = useState(false);
 
     // Loading & feedback
     const [isLoadingDevices, setIsLoadingDevices] = useState(true);
@@ -65,6 +67,12 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
             if (status.path) {
                 setVaultPath(status.path);
             }
+
+            // Load auto-export setting
+            try {
+                const autoExpVal = await invoke<string | null>("get_setting", { key: "obsidian_auto_export" });
+                setAutoExport(autoExpVal === "true");
+            } catch { /* defaults to false */ }
         } catch (err) {
             console.error("Failed to load settings:", err);
         } finally {
@@ -93,6 +101,19 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
             showToast(`❌ Failed to save: ${errorMsg}`);
+        }
+    };
+
+    const handleToggleAutoExport = async () => {
+        const newVal = !autoExport;
+        setAutoExport(newVal);
+        try {
+            await invoke("set_setting", { key: "obsidian_auto_export", value: String(newVal) });
+            showToast(newVal ? "✅ Auto-export enabled" : "✅ Auto-export disabled");
+        } catch (err) {
+            setAutoExport(!newVal);
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            showToast(`❌ Failed: ${errorMsg}`);
         }
     };
 
@@ -247,7 +268,11 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                                     <span className="label-main">Auto-Export Meetings</span>
                                     <span className="label-sub">Automatically save meetings to vault when capture stops.</span>
                                 </div>
-                                <div className="toggle-switch disabled">
+                                <div
+                                    className={`toggle-switch ${autoExport ? 'active' : ''}`}
+                                    onClick={handleToggleAutoExport}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <div className="toggle-knob"></div>
                                 </div>
                             </div>

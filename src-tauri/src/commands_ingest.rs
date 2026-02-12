@@ -41,6 +41,7 @@ pub async fn get_ingest_queue_stats(state: State<'_, AppState>) -> Result<(usize
 
 /// Test ingest connection
 #[tauri::command]
+pub async fn test_ingest_connection(state: State<'_, AppState>) -> Result<String, String> {
     if let Some(ref client) = state.ingest_client {
         client.health_check().await.map_err(|e| e.to_string())
     } else {
@@ -110,8 +111,49 @@ pub async fn trigger_meeting_ingest(
             .map_err(|e| format!("Failed to upload transcripts: {}", e))?;
     }
 
+    // Gap Fix: Get accessibility snapshots and upload as additional transcript data
+    let text_snapshots = state
+        .database
+        .get_text_snapshots_by_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get text snapshots: {}", e))?;
+
+    if !text_snapshots.is_empty() {
+        let screen_segments: Vec<crate::ingest_client::TranscriptSegment> = text_snapshots
+            .into_iter()
+            .map(|s| {
+                let context = format!(
+                    "[App: {}] {}\n{}",
+                    s.app_name.as_deref().unwrap_or("Unknown"),
+                    s.window_title.as_deref().unwrap_or(""),
+                    s.text
+                );
+                crate::ingest_client::TranscriptSegment {
+                    start_at: s.ts.clone(),
+                    end_at: s.ts,
+                    text: context,
+                    speaker: Some("[SCREEN]".to_string()),
+                    confidence: Some(s.quality_score as f64),
+                }
+            })
+            .collect();
+
+        log::info!(
+            "Uploading {} screen activity segments...",
+            screen_segments.len()
+        );
+        client
+            .upload_transcript(session_id, screen_segments)
+            .await
+            .map_err(|e| format!("Failed to upload screen segments: {}", e))?;
+    }
+
     // Get frames
-    let frames = state.database.get_frames(&meeting_id, 1000).await.map_err(|e| e.to_string())?;
+    let frames = state
+        .database
+        .get_frames(&meeting_id, 1000)
+        .await
+        .map_err(|e| e.to_string())?;
     log::info!("Found {} frames to upload...", frames.len());
 
     let mut success_frames = 0;
@@ -119,12 +161,10 @@ pub async fn trigger_meeting_ingest(
         if let Some(path_str) = frame.file_path {
             let path = std::path::PathBuf::from(path_str);
             if path.exists() {
-                match client.upload_frame(
-                    session_id,
-                    frame.timestamp.to_rfc3339(),
-                    &path,
-                    None
-                ).await {
+                match client
+                    .upload_frame(session_id, frame.timestamp.to_rfc3339(), &path, None)
+                    .await
+                {
                     Ok(_) => success_frames += 1,
                     Err(e) => log::warn!("Failed to upload frame {}: {}", frame.id, e),
                 }
@@ -139,5 +179,8 @@ pub async fn trigger_meeting_ingest(
         .await
         .map_err(|e| format!("Failed to end session: {}", e))?;
 
-    Ok(format!("Ingest complete. Uploaded {} frames and transcripts.", success_frames))
+    Ok(format!(
+        "Ingest complete. Uploaded {} frames and transcripts.",
+        success_frames
+    ))
 }

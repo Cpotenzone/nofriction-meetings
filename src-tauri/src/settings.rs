@@ -5,6 +5,28 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
+/// Master prompt for AI meeting report generation (editable by user)
+pub const DEFAULT_REPORT_PROMPT: &str = r#"You are a professional meeting analyst. Analyze the following meeting transcript and extract structured intelligence.
+
+Your output MUST be valid JSON with this exact schema:
+{
+  "summary": "2-3 sentence executive summary of the meeting",
+  "key_topics": ["topic1", "topic2", "topic3"],
+  "decisions": [{"text": "what was decided", "made_by": "who decided (or null)", "context": "brief context"}],
+  "action_items": [{"task": "what needs to be done", "assignee": "who is responsible (or null)", "due_date": "when (or null)", "priority": "high/medium/low"}],
+  "participants": ["name1", "name2"]
+}
+
+Rules:
+- Be concise but thorough
+- Extract EVERY decision, even minor ones
+- Identify action items with specific owners when mentioned
+- List all participants/speakers detected in the transcript
+- Use "high" priority for time-sensitive or blocking items
+- If no decisions or action items exist, return empty arrays
+- Do NOT hallucinate information not in the transcript
+"#;
+
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
@@ -70,6 +92,9 @@ pub struct AppSettings {
     pub obsidian_vault_path: Option<String>,
     pub obsidian_auto_export: bool,
     pub obsidian_template: String, // "default" or "zettelkasten"
+    // Meeting Report settings
+    pub auto_generate_report: bool,
+    pub meeting_report_prompt: String,
 }
 
 impl AppSettings {
@@ -131,6 +156,9 @@ impl AppSettings {
             obsidian_vault_path: None,
             obsidian_auto_export: false,
             obsidian_template: "default".to_string(),
+            // Meeting Report defaults
+            auto_generate_report: true,
+            meeting_report_prompt: DEFAULT_REPORT_PROMPT.to_string(),
         }
     }
 }
@@ -354,6 +382,14 @@ impl SettingsManager {
         }
         if let Some(v) = self.get("obsidian_template").await? {
             settings.obsidian_template = v;
+        }
+
+        // Meeting Report settings
+        if let Some(v) = self.get("auto_generate_report").await? {
+            settings.auto_generate_report = v == "true";
+        }
+        if let Some(v) = self.get("meeting_report_prompt").await? {
+            settings.meeting_report_prompt = v;
         }
 
         Ok(settings)

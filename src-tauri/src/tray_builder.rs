@@ -13,6 +13,7 @@ pub mod tray_ids {
     pub const START_RECORDING: &str = "tray_start_recording";
     pub const STOP_RECORDING: &str = "tray_stop_recording";
     pub const PAUSE_RECORDING: &str = "tray_pause_recording";
+    pub const RESUME_RECORDING: &str = "tray_resume_recording";
 
     // Capture Modes
     pub const MODE_AMBIENT: &str = "tray_mode_ambient";
@@ -50,6 +51,14 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 .build(app)?,
         )
         .item(&MenuItemBuilder::with_id(tray_ids::STOP_RECORDING, "⏹  Stop Recording").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id(tray_ids::PAUSE_RECORDING, "⏸  Pause Recording")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id(tray_ids::RESUME_RECORDING, "▶  Resume Recording")
+                .build(app)?,
+        )
         .separator()
         // Capture Mode Submenu
         .text("mode_header", "📡 Capture Mode")
@@ -121,6 +130,9 @@ fn handle_tray_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
         }
         tray_ids::PAUSE_RECORDING => {
             emit_to_frontend(app, "tray:pause_recording");
+        }
+        tray_ids::RESUME_RECORDING => {
+            emit_to_frontend(app, "tray:resume_recording");
         }
 
         // Capture Modes

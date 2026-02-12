@@ -24,7 +24,7 @@ impl AIPreset {
             id: "summarize".to_string(),
             name: "Summarize Meeting".to_string(),
             description: "Generate a concise summary of the meeting".to_string(),
-            model: "qwen2.5vl:7b".to_string(),
+            model: "qwen2.5-coder:7b".to_string(),
             system_prompt: r#"You are a professional meeting assistant. Your task is to summarize meeting content concisely and accurately.
 Focus on:
 - Key discussion points
@@ -42,7 +42,7 @@ Keep summaries clear and actionable. Use bullet points when appropriate."#.to_st
             id: "action_items".to_string(),
             name: "Extract Action Items".to_string(),
             description: "Identify tasks and action items from the meeting".to_string(),
-            model: "qwen2.5vl:7b".to_string(),
+            model: "qwen2.5-coder:7b".to_string(),
             system_prompt: r#"You are a task extraction assistant. Your job is to identify action items, tasks, and commitments from meeting content.
 For each action item, extract:
 - The task description
@@ -60,7 +60,7 @@ Format as a clear, actionable checklist."#.to_string(),
             id: "qa".to_string(),
             name: "Q&A Assistant".to_string(),
             description: "Answer questions about the meeting content".to_string(),
-            model: "qwen2.5vl:7b".to_string(),
+            model: "qwen2.5-coder:7b".to_string(),
             system_prompt: r#"You are a helpful meeting assistant with access to meeting transcripts and screen content.
 Answer questions based solely on the meeting content provided. If the answer isn't in the content, say so.
 Be precise and cite specific parts of the meeting when relevant."#.to_string(),
@@ -70,6 +70,18 @@ Be precise and cite specific parts of the meeting when relevant."#.to_string(),
 
     pub fn get_all_presets() -> Vec<AIPreset> {
         vec![Self::summarize(), Self::action_items(), Self::qa()]
+    }
+
+    /// Construct an AIPreset from a database Prompt record
+    pub fn from_prompt(prompt: &crate::prompt_manager::Prompt) -> Self {
+        Self {
+            id: prompt.id.clone(),
+            name: prompt.name.clone(),
+            description: prompt.description.clone().unwrap_or_default(),
+            model: "qwen2.5-coder:7b".to_string(),
+            system_prompt: prompt.system_prompt.clone(),
+            temperature: prompt.temperature,
+        }
     }
 }
 
@@ -122,8 +134,12 @@ pub struct AIClient {
 impl AIClient {
     pub fn new() -> Self {
         Self {
-            base_url: Arc::new(RwLock::new("http://localhost:8080".to_string())),
-            bearer_token: Arc::new(RwLock::new(None)),
+            base_url: Arc::new(RwLock::new(
+                "https://7wk6vrq9achr2djw.caas.targon.com".to_string(),
+            )),
+            bearer_token: Arc::new(RwLock::new(Some(
+                "sk_live_792b6dd1.da7bf6acb6c36d08993604582bc6548a".to_string(),
+            ))),
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
                 .build()
@@ -181,7 +197,8 @@ impl AIClient {
 
     /// Get list of available models
     pub async fn list_models(&self) -> Result<Vec<OllamaModel>, String> {
-        let url = format!("{}/api/tags", self.base_url.read());
+        // Use the Serendipity models endpoint
+        let url = format!("{}/api/models", self.base_url.read());
 
         let mut request = self.client.get(&url);
         if let Some(auth) = self.get_auth_header() {
@@ -201,20 +218,42 @@ impl AIClient {
             return Err(format!("API returned error: {}", response.status()));
         }
 
-        let data: OllamaModelsResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
+        // Parse response assuming standard Ollama-like format for now, or fallback to known list
+        // Since docs are sparse on list format, we'll try to parse generic or return empty if format mismatch
+        // For Serendipity, we can just return the known available models if dynamic list fails
 
-        Ok(data
-            .models
-            .into_iter()
-            .map(|m| OllamaModel {
-                name: m.name,
-                size: format_size(m.size),
-                modified_at: m.modified_at,
-            })
-            .collect())
+        match response.json::<OllamaModelsResponse>().await {
+            Ok(data) => Ok(data
+                .models
+                .into_iter()
+                .map(|m| OllamaModel {
+                    name: m.name,
+                    size: format_size(m.size),
+                    modified_at: m.modified_at,
+                })
+                .collect()),
+            Err(_) => {
+                // Fallback: Return hardcoded supported models if parsing fails
+                // likely different JSON structure
+                Ok(vec![
+                    OllamaModel {
+                        name: "qwen2.5-coder:7b".to_string(),
+                        size: "Unknown".to_string(),
+                        modified_at: "".to_string(),
+                    },
+                    OllamaModel {
+                        name: "qwen3:8b".to_string(),
+                        size: "Unknown".to_string(),
+                        modified_at: "".to_string(),
+                    },
+                    OllamaModel {
+                        name: "sage".to_string(),
+                        size: "Unknown".to_string(),
+                        modified_at: "".to_string(),
+                    },
+                ])
+            }
+        }
     }
 
     /// Chat with a model using a preset

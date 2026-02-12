@@ -13,8 +13,7 @@ use crate::database::DatabaseManager;
 use crate::live_intel_agent::LiveIntelAgent;
 use crate::transcription::TranscriptionProvider;
 
-// Reuse the existing structures from deepgram_client.rs
-// (Normally we would import them if they were public, but simpler to redefine or move here)
+// ─── Deepgram response types ───────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 struct DeepgramResponse {
@@ -59,18 +58,43 @@ pub struct TranscriptSegment {
     pub speaker: Option<String>,
 }
 
+/// Health status emitted to the frontend
+#[derive(Debug, Clone, Serialize)]
+struct TranscriptionStatus {
+    connected: bool,
+    provider: String,
+    error: Option<String>,
+    reconnect_count: u64,
+}
+
+// ─── Internal types ─────────────────────────────────────────────────────────
+
 struct AudioBatch {
     samples: Vec<f32>,
     sample_rate: u32,
     channels: u16,
 }
 
+/// Signal from send/receive tasks back to the reconnect loop
+enum ConnectionSignal {
+    /// WebSocket error — need to reconnect
+    Disconnected(String),
+    /// Clean shutdown requested by user
+    Stopped,
+}
+
+// ─── DeepgramProvider ───────────────────────────────────────────────────────
+
 pub struct DeepgramProvider {
     api_key: Arc<RwLock<Option<String>>>,
+    /// Whether the user intends transcription to be running (survives reconnects)
+    should_run: Arc<AtomicBool>,
+    /// Whether the WebSocket is currently connected
     is_connected: Arc<AtomicBool>,
     audio_tx: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     samples_sent: Arc<AtomicU64>,
+    reconnect_count: Arc<AtomicU64>,
     database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
     meeting_id: Arc<RwLock<Option<String>>>,
     live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
@@ -80,39 +104,153 @@ impl DeepgramProvider {
     pub fn new() -> Self {
         Self {
             api_key: Arc::new(RwLock::new(None)),
+            should_run: Arc::new(AtomicBool::new(false)),
             is_connected: Arc::new(AtomicBool::new(false)),
             audio_tx: Arc::new(RwLock::new(None)),
             app_handle: Arc::new(RwLock::new(None)),
             samples_sent: Arc::new(AtomicU64::new(0)),
+            reconnect_count: Arc::new(AtomicU64::new(0)),
             database: Arc::new(RwLock::new(None)),
             meeting_id: Arc::new(RwLock::new(None)),
             live_intel_agent: Arc::new(RwLock::new(None)),
         }
     }
 
-    async fn connect_internal(
+    /// Emit health status to the frontend
+    fn emit_status(app: &AppHandle, connected: bool, error: Option<String>, reconnects: u64) {
+        let status = TranscriptionStatus {
+            connected,
+            provider: "deepgram".to_string(),
+            error,
+            reconnect_count: reconnects,
+        };
+        if let Err(e) = app.emit("transcription_status", &status) {
+            log::warn!("Failed to emit transcription status: {}", e);
+        }
+    }
+
+    /// The main reconnect loop — keeps trying to connect as long as should_run is true
+    async fn reconnect_loop(
+        api_key: String,
+        app: AppHandle,
+        should_run: Arc<AtomicBool>,
+        is_connected: Arc<AtomicBool>,
+        audio_tx_holder: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
+        samples_sent: Arc<AtomicU64>,
+        reconnect_count: Arc<AtomicU64>,
+        database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
+        meeting_id: Arc<RwLock<Option<String>>>,
+        live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
+    ) {
+        let mut backoff_ms: u64 = 1000; // Start at 1 second
+        const MAX_BACKOFF_MS: u64 = 30_000; // Cap at 30 seconds
+
+        while should_run.load(Ordering::SeqCst) {
+            // Fetch model from settings
+            let model = {
+                let state: tauri::State<crate::AppState> = app.state();
+                match state.settings.get_deepgram_model().await {
+                    Ok(Some(m)) => m,
+                    _ => "nova-3".to_string(),
+                }
+            };
+
+            log::info!("🔗 Connecting to Deepgram (model: {})...", model);
+            Self::emit_status(&app, false, None, reconnect_count.load(Ordering::Relaxed));
+
+            match Self::run_session(
+                api_key.clone(),
+                model,
+                app.clone(),
+                should_run.clone(),
+                is_connected.clone(),
+                audio_tx_holder.clone(),
+                samples_sent.clone(),
+                database.clone(),
+                meeting_id.clone(),
+                live_intel_agent.clone(),
+            )
+            .await
+            {
+                Ok(ConnectionSignal::Stopped) => {
+                    log::info!("Deepgram session stopped by user");
+                    break;
+                }
+                Ok(ConnectionSignal::Disconnected(reason)) => {
+                    is_connected.store(false, Ordering::SeqCst);
+                    *audio_tx_holder.write() = None;
+
+                    if !should_run.load(Ordering::SeqCst) {
+                        break;
+                    }
+
+                    let n = reconnect_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    log::warn!(
+                        "⚠️ Deepgram disconnected (attempt #{}): {} — reconnecting in {}ms",
+                        n,
+                        reason,
+                        backoff_ms
+                    );
+                    Self::emit_status(
+                        &app,
+                        false,
+                        Some(format!("Reconnecting (attempt #{})...", n)),
+                        n,
+                    );
+
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
+                }
+                Err(e) => {
+                    is_connected.store(false, Ordering::SeqCst);
+                    *audio_tx_holder.write() = None;
+
+                    if !should_run.load(Ordering::SeqCst) {
+                        break;
+                    }
+
+                    let n = reconnect_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    log::error!(
+                        "❌ Deepgram connection error (attempt #{}): {} — retrying in {}ms",
+                        n,
+                        e,
+                        backoff_ms
+                    );
+                    Self::emit_status(&app, false, Some(format!("Connection error: {}", e)), n);
+
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
+                }
+            }
+        }
+
+        // Final cleanup
+        is_connected.store(false, Ordering::SeqCst);
+        *audio_tx_holder.write() = None;
+        log::info!("Deepgram reconnect loop exited");
+    }
+
+    /// Run a single WebSocket session. Returns when the session ends.
+    async fn run_session(
         api_key: String,
         model: String,
         app: AppHandle,
+        should_run: Arc<AtomicBool>,
         is_connected: Arc<AtomicBool>,
         audio_tx_holder: Arc<RwLock<Option<mpsc::Sender<AudioBatch>>>>,
         samples_sent: Arc<AtomicU64>,
         database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
         meeting_id: Arc<RwLock<Option<String>>>,
         live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
-    ) -> Result<(), String> {
-        // Use selected model with advanced features
-        // Build a clean URL without escape characters
+    ) -> Result<ConnectionSignal, String> {
         let url = format!(
             "wss://api.deepgram.com/v1/listen?model={}&language=en-US&smart_format=true&punctuate=true&diarize=true&dictation=true&endpointing=10&utterance_end_ms=1000&vad_events=true&interim_results=true&encoding=linear16&sample_rate=16000&channels=1",
             model
         );
 
-        log::info!("🔗 Deepgram URL: {} (Model: {})", url, model);
-
         let request = http::Request::builder()
             .method("GET")
-            .uri(url)
+            .uri(&url)
             .header("Authorization", format!("Token {}", api_key))
             .header("Host", "api.deepgram.com")
             .header("Upgrade", "websocket")
@@ -130,24 +268,38 @@ impl DeepgramProvider {
             .map_err(|e| format!("Failed to connect to Deepgram: {}", e))?;
 
         is_connected.store(true, Ordering::SeqCst);
-        log::info!("✅ Connected to Deepgram WebSocket (nova-3)");
+        log::info!("✅ Connected to Deepgram WebSocket (model: {})", model);
+        Self::emit_status(&app, true, None, 0);
 
         let (mut write, mut read) = ws_stream.split();
 
-        // Create channel for audio batches
-        let (audio_tx, mut audio_rx) = mpsc::channel::<AudioBatch>(100);
+        // Create channel for audio batches — large buffer to survive background throttling
+        let (audio_tx, mut audio_rx) = mpsc::channel::<AudioBatch>(500);
         *audio_tx_holder.write() = Some(audio_tx);
 
-        // Spawn task to process and send audio
+        // Channel to signal the reconnect loop from send/receive tasks
+        let (signal_tx, mut signal_rx) = mpsc::channel::<ConnectionSignal>(2);
+
+        // ─── Audio send task ──────────────────────────────────────────────
         let is_connected_send = is_connected.clone();
+        let should_run_send = should_run.clone();
+        let signal_tx_send = signal_tx.clone();
         tokio::spawn(async move {
-            let mut buffer: VecDeque<f32> = VecDeque::with_capacity(8000);
+            let mut buffer: VecDeque<f32> = VecDeque::with_capacity(16000);
             let batch_size = 320usize; // 20ms @ 16kHz
+            let mut last_send = std::time::Instant::now();
+            let mut consecutive_errors: u32 = 0;
 
             loop {
-                // Wait for audio with short timeout
+                if !should_run_send.load(Ordering::SeqCst) {
+                    let _ = write.close().await;
+                    let _ = signal_tx_send.send(ConnectionSignal::Stopped).await;
+                    return;
+                }
+
+                // Wait for audio with 50ms timeout (more tolerant of background scheduling)
                 let result =
-                    tokio::time::timeout(std::time::Duration::from_millis(20), audio_rx.recv())
+                    tokio::time::timeout(std::time::Duration::from_millis(50), audio_rx.recv())
                         .await;
 
                 match result {
@@ -159,24 +311,34 @@ impl DeepgramProvider {
                         );
                         buffer.extend(resampled);
                     }
-                    Ok(None) => break,
-                    Err(_) => {}
+                    Ok(None) => {
+                        // Channel closed — provider stopped
+                        let _ = write.close().await;
+                        let _ = signal_tx_send.send(ConnectionSignal::Stopped).await;
+                        return;
+                    }
+                    Err(_) => {
+                        // Timeout — check keepalive and send what we have
+                    }
                 }
 
+                // Send buffered audio
                 while buffer.len() >= batch_size {
-                    if !is_connected_send.load(Ordering::SeqCst) {
+                    if !is_connected_send.load(Ordering::SeqCst)
+                        || !should_run_send.load(Ordering::SeqCst)
+                    {
                         return;
                     }
 
                     let chunk: Vec<f32> = buffer.drain(..batch_size).collect();
+                    let bytes = Self::f32_to_i16_bytes(&chunk);
 
-                    // Log audio amplitude for debugging
                     let count = samples_sent.fetch_add(1, Ordering::Relaxed);
                     if count % 50 == 0 {
                         let max_amp = chunk.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
                         let rms: f32 =
                             (chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32).sqrt();
-                        log::info!(
+                        log::debug!(
                             "🔊 Audio #{}: max_amp={:.4}, rms={:.4}",
                             count,
                             max_amp,
@@ -184,56 +346,102 @@ impl DeepgramProvider {
                         );
                     }
 
-                    let bytes = Self::f32_to_i16_bytes(&chunk);
-
                     if count % 200 == 0 {
-                        log::info!("🎧 Sent audio chunk #{}", count);
+                        log::info!("🎧 Sent audio chunk #{} (buf={})", count, buffer.len());
                     }
 
-                    if let Err(e) = write.send(Message::Binary(bytes.into())).await {
-                        log::error!("Failed to send audio: {}", e);
+                    // Resilient send with retry
+                    let mut sent = false;
+                    for attempt in 0..3u32 {
+                        match write.send(Message::Binary(bytes.clone().into())).await {
+                            Ok(_) => {
+                                last_send = std::time::Instant::now();
+                                consecutive_errors = 0;
+                                sent = true;
+                                break;
+                            }
+                            Err(e) => {
+                                if attempt < 2 {
+                                    log::warn!("Audio send retry {}/3: {}", attempt + 1, e);
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                } else {
+                                    log::error!("Audio send failed after 3 attempts: {}", e);
+                                    consecutive_errors += 1;
+                                }
+                            }
+                        }
+                    }
+
+                    // If we've had too many consecutive failures, signal reconnect
+                    if consecutive_errors >= 3 || !sent && consecutive_errors > 0 {
+                        log::error!(
+                            "🔄 Too many send errors ({}), triggering reconnect",
+                            consecutive_errors
+                        );
+                        let _ = signal_tx_send
+                            .send(ConnectionSignal::Disconnected(
+                                "persistent send failures".to_string(),
+                            ))
+                            .await;
                         return;
                     }
                 }
-            }
 
-            let _ = write.close().await;
+                // Deepgram KeepAlive: send the API-level keepalive every 8s of silence
+                // (Deepgram ignores WebSocket pings; it requires {"type":"KeepAlive"} text messages)
+                if last_send.elapsed() > std::time::Duration::from_secs(8) {
+                    let keepalive = serde_json::json!({"type": "KeepAlive"}).to_string();
+                    match write.send(Message::Text(keepalive.into())).await {
+                        Ok(_) => {
+                            last_send = std::time::Instant::now();
+                            log::trace!("💓 Deepgram KeepAlive sent");
+                        }
+                        Err(e) => {
+                            log::warn!("KeepAlive send failed: {} — triggering reconnect", e);
+                            let _ = signal_tx_send
+                                .send(ConnectionSignal::Disconnected(format!(
+                                    "keepalive failed: {}",
+                                    e
+                                )))
+                                .await;
+                            return;
+                        }
+                    }
+                }
+            }
         });
 
-        // Spawn task to receive transcriptions
+        // ─── Receive task ─────────────────────────────────────────────────
         let is_connected_recv = is_connected.clone();
+        let should_run_recv = should_run.clone();
+        let signal_tx_recv = signal_tx;
         let database_recv = database.clone();
         let meeting_id_recv = meeting_id.clone();
         let intel_agent_recv = live_intel_agent.clone();
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
-                if !is_connected_recv.load(Ordering::SeqCst) {
+                if !is_connected_recv.load(Ordering::SeqCst)
+                    || !should_run_recv.load(Ordering::SeqCst)
+                {
                     break;
                 }
 
                 match msg {
                     Ok(Message::Text(text)) => {
-                        // Log raw response for debugging
-                        log::info!("🔍 Deepgram raw: {}", &text[..text.len().min(500)]);
+                        // Only log raw for first few or periodically
+                        static RAW_LOG_COUNT: AtomicU64 = AtomicU64::new(0);
+                        let raw_n = RAW_LOG_COUNT.fetch_add(1, Ordering::Relaxed);
+                        if raw_n < 3 || raw_n % 100 == 0 {
+                            log::debug!(
+                                "🔍 Deepgram raw (#{})]: {}",
+                                raw_n,
+                                &text[..text.len().min(300)]
+                            );
+                        }
 
                         if let Ok(response) = serde_json::from_str::<DeepgramResponse>(&text) {
-                            // Log parsed response structure
-                            if response.channel.is_some() {
-                                log::info!(
-                                    "🎤 Deepgram response: channel present, is_final={:?}",
-                                    response.is_final
-                                );
-                            }
-
                             if let Some(channel) = response.channel {
                                 if let Some(alt) = channel.alternatives.first() {
-                                    // Log the transcript text for debugging
-                                    log::info!(
-                                        "📜 Transcript text: '{}' (len={})",
-                                        alt.transcript,
-                                        alt.transcript.len()
-                                    );
-
                                     if !alt.transcript.is_empty() {
                                         let is_final = response.is_final.unwrap_or(false);
                                         let segment = TranscriptSegment {
@@ -250,7 +458,6 @@ impl DeepgramProvider {
                                                 .map(|s| format!("Speaker {}", s)),
                                         };
 
-                                        // Log transcript reception
                                         if is_final {
                                             log::info!("📝 TRANSCRIPT [FINAL]: {}", alt.transcript);
                                         } else {
@@ -278,7 +485,7 @@ impl DeepgramProvider {
                                             agent.process_segment(intel_segment);
                                         }
 
-                                        // Save FINAL transcripts
+                                        // Save FINAL transcripts to database
                                         if is_final {
                                             if let Some(db) = database_recv.read().as_ref().cloned()
                                             {
@@ -307,15 +514,39 @@ impl DeepgramProvider {
                             }
                         }
                     }
-                    Ok(Message::Close(_)) => break,
-                    Err(_) => break,
+                    Ok(Message::Pong(_)) => {
+                        log::trace!("💓 Keepalive pong received");
+                    }
+                    Ok(Message::Close(frame)) => {
+                        log::info!("Deepgram sent close frame: {:?}", frame);
+                        let _ = signal_tx_recv
+                            .send(ConnectionSignal::Disconnected(
+                                "server closed connection".to_string(),
+                            ))
+                            .await;
+                        break;
+                    }
+                    Err(e) => {
+                        log::error!("WebSocket receive error: {}", e);
+                        let _ = signal_tx_recv
+                            .send(ConnectionSignal::Disconnected(format!(
+                                "receive error: {}",
+                                e
+                            )))
+                            .await;
+                        break;
+                    }
                     _ => {}
                 }
             }
             is_connected_recv.store(false, Ordering::SeqCst);
         });
 
-        Ok(())
+        // Wait for either task to signal disconnect or stop
+        match signal_rx.recv().await {
+            Some(signal) => Ok(signal),
+            None => Ok(ConnectionSignal::Stopped),
+        }
     }
 
     fn f32_to_i16_bytes(samples: &[f32]) -> Vec<u8> {
@@ -400,51 +631,49 @@ impl TranscriptionProvider for DeepgramProvider {
             }
         };
 
-        if self.is_connected.load(Ordering::SeqCst) {
+        // Prevent duplicate starts
+        if self.should_run.load(Ordering::SeqCst) {
+            log::info!("Deepgram already running (should_run=true)");
             return;
         }
 
+        // Signal intent to run
+        self.should_run.store(true, Ordering::SeqCst);
+        self.reconnect_count.store(0, Ordering::Relaxed);
+        self.samples_sent.store(0, Ordering::Relaxed);
+
+        let should_run = self.should_run.clone();
         let is_connected = self.is_connected.clone();
         let audio_tx_holder = self.audio_tx.clone();
         let samples_sent = self.samples_sent.clone();
+        let reconnect_count = self.reconnect_count.clone();
         let database = self.database.clone();
         let meeting_id = self.meeting_id.clone();
         let live_intel_agent = self.live_intel_agent.clone();
 
-        let app_handle_clone = app.clone();
-
-        // Fetch model from settings (needs async)
         tokio::spawn(async move {
-            let model = {
-                let state: tauri::State<crate::AppState> = app_handle_clone.state();
-                match state.settings.get_deepgram_model().await {
-                    Ok(Some(m)) => m,
-                    _ => "nova-3".to_string(),
-                }
-            };
-
-            if let Err(e) = Self::connect_internal(
+            Self::reconnect_loop(
                 api_key,
-                model,
                 app,
+                should_run,
                 is_connected,
                 audio_tx_holder,
                 samples_sent,
+                reconnect_count,
                 database,
                 meeting_id,
                 live_intel_agent,
             )
-            .await
-            {
-                log::error!("Deepgram connection failed: {}", e);
-            }
+            .await;
         });
     }
 
     fn stop(&self) {
+        // Signal intent to stop — this will cause the reconnect loop to exit
+        self.should_run.store(false, Ordering::SeqCst);
         self.is_connected.store(false, Ordering::SeqCst);
         *self.audio_tx.write() = None;
-        log::info!("Deepgram disconnected");
+        log::info!("Deepgram stop requested (should_run=false)");
     }
 
     fn process_audio(&self, samples: &[f32], sample_rate: u32, channels: u16) {
@@ -452,26 +681,14 @@ impl TranscriptionProvider for DeepgramProvider {
             return;
         }
 
-        // Debug logging for first few batches to verify input
-        static LOG_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let count = LOG_COUNTER.fetch_add(1, Ordering::Relaxed);
-        if count < 5 || count % 200 == 0 {
-            log::debug!(
-                "Deepgram Audio Input: {} samples, {} Hz, {} channels",
-                samples.len(),
-                sample_rate,
-                channels
-            );
-        }
-
+        // Only log connection drops periodically to avoid log spam
         if !self.is_connected.load(Ordering::SeqCst) {
-            // Log periodically to help debug connection issues
             static DROPPED_COUNT: std::sync::atomic::AtomicU64 =
                 std::sync::atomic::AtomicU64::new(0);
             let drop_count = DROPPED_COUNT.fetch_add(1, Ordering::Relaxed);
             if drop_count % 500 == 0 {
                 log::warn!(
-                    "⚠️ Deepgram not connected - dropped {} audio batches",
+                    "⚠️ Deepgram not connected — dropped {} audio batches (reconnecting...)",
                     drop_count
                 );
             }
@@ -482,9 +699,10 @@ impl TranscriptionProvider for DeepgramProvider {
             let batch = AudioBatch {
                 samples: samples.to_vec(),
                 sample_rate,
-                channels: if channels == 0 { 1 } else { channels }, // Guard against 0 channels
+                channels: if channels == 0 { 1 } else { channels },
             };
             if tx.try_send(batch).is_err() {
+                // Buffer full — this batch is dropped but connection stays alive
                 log::trace!("Audio queue full, batch dropped");
             }
         }

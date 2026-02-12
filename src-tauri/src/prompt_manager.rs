@@ -640,7 +640,203 @@ Be conservative - only extract what you're confident about."#,
         )
         .await?;
 
-        log::info!("Seeded default prompts, models, use cases, and theme-specific prompts");
+        // ===================================================================
+        // Phase 3: Seed Intelligence Master Prompts (per-persona)
+        // ===================================================================
+        // These prompts power the core AI features and can be customized per persona.
+
+        let llm_id = llm_model_id.as_ref();
+        let themes = [
+            "prospecting",
+            "fundraising",
+            "product_dev",
+            "admin",
+            "personal",
+        ];
+
+        for theme in &themes {
+            // --- Catch-Up Capsule ---
+            let catch_up_desc = match *theme {
+                "prospecting" => "Generate catch-up for sales/prospecting meetings — focus on leads, pipeline, and next steps",
+                "fundraising" => "Generate catch-up for fundraising meetings — focus on investor sentiment, term sheets, and follow-ups",
+                "product_dev" => "Generate catch-up for product/engineering meetings — focus on technical decisions, blockers, and sprint items",
+                "admin" => "Generate catch-up for administrative meetings — focus on process decisions, deadlines, and assignments",
+                _ => "Generate catch-up for general meetings — focus on key points and action items",
+            };
+
+            let catch_up_prompt = format!(
+                r#"You are analyzing a meeting transcript. The user just joined late and needs to quickly understand what happened.
+
+PERSONA CONTEXT: This is a {} meeting. Prioritize insights relevant to {} workflows.
+
+Generate a Catch-Up Capsule in this exact JSON format:
+{{
+  "what_missed": ["key point 1", "key point 2", "key point 3"],
+  "current_topic": "what is being discussed right now",
+  "decisions": ["decision 1 if any"],
+  "open_threads": ["unresolved question 1", "unresolved question 2"],
+  "next_moves": ["suggestion 1 for what to say/do", "suggestion 2"],
+  "risks": ["any tension or sensitive topics detected"],
+  "questions_to_ask": ["good question to ask based on discussion"],
+  "ten_second_version": "3-4 ultra-short bullet points for quick scan",
+  "sixty_second_version": "fuller summary paragraph",
+  "confidence": 0.85
+}}
+
+HARD RULES:
+- Be factual. Only cite what's actually in the transcript.
+- If uncertain, use "Possibly:" prefix or omit entirely.
+- No hallucination. If transcript is unclear, say so.
+- Keep ten_second_version to 3-4 bullet points max.
+- Make next_moves actionable and specific to {} context.
+
+Return ONLY valid JSON, no other text."#,
+                theme, theme, theme,
+            );
+
+            self.create_theme_prompt(
+                theme,
+                &format!("catch_up_capsule_{}", theme),
+                catch_up_desc,
+                "intelligence",
+                &catch_up_prompt,
+                llm_id.map(|s| s.as_str()),
+                Some(0.4),
+            )
+            .await?;
+
+            // --- Meeting Report ---
+            let report_desc = match *theme {
+                "prospecting" => "Generate meeting report for sales meetings — highlight deals, pipeline changes, and follow-up tasks",
+                "fundraising" => "Generate meeting report for fundraising — highlight investor feedback, valuation discussions, and diligence items",
+                "product_dev" => "Generate meeting report for engineering — highlight technical decisions, architecture choices, and sprint commitments",
+                "admin" => "Generate meeting report for administrative sessions — highlight process changes, budget items, and deadlines",
+                _ => "Generate meeting report — highlight key outcomes, decisions, and action items",
+            };
+
+            let report_prompt = format!(
+                r#"You are a professional meeting analyst specializing in {} contexts.
+
+Analyze this meeting transcript and generate a structured report in JSON format:
+{{
+  "summary": "2-3 sentence executive summary focused on {} outcomes",
+  "key_topics": ["topic 1", "topic 2"],
+  "decisions": [{{"text": "decision made", "made_by": "person or null", "context": "brief context"}}],
+  "action_items": [{{"task": "what needs doing", "assignee": "who or null", "due_date": "when or null", "priority": "high/medium/low"}}],
+  "participants": ["name1", "name2"]
+}}
+
+RULES:
+- Focus on {} -relevant insights and terminology
+- Extract decisions with full context
+- Action items must be specific and actionable
+- Identify all participants from the transcript
+- Be concise but thorough
+
+Return ONLY valid JSON."#,
+                theme, theme, theme,
+            );
+
+            self.create_theme_prompt(
+                theme,
+                &format!("meeting_report_{}", theme),
+                report_desc,
+                "intelligence",
+                &report_prompt,
+                llm_id.map(|s| s.as_str()),
+                Some(0.3),
+            )
+            .await?;
+
+            // --- Genie Chat System Prompt ---
+            let genie_desc = match *theme {
+                "prospecting" => "Genie assistant for sales data — answer questions about leads, pipeline, and prospect interactions",
+                "fundraising" => "Genie assistant for fundraising data — answer questions about investors, rounds, and term discussions",
+                "product_dev" => "Genie assistant for engineering data — answer questions about code, architecture, and sprint progress",
+                "admin" => "Genie assistant for administrative data — answer questions about processes, schedules, and assignments",
+                _ => "Genie assistant for general meeting data — answer questions about meetings and activities",
+            };
+
+            let genie_prompt = format!(
+                r#"You are Genie, an intelligent meeting assistant with deep expertise in {} workflows.
+
+You have access to the user's meeting transcripts, screen captures, and activity data. Answer questions based on this data.
+
+PERSONA: {} specialist
+- Understand domain-specific terminology
+- Prioritize {} -relevant insights in your answers
+- Suggest follow-up actions appropriate to {} workflows
+- Be precise and cite specific meetings or timestamps when possible
+
+If the answer isn't in the provided context, say so clearly. Never fabricate information.
+When citing sources, mention the meeting title and approximate time."#,
+                theme, theme, theme, theme,
+            );
+
+            self.create_theme_prompt(
+                theme,
+                &format!("genie_system_{}", theme),
+                genie_desc,
+                "intelligence",
+                &genie_prompt,
+                llm_id.map(|s| s.as_str()),
+                Some(0.5),
+            )
+            .await?;
+
+            // --- Live Intelligence System Prompt ---
+            let intel_desc = match *theme {
+                "prospecting" => "Live intelligence for sales meetings — detect buying signals, objections, and commitment language",
+                "fundraising" => "Live intelligence for fundraising — detect investor interest signals, concerns, and term negotiations",
+                "product_dev" => "Live intelligence for engineering — detect technical debt signals, scope creep, and architecture decisions",
+                "admin" => "Live intelligence for admin meetings — detect process bottlenecks, deadline risks, and resource conflicts",
+                _ => "Live intelligence for general meetings — detect action items, decisions, risks, and topic shifts",
+            };
+
+            let intel_prompt = format!(
+                r#"You are a real-time meeting intelligence agent specializing in {} contexts.
+
+Analyze incoming transcript segments and extract structured insights in JSON:
+{{
+  "action_items": [{{"text": "", "assignee": "", "priority": ""}}],
+  "decisions": [{{"text": "", "made_by": ""}}],
+  "risks": [{{"text": "", "severity": 1-5, "type": ""}}],
+  "key_insights": [{{"text": "", "importance": 1-5}}],
+  "topic_shift": {{"detected": false, "from": "", "to": ""}}
+}}
+
+{} -SPECIFIC SIGNALS TO WATCH:
+{}
+
+RULES:
+- Only extract high-confidence insights
+- Use domain-appropriate terminology
+- Severity/importance 1=low, 5=critical
+- Return ONLY valid JSON"#,
+                theme,
+                theme.to_uppercase(),
+                match *theme {
+                    "prospecting" => "- Buying signals (budget mentions, timeline commitments)\n- Objections and concerns\n- Competitor mentions\n- Next step agreements",
+                    "fundraising" => "- Investment interest signals\n- Valuation discussions\n- Due diligence requests\n- Term sheet language\n- Investor concerns",
+                    "product_dev" => "- Technical debt acknowledgments\n- Scope creep indicators\n- Architecture decisions\n- Performance concerns\n- Security implications",
+                    "admin" => "- Deadline commitments\n- Budget approvals/rejections\n- Process change decisions\n- Resource allocation changes",
+                    _ => "- Action item commitments\n- Decision announcements\n- Risk indicators\n- Topic transitions",
+                },
+            );
+
+            self.create_theme_prompt(
+                theme,
+                &format!("live_intel_system_{}", theme),
+                intel_desc,
+                "intelligence",
+                &intel_prompt,
+                llm_id.map(|s| s.as_str()),
+                Some(0.3),
+            )
+            .await?;
+        }
+
+        log::info!("Seeded default prompts, models, use cases, theme-specific prompts, and intelligence master prompts");
         Ok(())
     }
 
@@ -700,6 +896,49 @@ Be conservative - only extract what you're confident about."#,
         "#,
         )
         .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| self.row_to_prompt(&r)))
+    }
+
+    /// Get a prompt by name, optionally filtered by theme.
+    /// If theme is provided and no match found, falls back to any matching name.
+    pub async fn get_prompt_by_name(
+        &self,
+        name: &str,
+        theme: Option<&str>,
+    ) -> Result<Option<Prompt>, sqlx::Error> {
+        // First try theme-specific match
+        if let Some(t) = theme {
+            let row = sqlx::query(
+                r#"
+                SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                       model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+                FROM prompt_library WHERE name = ? AND theme = ? AND is_active = 1
+                ORDER BY version DESC LIMIT 1
+            "#,
+            )
+            .bind(name)
+            .bind(t)
+            .fetch_optional(&self.pool)
+            .await?;
+
+            if let Some(r) = row {
+                return Ok(Some(self.row_to_prompt(&r)));
+            }
+        }
+
+        // Fallback: match by name only (no theme filter)
+        let row = sqlx::query(
+            r#"
+            SELECT id, name, description, category, system_prompt, user_prompt_template, 
+                   model_id, temperature, max_tokens, theme, version, is_builtin, is_active, created_at, updated_at
+            FROM prompt_library WHERE name = ? AND is_active = 1
+            ORDER BY version DESC LIMIT 1
+        "#,
+        )
+        .bind(name)
         .fetch_optional(&self.pool)
         .await?;
 

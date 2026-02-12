@@ -121,17 +121,22 @@ impl CalendarClient {
                 0 => CalendarAccessStatus::NotDetermined,
                 1 => CalendarAccessStatus::Restricted,
                 2 => CalendarAccessStatus::Denied,
-                3 => CalendarAccessStatus::Authorized,
+                3 => CalendarAccessStatus::Authorized, // Legacy (macOS < 14)
+                4 => CalendarAccessStatus::Authorized, // EKAuthorizationStatusFullAccess (macOS 14+)
                 _ => CalendarAccessStatus::Unknown,
             }
         }
     }
 
     /// Request calendar access (will prompt user)
+    /// Uses a stateless no-op completion block + polling to avoid ObjC block copy crashes.
+    /// The completion block passed to EventKit is copied via XPC to CalendarDaemon;
+    /// embedding Rust state in the block causes crashes in _Block_copy.
     #[cfg(target_os = "macos")]
     pub async fn request_access() -> Result<bool, String> {
         use objc::runtime::{Class, Object};
         use objc::{msg_send, sel, sel_impl};
+        use std::os::raw::c_void;
 
         // First check current status
         let initial_status = Self::check_access();
@@ -153,25 +158,66 @@ impl CalendarClient {
                 return Err("Failed to create EKEventStore".to_string());
             }
 
-            // Request access by calling requestAccessToEntityType:completion:
-            // Since block closures are complex, we'll trigger the request by simply
-            // accessing calendar data which will prompt for permission on first use.
-            // The actual permission prompt is triggered by EventKit internal machinery.
-            // We just need to create the store and try to access calendars.
-            let _calendars: *mut Object = msg_send![store, calendarsForEntityType: 0i64];
-
-            // Poll for status change (the request_access call triggers the system prompt)
-            for _ in 0..100 {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                let status = Self::check_access();
-                if status != CalendarAccessStatus::NotDetermined {
-                    return Ok(status == CalendarAccessStatus::Authorized);
-                }
+            // Stateless block — no captured data, safe for _Block_copy.
+            // We poll check_access() for the result instead of using the callback.
+            #[repr(C)]
+            struct BlockLiteral {
+                isa: *const c_void,
+                flags: i32,
+                reserved: i32,
+                invoke: unsafe extern "C" fn(*mut BlockLiteral, bool, *mut Object),
+                descriptor: *const BlockDescriptor,
             }
 
-            // Timeout - check final status
-            Ok(Self::check_access() == CalendarAccessStatus::Authorized)
+            #[repr(C)]
+            struct BlockDescriptor {
+                reserved: u64,
+                size: u64,
+            }
+
+            static DESCRIPTOR: BlockDescriptor = BlockDescriptor {
+                reserved: 0,
+                size: std::mem::size_of::<BlockLiteral>() as u64,
+            };
+
+            unsafe extern "C" fn noop_invoke(
+                _block: *mut BlockLiteral,
+                _granted: bool,
+                _error: *mut Object,
+            ) {
+                // No-op — result is obtained via polling check_access()
+            }
+
+            extern "C" {
+                static _NSConcreteStackBlock: *const c_void;
+            }
+
+            let mut block = BlockLiteral {
+                isa: _NSConcreteStackBlock,
+                flags: 0, // No copy/dispose helpers needed (no captured state)
+                reserved: 0,
+                invoke: noop_invoke,
+                descriptor: &DESCRIPTOR,
+            };
+
+            // Fire the permission request — macOS shows the consent dialog
+            let _: () = msg_send![store, requestFullAccessToEventsWithCompletion: &mut block as *mut BlockLiteral as *mut c_void];
         }
+
+        // Poll for the user's response (permission dialog is async)
+        for _ in 0..60 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            match Self::check_access() {
+                CalendarAccessStatus::Authorized => return Ok(true),
+                CalendarAccessStatus::Denied | CalendarAccessStatus::Restricted => {
+                    return Ok(false)
+                }
+                _ => continue,
+            }
+        }
+
+        // 30 second timeout — check one final time
+        Ok(Self::check_access() == CalendarAccessStatus::Authorized)
     }
 
     /// Fetch events for today (with caching)

@@ -8,6 +8,7 @@ use tokio::fs;
 
 /// Represents a Topic — a top-level organizing folder in the vault
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultTopic {
     pub name: String,
     pub path: String,
@@ -19,6 +20,7 @@ pub struct VaultTopic {
 
 /// Represents a file or directory in the vault
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultFile {
     pub name: String,
     pub path: String,
@@ -40,6 +42,7 @@ pub struct VaultFileContent {
 
 /// Hierarchical tree node for vault structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultTreeNode {
     pub name: String,
     pub path: String,
@@ -49,6 +52,7 @@ pub struct VaultTreeNode {
 
 /// Vault status info
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultStatus {
     pub configured: bool,
     pub path: Option<String>,
@@ -59,6 +63,7 @@ pub struct VaultStatus {
 
 /// Search result from vault
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultSearchResult {
     pub file_path: String,
     pub file_name: String,
@@ -69,6 +74,7 @@ pub struct VaultSearchResult {
 
 /// A wikilink found in a file
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultLink {
     pub source_file: String,
     pub target: String,
