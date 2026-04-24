@@ -287,7 +287,7 @@ Question → Pinecone Search → Context Assembly → TheBrain → Response
 | Module | Purpose |
 |--------|---------|
 | `meeting_intel.rs` | Meeting insights |
-| `live_intel_agent.rs` | Real-time analysis |
+| `live_intel_agent.rs` | Real-time extraction (8 event types, sentiment, energy, deadline detection) |
 | `semantic_classifier.rs` | Content classification |
 | `timeline_builder.rs` | Event aggregation |
 
@@ -297,8 +297,10 @@ Question → Pinecone Search → Context Assembly → TheBrain → Response
 
 | Version | Features |
 |---------|----------|
+| v2.7.0 | Smart Live Intel v2, Qwen3 8B, Sentiment/Energy, Deadlines |
+| v2.6.0 | Prompt Studio, AI Intelligence Pipeline |
+| v2.5.0 | Always-On Recording, Meeting Detection, RAG Pipeline |
 | v2.1.0 | Admin Console, Calendar, OCR, Classification |
-| v2.5.0 | Always-On Recording, Meeting Detection |
 | Current | RAG Pipeline, TheBrain Integration |
 
 ---

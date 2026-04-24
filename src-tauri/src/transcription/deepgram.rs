@@ -244,7 +244,7 @@ impl DeepgramProvider {
         live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
     ) -> Result<ConnectionSignal, String> {
         let url = format!(
-            "wss://api.deepgram.com/v1/listen?model={}&language=en-US&smart_format=true&punctuate=true&diarize=true&dictation=true&endpointing=10&utterance_end_ms=1000&vad_events=true&interim_results=true&encoding=linear16&sample_rate=16000&channels=1",
+            "wss://api.deepgram.com/v1/listen?model={}&language=en-US&smart_format=true&punctuate=true&diarize=true&dictation=true&endpointing=300&utterance_end_ms=1500&vad_events=true&interim_results=true&encoding=linear16&sample_rate=16000&channels=1",
             model
         );
 
@@ -273,8 +273,9 @@ impl DeepgramProvider {
 
         let (mut write, mut read) = ws_stream.split();
 
-        // Create channel for audio batches — large buffer to survive background throttling
-        let (audio_tx, mut audio_rx) = mpsc::channel::<AudioBatch>(500);
+        // Create channel for audio batches — small buffer to minimize latency
+        // 64 batches × 20ms = ~1.3s max queue depth (was 500 = 10s!)
+        let (audio_tx, mut audio_rx) = mpsc::channel::<AudioBatch>(64);
         *audio_tx_holder.write() = Some(audio_tx);
 
         // Channel to signal the reconnect loop from send/receive tasks
@@ -288,18 +289,21 @@ impl DeepgramProvider {
             let mut buffer: VecDeque<f32> = VecDeque::with_capacity(16000);
             let batch_size = 320usize; // 20ms @ 16kHz
             let mut last_send = std::time::Instant::now();
-            let mut consecutive_errors: u32 = 0;
 
             loop {
                 if !should_run_send.load(Ordering::SeqCst) {
+                    // Send CloseStream so Deepgram flushes remaining audio
+                    let close_msg = serde_json::json!({"type": "CloseStream"}).to_string();
+                    let _ = write.send(Message::Text(close_msg.into())).await;
+                    log::info!("📤 Sent CloseStream to Deepgram");
                     let _ = write.close().await;
                     let _ = signal_tx_send.send(ConnectionSignal::Stopped).await;
                     return;
                 }
 
-                // Wait for audio with 50ms timeout (more tolerant of background scheduling)
+                // Wait for audio with 20ms timeout — tight polling for low latency
                 let result =
-                    tokio::time::timeout(std::time::Duration::from_millis(50), audio_rx.recv())
+                    tokio::time::timeout(std::time::Duration::from_millis(20), audio_rx.recv())
                         .await;
 
                 match result {
@@ -350,40 +354,18 @@ impl DeepgramProvider {
                         log::info!("🎧 Sent audio chunk #{} (buf={})", count, buffer.len());
                     }
 
-                    // Resilient send with retry
-                    let mut sent = false;
-                    for attempt in 0..3u32 {
-                        match write.send(Message::Binary(bytes.clone().into())).await {
-                            Ok(_) => {
-                                last_send = std::time::Instant::now();
-                                consecutive_errors = 0;
-                                sent = true;
-                                break;
-                            }
-                            Err(e) => {
-                                if attempt < 2 {
-                                    log::warn!("Audio send retry {}/3: {}", attempt + 1, e);
-                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                                } else {
-                                    log::error!("Audio send failed after 3 attempts: {}", e);
-                                    consecutive_errors += 1;
-                                }
-                            }
+                    // Single-attempt send — fail fast and reconnect
+                    match write.send(Message::Binary(bytes.into())).await {
+                        Ok(_) => {
+                            last_send = std::time::Instant::now();
                         }
-                    }
-
-                    // If we've had too many consecutive failures, signal reconnect
-                    if consecutive_errors >= 3 || !sent && consecutive_errors > 0 {
-                        log::error!(
-                            "🔄 Too many send errors ({}), triggering reconnect",
-                            consecutive_errors
-                        );
-                        let _ = signal_tx_send
-                            .send(ConnectionSignal::Disconnected(
-                                "persistent send failures".to_string(),
-                            ))
-                            .await;
-                        return;
+                        Err(e) => {
+                            log::error!("Audio send failed: {} — triggering reconnect", e);
+                            let _ = signal_tx_send
+                                .send(ConnectionSignal::Disconnected(format!("send error: {}", e)))
+                                .await;
+                            return;
+                        }
                     }
                 }
 
@@ -419,12 +401,56 @@ impl DeepgramProvider {
         let meeting_id_recv = meeting_id.clone();
         let intel_agent_recv = live_intel_agent.clone();
         tokio::spawn(async move {
-            while let Some(msg) = read.next().await {
-                if !is_connected_recv.load(Ordering::SeqCst)
-                    || !should_run_recv.load(Ordering::SeqCst)
-                {
-                    break;
+            // After stop is requested, allow up to 3s for final transcripts to arrive
+            let mut draining = false;
+            let mut drain_deadline: Option<tokio::time::Instant> = None;
+
+            loop {
+                // Check if we should stop
+                let still_running = should_run_recv.load(Ordering::SeqCst)
+                    && is_connected_recv.load(Ordering::SeqCst);
+
+                if !still_running && !draining {
+                    // Enter drain mode — give Deepgram time to flush everything
+                    // With the 64-element buffer (was 500), drain is typically <2s
+                    // but we allow 10s to ensure nothing is lost
+                    draining = true;
+                    drain_deadline =
+                        Some(tokio::time::Instant::now() + std::time::Duration::from_secs(10));
+                    log::info!("🔄 Entering drain mode — 10s to flush remaining transcripts");
                 }
+
+                if draining {
+                    if let Some(deadline) = drain_deadline {
+                        if tokio::time::Instant::now() >= deadline {
+                            log::info!("⏱️ Drain deadline reached — all remaining audio captured");
+                            break;
+                        }
+                    }
+                }
+
+                // Read next message with timeout (500ms in drain mode, 5s normally)
+                let timeout_dur = if draining {
+                    std::time::Duration::from_millis(500)
+                } else {
+                    std::time::Duration::from_secs(5)
+                };
+
+                let msg = match tokio::time::timeout(timeout_dur, read.next()).await {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) => {
+                        log::info!("Deepgram WebSocket stream ended");
+                        break;
+                    }
+                    Err(_) => {
+                        // Timeout — no messages for 500ms (drain) or 5s (normal)
+                        if draining {
+                            log::info!("✅ No more messages — drain complete");
+                            break;
+                        }
+                        continue; // Normal timeout, keep listening
+                    }
+                };
 
                 match msg {
                     Ok(Message::Text(text)) => {
@@ -457,6 +483,12 @@ impl DeepgramProvider {
                                                 .and_then(|w| w.speaker)
                                                 .map(|s| format!("Speaker {}", s)),
                                         };
+
+                                        // In drain mode, skip interims to avoid ghost echoes
+                                        // but still accept finals (the important ones)
+                                        if draining && !is_final {
+                                            continue;
+                                        }
 
                                         if is_final {
                                             log::info!("📝 TRANSCRIPT [FINAL]: {}", alt.transcript);
@@ -519,27 +551,32 @@ impl DeepgramProvider {
                     }
                     Ok(Message::Close(frame)) => {
                         log::info!("Deepgram sent close frame: {:?}", frame);
-                        let _ = signal_tx_recv
-                            .send(ConnectionSignal::Disconnected(
-                                "server closed connection".to_string(),
-                            ))
-                            .await;
+                        if !draining {
+                            let _ = signal_tx_recv
+                                .send(ConnectionSignal::Disconnected(
+                                    "server closed connection".to_string(),
+                                ))
+                                .await;
+                        }
                         break;
                     }
                     Err(e) => {
                         log::error!("WebSocket receive error: {}", e);
-                        let _ = signal_tx_recv
-                            .send(ConnectionSignal::Disconnected(format!(
-                                "receive error: {}",
-                                e
-                            )))
-                            .await;
+                        if !draining {
+                            let _ = signal_tx_recv
+                                .send(ConnectionSignal::Disconnected(format!(
+                                    "receive error: {}",
+                                    e
+                                )))
+                                .await;
+                        }
                         break;
                     }
                     _ => {}
                 }
             }
             is_connected_recv.store(false, Ordering::SeqCst);
+            log::info!("🔇 Receive task exited");
         });
 
         // Wait for either task to signal disconnect or stop

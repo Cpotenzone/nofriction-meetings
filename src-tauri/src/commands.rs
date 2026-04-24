@@ -5855,6 +5855,8 @@ pub async fn internal_export_meeting(
     let mut ai_commitments = Vec::new();
     let mut ai_questions = Vec::new();
     let mut ai_topic_shifts = Vec::new();
+    let mut ai_key_insights = Vec::new();
+    let mut ai_deadlines = Vec::new();
 
     for insight in &insights {
         match insight {
@@ -5883,6 +5885,23 @@ pub async fn internal_export_meeting(
                 ..
             } => {
                 ai_topic_shifts.push(format!("- 🎯 {} → {}", from_topic, to_topic));
+            }
+            LiveInsightEvent::KeyInsight {
+                text, importance, ..
+            } => {
+                ai_key_insights.push(format!("- 💡 {} *(importance: {:.0}/5)*", text, importance));
+            }
+            LiveInsightEvent::Deadline {
+                text,
+                deadline_ref,
+                owner,
+                ..
+            } => {
+                if let Some(o) = owner {
+                    ai_deadlines.push(format!("- 📅 {} — {} *(owner: {})*", text, deadline_ref, o));
+                } else {
+                    ai_deadlines.push(format!("- 📅 {} — {}", text, deadline_ref));
+                }
             }
         }
     }
@@ -5916,6 +5935,16 @@ pub async fn internal_export_meeting(
     if !ai_topic_shifts.is_empty() {
         intelligence_md.push_str("### Topic Shifts\n\n");
         intelligence_md.push_str(&ai_topic_shifts.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_key_insights.is_empty() {
+        intelligence_md.push_str("### Key Insights\n\n");
+        intelligence_md.push_str(&ai_key_insights.join("\n"));
+        intelligence_md.push_str("\n\n");
+    }
+    if !ai_deadlines.is_empty() {
+        intelligence_md.push_str("### Deadlines\n\n");
+        intelligence_md.push_str(&ai_deadlines.join("\n"));
         intelligence_md.push_str("\n\n");
     }
 

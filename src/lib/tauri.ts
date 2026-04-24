@@ -513,6 +513,9 @@ export interface LiveInsightEvent {
     from_topic?: string;
     to_topic?: string;
     reason?: string;
+    importance?: number;
+    deadline_ref?: string;
+    owner?: string;
     timestamp_ms: number;
 }
 

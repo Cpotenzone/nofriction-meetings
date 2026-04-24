@@ -23,3 +23,17 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Large source/personal images
+src-tauri/icons/IMG_*
+src-tauri/icons/source_*.png
+
+# Build artifacts
+*.tar.gz
+*.tgz
+*.dmg
+
+# Sensitive files
+*.pem
+*.key
+secrets.json

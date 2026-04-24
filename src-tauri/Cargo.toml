@@ -1,6 +1,6 @@
 [package]
 name = "nofriction-meetings"
-version = "1.0.0-rc.a3"
+version = "3.4.0"
 description = "noFriction Meetings - Professional meeting transcription for macOS"
 authors = ["noFriction AI"]
 edition = "2021"

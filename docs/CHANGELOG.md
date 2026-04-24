@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.0] - 2026-02-13
+
+### Added
+
+#### LiveIntelAgent v2 — Smart Real-Time Meeting Intelligence
+- **8 event types** (was 6): ActionItem, Decision, RiskSignal, Commitment, QuestionSuggestion, TopicShift, **KeyInsight**, **Deadline**
+- **Smart pattern matching**: Strong vs weak patterns — weak signals require 2+ co-occurring matches to fire
+- **30-second cooldown** per event type to prevent insight spam
+- **4-word minimum** segment guard — skips filler ("yeah", "uh huh") fragments
+- **Hash-based deduplication** across rule-based and AI extraction paths
+- **Deadline extraction**: 28 temporal patterns ("by Friday", "end of quarter", "ship by", etc.)
+- **Sentiment tracking**: Exponential weighted average from 40+ signal words (-1.0 to 1.0)
+- **Meeting energy score**: WPM rate + speaker diversity → 0-100 composite score
+
+#### AI Integration Improvements
+- AI prompt now includes live conversation state (current topic, sentiment, energy, speakers)
+- AI response parsing for `key_insights` → proper `KeyInsight` event type
+- AI response parsing for `deadlines` → `Deadline` events with owner and reference
+- `MeetingStats` struct tracks aggregate counts of segments, words, speakers, and event types
+
+### Changed
+- Default AI model upgraded from `qwen2.5-coder:7b` to `qwen3:8b` (Sage — deep reasoning model)
+- Serendipity API key updated
+- `MeetingIntelPanel.tsx` icons: 💡 for key_insight, 📅 for deadline, ❓ for question_suggestion
+- Meeting export (stop_recording) now includes Key Insights and Deadlines markdown sections
+
+### Fixed
+- `KeyInsight` events were incorrectly mapped to `QuestionSuggestion` — now use dedicated type
+- Dead code warning on `AiRisk.type` field suppressed with `#[allow(dead_code)]`
+
+---
+
 ## [2.6.0] - 2026-02-11
 
 ### Added
@@ -266,6 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Theme |
 |---------|------|-------|
+| 2.7.0 | 2026-02-13 | Smart Live Intel v2 + Qwen3 |
 | 2.6.0 | 2026-02-11 | Prompt Studio + AI Intelligence |
 | 2.5.0 | 2026-02-03 | RAG Pipeline + Always-On |
 | 2.1.0 | 2026-01-20 | Admin Console + Calendar |
@@ -329,6 +362,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.7.0]: https://github.com/nofriction/meetings/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/nofriction/meetings/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/nofriction/meetings/compare/v2.1.0...v2.5.0
 [2.1.0]: https://github.com/nofriction/meetings/compare/v2.0.0...v2.1.0

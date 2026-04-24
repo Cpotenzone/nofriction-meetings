@@ -276,7 +276,7 @@ const TechSpec: React.FC = () => (
                 Backend: Rust (Tauri v2){"\n"}
                 Database: SQLite (sqlx){"\n"}
                 Transcription: Deepgram Nova-3 (WebSocket streaming){"\n"}
-                AI Reports: Serendipity API (qwen2.5-coder:7b){"\n"}
+                AI Reports: Serendipity API (qwen3:8b){"\n"}
                 Screen Capture: xcap (native screen capturing){"\n"}
                 Calendar: Apple EventKit (macOS native)
             </div>
@@ -320,7 +320,7 @@ const TechSpec: React.FC = () => (
             <ol>
                 <li><strong>Trigger</strong>: When <code>stop_recording</code> completes and duration &gt; 6 minutes.</li>
                 <li><strong>Prompt Assembly</strong>: The stored master prompt (editable in Settings) is combined with the transcript text.</li>
-                <li><strong>API Call</strong>: Sent to the Serendipity API (<code>/v1/chat/completions</code>) using model <code>qwen2.5-coder:7b</code>.</li>
+                <li><strong>API Call</strong>: Sent to the Serendipity API (<code>/v1/chat/completions</code>) using model <code>qwen3:8b</code>.</li>
                 <li><strong>Parse</strong>: Response is parsed as JSON into structured <code>GeneratedNotes</code>.</li>
                 <li><strong>Storage</strong>: Report is saved to the <code>meeting_notes</code> table.</li>
                 <li><strong>Display</strong>: Report appears in DECK view when viewing the meeting.</li>
@@ -514,7 +514,7 @@ const ServicesManual: React.FC = () => (
                 <tbody>
                     <tr><td><strong>Endpoint</strong></td><td><code>https://7wk6vrq9achr2djw.caas.targon.com</code></td></tr>
                     <tr><td><strong>API Type</strong></td><td>REST (OpenAI-compatible)</td></tr>
-                    <tr><td><strong>Model</strong></td><td><code>qwen2.5-coder:7b</code></td></tr>
+                    <tr><td><strong>Model</strong></td><td><code>qwen3:8b</code> (Sage — deep reasoning)</td></tr>
                     <tr><td><strong>Auth</strong></td><td>Bearer token (pre-configured)</td></tr>
                     <tr><td><strong>Used For</strong></td><td>Meeting report generation, Data Chat answers, attendee intelligence</td></tr>
                 </tbody>

@@ -197,10 +197,32 @@ AI: Based on your January 15th meeting with Sarah, you decided
 ### Model Selection
 
 Choose from available models:
-- **Qwen3 8B** - Fast, general purpose
-- **Qwen3 14B** - Higher quality
-- **Qwen3 VL** - Vision + language
-- **Coder 7B** - Code-focused
+- **Qwen3 8B (Sage)** - Deep reasoning, analysis, creative writing (default)
+- **Qwen3 VL 8B (Vision)** - Image analysis, visual Q&A, document OCR
+- **Qwen2.5 Coder 7B** - Code-focused tasks
+- **Mixtral** - Multi-language, large context
+
+### Live Intelligence Panel
+
+During recording, the Live Intelligence Panel detects insights in real-time:
+
+| Insight Type | Icon | What It Detects |
+|-------------|------|------------------|
+| Action Item | ☑️ | Tasks, assignments, follow-ups |
+| Decision | ⚖️ | Choices made, agreements reached |
+| Risk Signal | ⚠️ | Concerns, blockers, warnings |
+| Commitment | 🤝 | Promises, pledges, voluntary obligations |
+| Key Insight | 💡 | Important observations, strategic points |
+| Deadline | 📅 | Time-bound references ("by Friday", "end of quarter") |
+| Topic Shift | ↪️ | Major conversation direction changes |
+| Question | ❓ | Suggested follow-up questions |
+
+**Smart Detection Features:**
+- Pattern matching with false-positive guards (weak signals require 2+ co-occurring matches)
+- 30-second cooldown per event type prevents spam
+- Hash-based deduplication across rule-based and AI paths
+- Sentiment tracking (-1.0 to 1.0) with exponential weighted average
+- Meeting energy score (0-100) based on WPM + speaker diversity
 
 ---
 

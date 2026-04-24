@@ -1,16 +1,18 @@
 # noFriction Meetings
 
-**Version 1.0.0 RC 1** — Your AI-powered meeting companion for macOS
+**Version 3.4.0** — Your AI-powered meeting companion for macOS
 
 ---
 
-## ✨ What's New in 1.0
+## ✨ What's New in 3.4
 
-- **Synced Rewind View** — Visual timeline with synchronized audio + screen
-- **Screenshot Integration** — Thumbnails with expand-to-view modal
-- **Keyboard Navigation** — Use ↑↓ or j/k to navigate, / to search
-- **Search Everything** — Full-text search across transcripts and screen text
-- **AI Intelligence** — Summaries, action items, and key insights
+- **Obsidian Vault Integration** — Bidirectional sync of meeting notes to your vault
+- **Calendar Intelligence** — Auto-enriched meeting context from macOS Calendar
+- **Data Chatbot (RAG)** — Ask questions across all your meeting history
+- **Meeting Reports** — Custom prompt-driven report generation
+- **Prompt Studio** — Create and tune prompts for AI analysis
+- **Intel Dashboard** — Live meeting intelligence with sentiment and energy scoring
+
 
 ---
 

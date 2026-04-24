@@ -64,7 +64,7 @@ export function useTranscripts(meetingId: string | null) {
                             speaker,
                         };
 
-                        return [...filtered, newTranscript].slice(-50);
+                        return [...filtered, newTranscript].slice(-200);
                     } else {
                         // Interim transcript - update the preview
                         // Don't add if it's the same as the last interim
@@ -85,7 +85,7 @@ export function useTranscripts(meetingId: string | null) {
                             speaker,
                         };
 
-                        return [...finals, interimTranscript].slice(-50);
+                        return [...finals, interimTranscript].slice(-200);
                     }
                 });
             });

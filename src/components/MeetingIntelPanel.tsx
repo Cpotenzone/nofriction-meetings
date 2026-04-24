@@ -59,6 +59,9 @@ interface LiveInsightEvent {
     from_topic?: string;
     to_topic?: string;
     reason?: string;
+    importance?: number;
+    deadline_ref?: string;
+    owner?: string;
     timestamp_ms: number;
 }
 
@@ -391,9 +394,11 @@ function LiveInsightContent({
             case 'action_item': return '☑️';
             case 'decision': return '⚖️';
             case 'risk_signal': return '⚠️';
-            case 'question_suggestion': return '💡';
+            case 'question_suggestion': return '❓';
             case 'commitment': return '🤝';
             case 'topic_shift': return '↪️';
+            case 'key_insight': return '💡';
+            case 'deadline': return '📅';
             default: return '📌';
         }
     };

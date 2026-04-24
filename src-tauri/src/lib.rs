@@ -13,7 +13,7 @@ pub mod database;
 pub mod dork_mode;
 pub mod meeting_notes;
 
-// pub mod deepgram_client; // Deprecated
+
 pub mod frame_extractor;
 pub mod live_intel_agent;
 pub mod meeting_intel;
@@ -78,7 +78,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use capture_engine::CaptureEngine;
 use database::DatabaseManager;
-// use deepgram_client::DeepgramClient; // Deprecated
+
 use ambient_capture::AmbientCaptureService;
 use interaction_loop::InteractionLoop;
 use live_intel_agent::LiveIntelAgent;
@@ -94,7 +94,7 @@ use vlm_client::VLMClient;
 /// Application state shared across commands
 pub struct AppState {
     pub capture_engine: Arc<RwLock<CaptureEngine>>,
-    // pub deepgram_client: Arc<RwLock<DeepgramClient>>, // Deprecated
+
     pub transcription_manager: Arc<TranscriptionManager>, // New
     pub database: Arc<DatabaseManager>,
     pub settings: Arc<SettingsManager>,
@@ -462,7 +462,7 @@ impl AppState {
 
         Ok(Self {
             capture_engine: Arc::new(RwLock::new(capture)),
-            // deepgram_client: Arc::new(RwLock::new(deepgram)),
+
             transcription_manager,
             database,
             settings: settings.clone(),
