@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { emit } from '@tauri-apps/api/event';
 import { AgencyMode } from './AgencyLayout';
 
@@ -11,6 +11,22 @@ interface AgencyNavbarProps {
     onOpenSettings: () => void;
 }
 
+// Primary modes: always visible
+const PRIMARY_MODES: { mode: AgencyMode; icon: string; label: string }[] = [
+    { mode: 'flow', icon: '🌊', label: 'FLOW' },
+    { mode: 'intel', icon: '🔍', label: 'INTEL' },
+    { mode: 'vault', icon: '📚', label: 'VAULT' },
+    { mode: 'chat', icon: '💬', label: 'CHAT' },
+];
+
+// Secondary modes: in overflow menu
+const SECONDARY_MODES: { mode: AgencyMode; icon: string; label: string }[] = [
+    { mode: 'deck', icon: '🧠', label: 'DECK' },
+    { mode: 'zen', icon: '🧘', label: 'ZEN' },
+    { mode: 'prompts', icon: '🧠', label: 'PROMPTS' },
+    { mode: 'help', icon: '📖', label: 'HELP' },
+];
+
 export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
     activeMode,
     onModeChange,
@@ -18,9 +34,25 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
     onToggleRecording,
     onOpenSettings
 }) => {
+    const [showMore, setShowMore] = useState(false);
+    const moreRef = useRef<HTMLDivElement>(null);
+
     const handleEnterGenie = async () => {
         await emit('enter-genie-mode');
     };
+
+    // Close overflow on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+                setShowMore(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const isSecondary = SECONDARY_MODES.some(m => m.mode === activeMode);
 
     return (
         <nav className="agency-navbar">
@@ -40,62 +72,54 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
 
             <div className="agency-nav-center">
                 <div className="agency-mode-switcher">
-                    <button
-                        className={`mode-btn ${activeMode === 'flow' ? 'active' : ''}`}
-                        onClick={() => onModeChange('flow')}
-                    >
-                        <span className="mode-icon">🌊</span>
-                        FLOW
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'deck' ? 'active' : ''}`}
-                        onClick={() => onModeChange('deck')}
-                    >
-                        <span className="mode-icon">🧠</span>
-                        DECK
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'zen' ? 'active' : ''}`}
-                        onClick={() => onModeChange('zen')}
-                    >
-                        <span className="mode-icon">🧘</span>
-                        ZEN
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'vault' ? 'active' : ''}`}
-                        onClick={() => onModeChange('vault')}
-                    >
-                        <span className="mode-icon">📚</span>
-                        VAULT
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'intel' ? 'active' : ''}`}
-                        onClick={() => onModeChange('intel')}
-                    >
-                        <span className="mode-icon">🔍</span>
-                        INTEL
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'chat' ? 'active' : ''}`}
-                        onClick={() => onModeChange('chat')}
-                    >
-                        <span className="mode-icon">💬</span>
-                        CHAT
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'prompts' ? 'active' : ''}`}
-                        onClick={() => onModeChange('prompts')}
-                    >
-                        <span className="mode-icon">🧠</span>
-                        PROMPTS
-                    </button>
-                    <button
-                        className={`mode-btn ${activeMode === 'help' ? 'active' : ''}`}
-                        onClick={() => onModeChange('help')}
-                    >
-                        <span className="mode-icon">📖</span>
-                        HELP
-                    </button>
+                    {/* Primary modes — always visible */}
+                    {PRIMARY_MODES.map(({ mode, icon, label }) => (
+                        <button
+                            key={mode}
+                            className={`mode-btn ${activeMode === mode ? 'active' : ''}`}
+                            onClick={() => onModeChange(mode)}
+                        >
+                            <span className="mode-icon">{icon}</span>
+                            {label}
+                        </button>
+                    ))}
+
+                    {/* Overflow menu for secondary modes */}
+                    <div className="mode-overflow" ref={moreRef}>
+                        <button
+                            className={`mode-btn mode-btn-more ${isSecondary ? 'active' : ''}`}
+                            onClick={() => setShowMore(!showMore)}
+                            title="More views"
+                        >
+                            <span className="mode-icon">•••</span>
+                            MORE
+                        </button>
+                        <AnimatePresence>
+                            {showMore && (
+                                <motion.div
+                                    className="mode-overflow-menu"
+                                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                    transition={{ duration: 0.15 }}
+                                >
+                                    {SECONDARY_MODES.map(({ mode, icon, label }) => (
+                                        <button
+                                            key={mode}
+                                            className={`overflow-item ${activeMode === mode ? 'active' : ''}`}
+                                            onClick={() => {
+                                                onModeChange(mode);
+                                                setShowMore(false);
+                                            }}
+                                        >
+                                            <span className="overflow-icon">{icon}</span>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </div>
             </div>
 
@@ -128,3 +152,4 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
         </nav>
     );
 };
+

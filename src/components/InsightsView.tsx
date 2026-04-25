@@ -4,6 +4,8 @@
 import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
 import type { Meeting } from "../lib/tauri";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
 
 export function InsightsView() {
     const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -49,12 +51,10 @@ export function InsightsView() {
     if (error) {
         return (
             <div className="insights-view">
-                <div className="error-state">
-                    <p>⚠️ {error}</p>
-                    <button className="btn btn-primary" onClick={loadData}>
-                        Retry
-                    </button>
-                </div>
+                <ErrorState
+                    message={error}
+                    onRetry={loadData}
+                />
             </div>
         );
     }
@@ -62,13 +62,11 @@ export function InsightsView() {
     if (meetings.length === 0) {
         return (
             <div className="insights-view">
-                <div className="empty-state">
-                    <div className="empty-state-icon">💡</div>
-                    <p className="empty-state-text">No meeting data yet</p>
-                    <p className="empty-state-hint">
-                        Start recording to see meeting insights
-                    </p>
-                </div>
+                <EmptyState
+                    icon="💡"
+                    title="No meeting data yet"
+                    message="Start recording to see meeting insights"
+                />
             </div>
         );
     }

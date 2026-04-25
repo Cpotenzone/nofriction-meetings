@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
 import type { Meeting, CalendarMatchEvent } from "../lib/tauri";
+import EmptyState from "./EmptyState";
 
 interface MeetingHistoryProps {
     onSelectMeeting: (meetingId: string) => void;
@@ -139,10 +140,11 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         return (
             <div className="meeting-history">
                 <h3>Past Meetings</h3>
-                <div className="empty-state">
-                    <div className="empty-state-icon">📅</div>
-                    <p className="empty-state-text">No meetings yet. Start recording to capture your first meeting!</p>
-                </div>
+                <EmptyState
+                    icon="📅"
+                    title="No meetings yet"
+                    message="Start recording to capture your first meeting!"
+                />
             </div>
         );
     }

@@ -1860,6 +1860,89 @@ pre,
 }
 
 /* ========================================
+   REUSABLE EmptyState & ErrorState COMPONENTS
+   ======================================== */
+.nf-empty-state,
+.nf-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 32px;
+  min-height: 200px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface-secondary, rgba(255,255,255,0.03));
+  border: 1px dashed var(--border-primary, rgba(255,255,255,0.08));
+  animation: nf-fade-in 0.3s ease-out;
+}
+
+.nf-error-state {
+  border-color: var(--status-error, #ef4444);
+  border-style: solid;
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.nf-empty-state__icon,
+.nf-error-state__icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.nf-empty-state__title,
+.nf-error-state__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+  margin: 0 0 8px;
+}
+
+.nf-empty-state__message,
+.nf-error-state__message {
+  font-size: 13px;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  margin: 0 0 16px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.nf-empty-state__action,
+.nf-error-state__action {
+  padding: 8px 20px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--accent-primary, #6366f1);
+  background: transparent;
+  color: var(--accent-primary, #6366f1);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nf-empty-state__action:hover,
+.nf-error-state__action:hover {
+  background: var(--accent-primary, #6366f1);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.nf-error-state__action {
+  border-color: var(--status-error, #ef4444);
+  color: var(--status-error, #ef4444);
+}
+
+.nf-error-state__action:hover {
+  background: var(--status-error, #ef4444);
+}
+
+@keyframes nf-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
    SETTINGS LAYOUT
    ======================================== */
 .full-settings-layout {
@@ -5332,6 +5415,66 @@ pre,
 
 .mode-icon {
   font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Overflow Menu (secondary modes) */
+.mode-overflow {
+  position: relative;
+}
+
+.mode-btn-more {
+  opacity: 0.7;
+}
+
+.mode-btn-more.active {
+  opacity: 1;
+}
+
+.mode-overflow-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: var(--agency-bg-dark, #0f0f0f);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px);
+  z-index: 100;
+}
+
+.overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--agency-text-secondary, rgba(255,255,255,0.6));
+  font-family: var(--agency-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.overflow-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--agency-text-primary, #fff);
+}
+
+.overflow-item.active {
+  background: rgba(250, 204, 21, 0.08);
+  color: var(--agency-gold, #facc15);
+}
+
+.overflow-icon {
+  font-size: 14px;
   opacity: 0.8;
 }
 
