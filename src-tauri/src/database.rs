@@ -3098,3 +3098,237 @@ impl DatabaseManager {
         ))
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Create a temporary database for testing
+    async fn test_db() -> (DatabaseManager, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("nf-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let db = DatabaseManager::new(&db_path).await.unwrap();
+        db.run_migrations().await.unwrap();
+        (db, dir)
+    }
+
+    /// Clean up temp directory
+    fn cleanup(dir: PathBuf) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // ─── Initialization ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_database_creates_and_migrates() {
+        let (db, dir) = test_db().await;
+        // If we get here, creation and migrations succeeded
+        // Verify by listing meetings (should return empty)
+        let meetings = db.list_meetings(10).await.unwrap();
+        assert!(meetings.is_empty());
+        cleanup(dir);
+    }
+
+    // ─── Meeting CRUD ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_create_and_get_meeting() {
+        let (db, dir) = test_db().await;
+
+        let meeting = db.create_meeting("test-1", "Daily Standup").await.unwrap();
+        assert_eq!(meeting.id, "test-1");
+        assert_eq!(meeting.title, "Daily Standup");
+        assert!(meeting.ended_at.is_none());
+
+        let fetched = db.get_meeting("test-1").await.unwrap();
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().title, "Daily Standup");
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_meeting_returns_none() {
+        let (db, dir) = test_db().await;
+        let result = db.get_meeting("nonexistent").await.unwrap();
+        assert!(result.is_none());
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_list_meetings_returns_recent_first() {
+        let (db, dir) = test_db().await;
+
+        db.create_meeting("m1", "First Meeting").await.unwrap();
+        // Small delay to ensure ordering
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        db.create_meeting("m2", "Second Meeting").await.unwrap();
+
+        let meetings = db.list_meetings(10).await.unwrap();
+        assert_eq!(meetings.len(), 2);
+        // Most recent first
+        assert_eq!(meetings[0].id, "m2");
+        assert_eq!(meetings[1].id, "m1");
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_update_meeting_title() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Original").await.unwrap();
+        db.update_meeting_title("m1", "Updated Title").await.unwrap();
+
+        let meeting = db.get_meeting("m1").await.unwrap().unwrap();
+        assert_eq!(meeting.title, "Updated Title");
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_end_meeting_sets_timestamp_and_duration() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        // Wait a brief moment so duration > 0
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        db.end_meeting("m1").await.unwrap();
+
+        let meeting = db.get_meeting("m1").await.unwrap().unwrap();
+        assert!(meeting.ended_at.is_some());
+        assert!(meeting.duration_seconds.is_some());
+        assert!(meeting.duration_seconds.unwrap() >= 0);
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_delete_meeting() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Doomed").await.unwrap();
+        db.delete_meeting("m1").await.unwrap();
+
+        let result = db.get_meeting("m1").await.unwrap();
+        assert!(result.is_none());
+
+        cleanup(dir);
+    }
+
+    // ─── Transcripts ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_and_get_transcripts() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.add_transcript("m1", "Hello world", Some("Alice"), true, 0.95)
+            .await
+            .unwrap();
+        db.add_transcript("m1", "Hi there", Some("Bob"), true, 0.88)
+            .await
+            .unwrap();
+
+        let transcripts = db.get_transcripts("m1").await.unwrap();
+        assert_eq!(transcripts.len(), 2);
+        assert_eq!(transcripts[0].text, "Hello world");
+        assert_eq!(transcripts[0].speaker.as_deref(), Some("Alice"));
+        assert!(transcripts[0].is_final);
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_search_transcripts() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Design Review").await.unwrap();
+
+        db.add_transcript("m1", "We should use Kubernetes for the deployment", None, true, 0.9)
+            .await
+            .unwrap();
+        db.add_transcript("m1", "The frontend needs a complete redesign", None, true, 0.9)
+            .await
+            .unwrap();
+
+        let results = db.search_transcripts("kubernetes").await.unwrap();
+        assert!(
+            !results.is_empty(),
+            "Search should find transcript containing 'kubernetes'"
+        );
+
+        cleanup(dir);
+    }
+
+    // ─── Frames ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_and_count_frames() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.add_frame("m1", Utc::now(), None, None).await.unwrap();
+        db.add_frame("m1", Utc::now(), Some("/tmp/frame2.png"), None).await.unwrap();
+
+        let count = db.count_frames("m1").await.unwrap();
+        assert_eq!(count, 2);
+
+        let frames = db.get_frames("m1", 10).await.unwrap();
+        assert_eq!(frames.len(), 2);
+
+        cleanup(dir);
+    }
+
+    // ─── Meeting Notes ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_save_and_get_meeting_notes() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.save_meeting_notes(
+            "notes-1",
+            "m1",
+            Some("This was a productive meeting"),
+            Some("[\"architecture\",\"deployment\"]"),
+            Some("[\"Use K8s\"]"),
+            Some("[\"Update docs\"]"),
+            Some("[\"Alice\",\"Bob\"]"),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let notes = db.get_meeting_notes("m1").await.unwrap();
+        assert!(notes.is_some());
+        let notes = notes.unwrap();
+        assert_eq!(notes.summary.as_deref(), Some("This was a productive meeting"));
+        assert!(notes.key_topics.is_some());
+
+        cleanup(dir);
+    }
+
+    // ─── Meeting Comments ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_and_get_comments() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.add_meeting_comment("c1", "m1", "Great point about security", Some("note"), None, None)
+            .await
+            .unwrap();
+
+        let comments = db.get_meeting_comments("m1").await.unwrap();
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].comment, "Great point about security");
+        assert_eq!(comments[0].comment_type, "note");
+
+        cleanup(dir);
+    }
+}
+
