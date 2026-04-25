@@ -13,6 +13,9 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
     const [geminiModel, setGeminiModel] = useState("models/gemini-2.0-flash-exp");
     const [gladiaKey, setGladiaKey] = useState("");
     const [googleKey, setGoogleKey] = useState("");
+    const [googleModel, setGoogleModel] = useState("chirp_2");
+    const [googleRegion, setGoogleRegion] = useState("us-central1");
+    const [googleDiarization, setGoogleDiarization] = useState(true);
 
     const [isSaving, setIsSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
@@ -142,10 +145,10 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                         className="modern-select"
                         disabled={isSaving}
                     >
-                        <option value="deepgram">Deepgram (Nova-3)</option>
-                        <option value="gemini">Google Gemini Live</option>
-                        <option value="gladia">Gladia</option>
-                        <option value="google_stt">Google Cloud STT</option>
+                        <option value="google_stt">☁️ Google Cloud STT (Chirp 2) — Recommended</option>
+                        <option value="deepgram">🦄 Deepgram (Nova-3)</option>
+                        <option value="gemini">✨ Google Gemini Live</option>
+                        <option value="gladia">🌊 Gladia</option>
                     </select>
                 </div>
             </div>
@@ -155,6 +158,65 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                 <p className="section-desc">Manage API keys for supported transcription services.</p>
 
                 <div className="api-key-grid">
+                    {/* Google STT — now first and promoted */}
+                    <div className={`provider-card ${provider === "google_stt" ? "active" : ""}`}>
+                        <div className="provider-header">
+                            <span className="icon">☁️</span>
+                            <span className="name">Google Cloud STT V2</span>
+                            {provider === "google_stt" && <span className="badge">Active</span>}
+                        </div>
+                        <p className="provider-desc">
+                            Chirp 2 model with speaker diarization. Requires a GCP service account with Speech-to-Text API enabled.
+                        </p>
+                        <div className="input-group">
+                            <label>Service Account JSON</label>
+                            <textarea
+                                value={googleKey}
+                                onChange={(e) => setGoogleKey(e.target.value)}
+                                placeholder='Paste your service account JSON key here...'
+                                className="modern-input"
+                                rows={3}
+                                style={{ fontFamily: "monospace", fontSize: "11px", resize: "vertical" }}
+                            />
+                        </div>
+                        <div className="input-group">
+                            <label>Model</label>
+                            <select
+                                value={googleModel}
+                                onChange={(e) => setGoogleModel(e.target.value)}
+                                className="modern-select"
+                            >
+                                <option value="chirp_2">Chirp 2 (Latest, Best Quality)</option>
+                                <option value="chirp">Chirp (Previous Gen)</option>
+                                <option value="latest_long">Long-form (V1 Compat)</option>
+                                <option value="latest_short">Short-form (V1 Compat)</option>
+                            </select>
+                        </div>
+                        <div className="input-group">
+                            <label>Region</label>
+                            <select
+                                value={googleRegion}
+                                onChange={(e) => setGoogleRegion(e.target.value)}
+                                className="modern-select"
+                            >
+                                <option value="us-central1">US Central (Iowa)</option>
+                                <option value="europe-west4">Europe West (Netherlands)</option>
+                                <option value="asia-southeast1">Asia Southeast (Singapore)</option>
+                            </select>
+                        </div>
+                        <div className="input-group toggle-group">
+                            <label>Speaker Diarization</label>
+                            <label className="toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={googleDiarization}
+                                    onChange={(e) => setGoogleDiarization(e.target.checked)}
+                                />
+                                <span className="toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
                     {/* Deepgram */}
                     <div className={`provider-card ${provider === "deepgram" ? "active" : ""}`}>
                         <div className="provider-header">
@@ -232,25 +294,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                                 value={gladiaKey}
                                 onChange={(e) => setGladiaKey(e.target.value)}
                                 placeholder="Enter Gladia Key"
-                                className="modern-input"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Google STT */}
-                    <div className={`provider-card ${provider === "google_stt" ? "active" : ""}`}>
-                        <div className="provider-header">
-                            <span className="icon">☁️</span>
-                            <span className="name">Google Cloud STT</span>
-                            {provider === "google_stt" && <span className="badge">Active</span>}
-                        </div>
-                        <div className="input-group">
-                            <label>JSON Key (Base64)</label>
-                            <input
-                                type="password"
-                                value={googleKey}
-                                onChange={(e) => setGoogleKey(e.target.value)}
-                                placeholder="Paste JSON Key content"
                                 className="modern-input"
                             />
                         </div>
