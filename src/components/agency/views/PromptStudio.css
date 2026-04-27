@@ -195,7 +195,7 @@
 
 .prompt-badge.theme {
     background: rgba(167, 139, 250, 0.15);
-    color: #a78bfa;
+    color: var(--accent-primary-hover, #818cf8);
 }
 
 .prompt-item-desc {

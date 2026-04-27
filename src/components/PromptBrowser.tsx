@@ -27,7 +27,7 @@ const THEMES = [
     { id: 'prospecting', name: 'Prospecting', color: '#10b981' },
     { id: 'fundraising', name: 'Fundraising', color: '#f59e0b' },
     { id: 'product_dev', name: 'Product Development', color: '#3b82f6' },
-    { id: 'admin', name: 'Admin', color: '#8b5cf6' },
+    { id: 'admin', name: 'Admin', color: '#818cf8' },
     { id: 'personal', name: 'Personal', color: '#ec4899' },
 ];
 

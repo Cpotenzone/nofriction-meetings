@@ -283,7 +283,7 @@ export const IntelDashboard: React.FC = () => {
             name: n.label,
             val: n.fileType === 'meeting' ? 6 : n.fileType === 'topic' ? 8 : n.fileType === 'company' ? 6 : 4,
             color: n.fileType === 'meeting' ? '#ffd700'
-                : n.fileType === 'topic' ? '#a855f7'
+                : n.fileType === 'topic' ? '#818cf8'
                     : n.fileType === 'person' ? '#4a9eff'
                         : n.fileType === 'company' ? '#f97316'
                             : 'rgba(255,255,255,0.3)',

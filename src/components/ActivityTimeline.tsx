@@ -41,7 +41,7 @@ interface ActivityTimelineProps {
 const TOPIC_STYLES: Record<string, { color: string; icon: string; bg: string }> = {
     "Coding": { color: "#22c55e", icon: "💻", bg: "rgba(34, 197, 94, 0.15)" },
     "Documentation": { color: "#3b82f6", icon: "📄", bg: "rgba(59, 130, 246, 0.15)" },
-    "Communication": { color: "#a855f7", icon: "💬", bg: "rgba(168, 85, 247, 0.15)" },
+    "Communication": { color: "#818cf8", icon: "💬", bg: "rgba(99, 102, 241, 0.15)" },
     "Research": { color: "#f59e0b", icon: "🔍", bg: "rgba(245, 158, 11, 0.15)" },
     "Terminal": { color: "#6b7280", icon: "⌨️", bg: "rgba(107, 114, 128, 0.15)" },
     "default": { color: "#94a3b8", icon: "📁", bg: "rgba(148, 163, 184, 0.15)" }

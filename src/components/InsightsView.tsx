@@ -117,7 +117,7 @@ export function InsightsView() {
         "5–15 min": "#10b981",
         "15–30 min": "#f59e0b",
         "30–60 min": "#ef4444",
-        "1+ hours": "#8b5cf6",
+        "1+ hours": "#818cf8",
     };
 
     const dateEntries = Object.entries(byDate);

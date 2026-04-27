@@ -75,6 +75,7 @@ struct SpeechAlternative {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WordInfo {
+    #[allow(dead_code)]
     word: Option<String>,
     speaker_label: Option<String>,
     #[allow(dead_code)]

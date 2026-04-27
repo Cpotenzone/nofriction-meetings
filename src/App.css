@@ -891,8 +891,8 @@ pre,
 .theme-option-check {
   width: 18px;
   height: 18px;
-  color: #7c3aed;
-  /* Brand purple */
+  color: var(--accent-primary, #6366f1);
+  /* Brand indigo */
   flex-shrink: 0;
   margin-top: 2px;
   opacity: 0;
@@ -1258,7 +1258,7 @@ pre,
 }
 
 .theme-hero-card.fundraising {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
 }
 
 .theme-hero-card.product_dev {
@@ -5660,7 +5660,7 @@ pre,
 }
 
 .insight-card.type-question_suggestion {
-  border-left-color: #a855f7;
+  border-left-color: #818cf8;
   background: rgba(168, 85, 247, 0.06);
 }
 

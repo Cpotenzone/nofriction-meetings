@@ -20,7 +20,7 @@ export function HelpSection() {
                             padding: '12px 16px',
                             background: 'none',
                             border: 'none',
-                            borderBottom: activeSection === tab.id ? '2px solid #7c3aed' : '2px solid transparent',
+                            borderBottom: activeSection === tab.id ? '2px solid #6366f1' : '2px solid transparent',
                             color: activeSection === tab.id ? '#fff' : '#9ca3af',
                             cursor: 'pointer',
                             fontSize: '14px',
@@ -107,17 +107,17 @@ export function HelpSection() {
                                     If screen recordings show only the app window instead of the full screen, you need to reset macOS permissions.
                                 </p>
                                 <div style={{ background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
-                                    <p style={{ fontSize: '13px', color: '#c4b5fd', margin: '0 0 12px 0', fontWeight: 600 }}>
+                                    <p style={{ fontSize: '13px', color: 'var(--accent-primary-hover, #818cf8)', margin: '0 0 12px 0', fontWeight: 600 }}>
                                         📹 Quick Fix: Use Video Diagnostics
                                     </p>
-                                    <ol style={{ fontSize: '13px', color: '#e9d5ff', marginLeft: '20px', lineHeight: '1.8' }}>
+                                    <ol style={{ fontSize: '13px', color: 'var(--text-secondary, #b0b5c9)', marginLeft: '20px', lineHeight: '1.8' }}>
                                         <li>Go to Admin → Video Diagnostics (in the tab bar)</li>
                                         <li>Click "Test Capture Now" to verify your capture</li>
                                         <li>If dimensions don't match, follow the on-screen reset instructions</li>
                                     </ol>
                                 </div>
                                 <details style={{ fontSize: '13px', color: '#9ca3af', marginTop: '12px' }}>
-                                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#a78bfa', marginBottom: '8px' }}>Manual Fix Steps</summary>
+                                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--accent-primary-hover, #818cf8)', marginBottom: '8px' }}>Manual Fix Steps</summary>
                                     <ol style={{ marginLeft: '20px', marginTop: '8px', lineHeight: '1.8', color: '#d1d5db' }}>
                                         <li>Open System Settings → Privacy & Security → Screen Recording</li>
                                         <li>Remove noFriction Meetings from the list</li>

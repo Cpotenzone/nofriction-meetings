@@ -432,7 +432,7 @@ function NotesTab({
           .generate-btn {
             margin-top: 16px;
             padding: 12px 24px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            background: linear-gradient(135deg, #3b82f6, #818cf8);
             color: white;
             border: none;
             border-radius: 8px;

@@ -13,7 +13,7 @@
     --intel-gold: #ffd700;
     --intel-gold-dim: rgba(255, 215, 0, 0.15);
     --intel-blue: #4a9eff;
-    --intel-purple: #a855f7;
+    --intel-purple: #818cf8;
     --intel-green: #22c55e;
     --intel-surface: rgba(255, 255, 255, 0.03);
     --intel-border: rgba(255, 255, 255, 0.06);
@@ -318,7 +318,7 @@
 }
 
 .intel-stat-card.purple::before {
-    background: linear-gradient(90deg, #a855f7, #7c3aed);
+    background: linear-gradient(90deg, #818cf8, #6366f1);
 }
 
 .intel-stat-card.green::before {
@@ -359,7 +359,7 @@
 }
 
 .intel-stat-card.purple .intel-stat-value {
-    background: linear-gradient(135deg, #a855f7, #c084fc);
+    background: linear-gradient(135deg, #818cf8, #c084fc);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -1002,7 +1002,7 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #a855f7, #7c3aed);
+    background: linear-gradient(90deg, #818cf8, #6366f1);
     opacity: 0.5;
     transition: opacity 0.2s ease;
 }

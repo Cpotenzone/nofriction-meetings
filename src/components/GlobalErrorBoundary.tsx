@@ -64,7 +64,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                         onClick={() => window.location.reload()}
                         style={{
                             padding: "10px 20px",
-                            background: "#7c3aed",
+                            background: "#6366f1",
                             color: "white",
                             border: "none",
                             borderRadius: "8px",

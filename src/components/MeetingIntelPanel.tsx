@@ -215,7 +215,7 @@ export function MeetingIntelPanel({
 
     const getModeColor = () => {
         switch (mode) {
-            case 'pre': return 'var(--accent-purple, #8b5cf6)';
+            case 'pre': return 'var(--accent-purple, #818cf8)';
             case 'live': return 'var(--accent-green, #10b981)';
             case 'catchup': return 'var(--accent-orange, #f59e0b)';
         }
