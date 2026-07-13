@@ -1,7 +1,11 @@
 # noFriction Meetings — Design System
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-04-24
+**Version:** 1.1.0  
+**Last Updated:** 2026-07-12
+
+> v1.1.0 records the design system the app actually ships: the hazard-yellow
+> "command center" brand implemented in `src/App.css`. The previous indigo
+> palette documented here was never what the app rendered.
 
 ---
 
@@ -11,43 +15,48 @@
 
 ```css
 :root {
+  /* ─── Brand: hazard yellow on matte black ─── */
+  --hazard-yellow: #facc15;     /* Primary accent — actions, active nav, focus */
+  --hazard-yellow-dim: rgba(250, 204, 21, 0.5);
+  --accent-primary: var(--hazard-yellow);
+
   /* ─── Background ─── */
-  --bg-primary: #1a1d29;        /* Main app background */
-  --bg-secondary: #242837;      /* Cards, panels */
-  --bg-tertiary: #2d3142;       /* Hover states, wells */
-  --bg-elevated: #353a50;       /* Modals, dropdowns */
-  --bg-surface: rgba(255, 255, 255, 0.03); /* Subtle surface */
+  --bg-main: #050505;           /* Main app background */
+  --bg-card: #0d0d0d;           /* Cards, panels */
+  --matte-black: #0a0a0a;
+  --tactical-gray: #171717;     /* Hover states, wells */
 
   /* ─── Text ─── */
-  --text-primary: #f0f1f5;      /* Headings, primary content */
-  --text-secondary: #b0b5c9;    /* Body text, descriptions */
-  --text-tertiary: #6b7194;     /* Placeholders, disabled */
-  --text-inverse: #1a1d29;      /* Text on light backgrounds */
+  --text-primary: #f5f5f5;      /* Headings, primary content */
+  --text-secondary: #a3a3a3;    /* Body text, descriptions */
 
-  /* ─── Accent ─── */
-  --accent-primary: #6366f1;    /* Indigo — primary actions */
-  --accent-primary-hover: #818cf8;
-  --accent-secondary: #22d3ee;  /* Cyan — status indicators */
-  --accent-success: #34d399;    /* Green — success, recording active */
-  --accent-warning: #fbbf24;    /* Amber — warnings */
-  --accent-danger: #ef4444;     /* Red — errors, destructive actions */
+  /* ─── Status ─── */
+  --accent-success: #34d399;    /* Success */
+  --accent-warning: var(--hazard-yellow);
+  --accent-danger: #ef4444;     /* Errors, destructive, recording pulse */
 
   /* ─── Border ─── */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.10);
-  --border-strong: rgba(255, 255, 255, 0.15);
-
-  /* ─── Recording State ─── */
-  --recording-active: #ef4444;     /* Red pulse when recording */
-  --recording-paused: #fbbf24;     /* Amber when paused */
-  --recording-idle: var(--text-tertiary);
+  --border-color: #262626;
+  --hud-border: 1px solid #262626;
+  --hud-border-bright: 1px solid #404040;
 }
 ```
 
 ### Usage Rules
 - Never use raw hex values in components. Always reference `var(--token)`.
-- The accent-primary was previously `#7c3aed` (purple, an AI slop signal). Changed to `#6366f1` (indigo) for a more intentional, less generic feel.
-- Background hierarchy: primary (darkest) → secondary → tertiary → elevated (lightest).
+- One accent: hazard yellow. Red is reserved for recording/destructive; green for success. No purple/indigo anywhere (AI-slop signal; legacy `--accent-purple` is aliased to yellow for backward compatibility only).
+- Background hierarchy: `--bg-main` (darkest) → `--bg-card` → `--tactical-gray` (lightest).
+
+---
+
+## Iconography
+
+- **Never use emoji as UI icons.** Emoji render inconsistently across
+  platforms and can't follow color tokens. Use the inline SVG stroke set in
+  `src/components/icons.tsx` (24×24 viewBox, `currentColor`, round caps).
+- Nav/control icons: 14–17px. Empty-state/hero icons: 40–48px at
+  `strokeWidth={1.5}`.
+- Add new icons to `icons.tsx`; don't inline one-off SVGs in components.
 
 ---
 
@@ -187,22 +196,26 @@ Every async operation MUST have an error state that includes:
 
 ## Navigation Model
 
-### Primary Modes (4 max)
-| Mode | Icon | Purpose |
-|------|------|---------|
-| **Live** | 🎙️ | Active recording, live transcript, meeting controls |
-| **Library** | 📚 | Past meetings, search, review, rewind |
-| **Intelligence** | 🧠 | AI chat, insights, data exploration |
-| **Settings** | ⚙️ | Configuration, accounts, admin |
+### Primary Modes (4 max, top bar)
+| Mode | Icon (icons.tsx) | Purpose |
+|------|------------------|---------|
+| **LIVE** | `LiveIcon` | Active recording, live transcript, live intelligence |
+| **REWIND** | `RewindIcon` | Recordings library, frame/transcript playback, insights, search — the signature feature, always one click away |
+| **INTEL** | `RadarIcon` | Intel dashboard, sentiment/energy scoring |
+| **CHAT** | `ChatIcon` | RAG chat across all meeting data |
 
-### Secondary (contextual)
-- **Library** expands to: Meetings, Vault, Knowledge Base
-- **Intelligence** expands to: Chat, Intel Dashboard, Prompt Studio
-- **Settings** expands to: General, Transcription, AI, Integrations, Admin
+### Secondary (••• MORE overflow)
+- **VAULT** — Obsidian vault sync (power feature)
+- **ZEN** — focus view
+- **PROMPTS** — Prompt Studio
+- **HELP** — documentation
+
+Settings opens from the gear button; search/commands from the ⌘K button.
 
 ### Rules
-- Maximum 4 primary items in the sidebar at all times.
-- Power-user features (Vault, Prompt Studio, Admin) live under parent categories, not at the top level.
+- Maximum 4 primary items in the top bar at all times.
+- The recordings library + rewind is the product; it never moves into an overflow menu.
+- Power-user features (Vault, Prompt Studio, Admin) live under MORE or Settings, not at the top level.
 - Current mode is always visually indicated (highlight + label visible).
 - The "trunk test": cover everything except the nav. Can you still tell what section you're in? If not, the nav has failed.
 
