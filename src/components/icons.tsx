@@ -195,6 +195,13 @@ export const MoreIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, clas
     </svg>
 );
 
+export const TrashIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14" />
+        <path d="M10 11v6M14 11v6" />
+    </svg>
+);
+
 /** Brain — deep intel / insights */
 export const BrainIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
     <svg {...base(size, className)} strokeWidth={strokeWidth}>

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { chatWithData, ChatHistoryMessage, ChatSource } from "../../../lib/tauri";
 import "./DataChat.css";
+import { BrainIcon } from "../../icons";
 
 interface DisplayMessage {
     role: "user" | "assistant";
@@ -142,7 +143,7 @@ export const DataChat: React.FC = () => {
             <div className="data-chat-messages">
                 {messages.length === 0 && !isLoading ? (
                     <div className="data-chat-empty">
-                        <span className="empty-icon">🧠</span>
+                        <span className="empty-icon"><BrainIcon size={40} strokeWidth={1.5} /></span>
                         <span className="empty-title">Talk to your data</span>
                         <span className="empty-subtitle">
                             Ask questions about your meetings, transcripts, screen activity, and knowledge base.

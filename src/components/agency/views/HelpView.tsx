@@ -71,12 +71,12 @@ const HelpGuide: React.FC = () => (
                 </thead>
                 <tbody>
                     <tr><td>🌊 FLOW</td><td>Live recording view — see transcription in real-time as it streams.</td></tr>
-                    <tr><td>🧠 DECK</td><td>Meeting history — browse past meetings, view reports, summaries, and action items.</td></tr>
+                    <tr><td>REWIND</td><td>Meeting history — browse past meetings, view reports, summaries, and action items.</td></tr>
                     <tr><td>🧘 ZEN</td><td>Minimal focus mode — distraction-free recording with ambient status indicators.</td></tr>
                     <tr><td>📚 VAULT</td><td>Document vault — export meetings to Obsidian, manage files, and tag recordings.</td></tr>
                     <tr><td>🔍 INTEL</td><td>Intelligence dashboard — attendee lookup and company research powered by AI.</td></tr>
                     <tr><td>💬 CHAT</td><td>Data chat — ask AI questions about your meeting history and get cited answers.</td></tr>
-                    <tr><td>🧠 PROMPTS</td><td>Prompt Studio — view, edit, test, and duplicate all AI master prompts per persona.</td></tr>
+                    <tr><td>PROMPTS</td><td>Prompt Studio — view, edit, test, and duplicate all AI master prompts per persona.</td></tr>
                     <tr><td>📖 HELP</td><td>Documentation — you're here! Technical specifications, guides, and security info.</td></tr>
                 </tbody>
             </table>
@@ -85,7 +85,7 @@ const HelpGuide: React.FC = () => (
         <div className="help-section">
             <h3>Genie Mode</h3>
             <p>
-                While recording, click <strong>✨ GENIE</strong> in the navbar to enter Genie Mode — a floating
+                While recording, click <strong>GENIE</strong> in the navbar to enter Genie Mode — a floating
                 minimal overlay that lets you keep working while noFriction captures in the background.
                 Genie Mode shows transcript snippets and recording status without taking up screen space.
             </p>
@@ -105,7 +105,7 @@ const HelpGuide: React.FC = () => (
                 <li><strong>Participants</strong> — detected speakers and attendees</li>
             </ul>
             <div className="help-callout">
-                <p><strong>Tip:</strong> You can now manage all AI prompts — including report, chat, live intel, and catch-up — in the <strong>🧠 PROMPTS</strong> tab. Each prompt can be customized per persona.</p>
+                <p><strong>Tip:</strong> You can now manage all AI prompts — including report, chat, live intel, and catch-up — in the <strong>PROMPTS</strong> tab. Each prompt can be customized per persona.</p>
             </div>
         </div>
 
@@ -187,7 +187,7 @@ const HowTo: React.FC = () => (
         <div className="help-section">
             <h3>How to Use Prompt Studio</h3>
             <ol>
-                <li>Navigate to the <strong>🧠 PROMPTS</strong> tab in the Agency view.</li>
+                <li>Navigate to the <strong>PROMPTS</strong> tab in the Agency view.</li>
                 <li>Use the <strong>category tabs</strong> (All, Intelligence, Meeting, VLM) to filter by feature area.</li>
                 <li>Use the <strong>persona dropdown</strong> to filter by persona (Prospecting, Fundraising, Product Dev, Admin, Personal).</li>
                 <li>Click any prompt in the list to open it in the editor.</li>
@@ -204,7 +204,7 @@ const HowTo: React.FC = () => (
         <div className="help-section">
             <h3>How to Customize the Meeting Report Prompt</h3>
             <ol>
-                <li>Open the <strong>🧠 PROMPTS</strong> tab.</li>
+                <li>Open the <strong>PROMPTS</strong> tab.</li>
                 <li>Filter by <strong>Meeting</strong> category.</li>
                 <li>Select the <strong>meeting_report</strong> prompt for your active persona.</li>
                 <li>Edit the system prompt to match your team's report format.</li>
@@ -220,7 +220,7 @@ const HowTo: React.FC = () => (
         <div className="help-section">
             <h3>How to Manually Generate a Report</h3>
             <ol>
-                <li>Navigate to <strong>🧠 DECK</strong> and select a meeting.</li>
+                <li>Navigate to <strong>REWIND</strong> and select a meeting.</li>
                 <li>Click <strong>Generate Report</strong> in the meeting detail view.</li>
                 <li>The AI will process the transcript and add the report to the meeting record.</li>
             </ol>

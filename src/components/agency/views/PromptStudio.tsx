@@ -14,7 +14,7 @@ import './PromptStudio.css';
 type CategoryFilter = 'all' | 'intelligence' | 'meeting' | 'vlm';
 const CATEGORIES: { key: CategoryFilter; label: string }[] = [
     { key: 'all', label: '✦  ALL' },
-    { key: 'intelligence', label: '🧠  INTELLIGENCE' },
+    { key: 'intelligence', label: 'INTELLIGENCE' },
     { key: 'meeting', label: '📋  MEETING' },
     { key: 'vlm', label: '👁  VLM' },
 ];
@@ -175,7 +175,7 @@ export const PromptStudio: React.FC = () => {
     return (
         <div className="prompt-studio">
             <div className="prompt-header">
-                <h2>🧠 Prompt Studio</h2>
+                <h2>Prompt Studio</h2>
                 <p>Master prompts powering Genie, Reports, Catch-Up, and Live Intelligence — customize per persona</p>
             </div>
 
