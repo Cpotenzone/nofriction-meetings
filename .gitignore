@@ -37,3 +37,4 @@ src-tauri/icons/source_*.png
 *.pem
 *.key
 secrets.json
+.gstack/
