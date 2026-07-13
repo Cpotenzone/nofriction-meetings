@@ -2,6 +2,20 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { emit } from '@tauri-apps/api/event';
 import { AgencyMode } from './AgencyLayout';
+import {
+    LiveIcon,
+    RewindIcon,
+    RadarIcon,
+    ChatIcon,
+    VaultIcon,
+    ZenIcon,
+    PromptIcon,
+    HelpIcon,
+    GearIcon,
+    SparkleIcon,
+    SearchIcon,
+    MoreIcon,
+} from '../icons';
 
 interface AgencyNavbarProps {
     activeMode: AgencyMode;
@@ -9,22 +23,25 @@ interface AgencyNavbarProps {
     isRecording: boolean;
     onToggleRecording: () => void;
     onOpenSettings: () => void;
+    onOpenCommandPalette?: () => void;
 }
 
-// Primary modes: always visible
-const PRIMARY_MODES: { mode: AgencyMode; icon: string; label: string }[] = [
-    { mode: 'flow', icon: '🌊', label: 'FLOW' },
-    { mode: 'intel', icon: '🔍', label: 'INTEL' },
-    { mode: 'vault', icon: '📚', label: 'VAULT' },
-    { mode: 'chat', icon: '💬', label: 'CHAT' },
+// Primary modes: the product's core loop — record, rewind, understand, ask.
+// Rewind (recordings library + playback) is the signature feature and must
+// stay one click away; power-user views live in the overflow menu.
+const PRIMARY_MODES: { mode: AgencyMode; icon: React.ReactNode; label: string }[] = [
+    { mode: 'flow', icon: <LiveIcon size={15} />, label: 'LIVE' },
+    { mode: 'deck', icon: <RewindIcon size={15} />, label: 'REWIND' },
+    { mode: 'intel', icon: <RadarIcon size={15} />, label: 'INTEL' },
+    { mode: 'chat', icon: <ChatIcon size={15} />, label: 'CHAT' },
 ];
 
 // Secondary modes: in overflow menu
-const SECONDARY_MODES: { mode: AgencyMode; icon: string; label: string }[] = [
-    { mode: 'deck', icon: '🧠', label: 'DECK' },
-    { mode: 'zen', icon: '🧘', label: 'ZEN' },
-    { mode: 'prompts', icon: '🧠', label: 'PROMPTS' },
-    { mode: 'help', icon: '📖', label: 'HELP' },
+const SECONDARY_MODES: { mode: AgencyMode; icon: React.ReactNode; label: string }[] = [
+    { mode: 'vault', icon: <VaultIcon size={15} />, label: 'VAULT' },
+    { mode: 'zen', icon: <ZenIcon size={15} />, label: 'ZEN' },
+    { mode: 'prompts', icon: <PromptIcon size={15} />, label: 'PROMPTS' },
+    { mode: 'help', icon: <HelpIcon size={15} />, label: 'HELP' },
 ];
 
 export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
@@ -32,7 +49,8 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
     onModeChange,
     isRecording,
     onToggleRecording,
-    onOpenSettings
+    onOpenSettings,
+    onOpenCommandPalette
 }) => {
     const [showMore, setShowMore] = useState(false);
     const moreRef = useRef<HTMLDivElement>(null);
@@ -65,7 +83,7 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
                 <div className="agency-status-pill">
                     <div className={`status-dot ${isRecording ? 'recording' : 'idle'}`} />
                     <span className="status-text">
-                        {isRecording ? 'LIVE INTELLIGENCE ACTIVE' : 'SYSTEM READY'}
+                        {isRecording ? 'RECORDING' : 'READY'}
                     </span>
                 </div>
             </div>
@@ -91,7 +109,7 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
                             onClick={() => setShowMore(!showMore)}
                             title="More views"
                         >
-                            <span className="mode-icon">•••</span>
+                            <span className="mode-icon"><MoreIcon size={15} /></span>
                             MORE
                         </button>
                         <AnimatePresence>
@@ -124,6 +142,17 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
             </div>
 
             <div className="agency-nav-right">
+                {onOpenCommandPalette && (
+                    <button
+                        className="agency-cmdk-btn"
+                        onClick={onOpenCommandPalette}
+                        title="Search & commands (⌘K)"
+                    >
+                        <SearchIcon size={14} />
+                        <kbd>⌘K</kbd>
+                    </button>
+                )}
+
                 {isRecording && (
                     <motion.button
                         className="agency-genie-btn"
@@ -132,7 +161,7 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
                         whileTap={{ scale: 0.95 }}
                         title="Enter Genie Mode (minimal overlay)"
                     >
-                        ✨ GENIE
+                        <SparkleIcon size={14} /> GENIE
                     </motion.button>
                 )}
 
@@ -145,11 +174,10 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
                     {isRecording ? 'STOP CAPTURE' : 'START CAPTURE'}
                 </motion.button>
 
-                <button className="agency-icon-btn" onClick={onOpenSettings}>
-                    ⚙️
+                <button className="agency-icon-btn" onClick={onOpenSettings} title="Settings" aria-label="Settings">
+                    <GearIcon size={17} />
                 </button>
             </div>
         </nav>
     );
 };
-

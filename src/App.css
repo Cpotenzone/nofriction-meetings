@@ -19,6 +19,7 @@
   --drab-green: #3f6212;
 
   /* UI Colors (legacy) */
+  --accent-primary: var(--hazard-yellow);
   --accent-purple: var(--hazard-yellow);
   --accent-purple-hover: #eab308;
   --bg-main: #050505;
@@ -1889,6 +1890,12 @@ pre,
   margin-bottom: 16px;
   opacity: 0.6;
   line-height: 1;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.nf-empty-state__icon svg,
+.nf-error-state__icon svg {
+  display: block;
 }
 
 .nf-empty-state__title,
@@ -5416,6 +5423,47 @@ pre,
 .mode-icon {
   font-size: 12px;
   opacity: 0.8;
+  display: inline-flex;
+  align-items: center;
+}
+
+.mode-icon svg,
+.overflow-icon svg {
+  display: block;
+}
+
+/* Command palette affordance (⌘K) */
+.agency-cmdk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--agency-text-secondary, rgba(255, 255, 255, 0.6));
+  font-family: var(--agency-font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: all 0.2s;
+}
+
+.agency-cmdk-btn kbd {
+  font-family: var(--agency-font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.agency-cmdk-btn:hover {
+  color: var(--agency-text-primary, #fff);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Overflow Menu (secondary modes) */
@@ -5476,6 +5524,8 @@ pre,
 .overflow-icon {
   font-size: 14px;
   opacity: 0.8;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Action Buttons */

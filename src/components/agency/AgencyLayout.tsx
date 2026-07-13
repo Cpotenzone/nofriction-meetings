@@ -27,6 +27,7 @@ interface AgencyLayoutProps {
     selectedMeetingId: string | null;
     onToggleRecording: () => void;
     refreshKey: number;
+    onOpenCommandPalette?: () => void;
 }
 
 export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
@@ -37,7 +38,8 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
     onSelectMeeting,
     selectedMeetingId,
     onToggleRecording,
-    refreshKey
+    refreshKey,
+    onOpenCommandPalette
 }) => {
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     // const [segmentPrompt, setSegmentPrompt] = useState(false); // Removed for native dialog
@@ -80,6 +82,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                 isRecording={recording.isRecording}
                 onToggleRecording={onToggleRecording}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenCommandPalette={onOpenCommandPalette}
             />
 
             <main className="agency-content">

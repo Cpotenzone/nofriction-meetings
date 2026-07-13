@@ -260,6 +260,7 @@ function App() {
         selectedMeetingId={selectedMeetingId}
         onToggleRecording={handleToggleRecording}
         refreshKey={meetingListRefreshKey}
+        onOpenCommandPalette={commandPalette.open}
       />
 
       {/* Meeting Detection Banner - shows when meetings detected */}

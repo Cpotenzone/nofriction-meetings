@@ -23,7 +23,7 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         className={`deck-tab ${activeTab === 'history' ? 'active' : ''}`}
                         onClick={() => setActiveTab('history')}
                     >
-                        HISTORY
+                        RECORDINGS
                     </button>
                     <button
                         className={`deck-tab ${activeTab === 'insights' ? 'active' : ''}`}
@@ -35,7 +35,7 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         className={`deck-tab ${activeTab === 'search' ? 'active' : ''}`}
                         onClick={() => setActiveTab('search')}
                     >
-                        KNOWLEDGE BASE
+                        SEARCH
                     </button>
                 </div>
             </header>
