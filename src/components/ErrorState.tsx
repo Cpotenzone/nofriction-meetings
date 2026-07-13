@@ -2,6 +2,7 @@
 // Provides a consistent, styled error state with optional retry action.
 
 import React from 'react';
+import { WarningIcon } from './icons';
 
 interface ErrorStateProps {
   title?: string;
@@ -18,7 +19,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({
 }) => {
   return (
     <div className="nf-error-state" role="alert">
-      <div className="nf-error-state__icon">⚠️</div>
+      <div className="nf-error-state__icon"><WarningIcon size={40} strokeWidth={1.5} /></div>
       <h3 className="nf-error-state__title">{title}</h3>
       <p className="nf-error-state__message">{message}</p>
       {onRetry && (

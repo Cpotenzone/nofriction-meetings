@@ -1846,6 +1846,18 @@ pre,
 .empty-state-hint {
   font-size: 14px;
   color: var(--text-secondary);
+  max-width: 380px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+.empty-state-icon svg {
+  display: inline-block;
+  color: var(--text-secondary);
+}
+
+.empty-state .empty-state-action {
+  margin-top: 20px;
 }
 
 .error-state {

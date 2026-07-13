@@ -3,10 +3,12 @@
 
 import { useEffect, useRef, useMemo } from "react";
 import type { LiveTranscript } from "../hooks/useTranscripts";
+import { MicIcon } from "./icons";
 
 interface LiveTranscriptProps {
     transcripts: LiveTranscript[];
     isRecording: boolean;
+    onStartRecording?: () => void;
 }
 
 interface SpeakerBlock {
@@ -49,7 +51,7 @@ function getInitials(speaker: string): string {
     return speaker.slice(0, 2).toUpperCase();
 }
 
-export function LiveTranscriptView({ transcripts, isRecording }: LiveTranscriptProps) {
+export function LiveTranscriptView({ transcripts, isRecording, onStartRecording }: LiveTranscriptProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const autoScrollRef = useRef(true);
 
@@ -129,18 +131,31 @@ export function LiveTranscriptView({ transcripts, isRecording }: LiveTranscriptP
     if (speakerBlocks.length === 0) {
         return (
             <div className="empty-state">
-                <div className="empty-state-icon">🎙️</div>
+                <div className="empty-state-icon"><MicIcon size={48} strokeWidth={1.5} /></div>
                 <p className="empty-state-text">
-                    {isRecording
-                        ? "Listening... Start speaking to see live transcription"
-                        : "Start recording to capture live transcription"}
+                    {isRecording ? "Listening…" : "Nothing recording yet"}
                 </p>
-                {isRecording && (
+                <p className="empty-state-hint">
+                    {isRecording
+                        ? "Start speaking — the live transcript appears here."
+                        : "Capture your screen once a second and transcribe every word, so you can rewind any moment later."}
+                </p>
+                {isRecording ? (
                     <div className="listening-indicator">
                         <span className="pulse-dot"></span>
                         <span className="pulse-dot"></span>
                         <span className="pulse-dot"></span>
                     </div>
+                ) : (
+                    onStartRecording && (
+                        <button
+                            className="nf-empty-state__action empty-state-action"
+                            onClick={onStartRecording}
+                            type="button"
+                        >
+                            Start Capture
+                        </button>
+                    )
                 )}
             </div>
         );

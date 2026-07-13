@@ -6,6 +6,7 @@ import * as tauri from "../lib/tauri";
 import type { Meeting } from "../lib/tauri";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
+import { LightbulbIcon } from "./icons";
 
 export function InsightsView() {
     const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -63,9 +64,9 @@ export function InsightsView() {
         return (
             <div className="insights-view">
                 <EmptyState
-                    icon="💡"
+                    icon={<LightbulbIcon size={44} strokeWidth={1.5} />}
                     title="No meeting data yet"
-                    message="Start recording to see meeting insights"
+                    message="Once you record a meeting, duration stats and activity insights appear here."
                 />
             </div>
         );

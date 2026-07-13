@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
 import type { Meeting, CalendarMatchEvent } from "../lib/tauri";
 import EmptyState from "./EmptyState";
+import { CalendarIcon } from "./icons";
+import { withFallback, mockMeetings } from "../lib/offline";
 
 interface MeetingHistoryProps {
     onSelectMeeting: (meetingId: string) => void;
@@ -27,7 +29,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     const loadMeetings = async () => {
         setIsLoading(true);
         try {
-            const data = await tauri.getMeetings(50);
+            const data = await withFallback(() => tauri.getMeetings(50), mockMeetings);
             setMeetings(data);
             // Check recent meetings (last 5) for calendar overlap
             checkCalendarOverlaps(data.slice(0, 5));
@@ -141,9 +143,9 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
             <div className="meeting-history">
                 <h3>Past Meetings</h3>
                 <EmptyState
-                    icon="📅"
-                    title="No meetings yet"
-                    message="Start recording to capture your first meeting!"
+                    icon={<CalendarIcon size={44} strokeWidth={1.5} />}
+                    title="No recordings yet"
+                    message="Hit START CAPTURE in the top bar during your next meeting. Every screen frame and every word lands here, ready to rewind."
                 />
             </div>
         );
