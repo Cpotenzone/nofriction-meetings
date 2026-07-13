@@ -9,8 +9,8 @@ use tauri::{AppHandle, Emitter, State};
 /// The supported model catalog (GGML files from the whisper.cpp project).
 /// name → (approx download size MB, description)
 const MODEL_CATALOG: &[(&str, u64, &str)] = &[
-    ("tiny.en", 75, "Fastest, lowest accuracy — old hardware"),
-    ("base.en", 142, "Fast with solid accuracy — recommended default"),
+    ("tiny.en", 75, "Smallest and fastest — default, runs anywhere"),
+    ("base.en", 142, "Better accuracy for a bit more compute"),
     ("small.en", 466, "Better accuracy, ~2-3x slower than base"),
     ("medium.en", 1500, "High accuracy, needs a capable machine"),
     ("large-v3-turbo", 1600, "Best accuracy, multilingual"),

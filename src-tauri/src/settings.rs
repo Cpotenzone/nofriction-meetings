@@ -109,7 +109,7 @@ impl AppSettings {
             deepgram_model: Some("nova-3".to_string()),
             gemini_model: Some("models/gemini-2.0-flash-exp".to_string()),
             transcription_provider: "deepgram".to_string(),
-            local_whisper_model: Some("base.en".to_string()),
+            local_whisper_model: Some("tiny.en".to_string()), // smallest model — runs anywhere
             selected_microphone: None,
             selected_monitor: None,
             auto_start_recording: false,

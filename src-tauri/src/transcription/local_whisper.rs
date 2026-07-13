@@ -40,7 +40,7 @@ const MAX_SILENCE_SAMPLES: usize = SAMPLE_RATE * 5;
 // ─── Global model configuration (set at startup / from settings) ────────────
 
 static MODELS_DIR: Lazy<RwLock<Option<PathBuf>>> = Lazy::new(|| RwLock::new(None));
-static PREFERRED_MODEL: Lazy<RwLock<String>> = Lazy::new(|| RwLock::new("base.en".to_string()));
+static PREFERRED_MODEL: Lazy<RwLock<String>> = Lazy::new(|| RwLock::new("tiny.en".to_string()));
 
 /// Called once at startup (and when settings change) to tell the provider
 /// where models live and which one to prefer.
