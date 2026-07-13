@@ -323,7 +323,7 @@ const TechSpec: React.FC = () => (
                 <li><strong>API Call</strong>: Sent to the Serendipity API (<code>/v1/chat/completions</code>) using model <code>qwen3:8b</code>.</li>
                 <li><strong>Parse</strong>: Response is parsed as JSON into structured <code>GeneratedNotes</code>.</li>
                 <li><strong>Storage</strong>: Report is saved to the <code>meeting_notes</code> table.</li>
-                <li><strong>Display</strong>: Report appears in DECK view when viewing the meeting.</li>
+                <li><strong>Display</strong>: Report appears in REWIND view when viewing the meeting.</li>
             </ol>
         </div>
 
@@ -453,7 +453,7 @@ const SecurityManual: React.FC = () => (
             <h3>Data Retention & Deletion</h3>
             <p>
                 All data is retained indefinitely in local storage. You can delete individual meetings
-                from the DECK view — this cascades to delete all associated transcripts, frames,
+                from the REWIND view — this cascades to delete all associated transcripts, frames,
                 screen states, episodes, timeline events, and notes.
             </p>
             <p>
