@@ -101,6 +101,55 @@
     margin: 0 0 8px;
 }
 
+/* — Transcription mode choice — */
+.mode-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.mode-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, #262626);
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mode-card:hover {
+    border-color: rgba(250, 204, 21, 0.35);
+}
+
+.mode-card.selected {
+    border-color: var(--hazard-yellow, #facc15);
+    background: rgba(250, 204, 21, 0.05);
+}
+
+.mode-card input[type="radio"] {
+    margin-top: 3px;
+    accent-color: var(--hazard-yellow, #facc15);
+    flex-shrink: 0;
+}
+
+.mode-card .mode-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.mode-card .mode-hint {
+    display: block;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary, #a3a3a3);
+}
+
 /* — API key — */
 .api-key-section {
     display: flex;

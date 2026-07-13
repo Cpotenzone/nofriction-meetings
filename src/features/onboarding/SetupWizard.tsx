@@ -11,6 +11,7 @@ interface SetupWizardProps {
 }
 
 interface SetupState {
+    transcriptionMode: 'local' | 'cloud';
     deepgramApiKey: string;
     captureVideo: boolean;
     captureMicrophone: boolean;
@@ -22,6 +23,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [state, setState] = useState<SetupState>({
+        transcriptionMode: 'local', // Offline by default — nothing leaves the machine
         deepgramApiKey: '',
         captureVideo: true,  // ON by default - video recording is efficient
         captureMicrophone: true,
@@ -43,11 +45,19 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         setError(null);
 
         try {
-            // Save Deepgram API key
-            if (state.deepgramApiKey.trim()) {
+            if (state.transcriptionMode === 'local') {
+                // Offline mode: on-device Whisper, no API key.
+                await invoke('set_active_provider', { provider: 'local' });
+                // Kick off the one-time model download in the background;
+                // progress is visible in Settings → Transcription.
+                invoke('download_whisper_model', { model: 'base.en' }).catch((e) =>
+                    console.warn('Whisper model download deferred:', e),
+                );
+            } else if (state.deepgramApiKey.trim()) {
                 await invoke('set_deepgram_api_key', {
                     apiKey: state.deepgramApiKey.trim(),
                 });
+                await invoke('set_active_provider', { provider: 'deepgram' });
             }
 
             // Save capture settings
@@ -90,38 +100,71 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         <div className="step-icon"><MicIcon size={22} /></div>
                         <h2>Real-Time Transcription</h2>
                         <p className="step-description">
-                            Live speech-to-text uses Deepgram by default — you'll need a free API key.
-                            Prefer Google Cloud (Chirp 2) or Gladia? Switch providers any time in
-                            Settings → Transcription.
+                            Choose how speech gets turned into text. You can switch providers
+                            any time in Settings → Transcription.
                         </p>
 
-                        <div className="api-key-section">
-                            <label htmlFor="deepgram-key">Deepgram API Key</label>
-                            <input
-                                id="deepgram-key"
-                                type="password"
-                                placeholder="Enter your Deepgram API key"
-                                value={state.deepgramApiKey}
-                                onChange={(e) => setState({ ...state, deepgramApiKey: e.target.value })}
-                                className="setup-input"
-                            />
-                            <a
-                                href="https://console.deepgram.com"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="get-key-link"
-                            >
-                                Get a free API key →
-                            </a>
-                            <p className="key-hint">
-                                Free tier includes $200 credit (~100 hours of transcription)
-                            </p>
+                        <div className="mode-choice">
+                            <label className={`mode-card ${state.transcriptionMode === 'local' ? 'selected' : ''}`}>
+                                <input
+                                    type="radio"
+                                    name="stt-mode"
+                                    checked={state.transcriptionMode === 'local'}
+                                    onChange={() => setState({ ...state, transcriptionMode: 'local' })}
+                                />
+                                <div>
+                                    <span className="mode-title">Private &amp; Offline</span>
+                                    <span className="mode-hint">
+                                        Whisper runs on this Mac. No API key, no internet, nothing
+                                        leaves your machine. Downloads a 142 MB model once.
+                                    </span>
+                                </div>
+                            </label>
+                            <label className={`mode-card ${state.transcriptionMode === 'cloud' ? 'selected' : ''}`}>
+                                <input
+                                    type="radio"
+                                    name="stt-mode"
+                                    checked={state.transcriptionMode === 'cloud'}
+                                    onChange={() => setState({ ...state, transcriptionMode: 'cloud' })}
+                                />
+                                <div>
+                                    <span className="mode-title">Cloud (Deepgram)</span>
+                                    <span className="mode-hint">
+                                        Highest accuracy with speaker labels. Needs a free API key;
+                                        audio is sent to Deepgram.
+                                    </span>
+                                </div>
+                            </label>
                         </div>
 
-                        {!state.deepgramApiKey.trim() && (
-                            <div className="warning-box">
-                                <WarningIcon size={16} />
-                                <span>Without an API key, transcription won't work. You can add one later in Settings.</span>
+                        {state.transcriptionMode === 'cloud' && (
+                            <div className="api-key-section">
+                                <label htmlFor="deepgram-key">Deepgram API Key</label>
+                                <input
+                                    id="deepgram-key"
+                                    type="password"
+                                    placeholder="Enter your Deepgram API key"
+                                    value={state.deepgramApiKey}
+                                    onChange={(e) => setState({ ...state, deepgramApiKey: e.target.value })}
+                                    className="setup-input"
+                                />
+                                <a
+                                    href="https://console.deepgram.com"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="get-key-link"
+                                >
+                                    Get a free API key →
+                                </a>
+                                <p className="key-hint">
+                                    Free tier includes $200 credit (~100 hours of transcription)
+                                </p>
+                                {!state.deepgramApiKey.trim() && (
+                                    <div className="warning-box">
+                                        <WarningIcon size={16} />
+                                        <span>Without an API key, cloud transcription won't work. You can add one later in Settings.</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -195,9 +238,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
                         <div className="setup-summary">
                             <div className="summary-item">
-                                <span className="summary-label">Transcription key</span>
-                                <span className={`summary-value ${state.deepgramApiKey.trim() ? 'success' : 'warning'}`}>
-                                    {state.deepgramApiKey.trim() ? 'Configured' : 'Not configured'}
+                                <span className="summary-label">Transcription</span>
+                                <span className={`summary-value ${state.transcriptionMode === 'local' || state.deepgramApiKey.trim() ? 'success' : 'warning'}`}>
+                                    {state.transcriptionMode === 'local'
+                                        ? 'On-device (offline)'
+                                        : state.deepgramApiKey.trim() ? 'Deepgram (cloud)' : 'Cloud — key missing'}
                                 </span>
                             </div>
                             <div className="summary-item">
