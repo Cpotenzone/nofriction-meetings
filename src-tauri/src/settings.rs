@@ -136,7 +136,7 @@ impl AppSettings {
             enable_ingest: Some(false), // Disabled by default
             ingest_base_url: None,
             ingest_bearer_token: None,
-            vlm_base_url: Some("https://7wk6vrq9achr2djw.caas.targon.com".to_string()), // TheBrain Cloud API
+            vlm_base_url: None, // None = local Ollama (http://localhost:11434)
             vlm_bearer_token: None,
             vlm_model_primary: Some("qwen2.5vl:7b".to_string()),
             vlm_model_fallback: Some("qwen2.5vl:3b".to_string()),

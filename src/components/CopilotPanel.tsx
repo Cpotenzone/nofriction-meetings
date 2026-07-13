@@ -43,7 +43,7 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
         {
             id: 'welcome',
             role: 'assistant',
-            content: 'TheBrain online with RAG. I can search your history for context.',
+            content: 'Local AI online with RAG. I can search your history for context.',
             timestamp: Date.now()
         }
     ]);
@@ -152,7 +152,7 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
                 <div className="flex items-center space-x-2">
                     <Brain className="w-4 h-4 text-amber-500" />
                     <h3 className="text-sm font-semibold tracking-wider uppercase text-gray-200">
-                        TheBrain
+                        COPILOT
                     </h3>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -306,7 +306,7 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={ragEnabled ? "Ask with history context..." : "Ask TheBrain..."}
+                        placeholder={ragEnabled ? "Ask with history context..." : "Ask your AI..."}
                         className="w-full bg-[#0B0C10] border border-[#374151] rounded py-2 pl-3 pr-10 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                         disabled={isLoading}
                     />

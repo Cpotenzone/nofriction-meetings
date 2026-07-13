@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Intelligent Data Access System enables a RAG (Retrieval Augmented Generation) pipeline for the noFriction Meetings chatbot. When you ask a question, the system searches your historical data (meetings, transcripts, past conversations) for relevant context, then sends that context along with your question to TheBrain AI for an intelligent response.
+The Intelligent Data Access System enables a RAG (Retrieval Augmented Generation) pipeline for the noFriction Meetings chatbot. When you ask a question, the system searches your historical data (meetings, transcripts, past conversations) for relevant context, then sends that context along with your question to the AI engine (local Ollama by default) for an intelligent response.
 
 ---
 
@@ -117,7 +117,7 @@ context_refs    JSONB       -- Array of Pinecone IDs used
 **vlm.py** - Vision Language Model client
 - Analyzes screenshots/frames
 - Extracts entities, context, summaries
-- Uses TheBrain OAuth authentication
+- Local Ollama needs no authentication; remote hosts may use OAuth/bearer tokens
 
 **llm.py** - Language Model client  
 - Synthesizes moments (combines VLM + transcripts)
@@ -184,16 +184,14 @@ context_refs    JSONB       -- Array of Pinecone IDs used
 
 ### Desktop App (Tauri)
 Configured via Settings UI:
-- TheBrain credentials (username/password)
+- AI engine endpoint (local Ollama by default; credentials only for remote hosts)
 - Pinecone API key, index host, namespace
 - Supabase connection string
 
 ### Server (nofriction-intel)
 ```bash
 # .env file
-VLM_BASE_URL=https://7wk68vrq9achr2djw.caas.targon.com
-VLM_USERNAME=your_username
-VLM_PASSWORD=your_password
+VLM_BASE_URL=http://localhost:11434   # local Ollama (default); remote Ollama-compatible hosts also work
 VLM_MODEL_PRIMARY=qwen3-vl:8b
 VLM_MODEL_FALLBACK=qwen2.5vl:7b
 ```
@@ -206,7 +204,7 @@ VLM_MODEL_FALLBACK=qwen2.5vl:7b
 |------|---------|
 | `src-tauri/src/commands.rs` | RAG chat commands |
 | `src-tauri/src/pinecone_client.rs` | Vector search/upsert |
-| `src-tauri/src/vlm_client.rs` | TheBrain API client |
+| `src-tauri/src/vlm_client.rs` | AI engine client (Ollama-compatible) |
 | `src/components/AIChat.tsx` | Main chat UI |
 | `src/components/CopilotPanel.tsx` | Side panel chat |
 | `nofriction-intel/app/vlm.py` | Server VLM client |

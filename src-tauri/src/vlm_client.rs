@@ -13,6 +13,25 @@ use std::time::Duration;
 /// Default VLM endpoint: local Ollama (fully offline)
 const DEFAULT_VLM_BASE_URL: &str = "http://localhost:11434";
 
+/// Local endpoints (Ollama) need no authentication
+fn is_local_url(url: &str) -> bool {
+    url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0")
+}
+
+/// Ollama /api/tags response (fallback when the TheBrain-style
+/// /api/models/status endpoint doesn't exist)
+#[derive(Debug, Deserialize)]
+struct OllamaTagsResponse {
+    models: Vec<OllamaTagModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTagModel {
+    name: String,
+    #[serde(default)]
+    size: Option<u64>,
+}
+
 /// Token response from /api/token
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -218,20 +237,42 @@ impl VLMClient {
         }
     }
 
-    /// Get available models from TheBrain API
+    /// Get available models. Ollama /api/tags first (local default), then
+    /// the legacy /api/models/status shape for remote hosts.
     pub async fn get_models(&self) -> Result<Vec<ModelStatus>, String> {
         let base = self.base_url.read().trim_end_matches('/').to_string();
-        let url = format!("{}/api/models/status", base);
 
-        let mut request = self.client.get(&url);
+        // Ollama shape
+        let mut request = self.client.get(format!("{}/api/tags", base));
         if let Some(auth) = self.get_auth_header() {
             request = request.header("Authorization", auth);
         }
+        if let Ok(resp) = request.send().await {
+            if resp.status().is_success() {
+                if let Ok(tags) = resp.json::<OllamaTagsResponse>().await {
+                    return Ok(tags
+                        .models
+                        .into_iter()
+                        .map(|m| ModelStatus {
+                            id: m.name,
+                            loaded: true,
+                            size_gb: m.size.map(|s| s as f32 / 1e9),
+                            preload: false,
+                        })
+                        .collect());
+                }
+            }
+        }
 
+        // Legacy /api/models/status shape
+        let mut request = self.client.get(format!("{}/api/models/status", base));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
         let resp = request
             .send()
             .await
-            .map_err(|e| format!("Failed to get models: {}", e))?;
+            .map_err(|e| format!("Failed to get models from {}: {}", base, e))?;
 
         if resp.status() == 401 {
             // Try re-authentication then retry once
@@ -296,29 +337,30 @@ impl VLMClient {
             .map(|t| format!("Bearer {}", t))
     }
 
-    /// Check if the API is available (uses TheBrain /api/models/status)
+    /// Check if the API is available. Tries the Ollama /api/tags endpoint
+    /// first (the default local case), then the legacy /api/models/status.
     pub async fn is_available(&self) -> bool {
         let base = self.base_url.read().trim_end_matches('/').to_string();
-        let url = format!("{}/api/models/status", base);
 
-        let mut request = self.client.get(&url);
-        if let Some(auth) = self.get_auth_header() {
-            request = request.header("Authorization", auth);
-        }
-
-        match request.send().await {
-            Ok(resp) => {
-                if resp.status() == 401 {
-                    log::warn!("TheBrain API: Authentication required");
+        for path in ["/api/tags", "/api/models/status"] {
+            let mut request = self.client.get(format!("{}{}", base, path));
+            if let Some(auth) = self.get_auth_header() {
+                request = request.header("Authorization", auth);
+            }
+            match request.send().await {
+                Ok(resp) if resp.status().is_success() => return true,
+                Ok(resp) if resp.status() == 401 => {
+                    log::warn!("AI endpoint {}: authentication required", base);
                     return false;
                 }
-                resp.status().is_success()
-            }
-            Err(e) => {
-                log::warn!("TheBrain API not available: {}", e);
-                false
+                Ok(_) => continue, // e.g. 404 — try the other endpoint shape
+                Err(e) => {
+                    log::warn!("AI endpoint not reachable at {}: {}", base, e);
+                    return false;
+                }
             }
         }
+        false
     }
 
     /// Check if vision models are available (TheBrain API)
@@ -759,9 +801,12 @@ pub async fn vlm_get_models() -> Result<Vec<ModelStatus>, String> {
     get_client().get_models().await
 }
 
-/// Check if authenticated (has valid bearer token)
+/// Check if the AI endpoint is usable without further login.
+/// Local Ollama needs no authentication; remote hosts need a bearer token.
 pub fn vlm_is_authenticated() -> bool {
-    get_client().bearer_token.read().is_some()
+    let client = get_client();
+    let is_local = is_local_url(&client.base_url.read());
+    is_local || client.bearer_token.read().is_some()
 }
 
 /// Chat with a specific model

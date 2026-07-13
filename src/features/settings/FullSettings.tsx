@@ -121,7 +121,7 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         { id: "general", label: "General", icon: "⚙️" },
         { id: "transcription", label: "Transcription", icon: "🎙️" },
         { id: "obsidian", label: "Obsidian", icon: "📚" },
-        { id: "thebrain", label: "TheBrain", icon: "🧠" },
+        { id: "thebrain", label: "AI Engine", icon: "" },
         { id: "data", label: "Data", icon: "💾" },
     ];
 
@@ -283,8 +283,8 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                 return (
                     <div className="settings-content-panel fade-in">
                         <section className="settings-section">
-                            <h3>TheBrain Connection</h3>
-                            <p className="section-desc">Connect to TheBrain Cloud for AI, chat, and vision intelligence.</p>
+                            <h3>AI Engine</h3>
+                            <p className="section-desc">Runs on local Ollama by default (fully on-device). Point at a remote Ollama-compatible endpoint to offload.</p>
                             <KnowledgeBaseSettings />
                         </section>
                     </div>

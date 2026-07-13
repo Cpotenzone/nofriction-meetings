@@ -352,7 +352,7 @@ pub async fn thebrain_chat(
     _state: State<'_, AppState>,
 ) -> Result<String, String> {
     if !crate::vlm_client::vlm_is_authenticated() {
-        return Err("Not authenticated with TheBrain. Please login in Settings.".to_string());
+        return Err("AI engine unavailable. Start local Ollama or configure a remote endpoint in Settings.".to_string());
     }
 
     log::info!(
@@ -391,7 +391,7 @@ pub async fn thebrain_rag_chat(
     state: State<'_, AppState>,
 ) -> Result<RagChatResponse, String> {
     if !crate::vlm_client::vlm_is_authenticated() {
-        return Err("Not authenticated with TheBrain. Please login in Settings.".to_string());
+        return Err("AI engine unavailable. Start local Ollama or configure a remote endpoint in Settings.".to_string());
     }
 
     let search_count = top_k.unwrap_or(5);

@@ -263,9 +263,8 @@ export function AIChat({ meetingId }: AIChatProps) {
         return (
             <div className="ai-chat-unavailable">
                 <div className="unavailable-content">
-                    <span className="unavailable-icon">🧠</span>
-                    <h3>TheBrain Not Connected</h3>
-                    <p>Please login to TheBrain in Settings → Knowledge Base.</p>
+                    <h3>AI Engine Not Running</h3>
+                    <p>Start local Ollama (install from ollama.com, then <code>ollama pull qwen3:8b</code>), or configure a remote endpoint in Settings → Knowledge Base.</p>
                     <button className="retry-button" onClick={checkTheBrain}>
                         Retry Connection
                     </button>
@@ -279,7 +278,7 @@ export function AIChat({ meetingId }: AIChatProps) {
             {/* Header with model selector and RAG toggle */}
             <div className="ai-chat-header">
                 <div className="model-selector">
-                    <label>🧠 Model:</label>
+                    <label>Model:</label>
                     <select
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}

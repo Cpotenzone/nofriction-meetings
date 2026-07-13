@@ -29,7 +29,7 @@ noFriction Meetings is a **professional macOS meeting companion** that automatic
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           EXTERNAL SERVICES                                 │
 ├─────────────────┬─────────────────┬─────────────────┬───────────────────────┤
-│   Deepgram      │   TheBrain      │   Pinecone      │   Supabase           │
+│  Whisper(local) │  Ollama(local)  │   Pinecone*     │   Supabase*          │
 │   (Speech→Text) │   (AI/LLM)      │   (Vectors)     │   (PostgreSQL)       │
 └─────────────────┴─────────────────┴─────────────────┴───────────────────────┘
 ```
@@ -78,7 +78,7 @@ noFriction Meetings is a **professional macOS meeting companion** that automatic
 **What it does:** Analyzes screenshots using vision-language models to understand screen content.
 
 **Components:**
-- `vlm_client.rs` - TheBrain API integration
+- `vlm_client.rs` - AI engine integration (local Ollama by default)
 - `vlm_scheduler.rs` - Batch processing queue
 - `vision_ocr.rs` - Native macOS text extraction
 - `snapshot_extractor.rs` - Text/UI element extraction
@@ -96,13 +96,13 @@ Screenshot → OCR Text → VLM Analysis → Structured Data → Database
 
 **Components:**
 - `ai_client.rs` - Local Ollama models
-- `vlm_client.rs` - TheBrain cloud API
+- `vlm_client.rs` - AI engine client (Ollama-compatible)
 - `pinecone_client.rs` - Vector search
 - `commands.rs` - RAG commands
 
 **Flow:**
 ```
-Question → Pinecone Search → Context Assembly → TheBrain → Response
+Question → Local FTS5 / Pinecone Search → Context Assembly → Ollama → Response
            ↓
     Store conversation for future retrieval
 ```
@@ -225,7 +225,7 @@ Question → Pinecone Search → Context Assembly → TheBrain → Response
 | Service | Setting Location | Purpose |
 |---------|------------------|---------|
 | Deepgram | Settings → Transcription | Speech-to-text |
-| TheBrain | Settings → AI | Cloud LLM |
+| Ollama (local) | Settings → AI | On-device LLM (default) |
 | Pinecone | Settings → Knowledge Base | Vector search |
 | Supabase | Settings → Knowledge Base | Cloud storage |
 
@@ -279,7 +279,7 @@ Question → Pinecone Search → Context Assembly → TheBrain → Response
 | Module | Purpose |
 |--------|---------|
 | `ai_client.rs` | Ollama client |
-| `vlm_client.rs` | TheBrain client |
+| `vlm_client.rs` | AI engine client |
 | `pinecone_client.rs` | Vector DB |
 | `prompt_manager.rs` | Prompt templates |
 
@@ -301,7 +301,7 @@ Question → Pinecone Search → Context Assembly → TheBrain → Response
 | v2.6.0 | Prompt Studio, AI Intelligence Pipeline |
 | v2.5.0 | Always-On Recording, Meeting Detection, RAG Pipeline |
 | v2.1.0 | Admin Console, Calendar, OCR, Classification |
-| Current | RAG Pipeline, TheBrain Integration |
+| Current | RAG Pipeline, local-first AI (Ollama + Whisper) |
 
 ---
 
@@ -322,5 +322,5 @@ Question → Pinecone Search → Context Assembly → TheBrain → Response
 |-------|----------|
 | No transcription | Check Deepgram API key |
 | No screenshots | Grant Screen Recording permission |
-| AI not responding | Check TheBrain authentication |
+| AI not responding | Check Ollama is running (`ollama serve`) |
 | Search returns nothing | Ensure Pinecone is configured |

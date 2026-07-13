@@ -82,7 +82,7 @@ nofriction-meetings/
 │   │   ├── database.rs          # SQLite operations
 │   │   ├── capture_engine.rs    # Recording coordinator
 │   │   ├── transcription/       # Transcription providers
-│   │   ├── vlm_client.rs        # TheBrain API
+│   │   ├── vlm_client.rs        # AI engine (local Ollama by default)
 │   │   ├── pinecone_client.rs   # Vector database
 │   │   └── ...                  # 45 modules total
 │   ├── Cargo.toml               # Rust dependencies
@@ -306,7 +306,7 @@ supabase db push --db-url "postgres://..."
 | Module | Purpose |
 |--------|---------|
 | `ai_client.rs` | Local Ollama |
-| `vlm_client.rs` | TheBrain cloud |
+| `vlm_client.rs` | AI engine (Ollama-compatible) |
 | `vlm_scheduler.rs` | Batch processing |
 | `pinecone_client.rs` | Vector search |
 | `prompt_manager.rs` | Prompt templates |
@@ -335,7 +335,7 @@ Command Handler (Rust)
     │
     ├─► Database (SQLite)
     │
-    ├─► External API (Deepgram, TheBrain)
+    ├─► AI engine (local Whisper/Ollama; optional cloud providers)
     │
     └─► State Manager
 ```

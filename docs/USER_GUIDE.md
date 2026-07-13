@@ -66,7 +66,7 @@ For AI features like summaries, action items, and chat:
 
 | Provider | Setup |
 |----------|-------|
-| **TheBrain Cloud** | Settings → AI → Login with credentials |
+| **AI Engine** | Local Ollama by default — no login needed |
 | **Local Ollama** | Install [Ollama](https://ollama.ai), models auto-detected |
 
 ---
@@ -282,7 +282,7 @@ Access Settings via sidebar or `⌘ + ,`
 
 | Setting | Description |
 |---------|-------------|
-| **TheBrain Login** | Cloud AI authentication |
+| **AI Engine** | Local Ollama (remote endpoints optional) |
 | **Ollama Models** | Local model selection |
 | **Auto-Analyze** | VLM processing on/off |
 | **VLM Interval** | Processing frequency |
@@ -339,7 +339,7 @@ Access Settings via sidebar or `⌘ + ,`
 **Symptom:** Chat shows no response or errors
 
 **Solutions:**
-1. Check TheBrain connection status (green dot)
+1. Check the AI engine status (green dot) — local Ollama must be running
 2. Re-authenticate in Settings → AI
 3. Try a different model
 
@@ -411,7 +411,7 @@ Access Settings via sidebar or `⌘ + ,`
 If you enable cloud features:
 - **Supabase**: PostgreSQL database (your instance)
 - **Pinecone**: Vector embeddings only (no raw audio)
-- **TheBrain**: API calls only, no data stored
+- **AI Engine**: runs locally via Ollama by default — nothing leaves your Mac
 
 ### Data Deletion
 

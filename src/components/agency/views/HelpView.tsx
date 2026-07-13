@@ -509,13 +509,13 @@ const ServicesManual: React.FC = () => (
         </div>
 
         <div className="help-section">
-            <h3>Serendipity AI — Report Generation <span className="help-version">BUILT-IN</span></h3>
+            <h3>AI Engine — Report Generation <span className="help-version">LOCAL</span></h3>
             <table className="help-table">
                 <tbody>
-                    <tr><td><strong>Endpoint</strong></td><td><code>https://7wk6vrq9achr2djw.caas.targon.com</code></td></tr>
-                    <tr><td><strong>API Type</strong></td><td>REST (OpenAI-compatible)</td></tr>
+                    <tr><td><strong>Endpoint</strong></td><td><code>http://localhost:11434</code> (local Ollama; remote optional)</td></tr>
+                    <tr><td><strong>API Type</strong></td><td>REST (Ollama API)</td></tr>
                     <tr><td><strong>Model</strong></td><td><code>qwen3:8b</code> (Sage — deep reasoning)</td></tr>
-                    <tr><td><strong>Auth</strong></td><td>Bearer token (pre-configured)</td></tr>
+                    <tr><td><strong>Auth</strong></td><td>None for local Ollama (bearer token for remote hosts)</td></tr>
                     <tr><td><strong>Used For</strong></td><td>Meeting report generation, Data Chat answers, attendee intelligence</td></tr>
                 </tbody>
             </table>

@@ -26,7 +26,7 @@ impl Default for EnvConfig {
             pinecone_api_key: None,
             pinecone_index_host: None,
             pinecone_namespace: Some("default".to_string()),
-            vlm_base_url: Some("https://7wk68vrq9achr2djw.caas.targon.com".to_string()),
+            vlm_base_url: None, // None = local Ollama
             thebrain_email: None,
             thebrain_password: None,
             remote_intelligence_enabled: false,
@@ -59,9 +59,11 @@ impl EnvConfig {
             pinecone_namespace: env::var("PINECONE_NAMESPACE")
                 .ok()
                 .or(Some("default".to_string())),
-            vlm_base_url: env::var("VLM_BASE_URL").ok().or(Some(
-                "https://7wk68vrq9achr2djw.caas.targon.com".to_string(),
-            )),
+            // Only honor an explicitly set VLM_BASE_URL; ignore anything
+            // pointing at the decommissioned Targon host. Unset = local Ollama.
+            vlm_base_url: env::var("VLM_BASE_URL")
+                .ok()
+                .filter(|u| !u.is_empty() && !u.contains("targon.com")),
             thebrain_email: env::var("THEBRAIN_EMAIL").ok(),
             thebrain_password: env::var("THEBRAIN_PASSWORD").ok(),
             remote_intelligence_enabled: env::var("REMOTE_INTELLIGENCE_ENABLED")

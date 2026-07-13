@@ -19,11 +19,12 @@ export function KnowledgeBaseSettings() {
     const [pineconeHost, setPineconeHost] = useState("");
     const [pineconeNamespace, setPineconeNamespace] = useState("");
 
-    // TheBrain credentials
+    // AI engine endpoint (local Ollama by default; remote hosts may need login)
     const [thebrainEmail, setThebrainEmail] = useState("");
     const [thebrainPassword, setThebrainPassword] = useState("");
-    const [thebrainApiUrl, setThebrainApiUrl] = useState("https://7wk6vrq9achr2djw.caas.targon.com");
+    const [thebrainApiUrl, setThebrainApiUrl] = useState("http://localhost:11434");
     const [thebrainError, setThebrainError] = useState<string | null>(null);
+    const isLocalEndpoint = thebrainApiUrl.includes("localhost") || thebrainApiUrl.includes("127.0.0.1");
 
     // Status
     const [health, setHealth] = useState<HealthStatus>({
@@ -75,21 +76,22 @@ export function KnowledgeBaseSettings() {
     };
 
     const handleThebrainLogin = async () => {
-        if (!thebrainEmail.trim() || !thebrainPassword.trim()) return;
         setIsSaving(true);
         setThebrainError(null);
         try {
-            // First, save the API URL to settings and configure VLM client
+            // Save the endpoint URL and reconfigure the AI/VLM clients
             await invoke("set_vlm_api_url", { url: thebrainApiUrl });
-            // Then authenticate
-            await invoke("thebrain_authenticate", {
-                username: thebrainEmail,
-                password: thebrainPassword
-            });
+            // Local Ollama needs no login; only authenticate remote hosts
+            if (!isLocalEndpoint && thebrainEmail.trim() && thebrainPassword.trim()) {
+                await invoke("thebrain_authenticate", {
+                    username: thebrainEmail,
+                    password: thebrainPassword
+                });
+                setThebrainPassword(""); // Clear password after success
+            }
             await checkHealth();
-            setThebrainPassword(""); // Clear password after success
         } catch (err) {
-            console.error("TheBrain login failed:", err);
+            console.error("AI endpoint connection failed:", err);
             setThebrainError(String(err));
         } finally {
             setIsSaving(false);
@@ -178,7 +180,7 @@ export function KnowledgeBaseSettings() {
 
                 <div className="health-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--spacing-md)" }}>
                     <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
-                        <span>🧠 TheBrain Cloud</span>
+                        <span>AI Engine (Ollama)</span>
                         <StatusBadge status={health.thebrain} />
                     </div>
                     <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
@@ -205,14 +207,12 @@ export function KnowledgeBaseSettings() {
                 </div>
             </section>
 
-            {/* TheBrain Cloud VLM */}
+            {/* AI Engine (local Ollama by default) */}
             <section className="settings-section">
-                <h3>
-                    <span className="icon">🧠</span>
-                    TheBrain Cloud AI
-                </h3>
+                <h3>AI Engine</h3>
                 <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
-                    Connect to TheBrain Cloud for AI-powered screen analysis and knowledge extraction.
+                    Chat, summaries, and screen analysis run on local Ollama by default —
+                    fully on this Mac. Point the URL at a remote Ollama-compatible host to offload.
                 </p>
 
                 {health.thebrain ? (
@@ -222,64 +222,75 @@ export function KnowledgeBaseSettings() {
                         borderRadius: "8px",
                         border: "1px solid rgba(16, 185, 129, 0.3)"
                     }}>
-                        ✅ Connected to TheBrain Cloud
+                        Connected {isLocalEndpoint ? "— running locally via Ollama" : `— ${thebrainApiUrl}`}
                     </div>
                 ) : (
                     <>
                         <div className="settings-row">
                             <div className="settings-label">
-                                <span className="label-main">API URL</span>
-                                <span className="label-hint">VLM endpoint URL</span>
+                                <span className="label-main">Endpoint URL</span>
+                                <span className="label-hint">Ollama-compatible API</span>
                             </div>
-                            <div className="settings-control">
+                            <div className="settings-control" style={{ display: "flex", gap: "var(--spacing-sm)" }}>
                                 <input
                                     type="url"
                                     className="settings-input"
-                                    placeholder="https://your-api-endpoint.com"
+                                    placeholder="http://localhost:11434"
                                     value={thebrainApiUrl}
                                     onChange={(e) => setThebrainApiUrl(e.target.value)}
                                     style={{ fontSize: "0.8rem" }}
                                 />
-                            </div>
-                        </div>
-                        <div className="settings-row">
-                            <div className="settings-label">
-                                <span className="label-main">Email</span>
-                            </div>
-                            <div className="settings-control">
-                                <input
-                                    type="email"
-                                    className="settings-input"
-                                    placeholder="your@email.com"
-                                    value={thebrainEmail}
-                                    onChange={(e) => setThebrainEmail(e.target.value)}
-                                />
-                            </div>
-                        </div>
-                        <div className="settings-row">
-                            <div className="settings-label">
-                                <span className="label-main">Password</span>
-                            </div>
-                            <div className="settings-control" style={{ display: "flex", gap: "var(--spacing-sm)" }}>
-                                <input
-                                    type="password"
-                                    className="settings-input"
-                                    placeholder="••••••••"
-                                    value={thebrainPassword}
-                                    onChange={(e) => setThebrainPassword(e.target.value)}
-                                />
                                 <button
                                     className="settings-button"
                                     onClick={handleThebrainLogin}
-                                    disabled={isSaving || !thebrainEmail.trim() || !thebrainPassword.trim()}
+                                    disabled={isSaving}
                                 >
-                                    {isSaving ? "Connecting..." : "Connect"}
+                                    {isSaving ? "Checking..." : "Connect"}
                                 </button>
                             </div>
                         </div>
+                        {isLocalEndpoint ? (
+                            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "var(--spacing-sm)" }}>
+                                Ollama isn't responding. Install it from ollama.com, then run:
+                                {" "}<code>ollama pull qwen3:8b</code> (and optionally <code>ollama pull qwen3-vl:8b</code> for
+                                screenshot analysis). No account or API key needed.
+                            </p>
+                        ) : (
+                            <>
+                                <div className="settings-row">
+                                    <div className="settings-label">
+                                        <span className="label-main">Email</span>
+                                        <span className="label-hint">Remote hosts only</span>
+                                    </div>
+                                    <div className="settings-control">
+                                        <input
+                                            type="email"
+                                            className="settings-input"
+                                            placeholder="your@email.com"
+                                            value={thebrainEmail}
+                                            onChange={(e) => setThebrainEmail(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="settings-row">
+                                    <div className="settings-label">
+                                        <span className="label-main">Password</span>
+                                    </div>
+                                    <div className="settings-control">
+                                        <input
+                                            type="password"
+                                            className="settings-input"
+                                            placeholder="••••••••"
+                                            value={thebrainPassword}
+                                            onChange={(e) => setThebrainPassword(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
                         {thebrainError && (
                             <p style={{ color: "var(--error)", fontSize: "0.875rem", marginTop: "var(--spacing-sm)" }}>
-                                ⚠️ {thebrainError}
+                                {thebrainError}
                             </p>
                         )}
                     </>
