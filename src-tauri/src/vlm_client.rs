@@ -1,7 +1,8 @@
-//! VLM Client for TheBrain Cloud API
+//! VLM Client — Ollama-compatible /api/chat with image support
 //!
-//! Uses TheBrain API at https://7wk6vrq9achr2djw.caas.targon.com
-//! Models: qwen3-vl:8b (vision), qwen3:8b (text), qwen2.5-coder:7b (code)
+//! Defaults to local Ollama (http://localhost:11434) so frame analysis runs
+//! fully on-device (e.g. qwen3-vl:8b / llava). Point base_url at a remote
+//! Ollama-compatible host (with optional bearer auth) to go remote.
 
 use base64::Engine;
 use parking_lot::RwLock;
@@ -9,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// TheBrain API base URL
-const THEBRAIN_API_URL: &str = "https://7wk6vrq9achr2djw.caas.targon.com";
+/// Default VLM endpoint: local Ollama (fully offline)
+const DEFAULT_VLM_BASE_URL: &str = "http://localhost:11434";
 
 /// Token response from /api/token
 #[derive(Debug, Deserialize)]
@@ -108,9 +109,9 @@ struct ChatMessageResponse {
     content: String,
 }
 
-/// VLM Client for TheBrain Cloud API
+/// VLM Client (Ollama-compatible API)
 pub struct VLMClient {
-    /// Base URL (TheBrain API)
+    /// Base URL (local Ollama by default)
     base_url: Arc<RwLock<String>>,
     /// Bearer token for authentication (JWT from /api/token)
     bearer_token: Arc<RwLock<Option<String>>>,
@@ -132,7 +133,7 @@ impl VLMClient {
             .unwrap_or_default();
 
         Self {
-            base_url: Arc::new(RwLock::new(THEBRAIN_API_URL.to_string())),
+            base_url: Arc::new(RwLock::new(DEFAULT_VLM_BASE_URL.to_string())),
             bearer_token: Arc::new(RwLock::new(None)),
             credentials: Arc::new(RwLock::new(None)),
             model_primary: Arc::new(RwLock::new("qwen3-vl:8b".to_string())),

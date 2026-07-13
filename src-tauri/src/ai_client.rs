@@ -124,7 +124,12 @@ struct OllamaMessage {
     content: String,
 }
 
-/// AI Client for Centralized API (via SSH tunnel)
+/// Default AI endpoint: local Ollama. The client speaks the Ollama API
+/// (/api/tags, /api/chat, /api/generate), so everything runs on-device by
+/// default; point base_url at a remote Ollama-compatible host to go remote.
+pub const DEFAULT_AI_BASE_URL: &str = "http://localhost:11434";
+
+/// AI Client (Ollama-compatible API)
 pub struct AIClient {
     base_url: Arc<RwLock<String>>,
     bearer_token: Arc<RwLock<Option<String>>>,
@@ -134,12 +139,10 @@ pub struct AIClient {
 impl AIClient {
     pub fn new() -> Self {
         Self {
-            base_url: Arc::new(RwLock::new(
-                "https://7wk6vrq9achr2djw.caas.targon.com".to_string(),
-            )),
-            bearer_token: Arc::new(RwLock::new(Some(
-                "sk_live_774de746.9200e789f953df8fa2e5ede28f0e8cf9".to_string(),
-            ))),
+            base_url: Arc::new(RwLock::new(DEFAULT_AI_BASE_URL.to_string())),
+            // No token by default — local Ollama is unauthenticated.
+            // NEVER hardcode a bearer token here (see CLAUDE.md).
+            bearer_token: Arc::new(RwLock::new(None)),
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
                 .build()
