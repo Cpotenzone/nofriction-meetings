@@ -20,11 +20,26 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🎤 **Live Transcription** | Real-time speech-to-text for all your meetings |
-| ⏪ **Rewind** | Visual playback with synchronized screenshots and audio |
-| 🧠 **Deep Intel** | AI-generated summaries, action items, and insights |
-| 🔍 **Knowledge Base** | Search across all your past meetings instantly |
-| 🔒 **Privacy First** | All processing happens locally on your Mac |
+| **Live Transcription** | Real-time speech-to-text — on-device Whisper by default (fully offline), or cloud providers (Deepgram, Google Chirp 2, Gladia) |
+| **Rewind** | Visual playback with synchronized screenshots and transcripts |
+| **Deep Intel** | AI summaries, action items, and insights via local Ollama (or a remote endpoint) |
+| **Knowledge Base** | Full-text search across all your past meetings, entirely local |
+| **Offline by Default** | Capture, transcription, storage, search, and AI all run on your Mac — no account, no API key, no network required |
+
+### Running fully offline
+
+Out of the box the app records, transcribes (local Whisper, one-time 142 MB
+model download), stores, and searches with zero cloud dependencies. For AI
+chat/summaries/frame analysis, install [Ollama](https://ollama.com) and pull
+a model:
+
+```bash
+brew install ollama
+ollama pull qwen3:8b        # chat, summaries, insights
+ollama pull qwen3-vl:8b     # optional: screenshot analysis
+```
+
+Cloud providers remain available as opt-in upgrades in Settings.
 
 ---
 
