@@ -184,13 +184,15 @@ impl CaptureEngine {
         Ok(())
     }
 
-    /// Start meeting capture (full audio + screen, 2s intervals)
-    pub fn start_meeting(&self, app: AppHandle) -> Result<(), String> {
+    /// Start meeting capture (full audio + screen) at the configured
+    /// frame interval (default 1s — the "screenshot every second" objective)
+    pub fn start_meeting(&self, app: AppHandle, interval_ms: u32) -> Result<(), String> {
+        let interval_ms = interval_ms.clamp(100, 60000);
         if self.is_running.load(Ordering::SeqCst) {
             // If already running, switch mode and enable audio
             self.set_mode(CaptureMode::Meeting);
             self.audio_enabled.store(true, Ordering::SeqCst);
-            *self.frame_interval_ms.write() = 2000; // 2 seconds
+            *self.frame_interval_ms.write() = interval_ms;
 
             // Start audio capture if not running
             if !MIC_RUNNING.load(Ordering::SeqCst) {
@@ -203,17 +205,23 @@ impl CaptureEngine {
                 });
             }
 
-            log::info!("Switched to Meeting mode (2s intervals, audio enabled)");
+            log::info!(
+                "Switched to Meeting mode ({}ms intervals, audio enabled)",
+                interval_ms
+            );
             return Ok(());
         }
 
         // Start fresh in meeting mode
         self.set_mode(CaptureMode::Meeting);
         self.audio_enabled.store(true, Ordering::SeqCst);
-        *self.frame_interval_ms.write() = 2000; // 2 seconds
+        *self.frame_interval_ms.write() = interval_ms;
 
         self.start(app)?;
-        log::info!("🎙️ Meeting capture started (audio + screen @ 2s)");
+        log::info!(
+            "🎙️ Meeting capture started (audio + screen @ {}ms)",
+            interval_ms
+        );
         Ok(())
     }
 

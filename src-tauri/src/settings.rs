@@ -114,10 +114,10 @@ impl AppSettings {
             show_notifications: true,
             capture_microphone: true,                // Mic on by default
             capture_system_audio: true,              // System audio ON for meeting capture
-            capture_screen: false,                   // Screen capture OFF by default (reduces CPU)
+            capture_screen: true,                    // Screen capture ON — rewind is the core feature
             always_on_capture: false,                // Not always-on by default
             queue_frames_for_vlm: false,             // VLM OFF by default (saves resources)
-            frame_capture_interval_ms: 5000,         // 5 sec instead of 1 (5x less disk I/O)
+            frame_capture_interval_ms: 1000,         // 1 screenshot/sec; stateful capture dedupes unchanged screens
             vlm_auto_process: false,                 // Auto-processing OFF by default
             vlm_process_interval_secs: 120,          // 2 minutes default interval
             ai_chat_model: None,                     // Will use first available model

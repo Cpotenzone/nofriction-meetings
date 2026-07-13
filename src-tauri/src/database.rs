@@ -987,10 +987,25 @@ impl DatabaseManager {
         is_final: bool,
         confidence: f32,
     ) -> Result<i64, sqlx::Error> {
+        self.add_transcript_at(meeting_id, text, speaker, is_final, confidence, Utc::now())
+            .await
+    }
+
+    /// Add a transcript stamped with the actual speech time (not insert time),
+    /// so rewind alignment against frames is exact.
+    pub async fn add_transcript_at(
+        &self,
+        meeting_id: &str,
+        text: &str,
+        speaker: Option<&str>,
+        is_final: bool,
+        confidence: f32,
+        timestamp: DateTime<Utc>,
+    ) -> Result<i64, sqlx::Error> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        let now = Utc::now();
+        let now = timestamp;
         let now_str = now.to_rfc3339();
 
         // Only deduplicate final transcripts

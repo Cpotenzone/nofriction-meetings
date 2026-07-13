@@ -2,7 +2,7 @@
 // Always-on recording, dork mode (study mode), capture metrics
 
 use crate::AppState;
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Window};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, State, Window};
 
 // ============================================
 // Always-On Recording Commands
@@ -34,15 +34,23 @@ pub async fn start_ambient_capture(
     Ok(())
 }
 
-/// Start meeting capture (full audio + screen, 2s intervals)
+/// Start meeting capture (full audio + screen) at the user's configured
+/// screenshot interval (default 1s)
 #[tauri::command(rename_all = "camelCase")]
 pub async fn start_meeting_capture(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    log::info!("🎙️ Starting meeting capture mode");
+    let interval_ms = state
+        .settings
+        .get_all()
+        .await
+        .map(|s| s.frame_capture_interval_ms)
+        .unwrap_or(1000);
+
+    log::info!("🎙️ Starting meeting capture mode ({}ms frames)", interval_ms);
     let engine = state.capture_engine.read();
-    engine.start_meeting(app)?;
+    engine.start_meeting(app, interval_ms)?;
 
     // Prevent sleep with higher priority? (Using same IOPM assertion for now)
     let _ = state

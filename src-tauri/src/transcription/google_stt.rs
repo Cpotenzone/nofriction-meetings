@@ -1,12 +1,20 @@
-// Google Cloud Speech-to-Text V2 — Streaming via REST chunked approach
-// Uses the V2 recognize endpoint with Chirp 2 model for high-quality transcription.
-// Sends small audio chunks (500ms) for near-real-time results with speaker diarization.
+// Google Cloud Speech-to-Text V2 — near-real-time utterance streaming
+//
+// Audio is buffered with sample-accurate timing and segmented into utterances
+// on natural pauses (energy endpointing), so Chirp 2 always sees whole
+// phrases instead of arbitrary 500ms slices. Word time offsets returned by
+// the API are anchored to the capture-stream start, so every emitted segment
+// and every persisted transcript row carries the true speech time — this is
+// what keeps the Rewind view frame/transcript alignment exact.
+//
+// Utterances are transcribed by a single sequential worker, which guarantees
+// transcripts are emitted and persisted in speech order even though each
+// utterance is a separate HTTP request.
 
 use async_trait::async_trait;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -15,6 +23,25 @@ use tokio::sync::mpsc;
 use crate::database::DatabaseManager;
 use crate::live_intel_agent::LiveIntelAgent;
 use crate::transcription::TranscriptionProvider;
+
+// ─── Tuning constants ────────────────────────────────────────────────────────
+
+/// Everything is resampled to 16kHz mono before buffering.
+const SAMPLE_RATE: usize = 16_000;
+/// Energy frames used for endpointing (50ms).
+const FRAME_SAMPLES: usize = SAMPLE_RATE / 20;
+/// RMS below this is treated as silence.
+const SILENCE_RMS: f32 = 0.008;
+/// A pause this long ends an utterance.
+const TRAILING_SILENCE_FRAMES: usize = 13; // ~650ms
+/// Don't flush utterances shorter than this (avoids one-word fragments).
+const MIN_UTTERANCE_SAMPLES: usize = SAMPLE_RATE; // 1s
+/// Force a flush at this length even mid-speech (sync recognize limit is 60s).
+const MAX_UTTERANCE_SAMPLES: usize = SAMPLE_RATE * 15; // 15s
+/// Keep this much leading silence as padding when trimming.
+const LEAD_PAD_SAMPLES: usize = SAMPLE_RATE / 5; // 200ms
+/// Drop a buffer that is pure silence once it exceeds this length.
+const MAX_SILENCE_SAMPLES: usize = SAMPLE_RATE * 5; // 5s
 
 // ─── V2 API Request/Response Types ──────────────────────────────────────────
 
@@ -28,14 +55,21 @@ struct RecognizeRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RecognitionConfig {
-    auto_decoding_config: AutoDecodingConfig,
+    explicit_decoding_config: ExplicitDecodingConfig,
     language_codes: Vec<String>,
     model: String,
     features: RecognitionFeatures,
 }
 
+// Raw LINEAR16 PCM has no container header, so auto-decoding cannot detect
+// it — the decoding parameters must be spelled out explicitly.
 #[derive(Debug, Serialize)]
-struct AutoDecodingConfig {}
+#[serde(rename_all = "camelCase")]
+struct ExplicitDecodingConfig {
+    encoding: String,
+    sample_rate_hertz: u32,
+    audio_channel_count: u32,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,8 +95,6 @@ struct RecognizeResponse {
 #[derive(Debug, Deserialize)]
 struct SpeechResult {
     alternatives: Option<Vec<SpeechAlternative>>,
-    #[serde(rename = "languageCode")]
-    _language_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,9 +110,7 @@ struct WordInfo {
     #[allow(dead_code)]
     word: Option<String>,
     speaker_label: Option<String>,
-    #[allow(dead_code)]
     start_offset: Option<String>,
-    #[allow(dead_code)]
     end_offset: Option<String>,
 }
 
@@ -91,6 +121,7 @@ pub struct TranscriptSegment {
     pub text: String,
     pub is_final: bool,
     pub confidence: f32,
+    /// True speech start time, seconds since UNIX epoch.
     pub start: f64,
     pub duration: f64,
     pub speaker: Option<String>,
@@ -112,6 +143,35 @@ struct AudioBatch {
     channels: u16,
 }
 
+/// One endpointed utterance queued for transcription.
+struct UtteranceJob {
+    /// Wall-clock time of the first sample in this utterance.
+    start_time: chrono::DateTime<chrono::Utc>,
+    duration_secs: f64,
+    audio_b64: String,
+}
+
+/// Parse a protobuf Duration JSON string like "3.500s" into seconds.
+fn parse_offset_secs(offset: &Option<String>) -> Option<f64> {
+    offset
+        .as_ref()
+        .and_then(|s| s.trim_end_matches('s').parse::<f64>().ok())
+}
+
+fn frame_is_silent(frame: &[f32]) -> bool {
+    if frame.is_empty() {
+        return true;
+    }
+    let energy: f32 = frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32;
+    energy.sqrt() < SILENCE_RMS
+}
+
+/// Diarization is only supported on a subset of V2 models; sending the config
+/// with Chirp models makes every request fail.
+fn model_supports_diarization(model: &str) -> bool {
+    !model.starts_with("chirp")
+}
+
 // ─── Provider ───────────────────────────────────────────────────────────────
 
 pub struct GoogleSTTProvider {
@@ -130,7 +190,7 @@ pub struct GoogleSTTProvider {
     region: Arc<RwLock<String>>,
     /// Model (e.g. "chirp_2")
     model: Arc<RwLock<String>>,
-    /// Enable speaker diarization
+    /// Enable speaker diarization (ignored on models that don't support it)
     diarization: Arc<AtomicBool>,
 }
 
@@ -278,7 +338,9 @@ impl GoogleSTTProvider {
             .ok_or("Missing project_id in service account".to_string())
     }
 
-    /// Main processing loop — sends 500ms audio chunks to V2 recognize endpoint
+    /// Buffering + endpointing loop. Segments incoming audio into utterances
+    /// and hands them to the sequential transcription worker.
+    #[allow(clippy::too_many_arguments)]
     async fn processing_loop(
         service_account: String,
         region: String,
@@ -304,21 +366,14 @@ impl GoogleSTTProvider {
             }
         };
 
-        // Get initial token
-        let token = match Self::get_or_refresh_token(
-            &service_account,
-            &token_holder,
-            &expiry_holder,
-        )
-        .await
+        // Fail fast on bad credentials before accepting audio
+        if let Err(e) =
+            Self::get_or_refresh_token(&service_account, &token_holder, &expiry_holder).await
         {
-            Ok(t) => t,
-            Err(e) => {
-                log::error!("❌ Google STT auth failed: {}", e);
-                Self::emit_status(&app, false, Some(e), 0);
-                return;
-            }
-        };
+            log::error!("❌ Google STT auth failed: {}", e);
+            Self::emit_status(&app, false, Some(e), 0);
+            return;
+        }
 
         is_connected.store(true, Ordering::SeqCst);
         Self::emit_status(&app, true, None, 0);
@@ -326,66 +381,209 @@ impl GoogleSTTProvider {
             "✅ Google Cloud STT V2 ready (model={}, region={}, diarization={})",
             model,
             region,
-            diarization_enabled
+            diarization_enabled && model_supports_diarization(&model)
         );
 
         let (audio_tx, mut audio_rx) = mpsc::channel::<AudioBatch>(64);
         *audio_tx_holder.write() = Some(audio_tx);
 
-        let client = reqwest::Client::new();
-        // 500ms chunks at 16kHz = 8000 samples
-        let chunk_size: usize = 8000;
-        let mut buffer: VecDeque<f32> = VecDeque::with_capacity(chunk_size * 2);
+        // Sequential transcription worker — preserves speech order.
+        let (job_tx, job_rx) = mpsc::channel::<UtteranceJob>(32);
+        let worker = tokio::spawn(Self::transcription_worker(
+            service_account.clone(),
+            project_id,
+            region.clone(),
+            model.clone(),
+            diarization_enabled,
+            app.clone(),
+            is_connected.clone(),
+            token_holder.clone(),
+            expiry_holder.clone(),
+            reconnect_count.clone(),
+            database,
+            meeting_id,
+            live_intel_agent,
+            job_rx,
+        ));
 
-        let recognizer = format!(
-            "projects/{}/locations/{}/recognizers/_",
-            project_id, region
-        );
-        let url = format!(
-            "https://{}-speech.googleapis.com/v2/{}:recognize",
-            region, recognizer
-        );
+        // Utterance buffer with sample-accurate absolute timing:
+        // wall-clock of sample N  =  anchor + N / 16000.
+        let mut buffer: Vec<f32> = Vec::with_capacity(MAX_UTTERANCE_SAMPLES);
+        let mut buffer_start_sample: u64 = 0;
+        let mut total_samples: u64 = 0;
+        let mut anchor: Option<chrono::DateTime<chrono::Utc>> = None;
 
-        let mut consecutive_errors: u32 = 0;
-        let _ = token; // we'll refresh per-request below
+        let sample_time = |anchor: chrono::DateTime<chrono::Utc>, n: u64| {
+            anchor + chrono::Duration::microseconds((n as f64 / SAMPLE_RATE as f64 * 1e6) as i64)
+        };
 
         loop {
-            if !should_run.load(Ordering::SeqCst) {
-                break;
-            }
+            let running = should_run.load(Ordering::SeqCst) && is_connected.load(Ordering::SeqCst);
 
-            // Receive audio with 50ms timeout
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(50),
-                audio_rx.recv(),
-            )
-            .await
+            // Drain available audio (with a short wait so the loop idles cheaply)
+            match tokio::time::timeout(std::time::Duration::from_millis(50), audio_rx.recv()).await
             {
                 Ok(Some(batch)) => {
-                    let resampled = Self::resample_to_16k_mono(
-                        &batch.samples,
-                        batch.sample_rate,
-                        batch.channels,
-                    );
+                    let resampled =
+                        Self::resample_to_16k_mono(&batch.samples, batch.sample_rate, batch.channels);
+                    if anchor.is_none() && !resampled.is_empty() {
+                        // First audio: anchor the stream clock at the start of this batch
+                        anchor = Some(
+                            chrono::Utc::now()
+                                - chrono::Duration::microseconds(
+                                    (resampled.len() as f64 / SAMPLE_RATE as f64 * 1e6) as i64,
+                                ),
+                        );
+                    }
+                    total_samples += resampled.len() as u64;
                     buffer.extend(resampled);
+                    // Keep draining without waiting while more is queued
+                    while let Ok(batch) = audio_rx.try_recv() {
+                        let resampled = Self::resample_to_16k_mono(
+                            &batch.samples,
+                            batch.sample_rate,
+                            batch.channels,
+                        );
+                        total_samples += resampled.len() as u64;
+                        buffer.extend(resampled);
+                    }
                 }
                 Ok(None) => break, // channel closed
-                Err(_) => {}       // timeout, check buffer
+                Err(_) => {}       // timeout — evaluate endpointing below
             }
 
-            // Send when we have 500ms+ of audio
-            if buffer.len() < chunk_size {
+            let anchor_ts = match anchor {
+                Some(a) => a,
+                None => {
+                    if !running {
+                        break;
+                    }
+                    continue;
+                }
+            };
+
+            // ── Endpointing ────────────────────────────────────────────────
+            let frames: Vec<bool> = buffer
+                .chunks(FRAME_SAMPLES)
+                .map(frame_is_silent)
+                .collect();
+            let has_speech = frames.iter().any(|&s| !s);
+
+            // Pure-silence buffer: discard once it's clearly just quiet room
+            if !has_speech {
+                if buffer.len() > MAX_SILENCE_SAMPLES {
+                    buffer_start_sample += buffer.len() as u64;
+                    buffer.clear();
+                }
+                if !running {
+                    break;
+                }
                 continue;
             }
 
-            let chunk: Vec<f32> = buffer.drain(..chunk_size).collect();
-            let bytes = Self::f32_to_i16_bytes(&chunk);
-            let b64 = base64::Engine::encode(
-                &base64::engine::general_purpose::STANDARD,
-                &bytes,
-            );
+            // Trim long leading silence (keep a short pad before the speech)
+            if let Some(first_speech) = frames.iter().position(|&s| !s) {
+                let lead_samples = first_speech * FRAME_SAMPLES;
+                if lead_samples > LEAD_PAD_SAMPLES * 2 {
+                    let cut = lead_samples - LEAD_PAD_SAMPLES;
+                    buffer.drain(..cut);
+                    buffer_start_sample += cut as u64;
+                }
+            }
 
-            // Refresh token if needed
+            let trailing_silent = frames.len() >= TRAILING_SILENCE_FRAMES
+                && frames[frames.len() - TRAILING_SILENCE_FRAMES..]
+                    .iter()
+                    .all(|&s| s);
+
+            let should_flush = buffer.len() >= MAX_UTTERANCE_SAMPLES
+                || (buffer.len() >= MIN_UTTERANCE_SAMPLES && trailing_silent)
+                || (!running && buffer.len() >= FRAME_SAMPLES);
+
+            if should_flush {
+                let utterance: Vec<f32> = if buffer.len() >= MAX_UTTERANCE_SAMPLES {
+                    buffer.drain(..MAX_UTTERANCE_SAMPLES).collect()
+                } else {
+                    buffer.drain(..).collect()
+                };
+                let start_time = sample_time(anchor_ts, buffer_start_sample);
+                buffer_start_sample += utterance.len() as u64;
+
+                let bytes = Self::f32_to_i16_bytes(&utterance);
+                let job = UtteranceJob {
+                    start_time,
+                    duration_secs: utterance.len() as f64 / SAMPLE_RATE as f64,
+                    audio_b64: base64::Engine::encode(
+                        &base64::engine::general_purpose::STANDARD,
+                        &bytes,
+                    ),
+                };
+                if job_tx.send(job).await.is_err() {
+                    log::warn!("Transcription worker gone; stopping Google STT loop");
+                    break;
+                }
+            }
+
+            if !running && buffer.len() < FRAME_SAMPLES {
+                break;
+            }
+
+            // Keep the absolute clock honest even if we never flush
+            debug_assert!(buffer_start_sample + buffer.len() as u64 <= total_samples + 1);
+        }
+
+        // Cleanup: close the job channel and let the worker finish in-flight work
+        drop(job_tx);
+        let _ = worker.await;
+
+        is_connected.store(false, Ordering::SeqCst);
+        *audio_tx_holder.write() = None;
+        Self::emit_status(&app, false, None, reconnect_count.load(Ordering::Relaxed));
+        log::info!("Google Cloud STT V2 processing loop exited");
+    }
+
+    /// Sequential worker: transcribes utterances one at a time so results are
+    /// emitted and persisted in speech order.
+    #[allow(clippy::too_many_arguments)]
+    async fn transcription_worker(
+        service_account: String,
+        project_id: String,
+        region: String,
+        model: String,
+        diarization_enabled: bool,
+        app: AppHandle,
+        is_connected: Arc<AtomicBool>,
+        token_holder: Arc<RwLock<Option<String>>>,
+        expiry_holder: Arc<RwLock<Option<u64>>>,
+        reconnect_count: Arc<AtomicU64>,
+        database: Arc<RwLock<Option<Arc<DatabaseManager>>>>,
+        meeting_id: Arc<RwLock<Option<String>>>,
+        live_intel_agent: Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
+        mut job_rx: mpsc::Receiver<UtteranceJob>,
+    ) {
+        let client = reqwest::Client::new();
+        let url = format!(
+            "https://{}-speech.googleapis.com/v2/projects/{}/locations/{}/recognizers/_:recognize",
+            region, project_id, region
+        );
+
+        let features = |diarize: bool| RecognitionFeatures {
+            enable_automatic_punctuation: true,
+            enable_word_time_offsets: true,
+            diarization_config: if diarize {
+                Some(DiarizationConfig {
+                    min_speaker_count: 1,
+                    max_speaker_count: 6,
+                })
+            } else {
+                None
+            },
+        };
+        let diarize = diarization_enabled && model_supports_diarization(&model);
+
+        let mut consecutive_errors: u32 = 0;
+
+        while let Some(job) = job_rx.recv().await {
             let access_token = match Self::get_or_refresh_token(
                 &service_account,
                 &token_holder,
@@ -406,129 +604,173 @@ impl GoogleSTTProvider {
                 }
             };
 
-            let features = RecognitionFeatures {
-                enable_automatic_punctuation: true,
-                enable_word_time_offsets: true,
-                diarization_config: if diarization_enabled {
-                    Some(DiarizationConfig {
-                        min_speaker_count: 1,
-                        max_speaker_count: 6,
-                    })
-                } else {
-                    None
-                },
-            };
-
             let request_body = RecognizeRequest {
                 config: RecognitionConfig {
-                    auto_decoding_config: AutoDecodingConfig {},
+                    explicit_decoding_config: ExplicitDecodingConfig {
+                        encoding: "LINEAR16".to_string(),
+                        sample_rate_hertz: SAMPLE_RATE as u32,
+                        audio_channel_count: 1,
+                    },
                     language_codes: vec!["en-US".to_string()],
                     model: model.clone(),
-                    features,
+                    features: features(diarize),
                 },
-                content: b64,
+                content: job.audio_b64.clone(),
             };
 
-            // Fire request without blocking audio loop
-            let client = client.clone();
-            let url = url.clone();
-            let access_token = access_token.clone();
-            let app_clone = app.clone();
-            let intel_agent = live_intel_agent.clone();
-            let db = database.clone();
-            let mid = meeting_id.clone();
+            let resp = client
+                .post(&url)
+                .bearer_auth(&access_token)
+                .json(&request_body)
+                .send()
+                .await;
 
-            tokio::spawn(async move {
-                let resp = client
-                    .post(&url)
-                    .bearer_auth(&access_token)
-                    .json(&request_body)
-                    .send()
-                    .await;
-
-                match resp {
-                    Ok(r) if r.status().is_success() => {
-                        if let Ok(stt) = r.json::<RecognizeResponse>().await {
-                            if let Some(results) = stt.results {
-                                for result in results {
-                                    if let Some(alts) = result.alternatives {
-                                        if let Some(alt) = alts.first() {
-                                            let text = alt.transcript.as_deref().unwrap_or("");
-                                            if text.trim().is_empty() {
-                                                continue;
-                                            }
-
-                                            // Extract speaker from word-level diarization
-                                            let speaker = alt
-                                                .words
-                                                .as_ref()
-                                                .and_then(|w| w.first())
-                                                .and_then(|w| w.speaker_label.clone());
-
-                                            let segment = TranscriptSegment {
-                                                text: text.to_string(),
-                                                is_final: true,
-                                                confidence: alt.confidence.unwrap_or(0.92),
-                                                start: 0.0,
-                                                duration: 0.5,
-                                                speaker: speaker.clone(),
-                                            };
-
-                                            log::info!("📝 GCP STT [Chirp2]: {}", text);
-
-                                            // Emit to frontend
-                                            if let Err(e) = app_clone.emit("live_transcript", &segment) {
-                                                log::error!("Emit failed: {}", e);
-                                            }
-
-                                            // LiveIntelAgent
-                                            if let Some(agent) = intel_agent.read().as_ref() {
-                                                let mut agent = agent.write();
-                                                let intel_seg = crate::catch_up_agent::TranscriptSegment {
-                                                    id: uuid::Uuid::new_v4().to_string(),
-                                                    timestamp_ms: chrono::Utc::now().timestamp_millis(),
-                                                    speaker: speaker.clone(),
-                                                    text: text.to_string(),
-                                                };
-                                                agent.process_segment(intel_seg);
-                                            }
-
-                                            // Save to DB
-                                            if let Some(db) = db.read().as_ref().cloned() {
-                                                if let Some(mid) = mid.read().as_ref().cloned() {
-                                                    let t = text.to_string();
-                                                    let s = speaker.clone();
-                                                    let c = alt.confidence.unwrap_or(0.92);
-                                                    tokio::spawn(async move {
-                                                        let _ = db.add_transcript(&mid, &t, s.as_deref(), true, c).await;
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+            match resp {
+                Ok(r) if r.status().is_success() => {
+                    consecutive_errors = 0;
+                    match r.json::<RecognizeResponse>().await {
+                        Ok(stt) => {
+                            Self::handle_response(
+                                stt,
+                                &job,
+                                &app,
+                                &database,
+                                &meeting_id,
+                                &live_intel_agent,
+                            )
+                            .await;
                         }
-                    }
-                    Ok(r) => {
-                        let status = r.status();
-                        let body = r.text().await.unwrap_or_default();
-                        log::error!("GCP STT error {}: {}", status, &body[..body.len().min(200)]);
-                    }
-                    Err(e) => {
-                        log::error!("GCP STT request failed: {}", e);
+                        Err(e) => log::error!("GCP STT response parse failed: {}", e),
                     }
                 }
-            });
-
-            consecutive_errors = 0;
+                Ok(r) => {
+                    let status = r.status();
+                    let body = r.text().await.unwrap_or_default();
+                    log::error!("GCP STT error {}: {}", status, &body[..body.len().min(300)]);
+                    consecutive_errors += 1;
+                    if consecutive_errors > 5 {
+                        is_connected.store(false, Ordering::SeqCst);
+                        Self::emit_status(
+                            &app,
+                            false,
+                            Some(format!("Google STT failing: HTTP {}", status)),
+                            reconnect_count.load(Ordering::Relaxed),
+                        );
+                        break;
+                    }
+                }
+                Err(e) => {
+                    log::error!("GCP STT request failed: {}", e);
+                    consecutive_errors += 1;
+                    if consecutive_errors > 5 {
+                        is_connected.store(false, Ordering::SeqCst);
+                        Self::emit_status(
+                            &app,
+                            false,
+                            Some(format!("Google STT unreachable: {}", e)),
+                            reconnect_count.load(Ordering::Relaxed),
+                        );
+                        break;
+                    }
+                }
+            }
         }
 
-        // Cleanup
-        is_connected.store(false, Ordering::SeqCst);
-        *audio_tx_holder.write() = None;
-        Self::emit_status(&app, false, None, reconnect_count.load(Ordering::Relaxed));
-        log::info!("Google Cloud STT V2 processing loop exited");
+        log::info!("Google STT transcription worker exited");
+    }
+
+    /// Emit + persist one utterance's results with true speech timestamps.
+    async fn handle_response(
+        stt: RecognizeResponse,
+        job: &UtteranceJob,
+        app: &AppHandle,
+        database: &Arc<RwLock<Option<Arc<DatabaseManager>>>>,
+        meeting_id: &Arc<RwLock<Option<String>>>,
+        live_intel_agent: &Arc<RwLock<Option<Arc<RwLock<LiveIntelAgent>>>>>,
+    ) {
+        let results = match stt.results {
+            Some(r) => r,
+            None => return,
+        };
+
+        for result in results {
+            let alt = match result.alternatives.as_ref().and_then(|a| a.first()) {
+                Some(a) => a,
+                None => continue,
+            };
+            let text = alt.transcript.as_deref().unwrap_or("").trim();
+            if text.is_empty() {
+                continue;
+            }
+
+            // Anchor word offsets (relative to the utterance) to wall clock
+            let (rel_start, rel_end) = alt
+                .words
+                .as_ref()
+                .filter(|w| !w.is_empty())
+                .map(|words| {
+                    let first = parse_offset_secs(&words.first().unwrap().start_offset);
+                    let last = parse_offset_secs(&words.last().unwrap().end_offset);
+                    (first.unwrap_or(0.0), last.unwrap_or(job.duration_secs))
+                })
+                .unwrap_or((0.0, job.duration_secs));
+
+            let segment_start = job.start_time
+                + chrono::Duration::microseconds((rel_start * 1e6) as i64);
+            let duration = (rel_end - rel_start).max(0.0);
+
+            let speaker = alt
+                .words
+                .as_ref()
+                .and_then(|w| w.first())
+                .and_then(|w| w.speaker_label.clone());
+
+            let segment = TranscriptSegment {
+                text: text.to_string(),
+                is_final: true,
+                confidence: alt.confidence.unwrap_or(0.92),
+                start: segment_start.timestamp_micros() as f64 / 1e6,
+                duration,
+                speaker: speaker.clone(),
+            };
+
+            log::info!("📝 GCP STT [{:.1}s]: {}", duration, text);
+
+            if let Err(e) = app.emit("live_transcript", &segment) {
+                log::error!("Emit failed: {}", e);
+            }
+
+            if let Some(agent) = live_intel_agent.read().as_ref() {
+                let mut agent = agent.write();
+                let intel_seg = crate::catch_up_agent::TranscriptSegment {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    timestamp_ms: segment_start.timestamp_millis(),
+                    speaker: speaker.clone(),
+                    text: text.to_string(),
+                };
+                agent.process_segment(intel_seg);
+            }
+
+            // Persist with the true speech time (in speech order — we await here)
+            let db = database.read().as_ref().cloned();
+            let mid = meeting_id.read().as_ref().cloned();
+            if let (Some(db), Some(mid)) = (db, mid) {
+                let confidence = alt.confidence.unwrap_or(0.92);
+                if let Err(e) = db
+                    .add_transcript_at(
+                        &mid,
+                        text,
+                        speaker.as_deref(),
+                        true,
+                        confidence,
+                        segment_start,
+                    )
+                    .await
+                {
+                    log::warn!("Failed to persist transcript: {}", e);
+                }
+            }
+        }
     }
 
     fn f32_to_i16_bytes(samples: &[f32]) -> Vec<u8> {
@@ -631,7 +873,7 @@ impl TranscriptionProvider for GoogleSTTProvider {
             const MAX_BACKOFF_MS: u64 = 30_000;
 
             while should_run.load(Ordering::SeqCst) {
-                log::info!("🔗 Starting Google Cloud STT V2 (Chirp 2)...");
+                log::info!("🔗 Starting Google Cloud STT V2 (utterance streaming)...");
                 Self::emit_status(&app, false, None, reconnect_count.load(Ordering::Relaxed));
 
                 Self::processing_loop(
@@ -679,8 +921,8 @@ impl TranscriptionProvider for GoogleSTTProvider {
 
     fn stop(&self) {
         self.should_run.store(false, Ordering::SeqCst);
-        self.is_connected.store(false, Ordering::SeqCst);
-        *self.audio_tx.write() = None;
+        // Leave is_connected set so the processing loop can flush the final
+        // utterance; it clears the flag itself on exit.
         log::info!("Google STT V2 stop requested");
     }
 
@@ -719,5 +961,50 @@ impl TranscriptionProvider for GoogleSTTProvider {
         *self.database.write() = Some(database);
         *self.meeting_id.write() = Some(meeting_id);
         *self.live_intel_agent.write() = Some(live_intel_agent);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_offset_secs() {
+        assert_eq!(parse_offset_secs(&Some("3.500s".to_string())), Some(3.5));
+        assert_eq!(parse_offset_secs(&Some("0s".to_string())), Some(0.0));
+        assert_eq!(parse_offset_secs(&None), None);
+        assert_eq!(parse_offset_secs(&Some("bogus".to_string())), None);
+    }
+
+    #[test]
+    fn test_frame_silence_detection() {
+        let silent = vec![0.0f32; FRAME_SAMPLES];
+        assert!(frame_is_silent(&silent));
+
+        let loud: Vec<f32> = (0..FRAME_SAMPLES)
+            .map(|i| (i as f32 * 0.1).sin() * 0.5)
+            .collect();
+        assert!(!frame_is_silent(&loud));
+    }
+
+    #[test]
+    fn test_diarization_model_guard() {
+        assert!(!model_supports_diarization("chirp_2"));
+        assert!(!model_supports_diarization("chirp"));
+        assert!(model_supports_diarization("latest_long"));
+    }
+
+    #[test]
+    fn test_resample_passthrough_and_downmix() {
+        // Stereo 16k → mono 16k, same length in frames
+        let stereo: Vec<f32> = vec![0.5, -0.5, 0.5, -0.5];
+        let mono = GoogleSTTProvider::resample_to_16k_mono(&stereo, 16000, 2);
+        assert_eq!(mono.len(), 2);
+        assert!(mono.iter().all(|&s| s.abs() < 1e-6));
+
+        // 48k → 16k is a 3:1 reduction
+        let x: Vec<f32> = vec![0.1; 4800];
+        let y = GoogleSTTProvider::resample_to_16k_mono(&x, 48000, 1);
+        assert_eq!(y.len(), 1600);
     }
 }
