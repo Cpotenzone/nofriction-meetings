@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { MicIcon, SpeakerIcon, FilmIcon, GearIcon, WarningIcon, SparkleIcon } from '../../components/icons';
+import './SetupWizard.css';
 
 interface SetupWizardProps {
     onComplete: () => void;
@@ -85,10 +87,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 {/* Step 1: Deepgram API Key */}
                 {step === 1 && (
                     <div className="setup-step">
-                        <div className="step-icon">🎙️</div>
+                        <div className="step-icon"><MicIcon size={22} /></div>
                         <h2>Real-Time Transcription</h2>
                         <p className="step-description">
-                            noFriction Meetings uses Deepgram for live speech-to-text. You'll need a free API key.
+                            Live speech-to-text uses Deepgram by default — you'll need a free API key.
+                            Prefer Google Cloud (Chirp 2) or Gladia? Switch providers any time in
+                            Settings → Transcription.
                         </p>
 
                         <div className="api-key-section">
@@ -116,7 +120,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
                         {!state.deepgramApiKey.trim() && (
                             <div className="warning-box">
-                                ⚠️ Without an API key, transcription won't work. You can add it later in Settings.
+                                <WarningIcon size={16} />
+                                <span>Without an API key, transcription won't work. You can add one later in Settings.</span>
                             </div>
                         )}
                     </div>
@@ -125,7 +130,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 {/* Step 2: Capture Settings */}
                 {step === 2 && (
                     <div className="setup-step">
-                        <div className="step-icon">⚙️</div>
+                        <div className="step-icon"><GearIcon size={22} /></div>
                         <h2>Capture Settings</h2>
                         <p className="step-description">
                             Configure what noFriction Meetings captures during your meetings.
@@ -139,7 +144,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                                     onChange={(e) => setState({ ...state, captureMicrophone: e.target.checked })}
                                 />
                                 <div className="option-content">
-                                    <span className="option-icon">🎤</span>
+                                    <span className="option-icon"><MicIcon size={18} /></span>
                                     <span className="option-label">Microphone Audio</span>
                                     <span className="option-hint">Your voice (required for transcription)</span>
                                 </div>
@@ -152,7 +157,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                                     onChange={(e) => setState({ ...state, captureSystemAudio: e.target.checked })}
                                 />
                                 <div className="option-content">
-                                    <span className="option-icon">🔊</span>
+                                    <span className="option-icon"><SpeakerIcon size={18} /></span>
                                     <span className="option-label">System Audio</span>
                                     <span className="option-hint">Capture Zoom/Teams/Meet audio</span>
                                 </div>
@@ -165,7 +170,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                                     onChange={(e) => setState({ ...state, captureVideo: e.target.checked })}
                                 />
                                 <div className="option-content">
-                                    <span className="option-icon">🎬</span>
+                                    <span className="option-icon"><FilmIcon size={18} /></span>
                                     <span className="option-label">Video Recording</span>
                                     <span className="option-hint">Continuous screen capture as video (efficient)</span>
                                 </div>
@@ -173,7 +178,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         </div>
 
                         <div className="performance-note">
-                            💡 <strong>New:</strong> Video recording captures every frame efficiently as video, not individual images. Long meetings are now stable!
+                            Screen capture takes one frame per second and skips unchanged screens,
+                            so even long meetings stay light on disk.
                         </div>
                     </div>
                 )}
@@ -181,31 +187,31 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 {/* Step 3: Ready */}
                 {step === 3 && (
                     <div className="setup-step">
-                        <div className="step-icon">🚀</div>
-                        <h2>You're All Set!</h2>
+                        <div className="step-icon"><SparkleIcon size={22} /></div>
+                        <h2>You're All Set</h2>
                         <p className="step-description">
                             Here's a summary of your setup:
                         </p>
 
                         <div className="setup-summary">
                             <div className="summary-item">
-                                <span className="summary-label">Deepgram API</span>
+                                <span className="summary-label">Transcription key</span>
                                 <span className={`summary-value ${state.deepgramApiKey.trim() ? 'success' : 'warning'}`}>
-                                    {state.deepgramApiKey.trim() ? '✅ Configured' : '⚠️ Not configured'}
+                                    {state.deepgramApiKey.trim() ? 'Configured' : 'Not configured'}
                                 </span>
                             </div>
                             <div className="summary-item">
                                 <span className="summary-label">Microphone</span>
-                                <span className="summary-value">{state.captureMicrophone ? '✅ On' : '❌ Off'}</span>
+                                <span className={`summary-value ${state.captureMicrophone ? 'success' : 'off'}`}>{state.captureMicrophone ? 'On' : 'Off'}</span>
                             </div>
                             <div className="summary-item">
-                                <span className="summary-label">System Audio</span>
-                                <span className="summary-value">{state.captureSystemAudio ? '✅ On' : '❌ Off'}</span>
+                                <span className="summary-label">System audio</span>
+                                <span className={`summary-value ${state.captureSystemAudio ? 'success' : 'off'}`}>{state.captureSystemAudio ? 'On' : 'Off'}</span>
                             </div>
                             <div className="summary-item">
-                                <span className="summary-label">Video Recording</span>
-                                <span className="summary-value">
-                                    {state.captureVideo ? '✅ On (efficient video)' : '❌ Off'}
+                                <span className="summary-label">Screen recording</span>
+                                <span className={`summary-value ${state.captureVideo ? 'success' : 'off'}`}>
+                                    {state.captureVideo ? 'On' : 'Off'}
                                 </span>
                             </div>
                         </div>
