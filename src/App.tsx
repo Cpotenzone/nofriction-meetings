@@ -7,6 +7,7 @@ import { debugLog } from "./lib/tauri";
 import "./App.css";
 import { MeetingDetectionBanner } from "./components/MeetingDetectionBanner";
 import { SetupWizard, useSetupRequired } from "./features/onboarding/SetupWizard";
+import { isOffline } from "./lib/offline";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 import { GenieView } from "./components/GenieView";
@@ -105,6 +106,12 @@ function App() {
 
   // Listen for startup events and poll as fallback
   useEffect(() => {
+    // Browser preview (no Tauri IPC): mock mode — skip backend readiness gate
+    if (isOffline()) {
+      setIsBackendReady(true);
+      return;
+    }
+
     let unlistenReady: (() => void) | null = null;
     let unlistenError: (() => void) | null = null;
     let pollInterval: number | null = null;
