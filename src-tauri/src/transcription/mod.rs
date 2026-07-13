@@ -11,6 +11,7 @@ pub mod deepgram;
 pub mod gemini;
 pub mod gladia;
 pub mod google_stt;
+pub mod local_whisper;
 
 /// Core trait for all transcription providers
 #[async_trait]
@@ -48,6 +49,8 @@ pub enum ProviderType {
     Gemini,
     Gladia,
     GoogleSTT,
+    /// On-device whisper.cpp — no API key, fully offline
+    Local,
 }
 
 impl Default for ProviderType {
@@ -86,6 +89,7 @@ impl TranscriptionManager {
             ProviderType::Gemini => Box::new(gemini::GeminiProvider::new()),
             ProviderType::Gladia => Box::new(gladia::GladiaProvider::new()),
             ProviderType::GoogleSTT => Box::new(google_stt::GoogleSTTProvider::new()),
+            ProviderType::Local => Box::new(local_whisper::LocalWhisperProvider::new()),
         };
 
         // Re-apply stored API key for this provider type (if any)

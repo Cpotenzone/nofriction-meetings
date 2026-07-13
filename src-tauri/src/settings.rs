@@ -36,7 +36,8 @@ pub struct AppSettings {
     pub google_stt_key_json: Option<String>,
     pub deepgram_model: Option<String>,
     pub gemini_model: Option<String>,
-    pub transcription_provider: String, // "deepgram", "gemini", "gladia", "google_stt"
+    pub transcription_provider: String, // "deepgram", "gemini", "gladia", "google_stt", "local"
+    pub local_whisper_model: Option<String>, // e.g. "base.en", "small.en"
     pub selected_microphone: Option<String>,
     pub selected_monitor: Option<u32>,
     pub auto_start_recording: bool,
@@ -108,6 +109,7 @@ impl AppSettings {
             deepgram_model: Some("nova-3".to_string()),
             gemini_model: Some("models/gemini-2.0-flash-exp".to_string()),
             transcription_provider: "deepgram".to_string(),
+            local_whisper_model: Some("base.en".to_string()),
             selected_microphone: None,
             selected_monitor: None,
             auto_start_recording: false,
@@ -248,6 +250,9 @@ impl SettingsManager {
         }
         if let Some(prov) = self.get("transcription_provider").await? {
             settings.transcription_provider = prov;
+        }
+        if let Some(model) = self.get("local_whisper_model").await? {
+            settings.local_whisper_model = Some(model);
         }
         if let Some(mic) = self.get("selected_microphone").await? {
             settings.selected_microphone = Some(mic);
@@ -463,6 +468,10 @@ impl SettingsManager {
     /// Set transcription provider
     pub async fn set_transcription_provider(&self, provider: &str) -> Result<(), sqlx::Error> {
         self.set("transcription_provider", provider).await
+    }
+
+    pub async fn set_local_whisper_model(&self, model: &str) -> Result<(), sqlx::Error> {
+        self.set("local_whisper_model", model).await
     }
 
     /// Save selected microphone

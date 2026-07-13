@@ -206,6 +206,14 @@ impl AppState {
             }
         }
 
+        // Configure local (offline) transcription: models live in app data
+        let whisper_models_dir = app_data_dir.join("models");
+        let _ = std::fs::create_dir_all(&whisper_models_dir);
+        transcription::local_whisper::configure(
+            whisper_models_dir,
+            saved_settings.local_whisper_model.clone(),
+        );
+
         // Restore saved transcription provider choice
         let saved_provider = &saved_settings.transcription_provider;
         match saved_provider.as_str() {
@@ -220,6 +228,10 @@ impl AppState {
             "google_stt" => {
                 transcription_manager.switch_provider(transcription::ProviderType::GoogleSTT);
                 log::info!("Restored saved transcription provider: GoogleSTT");
+            }
+            "local" => {
+                transcription_manager.switch_provider(transcription::ProviderType::Local);
+                log::info!("Restored saved transcription provider: Local Whisper (offline)");
             }
             _ => {
                 // Default is Deepgram, already set in TranscriptionManager::new()
@@ -245,8 +257,22 @@ impl AppState {
         let _ = emitter.emit("init-step", "Connecting to Knowledge Base...");
         let vlm = VLMClient::new();
 
+        // Migration: the Targon-hosted AI endpoint is decommissioned. Ignore
+        // any saved URL pointing at it so installs fall back to local Ollama.
+        let saved_vlm_url = saved_settings
+            .vlm_base_url
+            .clone()
+            .filter(|u| {
+                if u.contains("targon.com") {
+                    log::warn!("Ignoring saved VLM URL {} (Targon decommissioned) — using local Ollama", u);
+                    false
+                } else {
+                    true
+                }
+            });
+
         // Configure VLM client with saved settings
-        if let Some(ref base_url) = saved_settings.vlm_base_url {
+        if let Some(ref base_url) = saved_vlm_url {
             vlm.set_base_url(base_url.clone());
             log::info!("VLM configured with base URL: {}", base_url);
         }
@@ -262,9 +288,10 @@ impl AppState {
         }
 
         // Also configure the global VLM client for standalone functions
-        // Create AI client and configure from saved VLM URL if available
+        // Create AI client and configure from saved VLM URL if available.
+        // With no saved URL both clients default to local Ollama (offline).
         let ai_client = ai_client::AIClient::new();
-        if let Some(ref base_url) = saved_settings.vlm_base_url {
+        if let Some(ref base_url) = saved_vlm_url {
             crate::vlm_client::vlm_configure(base_url, saved_settings.vlm_bearer_token.as_deref());
 
             // Also configure the AI client so chat/summarize/action-items use the remote endpoint
@@ -273,6 +300,8 @@ impl AppState {
                 ai_client.set_bearer_token(token.clone());
             }
             log::info!("✅ AI client configured from saved VLM URL: {}", base_url);
+        } else {
+            log::info!("🖥 AI/VLM using local Ollama at {}", ai_client::DEFAULT_AI_BASE_URL);
         }
 
         // Auto-populate settings from .env if not already set or empty
@@ -688,6 +717,11 @@ pub fn run() {
             commands::set_always_on_capture,
             commands::set_queue_frames_for_vlm,
             commands::set_frame_capture_interval,
+            // Local (offline) speech-to-text
+            commands::get_local_stt_status,
+            commands::set_local_whisper_model,
+            commands::download_whisper_model,
+            commands::delete_whisper_model,
             commands::configure_knowledge_base,
             commands::get_capture_settings,
             // AI Provider Settings

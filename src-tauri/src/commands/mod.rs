@@ -16,11 +16,13 @@ pub mod intel;
 pub mod prompt;
 pub mod ai;
 pub mod capture;
+pub mod local_stt;
 pub use vault::*;
 pub use intel::*;
 pub use prompt::*;
 pub use ai::*;
 pub use capture::*;
+pub use local_stt::*;
 
 use crate::capture_engine::{
     AudioBuffer, AudioDevice, CapturedFrame, MonitorInfo, RecordingStatus,
@@ -542,10 +544,13 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         let tm = &state.transcription_manager;
         let mut provider_type = tm.get_provider_type();
 
+        // Local Whisper needs no API key — never fall back away from it
+        let needs_key = provider_type != ProviderType::Local;
+
         // Check if the current provider has a stored key (already loaded at startup)
         let has_key = tm.has_key_for_provider(provider_type);
 
-        if !has_key {
+        if needs_key && !has_key {
             log::warn!(
                 "No API key stored for {:?} — checking other providers for fallback",
                 provider_type
@@ -575,6 +580,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
                         ProviderType::Gemini => "gemini",
                         ProviderType::Gladia => "gladia",
                         ProviderType::GoogleSTT => "google_stt",
+                        ProviderType::Local => "local",
                     };
                     let _ = state
                         .settings
@@ -586,9 +592,17 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
             }
 
             if !found_fallback {
-                log::warn!(
-                    "No transcription API key configured for any provider - transcription disabled"
-                );
+                // Last resort: local Whisper if a model is installed (offline, keyless)
+                if crate::transcription::local_whisper::resolve_model_path().is_ok() {
+                    log::info!("No cloud API keys — falling back to Local Whisper (offline)");
+                    tm.switch_provider(ProviderType::Local);
+                    provider_type = ProviderType::Local;
+                    let _ = state.settings.set_transcription_provider("local").await;
+                } else {
+                    log::warn!(
+                        "No transcription API key configured for any provider - transcription disabled"
+                    );
+                }
             }
         }
 
@@ -1542,6 +1556,7 @@ pub async fn set_active_provider(
         "gemini" => ProviderType::Gemini,
         "gladia" => ProviderType::Gladia,
         "google_stt" => ProviderType::GoogleSTT,
+        "local" => ProviderType::Local,
         _ => return Err("Invalid provider".to_string()),
     };
 
@@ -2447,6 +2462,41 @@ pub async fn search_knowledge_base(
                 summary: activity.summary,
                 score: activity.confidence,
             });
+        }
+
+        // Also search meeting transcripts via FTS5 — this is the richest
+        // local data and makes chat useful fully offline (no Pinecone).
+        if let Some(ref query) = options.query {
+            // FTS5 MATCH chokes on punctuation/operators; build a safe
+            // OR-query from the alphanumeric words.
+            let fts_query = query
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|w| w.len() > 2)
+                .take(8)
+                .map(|w| format!("\"{}\"", w))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+
+            if !fts_query.is_empty() {
+                if let Ok(hits) = state.database.search_transcripts(&fts_query).await {
+                    for hit in hits.into_iter().take(limit as usize) {
+                        results.push(KBSearchResult {
+                            id: format!("transcript-{}", hit.meeting_id),
+                            source: "local".to_string(),
+                            timestamp: Some(hit.timestamp.to_rfc3339()),
+                            app_name: None,
+                            category: Some("transcript".to_string()),
+                            summary: format!(
+                                "[{}] {}",
+                                hit.meeting_title, hit.transcript_text
+                            ),
+                            // bm25 relevance is negative-is-better; normalize
+                            // to a rough 0-1 confidence for ranking
+                            score: Some((1.0 / (1.0 + hit.relevance.abs())) as f32),
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -3687,12 +3737,13 @@ pub async fn start_realtime_transcription(
         ProviderType::Gemini => state.settings.get_gemini_api_key().await.ok().flatten(),
         ProviderType::Gladia => state.settings.get_gladia_api_key().await.ok().flatten(),
         ProviderType::GoogleSTT => state.settings.get_google_stt_key().await.ok().flatten(),
+        ProviderType::Local => None, // no key needed — fully offline
     };
 
     if let Some(key) = api_key {
         tm.set_api_key(key);
         log::info!("Loaded API key for {:?} from settings", provider_type);
-    } else {
+    } else if provider_type != ProviderType::Local {
         log::warn!(
             "No API key found in settings for {:?} - transcription will fail",
             provider_type
