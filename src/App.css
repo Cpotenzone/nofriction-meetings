@@ -5444,6 +5444,25 @@ pre,
   display: block;
 }
 
+/* Transcription health banner (LIVE view) */
+.stt-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(250, 204, 21, 0.08);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  color: var(--hazard-yellow, #facc15);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.stt-warning-banner svg {
+  flex-shrink: 0;
+}
+
 /* Command palette affordance (⌘K) */
 .agency-cmdk-btn {
   display: inline-flex;

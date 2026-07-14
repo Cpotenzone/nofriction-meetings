@@ -18,6 +18,13 @@ interface SetupState {
     captureSystemAudio: boolean;
 }
 
+interface PermissionStatus {
+    screen_recording: boolean;
+    microphone: boolean;
+    accessibility: boolean;
+    calendar: boolean;
+}
+
 export function SetupWizard({ onComplete }: SetupWizardProps) {
     const [step, setStep] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +36,48 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         captureMicrophone: true,
         captureSystemAudio: true,
     });
+
+    // Permissions (step 3): live status, polled while the user answers
+    // the macOS prompts so the chips flip green without any manual refresh
+    const [perms, setPerms] = useState<PermissionStatus | null>(null);
+    const [micStatus, setMicStatus] = useState<string>('not_determined');
+    const [requesting, setRequesting] = useState<string | null>(null);
+
+    const refreshPerms = async () => {
+        try {
+            const [p, m] = await Promise.all([
+                invoke<PermissionStatus>('check_permissions'),
+                invoke<string>('get_microphone_auth_status'),
+            ]);
+            setPerms(p);
+            setMicStatus(m);
+        } catch (err) {
+            console.warn('Permission check unavailable:', err);
+        }
+    };
+
+    useEffect(() => {
+        if (step !== 3) return;
+        refreshPerms();
+        const interval = setInterval(refreshPerms, 1500);
+        return () => clearInterval(interval);
+    }, [step]);
+
+    const handleGrant = async (permission: string) => {
+        setRequesting(permission);
+        try {
+            await invoke('request_permission', { permissionType: permission });
+        } catch (err) {
+            console.warn(`Permission request failed:`, err);
+        } finally {
+            setRequesting(null);
+            refreshPerms();
+        }
+    };
+
+    const openSettings = (pane: string) => {
+        invoke('open_system_settings', { pane }).catch(console.warn);
+    };
 
     const handleNext = () => {
         setStep(step + 1);
@@ -50,7 +99,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 await invoke('set_active_provider', { provider: 'local' });
                 // Kick off the one-time model download in the background;
                 // progress is visible in Settings → Transcription.
-                invoke('download_whisper_model', { model: 'tiny.en' }).catch((e) =>
+                invoke('download_whisper_model', { model: 'small.en' }).catch((e) =>
                     console.warn('Whisper model download deferred:', e),
                 );
             } else if (state.deepgramApiKey.trim()) {
@@ -76,7 +125,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         }
     };
 
-    const totalSteps = 3;
+    const totalSteps = 4;
 
     return (
         <div className="setup-wizard">
@@ -84,7 +133,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 <h1>Welcome to noFriction Meetings</h1>
                 <p className="setup-subtitle">Let's get you set up in 2 minutes</p>
                 <div className="setup-progress">
-                    {[1, 2, 3].map((s) => (
+                    {[1, 2, 3, 4].map((s) => (
                         <div
                             key={s}
                             className={`progress-dot ${s === step ? 'active' : ''} ${s < step ? 'complete' : ''}`}
@@ -116,7 +165,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                                     <span className="mode-title">Private &amp; Offline</span>
                                     <span className="mode-hint">
                                         Whisper runs on this Mac. No API key, no internet, nothing
-                                        leaves your machine. Downloads a 75 MB model once.
+                                        leaves your machine. Downloads a 466 MB model once.
                                     </span>
                                 </div>
                             </label>
@@ -227,8 +276,87 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     </div>
                 )}
 
-                {/* Step 3: Ready */}
+                {/* Step 3: macOS Permissions */}
                 {step === 3 && (
+                    <div className="setup-step">
+                        <div className="step-icon"><WarningIcon size={22} /></div>
+                        <h2>macOS Permissions</h2>
+                        <p className="step-description">
+                            Recording needs two system permissions. Grant them now so your
+                            first capture just works — the chips turn green as macOS confirms.
+                        </p>
+
+                        <div className="perm-list">
+                            <div className="perm-row">
+                                <span className={`perm-dot ${perms?.microphone ? 'ok' : 'pending'}`} />
+                                <div className="perm-info">
+                                    <span className="perm-name">Microphone</span>
+                                    <span className="perm-hint">
+                                        {perms?.microphone
+                                            ? 'Granted — your voice will be transcribed'
+                                            : micStatus === 'denied' || micStatus === 'restricted'
+                                                ? 'Denied earlier — enable it in System Settings, then come back'
+                                                : 'Needed to transcribe what is said'}
+                                    </span>
+                                </div>
+                                {!perms?.microphone && (
+                                    micStatus === 'denied' || micStatus === 'restricted' ? (
+                                        <button className="setup-btn secondary perm-btn" onClick={() => openSettings('microphone')}>
+                                            Open Settings
+                                        </button>
+                                    ) : (
+                                        <button
+                                            className="setup-btn primary perm-btn"
+                                            onClick={() => handleGrant('microphone')}
+                                            disabled={requesting === 'microphone'}
+                                        >
+                                            {requesting === 'microphone' ? 'Asking…' : 'Grant'}
+                                        </button>
+                                    )
+                                )}
+                            </div>
+
+                            <div className="perm-row">
+                                <span className={`perm-dot ${perms?.screen_recording ? 'ok' : 'pending'}`} />
+                                <div className="perm-info">
+                                    <span className="perm-name">Screen Recording</span>
+                                    <span className="perm-hint">
+                                        {perms?.screen_recording
+                                            ? 'Granted — screenshots and system audio enabled'
+                                            : 'Needed for screenshots and Zoom/Meet audio. macOS requires quitting and reopening the app after granting.'}
+                                    </span>
+                                </div>
+                                {!perms?.screen_recording && (
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <button
+                                            className="setup-btn primary perm-btn"
+                                            onClick={() => handleGrant('screen_recording')}
+                                            disabled={requesting === 'screen_recording'}
+                                        >
+                                            {requesting === 'screen_recording' ? 'Asking…' : 'Grant'}
+                                        </button>
+                                        <button className="setup-btn secondary perm-btn" onClick={() => openSettings('screen_recording')}>
+                                            Settings
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {perms && !perms.microphone && (
+                            <div className="warning-box">
+                                <WarningIcon size={16} />
+                                <span>
+                                    Without microphone access the app records your screen but can't
+                                    hear anything — you'd get screenshots with no transcript.
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Step 4: Ready */}
+                {step === 4 && (
                     <div className="setup-step">
                         <div className="step-icon"><SparkleIcon size={22} /></div>
                         <h2>You're All Set</h2>

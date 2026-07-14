@@ -366,6 +366,69 @@
     margin-right: 6px;
 }
 
+/* — Permissions step — */
+.perm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.perm-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, #262626);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.perm-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+}
+
+.perm-dot.ok {
+    background: #34d399;
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+}
+
+.perm-dot.pending {
+    background: var(--hazard-yellow, #facc15);
+    box-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+    animation: perm-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes perm-pulse {
+    50% { opacity: 0.4; }
+}
+
+.perm-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.perm-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.perm-hint {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-secondary, #a3a3a3);
+}
+
+.perm-btn {
+    padding: 7px 14px;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
 /* — Errors & actions — */
 .setup-error {
     width: 100%;

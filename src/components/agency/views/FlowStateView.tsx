@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { LiveTranscriptView } from '../../LiveTranscript';
 import { useRecording } from '../../../hooks/useRecording';
 import { useTranscripts } from '../../../hooks/useTranscripts';
@@ -21,9 +22,28 @@ interface FlowStateViewProps {
     transcripts: ReturnType<typeof useTranscripts>;
 }
 
+interface TranscriptionStatus {
+    connected: boolean;
+    provider: string;
+    error: string | null;
+}
+
 export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcripts }) => {
     const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isPolling, setIsPolling] = useState(false);
+    const [sttStatus, setSttStatus] = useState<TranscriptionStatus | null>(null);
+
+    // Surface transcription health — historically failures were silent and
+    // users got screenshots with no transcript and no explanation.
+    useEffect(() => {
+        let unlisten: (() => void) | null = null;
+        listen<TranscriptionStatus>('transcription_status', (e) => {
+            setSttStatus(e.payload);
+        }).then((fn) => { unlisten = fn; });
+        return () => { unlisten?.(); };
+    }, []);
+
+    const sttProblem = recording.isRecording && sttStatus && !sttStatus.connected;
 
     // Poll for live insights during recording
     useEffect(() => {
@@ -66,6 +86,16 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
 
     return (
         <div className="agency-view flow-state">
+            {sttProblem && (
+                <div className="stt-warning-banner" role="alert">
+                    <WarningIcon size={15} />
+                    <span>
+                        Transcription is not running
+                        {sttStatus?.error ? ` — ${sttStatus.error}` : ''}.
+                        Screenshots are still being captured.
+                    </span>
+                </div>
+            )}
             <div className="flow-content">
                 {/* Main Transcript Area */}
                 <div className="flow-transcript-container">

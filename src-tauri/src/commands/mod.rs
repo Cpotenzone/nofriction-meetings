@@ -94,28 +94,26 @@ pub async fn check_permissions() -> Result<PermissionStatus, String> {
     }
 }
 
-/// Check screen recording permission on macOS
+// TCC screen-capture APIs (macOS 10.15+): preflight is a fast, accurate
+// check; request triggers the system prompt / adds the app to the
+// Screen Recording list without needing to attempt a capture.
 #[cfg(target_os = "macos")]
-fn check_screen_recording_permission() -> bool {
-    // Try to list monitors and capture - if it fails, permission is not granted
-    use xcap::Monitor;
-
-    match Monitor::all() {
-        Ok(monitors) => {
-            if let Some(monitor) = monitors.first() {
-                // Try to capture an image - this requires screen recording permission
-                monitor.capture_image().is_ok()
-            } else {
-                false
-            }
-        }
-        Err(_) => false,
-    }
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
 }
 
-/// Check microphone permission on macOS
+/// Check screen recording permission on macOS (fast, no capture attempt)
 #[cfg(target_os = "macos")]
-pub fn check_microphone_permission() -> bool {
+fn check_screen_recording_permission() -> bool {
+    unsafe { CGPreflightScreenCaptureAccess() }
+}
+
+/// Raw AVCaptureDevice authorization status for the microphone.
+/// 0 = NotDetermined, 1 = Restricted, 2 = Denied, 3 = Authorized
+#[cfg(target_os = "macos")]
+fn microphone_auth_status_raw() -> i64 {
     use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};
     use std::ffi::CString;
@@ -127,16 +125,67 @@ pub fn check_microphone_permission() -> bool {
         let media_type: *mut Object =
             msg_send![cls_nsstring, stringWithUTF8String:media_type_str.as_ptr()];
 
-        // Get AVCaptureDevice class
         let cls_device = class!(AVCaptureDevice);
+        msg_send![cls_device, authorizationStatusForMediaType:media_type]
+    }
+}
 
-        // Check authorization status
-        // 0 = NotDetermined, 1 = Restricted, 2 = Denied, 3 = Authorized
-        let status: i64 = msg_send![cls_device, authorizationStatusForMediaType:media_type];
+/// Check microphone permission on macOS
+#[cfg(target_os = "macos")]
+pub fn check_microphone_permission() -> bool {
+    // Only true if strictly Authorized. Returning false for NotDetermined
+    // prevents the infinite prompt loop.
+    microphone_auth_status_raw() == 3
+}
 
-        // Only return true if strictly Authorized
-        // Returning false for NotDetermined prevents the infinite prompt loop
-        status == 3
+/// Microphone authorization status as a string, so the UI can distinguish
+/// "never asked" (show Grant button) from "denied" (send to System Settings).
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_microphone_auth_status() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(match microphone_auth_status_raw() {
+            3 => "authorized",
+            2 => "denied",
+            1 => "restricted",
+            _ => "not_determined",
+        }
+        .to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok("authorized".to_string())
+    }
+}
+
+/// Open the relevant System Settings privacy pane so the user can flip the
+/// toggle when a permission was previously denied.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn open_system_settings(pane: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let url = match pane.as_str() {
+            "microphone" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            }
+            "screen_recording" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            }
+            "accessibility" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            }
+            _ => "x-apple.systempreferences:com.apple.preference.security",
+        };
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("Failed to open System Settings: {}", e))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pane;
+        Ok(())
     }
 }
 
@@ -345,39 +394,56 @@ pub async fn request_permission(permission_type: String) -> Result<bool, String>
     {
         match permission_type.as_str() {
             "screen_recording" => {
-                // Trigger screen recording permission prompt by trying to capture
-                use xcap::Monitor;
-
-                match Monitor::all() {
-                    Ok(monitors) => {
-                        if let Some(monitor) = monitors.first() {
-                            match monitor.capture_image() {
-                                Ok(_) => Ok(true),
-                                Err(_) => Ok(false),
-                            }
-                        } else {
-                            Ok(false)
-                        }
-                    }
-                    Err(_) => Ok(false),
-                }
+                // Proper TCC request: shows the system prompt and registers
+                // the app in Privacy & Security → Screen Recording.
+                // Note: after granting, macOS requires an app relaunch.
+                let granted = unsafe { CGRequestScreenCaptureAccess() };
+                Ok(granted)
             }
             "microphone" => {
-                // Trigger microphone permission by trying to access device
-                // ONLY if not already determined or denied
                 if check_microphone_permission() {
                     return Ok(true);
                 }
-
-                use cpal::traits::{DeviceTrait, HostTrait};
-                let host = cpal::default_host();
-                match host.default_input_device() {
-                    Some(device) => match device.default_input_config() {
-                        Ok(_) => Ok(true),
-                        Err(_) => Ok(false),
-                    },
-                    None => Ok(false),
+                // Denied/restricted: macOS will NOT re-prompt — the user must
+                // flip the toggle in System Settings (UI offers that button).
+                let status = microphone_auth_status_raw();
+                if status == 2 || status == 1 {
+                    return Ok(false);
                 }
+
+                // NotDetermined: querying device config does NOT trigger the
+                // TCC prompt (the old bug — "grant" appeared to do nothing).
+                // Actually STARTING an input stream does. Run one briefly on
+                // a blocking thread; the UI polls status while the user
+                // answers the prompt.
+                let _ = tokio::task::spawn_blocking(|| {
+                    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+                    let host = cpal::default_host();
+                    let Some(device) = host.default_input_device() else {
+                        return;
+                    };
+                    let Ok(config) = device.default_input_config() else {
+                        return;
+                    };
+                    match device.build_input_stream(
+                        &config.into(),
+                        |_data: &[f32], _| {},
+                        |e| log::debug!("permission-probe stream error: {}", e),
+                        None,
+                    ) {
+                        Ok(stream) => {
+                            let _ = stream.play();
+                            // Keep the stream alive long enough for TCC to
+                            // register the access attempt and show the prompt
+                            std::thread::sleep(std::time::Duration::from_millis(800));
+                            drop(stream);
+                        }
+                        Err(e) => log::debug!("permission-probe stream build failed: {}", e),
+                    }
+                })
+                .await;
+
+                Ok(check_microphone_permission())
             }
             "accessibility" => {
                 // Trigger accessibility permission prompt

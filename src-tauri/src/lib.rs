@@ -646,6 +646,8 @@ pub fn run() {
             commands::test_microphone,
             commands::test_accessibility,
             commands::request_permission,
+            commands::get_microphone_auth_status,
+            commands::open_system_settings,
             commands::start_recording,
             commands::stop_recording,
             commands::get_recording_status,

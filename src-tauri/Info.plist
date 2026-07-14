@@ -13,10 +13,10 @@
     <string>com.nofriction.meetings</string>
     
     <key>CFBundleVersion</key>
-    <string>2.5.0</string>
+    <string>3.5.0</string>
     
     <key>CFBundleShortVersionString</key>
-    <string>2.5.0</string>
+    <string>3.5.0</string>
     
     <key>CFBundlePackageType</key>
     <string>APPL</string>
