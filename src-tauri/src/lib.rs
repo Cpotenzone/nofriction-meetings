@@ -214,8 +214,35 @@ impl AppState {
             saved_settings.local_whisper_model.clone(),
         );
 
+        // One-time migration to the local (offline) engine: long-lived
+        // installs still carry provider='deepgram' with stale keys from the
+        // cloud era, which fails silently while local Whisper sits unused.
+        // If a Whisper model is installed and the user hasn't been migrated
+        // yet, switch them to local once. Cloud stays selectable in Settings.
+        let mut saved_provider = saved_settings.transcription_provider.clone();
+        let migration_done = settings
+            .get("local_migration_done")
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !migration_done
+            && saved_provider != "local"
+            && transcription::local_whisper::resolve_model_path().is_ok()
+        {
+            log::warn!(
+                "Migrating transcription provider {} → local (offline Whisper); \
+                 previous cloud setup was failing silently",
+                saved_provider
+            );
+            let _ = settings.set_transcription_provider("local").await;
+            let _ = settings.set("local_migration_done", "true").await;
+            saved_provider = "local".to_string();
+        } else if !migration_done {
+            let _ = settings.set("local_migration_done", "true").await;
+        }
+
         // Restore saved transcription provider choice
-        let saved_provider = &saved_settings.transcription_provider;
         match saved_provider.as_str() {
             "gemini" => {
                 transcription_manager.switch_provider(transcription::ProviderType::Gemini);
@@ -544,9 +571,56 @@ pub enum InitStatus {
 
 pub struct InitializationState(pub Arc<RwLock<InitStatus>>);
 
+/// Writes log output to both stderr and a rotating file. When launched as a
+/// .app bundle, stderr goes nowhere — the log file is the only way to see
+/// what the app did (~/Library/Application Support/ai.nofriction.meetings/logs/app.log).
+struct TeeWriter {
+    file: Option<std::fs::File>,
+}
+
+impl std::io::Write for TeeWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = std::io::stderr().write_all(buf);
+        if let Some(f) = self.file.as_mut() {
+            let _ = f.write_all(buf);
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        let _ = std::io::stderr().flush();
+        if let Some(f) = self.file.as_mut() {
+            let _ = f.flush();
+        }
+        Ok(())
+    }
+}
+
+fn open_log_file() -> Option<std::fs::File> {
+    let dir = dirs::data_dir()?.join("ai.nofriction.meetings").join("logs");
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("app.log");
+    // Simple size cap: start fresh past 5MB
+    if path.metadata().map(|m| m.len() > 5_000_000).unwrap_or(false) {
+        let _ = std::fs::rename(&path, dir.join("app.log.1"));
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .ok()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Pipe(Box::new(TeeWriter {
+            file: open_log_file(),
+        })))
+        .init();
+    log::info!(
+        "──── noFriction Meetings starting (v{}) ────",
+        env!("CARGO_PKG_VERSION")
+    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
