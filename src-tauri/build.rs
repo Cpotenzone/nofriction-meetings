@@ -37,5 +37,83 @@ fn main() {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    build_swift_bridge();
+
     tauri_build::build()
+}
+
+/// Compile swift/NoFrictionBridge (C ABI via @_cdecl) into a static library
+/// for the *target* arch and link it. StoreKit code is included only for the
+/// Mac App Store flavor (`--features mas` → -DNF_STOREKIT); the Foundation
+/// Models (Apple on-device AI) part is built for both flavors and the
+/// framework is weak-linked so the app still launches on macOS < 26.
+#[cfg(target_os = "macos")]
+fn build_swift_bridge() {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let src_dir = manifest.join("swift/NoFrictionBridge/Sources/NoFrictionBridge");
+    println!("cargo:rerun-if-changed={}", src_dir.display());
+    let mut sources: Vec<PathBuf> = std::fs::read_dir(&src_dir)
+        .expect("swift bridge sources")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().map_or(false, |x| x == "swift"))
+        .collect();
+    sources.sort();
+    for s in &sources {
+        println!("cargo:rerun-if-changed={}", s.display());
+    }
+
+    let mas = std::env::var_os("CARGO_FEATURE_MAS").is_some();
+    let arch = match std::env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
+        "aarch64" => "arm64".to_string(),
+        a => a.to_string(),
+    };
+    // Keep in sync with bundle.macOS.minimumSystemVersion
+    let min_macos = "12.3";
+    let target = format!("{}-apple-macos{}", arch, min_macos);
+    let sdk = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .expect("xcrun --sdk macosx --show-sdk-path failed (install Xcode)");
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let lib = out_dir.join("libNoFrictionBridge.a");
+    let debug = std::env::var("PROFILE").map(|p| p == "debug").unwrap_or(true);
+
+    let mut cmd = Command::new("xcrun");
+    cmd.args(["swiftc", "-parse-as-library", "-emit-library", "-static"])
+        .args(["-module-name", "NoFrictionBridge"])
+        .args(["-target", &target, "-sdk", &sdk])
+        .args(["-module-cache-path", &out_dir.join("swift-module-cache").display().to_string()])
+        // FoundationModels is weak-linked below; don't let autolink make it strong
+        .args(["-Xfrontend", "-disable-autolink-framework", "-Xfrontend", "FoundationModels"])
+        .arg("-o")
+        .arg(&lib);
+    if debug {
+        cmd.arg("-Onone");
+    } else {
+        cmd.args(["-O", "-whole-module-optimization"]);
+    }
+    if mas {
+        cmd.arg("-DNF_STOREKIT");
+    }
+    cmd.args(&sources);
+    let status = cmd.status().expect("failed to run swiftc");
+    if !status.success() {
+        panic!("Swift bridge failed to compile (swift/NoFrictionBridge)");
+    }
+
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=NoFrictionBridge");
+    println!("cargo:rustc-link-lib=framework=Foundation");
+    if mas {
+        println!("cargo:rustc-link-lib=framework=StoreKit");
+    }
+    println!("cargo:rustc-link-arg=-Wl,-weak_framework,FoundationModels");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_MAS");
 }

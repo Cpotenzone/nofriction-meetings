@@ -59,17 +59,7 @@ impl MeetingNotesGenerator {
         }
 
         // Combine transcripts into a single text block
-        let full_transcript: String = transcripts
-            .iter()
-            .map(|t| {
-                if let Some(ref speaker) = t.speaker {
-                    format!("{}: {}", speaker, t.text)
-                } else {
-                    t.text.clone()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let full_transcript = transcript_for_prompt(&transcripts);
 
         // Generate notes using AI
         let notes = self.analyze_transcript(&full_transcript, None).await?;
@@ -182,17 +172,7 @@ JSON ARRAY:"#,
             return Err("No transcripts found for this meeting".to_string());
         }
 
-        let full_transcript: String = transcripts
-            .iter()
-            .map(|t| {
-                if let Some(ref speaker) = t.speaker {
-                    format!("{}: {}", speaker, t.text)
-                } else {
-                    t.text.clone()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let full_transcript = transcript_for_prompt(&transcripts);
 
         let notes = self
             .analyze_transcript(&full_transcript, Some(custom_prompt))
@@ -223,6 +203,23 @@ JSON ARRAY:"#,
 }
 
 /// Extract JSON from an AI response that may contain markdown code blocks
+/// The transcript block sent to the AI. `get_transcripts` already renders
+/// stricken spans as `[stricken from the record]`; render again here so a
+/// caller holding marked rows can never leak a marker id (or skip it).
+pub fn transcript_for_prompt(transcripts: &[crate::database::Transcript]) -> String {
+    transcripts
+        .iter()
+        .map(|t| {
+            let text = crate::redaction::render_plain(&t.text);
+            match t.speaker {
+                Some(ref speaker) => format!("{}: {}", speaker, text),
+                None => text,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn extract_json_from_response(response: &str) -> String {
     let trimmed = response.trim();
 

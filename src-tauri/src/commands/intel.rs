@@ -294,7 +294,7 @@ pub async fn chat_with_data(
         end_date: None,
         category: None,
         limit: Some(10),
-        sources: Some(vec!["local".to_string(), "pinecone".to_string()]),
+        sources: None,
     };
 
     let search_results = search_knowledge_base(search_options, state.clone())
@@ -307,11 +307,9 @@ pub async fn chat_with_data(
 
     for (i, result) in search_results.iter().enumerate().take(8) {
         let timestamp = result.timestamp.as_deref().unwrap_or("unknown time");
-        let source_label = match result.source.as_str() {
-            "pinecone" => "Vector DB",
-            "local" => "Local DB",
-            "supabase" => "Cloud DB",
-            _ => &result.source,
+        let source_label = match result.category.as_deref() {
+            Some("transcript") => "Meeting transcript",
+            _ => "Activity log",
         };
         let app = result.app_name.as_deref().unwrap_or("");
 
@@ -380,7 +378,14 @@ pub async fn chat_with_data(
     let answer = ai_client
         .chat(&preset, messages, Some(&context))
         .await
-        .unwrap_or_else(|e| format!("I wasn't able to process your question: {}", e));
+        .or_else(|e| {
+            // Consent / setup problems go back as errors so the UI can act
+            if crate::ai_client::is_consent_error(&e) || e.starts_with("AI_NO_") {
+                Err(e)
+            } else {
+                Ok(format!("I wasn't able to process your question: {}", e))
+            }
+        })?;
 
     Ok(serde_json::json!({
         "answer": answer,

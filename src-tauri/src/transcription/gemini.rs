@@ -219,6 +219,15 @@ impl GeminiProvider {
                                             if !transcript_text.trim().is_empty() {
                                                 let is_final =
                                                     content.turn_complete.unwrap_or(false);
+                                                // Finals pass the shared hallucination filter
+                                                let transcript_text = if is_final {
+                                                    match super::accept_final(&transcript_text) {
+                                                        Some(t) => t,
+                                                        None => continue,
+                                                    }
+                                                } else {
+                                                    transcript_text
+                                                };
                                                 let segment = TranscriptSegment {
                                                     text: transcript_text.clone(),
                                                     is_final,

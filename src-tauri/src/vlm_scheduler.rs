@@ -145,10 +145,16 @@ impl VLMScheduler {
     ) {
         log::info!("VLM Scheduler loop started");
 
+        // Consecutive "endpoint unreachable" checks. Drives exponential backoff
+        // so a machine without Ollama isn't probed (and logged) every cycle.
+        let mut unavailable_streak: u32 = 0;
+
         while running.load(Ordering::SeqCst) {
-            // Sleep for the configured interval
-            let interval = *interval_secs.read();
-            tokio::time::sleep(std::time::Duration::from_secs(interval as u64)).await;
+            // Sleep for the configured interval, backing off (max 30 min)
+            // while the AI endpoint is unreachable
+            let interval = *interval_secs.read() as u64;
+            let backoff = interval.saturating_mul(1u64 << unavailable_streak.min(4));
+            tokio::time::sleep(std::time::Duration::from_secs(backoff.min(1800))).await;
 
             // Check if still running and enabled
             if !running.load(Ordering::SeqCst) {
@@ -194,8 +200,17 @@ impl VLMScheduler {
 
             // Check VLM availability (centralized API)
             if !crate::vlm_client::vlm_is_available().await {
-                log::warn!("VLM Scheduler: VLM API not available, skipping");
+                if unavailable_streak == 0 {
+                    log::warn!(
+                        "VLM Scheduler: AI endpoint not available — frame analysis paused, retrying with backoff"
+                    );
+                }
+                unavailable_streak = unavailable_streak.saturating_add(1);
                 continue;
+            }
+            if unavailable_streak > 0 {
+                log::info!("VLM Scheduler: AI endpoint available again");
+                unavailable_streak = 0;
             }
 
             // Determine active theme and load prompt
@@ -267,9 +282,6 @@ impl VLMScheduler {
                             },
                             confidence: Some(context.confidence),
                             frame_ids: Some(frame.id.to_string()),
-                            pinecone_id: None,
-                            supabase_id: None,
-                            synced_at: None,
                         };
 
                         if let Ok(activity_id) = database.add_activity(&activity).await {

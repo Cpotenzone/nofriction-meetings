@@ -1,14 +1,16 @@
 // noFriction Meetings - Full Settings Component
-// Streamlined settings: General, Transcription, TheBrain, Data
+// Streamlined settings: General, Transcription, Obsidian, AI Engine, Data
 
 import { useState, useEffect, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog"; // Import dialog plugin
 import { invoke } from "@tauri-apps/api/core";
 import * as tauri from "../../lib/tauri";
 import type { AudioDevice } from "../../lib/tauri";
-import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
+import { AIProviderSettings } from "./AIProviderSettings";
 import { PermissionsStatus } from "./PermissionsStatus";
 import { TranscriptionSettings } from "./TranscriptionSettings";
+import { SubscriptionSettings } from "./SubscriptionSettings";
+import { useCapabilities } from "../../lib/build";
 
 import { useAppVersion } from '../../hooks/useAppVersion';
 
@@ -18,19 +20,23 @@ interface FullSettingsProps {
 
 export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
     const version = useAppVersion();
+    const caps = useCapabilities();
     // Devices
     const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
     const [selectedMic, setSelectedMic] = useState<string>("");
     const [vaultPath, setVaultPath] = useState<string>("");
     const [vaultStatus, setVaultStatus] = useState<any>(null);
     const [autoExport, setAutoExport] = useState(false);
+    // Meeting-end detection (auto-stop)
+    const [autoStop, setAutoStop] = useState(true);
+    const [silenceMinutes, setSilenceMinutes] = useState(3);
 
     // Loading & feedback
     const [isLoadingDevices, setIsLoadingDevices] = useState(true);
     const [saveToast, setSaveToast] = useState<string | null>(null);
 
     // Sidebar State
-    const [activeCategory, setActiveCategory] = useState<"general" | "transcription" | "obsidian" | "thebrain" | "data">("general");
+    const [activeCategory, setActiveCategory] = useState<"general" | "transcription" | "obsidian" | "ai" | "subscription" | "data">("general");
 
     // Auto-dismiss save toast
     const showToast = useCallback((msg: string) => {
@@ -67,6 +73,13 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
             if (status.path) {
                 setVaultPath(status.path);
             }
+
+            // Load auto-stop settings
+            try {
+                const s = await tauri.getAutoStopSettings();
+                setAutoStop(s.enabled);
+                setSilenceMinutes(s.silenceMinutes);
+            } catch { /* defaults */ }
 
             // Load auto-export setting
             try {
@@ -117,11 +130,43 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
         }
     };
 
+    const saveAutoStop = async (enabled: boolean, minutes: number) => {
+        const prev = { enabled: autoStop, minutes: silenceMinutes };
+        setAutoStop(enabled);
+        setSilenceMinutes(minutes);
+        try {
+            const s = await tauri.setAutoStopSettings(enabled, minutes);
+            setAutoStop(s.enabled);
+            setSilenceMinutes(s.silenceMinutes);
+            showToast("✅ Auto-stop saved");
+        } catch (err) {
+            setAutoStop(prev.enabled);
+            setSilenceMinutes(prev.minutes);
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            showToast(`❌ Failed: ${errorMsg}`);
+        }
+    };
+
+    // Tray checkbox changes the same setting
+    useEffect(() => {
+        let off: (() => void) | undefined;
+        let disposed = false;
+        import("@tauri-apps/api/event").then(({ listen }) =>
+            listen<tauri.AutoStopSettings>("auto-stop-settings-changed", (e) => {
+                setAutoStop(e.payload.enabled);
+                setSilenceMinutes(e.payload.silenceMinutes);
+            }).then((u) => { if (disposed) u(); else off = u; })
+        );
+        return () => { disposed = true; off?.(); };
+    }, []);
+
     const categories = [
         { id: "general", label: "General", icon: "⚙️" },
         { id: "transcription", label: "Transcription", icon: "🎙️" },
         { id: "obsidian", label: "Obsidian", icon: "📚" },
-        { id: "thebrain", label: "AI Engine", icon: "" },
+        { id: "ai", label: "AI Engine", icon: "✨" },
+        // Mac App Store build: StoreKit subscription (noFriction Pro)
+        ...(caps?.storekit ? [{ id: "subscription", label: "Subscription", icon: "⭐" }] : []),
         { id: "data", label: "Data", icon: "💾" },
     ];
 
@@ -196,6 +241,46 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                                     )}
                                 </div>
                             )}
+                        </section>
+
+                        <section className="settings-section">
+                            <h3>Recording</h3>
+                            <div className="settings-row">
+                                <div className="settings-label">
+                                    <span className="label-main">Stop automatically when the meeting ends</span>
+                                    <span className="label-sub">
+                                        When the call app releases the microphone, the meeting window closes,
+                                        the calendar event is over, or no one speaks for a while. You get a
+                                        30-second countdown with a Keep recording option first.
+                                    </span>
+                                </div>
+                                <div
+                                    className={`toggle-switch ${autoStop ? 'active' : ''}`}
+                                    onClick={() => saveAutoStop(!autoStop, silenceMinutes)}
+                                    style={{ cursor: 'pointer' }}
+                                    role="switch"
+                                    aria-checked={autoStop}
+                                >
+                                    <div className="toggle-knob"></div>
+                                </div>
+                            </div>
+                            <div className="settings-row">
+                                <div className="settings-label">
+                                    <span className="label-main">Silence before stopping</span>
+                                    <span className="label-sub">Minutes with no speech before the recording is considered over.</span>
+                                </div>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={60}
+                                    value={silenceMinutes}
+                                    disabled={!autoStop}
+                                    onChange={(e) => setSilenceMinutes(Number(e.target.value) || 1)}
+                                    onBlur={() => saveAutoStop(autoStop, Math.min(60, Math.max(1, silenceMinutes)))}
+                                    style={{ width: 72 }}
+                                    aria-label="Silence minutes before auto-stop"
+                                />
+                            </div>
                         </section>
 
                         <section className="settings-section">
@@ -279,21 +364,20 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                         </section>
                     </div>
                 );
-            case "thebrain":
+            case "subscription":
+                return <SubscriptionSettings />;
+            case "ai":
                 return (
                     <div className="settings-content-panel fade-in">
-                        <section className="settings-section">
-                            <h3>AI Engine</h3>
-                            <p className="section-desc">Runs on local Ollama by default (fully on-device). Point at a remote Ollama-compatible endpoint to offload.</p>
-                            <KnowledgeBaseSettings />
-                        </section>
+                        <AIProviderSettings />
                     </div>
                 );
             case "data":
                 return (
                     <div className="settings-content-panel fade-in">
                         <PermissionsStatus />
-                        <section className="settings-section">
+                        {/* Video storage cleanup: ffmpeg recordings don't exist in the App Store build */}
+                        {caps?.video_recording && <section className="settings-section">
                             <h3>Storage Management</h3>
                             <div className="storage-card">
                                 <div className="storage-icon">💾</div>
@@ -307,7 +391,7 @@ export function FullSettings({ onSave: _onSave }: FullSettingsProps) {
                                     alert("Cleanup complete");
                                 }}>Cleanup Now</button>
                             </div>
-                        </section>
+                        </section>}
                         <section className="settings-section">
                             <h3>Export & Reset</h3>
                             <div className="button-group">

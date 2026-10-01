@@ -494,31 +494,12 @@ impl MeetingTriggerEngine {
         Vec::new()
     }
 
-    /// Check if an app is using the microphone (via macOS orange dot indicator)
-    /// This checks if any audio input device is being used
-    #[cfg(target_os = "macos")]
+    /// Is some app using a microphone right now (the orange-dot case)?
+    /// Core Audio `kAudioDevicePropertyDeviceIsRunningSomewhere` over input
+    /// devices (m4: no shell/ioreg, works in the App Sandbox). Output devices
+    /// are ignored here because music or video playback keeps them running.
     pub fn check_audio_usage() -> bool {
-        use std::process::Command;
-
-        // Use ioreg to check for audio device in use
-        // The orange dot appears when input devices are accessed
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg("ioreg -l | grep -i 'IOAudioEngineState' | head -1")
-            .output();
-
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            // If there's audio engine activity, microphone might be in use
-            return !stdout.is_empty();
-        }
-
-        false
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    pub fn check_audio_usage() -> bool {
-        false
+        crate::core_audio::audio_activity().input
     }
 
     /// Detect meetings and emit suggestions (instead of auto-start)

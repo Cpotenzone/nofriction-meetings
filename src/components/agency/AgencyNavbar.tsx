@@ -76,7 +76,7 @@ export const AgencyNavbar: React.FC<AgencyNavbarProps> = ({
         <nav className="agency-navbar">
             <div className="agency-nav-left">
                 <div className="agency-logo">
-                    <span className="logo-icon">⚡️</span>
+                    <img className="logo-icon" src="/trinacria.svg" alt="" />
                     <span className="logo-text">NOFRICTION</span>
                 </div>
 

@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import * as tauri from "../lib/tauri";
 import type { SyncedTimeline, TimelineFrame, TimelineTranscript } from "../lib/tauri";
+import { renderPlain } from "../lib/redaction";
 
 interface SyncedTimelineProps {
     meetingId: string | null;
@@ -198,7 +199,7 @@ export function SyncedTimelineView({ meetingId, onFrameSelect }: SyncedTimelineP
                 {currentTranscript ? (
                     <>
                         <div className="transcript-text">
-                            "{currentTranscript.text}"
+                            "{renderPlain(currentTranscript.text)}"
                         </div>
                         <div className="transcript-meta">
                             {currentTranscript.speaker && (
@@ -279,7 +280,7 @@ export function SyncedTimelineView({ meetingId, onFrameSelect }: SyncedTimelineP
                                 onClick={() => setCurrentTimeMs(t.timestamp_ms)}
                             >
                                 <span className="time">{formatTime(t.timestamp_ms)}</span>
-                                <span className="text">{t.text}</span>
+                                <span className="text">{renderPlain(t.text)}</span>
                             </div>
                         ))}
                     </div>

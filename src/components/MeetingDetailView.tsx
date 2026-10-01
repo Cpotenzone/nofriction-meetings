@@ -2,8 +2,11 @@
 // Comprehensive meeting analysis interface with tabs for Transcript, Notes, Study, Comments
 
 import { useState, useEffect, useCallback } from 'react';
+import { friendlyAiError, withAiConsent } from '../lib/ai';
 import { invoke } from '@tauri-apps/api/core';
 import { RewindTab } from './RewindTab';
+import { TranscriptText } from './redaction/Redaction';
+import { redactionApi, type RedactionRecord } from '../lib/redaction';
 
 // Types
 interface Meeting {
@@ -34,6 +37,8 @@ interface MeetingNotes {
   participants: string | null;
   generated_at: string;
   model_used: string | null;
+  /** Made before the transcript/screens were edited */
+  stale_after_edit?: boolean;
 }
 
 interface MeetingComment {
@@ -86,7 +91,7 @@ export function MeetingDetailView({ meetingId, onClose }: MeetingDetailViewProps
   const fetchAnalysis = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await invoke<MeetingAnalysis>('get_meeting_analysis', { meeting_id: meetingId });
+      const result = await invoke<MeetingAnalysis>('get_meeting_analysis', { meetingId });
       setAnalysis(result);
       setError(null);
     } catch (e) {
@@ -104,10 +109,10 @@ export function MeetingDetailView({ meetingId, onClose }: MeetingDetailViewProps
   const handleGenerateNotes = async () => {
     try {
       setGeneratingNotes(true);
-      await invoke<GeneratedNotes>('generate_meeting_notes', { meeting_id: meetingId });
+      await withAiConsent(() => invoke<GeneratedNotes>('generate_meeting_notes', { meetingId }));
       await fetchAnalysis();
     } catch (e) {
-      setError(`Failed to generate notes: ${e}`);
+      setError(`Failed to generate notes: ${friendlyAiError(e)}`);
     } finally {
       setGeneratingNotes(false);
     }
@@ -117,12 +122,13 @@ export function MeetingDetailView({ meetingId, onClose }: MeetingDetailViewProps
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
     try {
+      // Tauri commands take camelCase argument names
       await invoke('add_meeting_comment', {
-        meeting_id: meetingId,
+        meetingId,
         comment: newComment,
-        comment_type: commentType,
-        timestamp_ref: null,
-        parent_id: null,
+        commentType,
+        timestampRef: null,
+        parentId: null,
       });
       setNewComment('');
       await fetchAnalysis();
@@ -187,7 +193,7 @@ export function MeetingDetailView({ meetingId, onClose }: MeetingDetailViewProps
       {/* Tab Content */}
       <div className="tab-content">
         {activeTab === 'transcript' && (
-          <TranscriptTab transcripts={transcripts} />
+          <TranscriptTab transcripts={transcripts} meetingId={meetingId} />
         )}
 
         {activeTab === 'notes' && (
@@ -326,7 +332,15 @@ export function MeetingDetailView({ meetingId, onClose }: MeetingDetailViewProps
 // Sub-components
 // ============================================
 
-function TranscriptTab({ transcripts }: { transcripts: Transcript[] }) {
+function TranscriptTab({ transcripts, meetingId }: { transcripts: Transcript[]; meetingId: string }) {
+  const [records, setRecords] = useState<Map<string, RedactionRecord>>(new Map());
+  useEffect(() => {
+    redactionApi
+      .list(meetingId)
+      .then((list) => setRecords(new Map(list.map((r) => [r.id, r] as const))))
+      .catch(() => setRecords(new Map()));
+  }, [meetingId, transcripts]);
+
   if (transcripts.length === 0) {
     return (
       <div className="empty-state">
@@ -346,7 +360,7 @@ function TranscriptTab({ transcripts }: { transcripts: Transcript[] }) {
               {new Date(t.timestamp).toLocaleTimeString()}
             </span>
           </div>
-          <p className="transcript-text">{t.text}</p>
+          <p className="transcript-text"><TranscriptText text={t.text} records={records} /></p>
         </div>
       ))}
       <style>{`
@@ -460,6 +474,14 @@ function NotesTab({
 
   return (
     <div className="notes-content">
+      {notes.stale_after_edit && (
+        <div className="rd-stale" role="status">
+          <span>These notes were made before an edit. Regenerate?</span>
+          <button className="rd-btn" onClick={onGenerate} disabled={generating}>
+            {generating ? 'Regenerating…' : 'Regenerate'}
+          </button>
+        </div>
+      )}
       {notes.summary && (
         <section className="notes-section">
           <h3>📋 Summary</h3>

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, User, X, Loader2, FileText, CheckSquare, Brain, Search, BookOpen } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { ai, friendlyAiError, withAiConsent } from '../lib/ai';
 
 interface ContextItem {
     id: string;
@@ -30,27 +31,19 @@ interface CopilotPanelProps {
     onClose?: () => void;
 }
 
-// TheBrain models
-const MODELS = [
-    { id: 'qwen3:8b', name: 'Qwen3 8B' },
-    { id: 'qwen3:14b', name: 'Qwen3 14B' },
-    { id: 'qwen3-vl:8b', name: 'Qwen3 VL' },
-    { id: 'qwen2.5-coder:7b', name: 'Coder 7B' },
-];
-
 export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelProps) {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: 'welcome',
             role: 'assistant',
-            content: 'Local AI online with RAG. I can search your history for context.',
+            content: 'AI assistant ready. I can search your history for context.',
             timestamp: Date.now()
         }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [connected, setConnected] = useState(false);
-    const [selectedModel, setSelectedModel] = useState('qwen3:8b');
+    const [modelLabel, setModelLabel] = useState('');
     const [ragEnabled, setRagEnabled] = useState(true);
     const [expandedContext, setExpandedContext] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -69,8 +62,9 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
 
     const checkConnection = async () => {
         try {
-            const result = await invoke<boolean>('check_thebrain');
-            setConnected(result);
+            const status = await ai.status();
+            setConnected(status.text !== null);
+            setModelLabel(status.text ? `${status.text.name} · ${status.text.model}` : 'No AI provider');
         } catch {
             setConnected(false);
         }
@@ -95,18 +89,16 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
             let contextItems: ContextItem[] = [];
 
             if (ragEnabled) {
-                const ragResponse = await invoke<RagChatResponse>('thebrain_rag_chat_with_memory', {
+                const ragResponse = await withAiConsent(() => invoke<RagChatResponse>('assistant_rag_chat_with_memory', {
                     message: text,
-                    model: selectedModel,
                     topK: 5,
-                });
+                }));
                 responseContent = ragResponse.response;
                 contextItems = ragResponse.context_used;
             } else {
-                responseContent = await invoke<string>('thebrain_chat', {
+                responseContent = await withAiConsent(() => invoke<string>('assistant_chat', {
                     message: text,
-                    model: selectedModel
-                });
+                }));
             }
 
             const aiMsg: Message = {
@@ -118,11 +110,11 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
             };
             setMessages(prev => [...prev, aiMsg]);
         } catch (error) {
-            console.error('TheBrain Chat Error:', error);
+            console.error('AI chat error:', error);
             const errorMsg: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'system',
-                content: `Error: ${error instanceof Error ? error.message : String(error)}`,
+                content: `Error: ${friendlyAiError(error)}`,
                 timestamp: Date.now()
             };
             setMessages(prev => [...prev, errorMsg]);
@@ -167,15 +159,12 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
 
             {/* Model Selector + RAG Toggle */}
             <div className="p-2 border-b border-[#1F2937] bg-[#0B0C10] flex items-center gap-2">
-                <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="flex-1 bg-[#1F2937] border border-[#374151] rounded px-2 py-1 text-xs text-gray-300"
+                <span
+                    title="Change in Settings → AI Engine"
+                    className="flex-1 truncate bg-[#1F2937] border border-[#374151] rounded px-2 py-1 text-xs text-gray-300"
                 >
-                    {MODELS.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                </select>
+                    {modelLabel || '…'}
+                </span>
                 <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
                     <input
                         type="checkbox"
@@ -321,9 +310,9 @@ export function CopilotPanel({ meetingId: _meetingId, onClose }: CopilotPanelPro
                 <div className="mt-2 flex justify-between items-center text-[10px] text-gray-600 px-1">
                     <span className="flex items-center">
                         <span className={`w-1.5 h-1.5 rounded-full ${ragEnabled ? 'bg-emerald-500' : connected ? 'bg-amber-500' : 'bg-red-500'} mr-1.5`}></span>
-                        {ragEnabled ? 'RAG ACTIVE' : connected ? 'THEBRAIN ONLINE' : 'DISCONNECTED'}
+                        {ragEnabled ? 'RAG ACTIVE' : connected ? 'AI READY' : 'NO AI PROVIDER'}
                     </span>
-                    <span>{selectedModel.toUpperCase()}</span>
+                    <span>{modelLabel.toUpperCase()}</span>
                 </div>
             </div>
         </div>

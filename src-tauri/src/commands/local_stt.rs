@@ -11,9 +11,10 @@ use tauri::{AppHandle, Emitter, State};
 const MODEL_CATALOG: &[(&str, u64, &str)] = &[
     ("tiny.en", 75, "Smallest and fastest — fallback for old hardware"),
     ("base.en", 142, "Light with decent accuracy"),
-    ("small.en", 466, "Recommended default — strong accuracy, fast on Apple Silicon"),
+    ("small.en", 466, "Good accuracy, fast on any Apple Silicon Mac"),
+    ("large-v3-turbo-q5_0", 547, "Recommended — near large-v3 accuracy at small-model speed"),
     ("medium.en", 1500, "High accuracy, needs a capable machine"),
-    ("large-v3-turbo", 1600, "Best accuracy, multilingual"),
+    ("large-v3-turbo", 1600, "Full-precision turbo, multilingual"),
 ];
 
 #[derive(Debug, Clone, Serialize)]

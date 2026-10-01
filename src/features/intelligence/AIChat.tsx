@@ -1,15 +1,11 @@
 // noFriction Meetings - AI Chat Component
-// Chat interface with TheBrain Cloud API and RAG (Retrieval Augmented Generation)
+// Chat on the user's active AI provider (Settings → AI Engine) with RAG
+// (Retrieval Augmented Generation) over their meeting history.
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-
-interface TheBrainModel {
-    id: string;
-    loaded: boolean;
-    size_gb?: number;
-    preload: boolean;
-}
+import { ai, friendlyAiError, withAiConsent, type AiStatus } from "../../lib/ai";
+import { useCapabilities } from "../../lib/build";
 
 interface ContextItem {
     id: string;
@@ -37,22 +33,13 @@ interface AIChatProps {
     meetingId: string | null;
 }
 
-// Available TheBrain models
-const THEBRAIN_MODELS = [
-    { id: "qwen3:8b", name: "Qwen3 8B", description: "General reasoning" },
-    { id: "qwen3:14b", name: "Qwen3 14B", description: "Deep analysis" },
-    { id: "qwen3-vl:8b", name: "Qwen3 VL 8B", description: "Vision + Language" },
-    { id: "qwen2.5-coder:7b", name: "Qwen2.5 Coder", description: "Code generation" },
-    { id: "qwen2.5vl:7b", name: "Qwen2.5 VL", description: "Alternate vision" },
-];
-
 export function AIChat({ meetingId }: AIChatProps) {
+    // Screen-text capture uses the Accessibility API (not in the App Store build)
+    const canCaptureText = useCapabilities()?.accessibility_capture ?? false;
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [thebrainConnected, setThebrainConnected] = useState<boolean | null>(null);
-    const [availableModels, setAvailableModels] = useState<TheBrainModel[]>([]);
-    const [selectedModel, setSelectedModel] = useState<string>("qwen3:8b");
+    const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
     const [ragEnabled, setRagEnabled] = useState(true); // Enable RAG by default
     const [showContext, setShowContext] = useState(false);
     const [captureCount, setCaptureCount] = useState(0);
@@ -61,9 +48,9 @@ export function AIChat({ meetingId }: AIChatProps) {
     const chatRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Check TheBrain status on mount
+    // Check the active AI provider on mount
     useEffect(() => {
-        checkTheBrain();
+        checkAi();
     }, []);
 
     // Auto-scroll to bottom on new messages
@@ -73,29 +60,16 @@ export function AIChat({ meetingId }: AIChatProps) {
         }
     }, [messages]);
 
-    const checkTheBrain = async () => {
+    const checkAi = async () => {
         try {
-            const connected = await invoke<boolean>("check_thebrain");
-            setThebrainConnected(connected);
-
-            if (connected) {
-                try {
-                    const models = await invoke<TheBrainModel[]>("get_thebrain_models");
-                    setAvailableModels(models);
-                    // Select first loaded model if available
-                    const loadedModel = models.find(m => m.loaded);
-                    if (loadedModel) {
-                        setSelectedModel(loadedModel.id);
-                    }
-                } catch (e) {
-                    console.error("Failed to get models:", e);
-                }
-            }
+            setAiStatus(await ai.status());
         } catch (err) {
-            console.error("Failed to check TheBrain:", err);
-            setThebrainConnected(false);
+            console.error("Failed to check AI provider:", err);
+            setAiStatus(null);
         }
     };
+    const aiConfigured = aiStatus ? aiStatus.text !== null : null;
+    const activeModelLabel = aiStatus?.text ? `${aiStatus.text.name} · ${aiStatus.text.model}` : "";
 
     // Capture current screen content via accessibility API
     const captureScreen = async () => {
@@ -152,19 +126,17 @@ export function AIChat({ meetingId }: AIChatProps) {
 
             if (ragEnabled) {
                 // Use RAG chat with memory - searches history and stores conversation
-                const ragResponse = await invoke<RagChatResponse>("thebrain_rag_chat_with_memory", {
+                const ragResponse = await withAiConsent(() => invoke<RagChatResponse>("assistant_rag_chat_with_memory", {
                     message: userMessage.content,
-                    model: selectedModel,
                     topK: 5,
-                });
+                }));
                 responseContent = ragResponse.response;
                 contextItems = ragResponse.context_used;
             } else {
                 // Use simple chat without RAG
-                responseContent = await invoke<string>("thebrain_chat", {
+                responseContent = await withAiConsent(() => invoke<string>("assistant_chat", {
                     message: userMessage.content,
-                    model: selectedModel,
-                });
+                }));
             }
 
             const assistantMessage: ChatMessage = {
@@ -180,14 +152,14 @@ export function AIChat({ meetingId }: AIChatProps) {
             const errorMessage: ChatMessage = {
                 id: `error-${Date.now()}`,
                 role: "system",
-                content: `Error: ${err}`,
+                content: `Error: ${friendlyAiError(err)}`,
                 timestamp: new Date(),
             };
             setMessages((prev) => [...prev, errorMessage]);
         } finally {
             setIsLoading(false);
         }
-    }, [input, isLoading, selectedModel, ragEnabled]);
+    }, [input, isLoading, ragEnabled]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -234,11 +206,10 @@ export function AIChat({ meetingId }: AIChatProps) {
         }]);
 
         try {
-            const ragResponse = await invoke<RagChatResponse>("thebrain_rag_chat_with_memory", {
+            const ragResponse = await withAiConsent(() => invoke<RagChatResponse>("assistant_rag_chat_with_memory", {
                 message: prompt,
-                model: selectedModel,
                 topK: 10,
-            });
+            }));
 
             setMessages((prev) => [...prev, {
                 id: `assistant-${Date.now()}`,
@@ -251,7 +222,7 @@ export function AIChat({ meetingId }: AIChatProps) {
             setMessages((prev) => [...prev, {
                 id: `error-${Date.now()}`,
                 role: "system",
-                content: `Error: ${err}`,
+                content: `Error: ${friendlyAiError(err)}`,
                 timestamp: new Date(),
             }]);
         } finally {
@@ -259,14 +230,14 @@ export function AIChat({ meetingId }: AIChatProps) {
         }
     };
 
-    if (thebrainConnected === false) {
+    if (aiConfigured === false) {
         return (
             <div className="ai-chat-unavailable">
                 <div className="unavailable-content">
-                    <h3>AI Engine Not Running</h3>
-                    <p>Start local Ollama (install from ollama.com, then <code>ollama pull qwen3:8b</code>), or configure a remote endpoint in Settings → Knowledge Base.</p>
-                    <button className="retry-button" onClick={checkTheBrain}>
-                        Retry Connection
+                    <h3>Set up AI</h3>
+                    <p>Open Settings → AI Engine and paste an API key (OpenAI, Anthropic, Gemini, Grok, …), or connect a local Ollama / LM Studio server.</p>
+                    <button className="retry-button" onClick={checkAi}>
+                        Check again
                     </button>
                 </div>
             </div>
@@ -277,21 +248,9 @@ export function AIChat({ meetingId }: AIChatProps) {
         <div className="ai-chat">
             {/* Header with model selector and RAG toggle */}
             <div className="ai-chat-header">
-                <div className="model-selector">
+                <div className="model-selector" title="Change in Settings → AI Engine">
                     <label>Model:</label>
-                    <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                    >
-                        {THEBRAIN_MODELS.map((m) => {
-                            const isLoaded = availableModels.find(am => am.id === m.id)?.loaded;
-                            return (
-                                <option key={m.id} value={m.id}>
-                                    {m.name} {isLoaded ? "✓" : ""}
-                                </option>
-                            );
-                        })}
-                    </select>
+                    <span>{activeModelLabel || "…"}</span>
                 </div>
                 <div className="rag-toggle">
                     <label className="toggle-label">
@@ -305,16 +264,16 @@ export function AIChat({ meetingId }: AIChatProps) {
                 </div>
                 <div className="connection-status">
                     <span className={`status-dot ${ragEnabled ? 'rag-active' : 'connected'}`}></span>
-                    <span>{ragEnabled ? 'RAG Active' : 'TheBrain'}</span>
+                    <span>{ragEnabled ? 'RAG Active' : 'AI'}</span>
                 </div>
-                <button
+                {canCaptureText && <button
                     className="capture-btn"
                     onClick={captureScreen}
                     disabled={isCapturing}
                     title="Capture screen text via accessibility API"
                 >
                     {isCapturing ? '📸...' : '📸'} {captureCount > 0 && `(${captureCount})`}
-                </button>
+                </button>}
             </div>
 
             {/* Quick actions */}
@@ -347,13 +306,13 @@ export function AIChat({ meetingId }: AIChatProps) {
                 {messages.length === 0 ? (
                     <div className="chat-empty">
                         <span className="chat-empty-icon">💬</span>
-                        <p>Chat with TheBrain AI</p>
+                        <p>Chat with your AI</p>
                         {ragEnabled ? (
                             <p className="chat-hint">📚 RAG enabled - I'll search your history for context</p>
                         ) : meetingId ? (
                             <p className="chat-hint">Meeting context loaded. Try "What was discussed?"</p>
                         ) : (
-                            <p className="chat-hint">Ask any question - powered by TheBrain Cloud</p>
+                            <p className="chat-hint">Ask any question{activeModelLabel ? ` · ${activeModelLabel}` : ""}</p>
                         )}
                     </div>
                 ) : (
@@ -418,7 +377,7 @@ export function AIChat({ meetingId }: AIChatProps) {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={ragEnabled ? "Ask about your meetings..." : "Ask TheBrain anything..."}
+                    placeholder={ragEnabled ? "Ask about your meetings..." : "Ask anything..."}
                     rows={2}
                     disabled={isLoading}
                 />

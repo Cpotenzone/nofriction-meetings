@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCapabilities } from "../../lib/build";
 
 interface PermissionStatus {
     screen_recording: boolean;
@@ -36,6 +37,8 @@ interface AccessibilityTestResult {
 }
 
 export function PermissionsStatus() {
+    // m2: Accessibility text capture is compiled out of the App Store build
+    const showAccessibility = useCapabilities()?.accessibility_capture ?? false;
     const [permissions, setPermissions] = useState<PermissionStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [testResults, setTestResults] = useState<{
@@ -286,7 +289,7 @@ export function PermissionsStatus() {
             </div>
 
             {/* Accessibility */}
-            <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
+            {showAccessibility && <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div className="settings-label">
                         <span className="label-main">
@@ -353,7 +356,7 @@ export function PermissionsStatus() {
                         )}
                     </div>
                 )}
-            </div>
+            </div>}
 
             {/* Calendar */}
             <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
@@ -405,7 +408,7 @@ export function PermissionsStatus() {
                     onClick={async () => {
                         await testScreen();
                         await testMic();
-                        await testAccessibility();
+                        if (showAccessibility) await testAccessibility();
                     }}
                 >
                     🧪 Test All

@@ -99,7 +99,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 await invoke('set_active_provider', { provider: 'local' });
                 // Kick off the one-time model download in the background;
                 // progress is visible in Settings → Transcription.
-                invoke('download_whisper_model', { model: 'small.en' }).catch((e) =>
+                invoke('download_whisper_model', { model: 'large-v3-turbo-q5_0' }).catch((e) =>
                     console.warn('Whisper model download deferred:', e),
                 );
             } else if (state.deepgramApiKey.trim()) {
@@ -165,7 +165,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                                     <span className="mode-title">Private &amp; Offline</span>
                                     <span className="mode-hint">
                                         Whisper runs on this Mac. No API key, no internet, nothing
-                                        leaves your machine. Downloads a 466 MB model once.
+                                        leaves your machine. Downloads a 547 MB model once.
                                     </span>
                                 </div>
                             </label>

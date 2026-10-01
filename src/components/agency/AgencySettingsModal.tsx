@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FullSettings } from '../../features/settings/FullSettings';
 import { AdminConsole } from '../AdminConsole';
 import { HelpSection } from '../Help';
+import { useCapabilities } from '../../lib/build';
 
 interface AgencySettingsModalProps {
     isOpen: boolean;
@@ -18,6 +19,10 @@ export const AgencySettingsModal: React.FC<AgencySettingsModalProps> = ({
     initialTab = 'settings'
 }) => {
     const [activeTab, setActiveTab] = useState<ModalTab>(initialTab);
+    // m14: the admin console (dev tools, video diagnostics) is
+    // owner infrastructure; hidden in the Mac App Store build
+    const caps = useCapabilities();
+    const showAdmin = caps?.owner_infra ?? false;
 
     // Sync internal state if initialTab changes when opening? 
     // For now, simple state is fine.
@@ -47,12 +52,12 @@ export const AgencySettingsModal: React.FC<AgencySettingsModalProps> = ({
                             >
                                 <span className="icon">⚙️</span> Settings
                             </button>
-                            <button
+                            {showAdmin && <button
                                 className={`modal-nav-btn ${activeTab === 'admin' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('admin')}
                             >
                                 <span className="icon">🛡️</span> Admin Console
-                            </button>
+                            </button>}
                             <button
                                 className={`modal-nav-btn ${activeTab === 'help' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('help')}
@@ -69,7 +74,7 @@ export const AgencySettingsModal: React.FC<AgencySettingsModalProps> = ({
 
                         <div className="agency-modal-body">
                             {activeTab === 'settings' && <FullSettings />}
-                            {activeTab === 'admin' && <AdminConsole />}
+                            {activeTab === 'admin' && showAdmin && <AdminConsole />}
                             {activeTab === 'help' && <HelpSection />}
                         </div>
                     </motion.div>

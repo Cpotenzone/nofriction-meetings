@@ -31,6 +31,20 @@ pub struct CalendarEventNative {
     pub meeting_url: Option<String>,
     /// Event notes/description
     pub notes: Option<String>,
+    /// Attendees with display names (EKParticipant), organizer included
+    #[serde(default)]
+    pub participants: Vec<CalendarParticipant>,
+}
+
+/// A person on a calendar invite.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarParticipant {
+    pub email: String,
+    /// Display name from the invite, when the calendar provides one
+    pub name: Option<String>,
+    pub is_organizer: bool,
+    /// The calendar owner (you)
+    pub is_self: bool,
 }
 
 /// Calendar access status
@@ -247,9 +261,23 @@ impl CalendarClient {
         Ok(events)
     }
 
-    /// Internal event fetching from EventKit
-    #[cfg(target_os = "macos")]
+    /// Internal event fetching from EventKit (around now)
     fn fetch_events_internal(&self) -> Result<Vec<CalendarEventNative>, String> {
+        let now = Utc::now();
+        self.fetch_events_between(
+            now - Duration::hours(self.config.lookbehind_hours),
+            now + Duration::hours(self.config.lookahead_hours),
+        )
+    }
+
+    /// Fetch events in an arbitrary window (used to backfill past meetings).
+    /// EventKit caps a single predicate at 4 years; callers pass far less.
+    #[cfg(target_os = "macos")]
+    pub fn fetch_events_between(
+        &self,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+    ) -> Result<Vec<CalendarEventNative>, String> {
         use objc::runtime::{Class, Object, BOOL, YES};
         use objc::{msg_send, sel, sel_impl};
 
@@ -267,11 +295,6 @@ impl CalendarClient {
             if store.is_null() {
                 return Err("Failed to create EKEventStore".to_string());
             }
-
-            // Get date range
-            let now = Utc::now();
-            let start_date = now - Duration::hours(self.config.lookbehind_hours);
-            let end_date = now + Duration::hours(self.config.lookahead_hours);
 
             // Create NSDate objects
             let nsdate_class = Class::get("NSDate").ok_or("NSDate not found")?;
@@ -387,28 +410,59 @@ impl CalendarClient {
                 // Try to extract meeting URL from location or notes
                 let meeting_url = extract_meeting_url(&location, &notes);
 
-                // Get attendees
+                // Get attendees (EKParticipant: URL=mailto:, name, isCurrentUser)
+                let read_participant = |p: *mut Object, is_organizer: bool| -> Option<CalendarParticipant> {
+                    if p.is_null() {
+                        return None;
+                    }
+                    let url: *mut Object = msg_send![p, URL];
+                    if url.is_null() {
+                        return None;
+                    }
+                    let raw: *mut Object = msg_send![url, absoluteString];
+                    let raw = nsstring_to_rust(raw);
+                    let email = raw.strip_prefix("mailto:").unwrap_or(&raw);
+                    let email = urlencoding::decode(email).map(|e| e.into_owned()).unwrap_or_else(|_| email.to_string());
+                    if email.is_empty() || !email.contains('@') {
+                        return None;
+                    }
+                    let name_obj: *mut Object = msg_send![p, name];
+                    let name = if name_obj.is_null() { String::new() } else { nsstring_to_rust(name_obj) };
+                    let is_self: BOOL = msg_send![p, isCurrentUser];
+                    Some(CalendarParticipant {
+                        email: email.to_lowercase(),
+                        // Some providers put the email in the name field
+                        name: Some(name).filter(|n| !n.is_empty() && !n.contains('@')),
+                        is_organizer,
+                        is_self: is_self == YES,
+                    })
+                };
+
+                let mut participants: Vec<CalendarParticipant> = Vec::new();
+                let organizer_obj: *mut Object = msg_send![event, organizer];
+                if let Some(org) = read_participant(organizer_obj, true) {
+                    participants.push(org);
+                }
                 let attendees_array: *mut Object = msg_send![event, attendees];
-                let mut attendees = Vec::new();
                 if !attendees_array.is_null() {
                     let att_count: usize = msg_send![attendees_array, count];
                     for j in 0..att_count {
                         let attendee: *mut Object = msg_send![attendees_array, objectAtIndex: j];
-                        if !attendee.is_null() {
-                            let url: *mut Object = msg_send![attendee, URL];
-                            if !url.is_null() {
-                                let email_str: *mut Object = msg_send![url, absoluteString];
-                                let email = nsstring_to_rust(email_str);
-                                // Remove mailto: prefix
-                                let email =
-                                    email.strip_prefix("mailto:").unwrap_or(&email).to_string();
-                                if !email.is_empty() {
-                                    attendees.push(email);
-                                }
+                        if let Some(p) = read_participant(attendee, false) {
+                            if let Some(existing) = participants.iter_mut().find(|e| e.email == p.email) {
+                                existing.name = existing.name.take().or(p.name);
+                                existing.is_self |= p.is_self;
+                            } else {
+                                participants.push(p);
                             }
                         }
                     }
                 }
+                let attendees: Vec<String> = participants
+                    .iter()
+                    .filter(|p| !p.is_organizer || !p.is_self)
+                    .map(|p| p.email.clone())
+                    .collect();
 
                 events.push(CalendarEventNative {
                     event_id,
@@ -421,6 +475,7 @@ impl CalendarClient {
                     is_all_day: is_all_day == YES,
                     meeting_url,
                     notes,
+                    participants,
                 });
             }
 
@@ -473,7 +528,11 @@ impl CalendarClient {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn fetch_events(&self) -> Result<Vec<CalendarEventNative>, String> {
+    pub fn fetch_events_between(
+        &self,
+        _start: DateTime<Utc>,
+        _end: DateTime<Utc>,
+    ) -> Result<Vec<CalendarEventNative>, String> {
         Err("Calendar access only available on macOS".to_string())
     }
 }

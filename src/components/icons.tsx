@@ -209,3 +209,29 @@ export const BrainIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, cla
         <path d="M12 4.5a3 3 0 0 1 5.8 1A3.5 3.5 0 0 1 20 12a3.5 3.5 0 0 1-1.6 6A3 3 0 0 1 12 19.5" />
     </svg>
 );
+
+/** Display — a monitor on a stand */
+export const DisplayIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <rect x="2.5" y="4" width="19" height="12.5" rx="1.5" />
+        <path d="M8.5 20.5h7M12 16.5v4" />
+    </svg>
+);
+
+/** Window — app window with title bar */
+export const WindowIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <rect x="3" y="4.5" width="18" height="15" rx="2" />
+        <path d="M3 9h18" />
+        <circle cx="6" cy="6.75" r="0.4" fill="currentColor" />
+        <circle cx="8" cy="6.75" r="0.4" fill="currentColor" />
+    </svg>
+);
+
+/** Snapshot — camera shutter */
+export const CameraIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+        <circle cx="12" cy="13" r="3.5" />
+    </svg>
+);

@@ -149,40 +149,22 @@ pub async fn create_model_config(
         .map_err(|e| format!("Failed to create model config: {}", e))
 }
 
-/// Refresh model availability by checking Ollama
+/// Model ids offered by the active text provider (fresh list).
+async fn active_provider_model_ids() -> Result<Vec<String>, String> {
+    let provider = crate::ai::config::snapshot()
+        .text
+        .map(|s| s.provider)
+        .ok_or_else(|| crate::ai::AiError::NoProvider.to_string())?;
+    let models = crate::ai::commands::ai_list_models(provider).await?;
+    Ok(models.into_iter().map(|m| m.id).collect())
+}
+
+/// Refresh model availability against the active AI provider's model list
 #[tauri::command(rename_all = "camelCase")]
 pub async fn refresh_model_availability(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::prompt_manager::ModelConfig>, String> {
-    // Get all models from centralized API - use scoped block to release guard before async
-    let (base_url, auth) = {
-        let vlm = state.vlm_client.read();
-        (vlm.get_base_url(), vlm.get_auth_header())
-    };
-
-    let client = reqwest::Client::new();
-    let mut request = client.get(format!("{}/api/tags", base_url));
-    if let Some(auth_header) = auth {
-        request = request.header("Authorization", auth_header);
-    }
-    let ollama_models = request
-        .send()
-        .await
-        .map_err(|_| "VLM API not available".to_string())?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
-
-    let model_names: Vec<String> = ollama_models
-        .get("models")
-        .and_then(|m| m.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default();
+    let model_names = active_provider_model_ids().await?;
 
     // Update availability for each configured model
     let configs = state
@@ -207,37 +189,17 @@ pub async fn refresh_model_availability(
         .map_err(|e| format!("Failed to refresh model configs: {}", e))
 }
 
-/// List available models from VLM API
+/// List models offered by the active AI provider (legacy name; returns
+/// `[{name}]` objects like the old Ollama tag list).
 #[tauri::command(rename_all = "camelCase")]
 pub async fn list_ollama_models(
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    // Use scoped block to release guard before async
-    let (base_url, auth) = {
-        let vlm = state.vlm_client.read();
-        (vlm.get_base_url(), vlm.get_auth_header())
-    };
-
-    let client = reqwest::Client::new();
-    let mut request = client.get(format!("{}/api/tags", base_url));
-    if let Some(auth_header) = auth {
-        request = request.header("Authorization", auth_header);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|_| "VLM API not available".to_string())?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
-
-    let models = response
-        .get("models")
-        .and_then(|m| m.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    Ok(models)
+    Ok(active_provider_model_ids()
+        .await?
+        .into_iter()
+        .map(|name| serde_json::json!({ "name": name }))
+        .collect())
 }
 
 // ============================================
@@ -299,55 +261,15 @@ pub async fn test_prompt(
         .map_err(|e| format!("Failed to get prompt: {}", e))?
         .ok_or_else(|| "Prompt not found".to_string())?;
 
-    // Get model config if specified
-    let model_name = if let Some(ref model_id) = prompt.model_id {
-        state
-            .prompt_manager
-            .get_model_config(model_id)
-            .await
-            .map_err(|e| format!("Failed to get model: {}", e))?
-            .map(|m| m.name)
-            .unwrap_or_else(|| "qwen2.5vl:7b".to_string())
-    } else {
-        "qwen2.5vl:7b".to_string()
-    };
-
-    // Get VLM API config - use scoped block to release guard before async
-    let (base_url, auth) = {
-        let vlm = state.vlm_client.read();
-        (vlm.get_base_url(), vlm.get_auth_header())
-    };
-
-    // Call centralized API
-    let client = reqwest::Client::new();
-    let mut request = client
-        .post(format!("{}/api/generate", base_url))
-        .json(&serde_json::json!({
-            "model": model_name,
-            "prompt": format!("{}\n\nUser: {}", prompt.system_prompt, test_input),
-            "stream": false,
-            "options": {
-                "temperature": prompt.temperature,
-            }
-        }));
-
-    if let Some(auth_header) = auth {
-        request = request.header("Authorization", auth_header);
-    }
-
-    let response = request
-        .send()
+    // Runs on the active text provider (Settings → AI Engine)
+    crate::ai_client::AIClient::new()
+        .complete_with(
+            Some(&prompt.system_prompt),
+            &test_input,
+            crate::ai_client::DEFAULT_MAX_TOKENS,
+            prompt.temperature,
+        )
         .await
-        .map_err(|e| format!("Failed to call VLM API: {}", e))?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    Ok(response
-        .get("response")
-        .and_then(|r| r.as_str())
-        .unwrap_or("(No response)")
-        .to_string())
 }
 
 // ============================================================================

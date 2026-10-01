@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { LiveTranscriptView } from '../../LiveTranscript';
+import { CaptureBar, CaptureFilmstrip } from '../../CaptureBar';
 import { useRecording } from '../../../hooks/useRecording';
 import { useTranscripts } from '../../../hooks/useTranscripts';
 import { invoke } from '@tauri-apps/api/core';
@@ -32,6 +33,11 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
     const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isPolling, setIsPolling] = useState(false);
     const [sttStatus, setSttStatus] = useState<TranscriptionStatus | null>(null);
+    // No AI endpoint connected yet: say so instead of implying analysis runs
+    const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+    useEffect(() => {
+        invoke<boolean>('check_vlm').then(setAiAvailable).catch(() => setAiAvailable(false));
+    }, [recording.isRecording]);
 
     // Surface transcription health — historically failures were silent and
     // users got screenshots with no transcript and no explanation.
@@ -42,8 +48,6 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
         }).then((fn) => { unlisten = fn; });
         return () => { unlisten?.(); };
     }, []);
-
-    const sttProblem = recording.isRecording && sttStatus && !sttStatus.connected;
 
     // Poll for live insights during recording
     useEffect(() => {
@@ -86,16 +90,7 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
 
     return (
         <div className="agency-view flow-state">
-            {sttProblem && (
-                <div className="stt-warning-banner" role="alert">
-                    <WarningIcon size={15} />
-                    <span>
-                        Transcription is not running
-                        {sttStatus?.error ? ` — ${sttStatus.error}` : ''}.
-                        Screenshots are still being captured.
-                    </span>
-                </div>
-            )}
+            <CaptureBar isRecording={recording.isRecording} sttStatus={sttStatus} audioWarning={recording.audioWarning} />
             <div className="flow-content">
                 {/* Main Transcript Area */}
                 <div className="flow-transcript-container">
@@ -111,6 +106,7 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
 
                 {/* Right Panel: Real-time Intelligence */}
                 <aside className="flow-intelligence-panel">
+                    <CaptureFilmstrip isRecording={recording.isRecording} />
                     <div className="panel-header">
                         <h3>LIVE INTELLIGENCE</h3>
                         <div className={`live-indicator ${recording.isRecording ? 'active' : ''}`}>
@@ -130,7 +126,13 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
                                     className="placeholder-card"
                                 >
                                     <span className="icon"><SparkleIcon size={22} strokeWidth={1.5} /></span>
-                                    <p>{recording.isRecording ? "Analyzing conversation…" : "Action items, decisions, and risks surface here while you record."}</p>
+                                    <p>
+                                        {aiAvailable === false
+                                            ? "AI analysis is off until an AI endpoint is connected. Transcripts and screenshots are still captured."
+                                            : recording.isRecording
+                                                ? "Analyzing conversation…"
+                                                : "Action items, decisions, and risks surface here while you record."}
+                                    </p>
                                 </motion.div>
                             ) : (
                                 insights.map((insight) => (

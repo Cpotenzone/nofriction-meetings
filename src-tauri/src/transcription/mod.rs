@@ -8,10 +8,30 @@ use std::sync::Arc;
 use tauri::AppHandle;
 
 pub mod deepgram;
+pub mod filter;
 pub mod gemini;
 pub mod gladia;
 pub mod google_stt;
 pub mod local_whisper;
+
+/// Shared gate for FINAL segments from providers that don't supply their
+/// own audio/confidence signals (the cloud providers). Returns the text to
+/// persist (repetition loops collapsed), or None for hallucinated junk.
+/// Also feeds the meeting-end detector's "last real speech" clock.
+pub fn accept_final(text: &str) -> Option<String> {
+    match filter::classify(text, filter::Signals::default()) {
+        filter::Verdict::Keep(t) => {
+            crate::meeting_end::note_real_speech(chrono::Utc::now());
+            Some(t)
+        }
+        filter::Verdict::Drop(why) => {
+            // Never log transcript text
+            log::debug!("Dropping likely hallucination ({}, {} chars)", why, text.chars().count());
+            crate::meeting_end::note_filtered_segment();
+            None
+        }
+    }
+}
 
 /// Core trait for all transcription providers
 #[async_trait]

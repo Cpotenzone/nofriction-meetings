@@ -1,8 +1,10 @@
 // noFriction Meetings - Recording Hook
 // Manages recording state and audio capture
 
+import { invoke } from "@tauri-apps/api/core";
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as tauri from "../lib/tauri";
+import { getCapabilities } from "../lib/build";
 
 
 export interface RecordingState {
@@ -12,6 +14,8 @@ export interface RecordingState {
     duration: number;
     videoFrames: number;
     audioSamples: number;
+    /** Why other participants' audio isn't being captured, if it isn't */
+    audioWarning?: string | null;
 }
 
 export function useRecording() {
@@ -38,6 +42,7 @@ export function useRecording() {
                         duration: status.duration_seconds,
                         videoFrames: status.video_frames,
                         audioSamples: status.audio_samples,
+                        audioWarning: status.audio_warning ?? null,
                     }));
                 } catch (err) {
                     console.error("Failed to get recording status:", err);
@@ -67,9 +72,12 @@ export function useRecording() {
                 console.warn('Failed to link accessibility captures:', accErr);
             }
 
-            // Also start video recording
+            // Also start video recording (ffmpeg; not in the App Store build,
+            // where screenshots from the capture engine feed the timeline)
             try {
-                await tauri.startVideoRecording(meetingId);
+                if ((await getCapabilities()).video_recording) {
+                    await tauri.startVideoRecording(meetingId);
+                }
             } catch (videoErr) {
                 console.warn('Video recording failed to start:', videoErr);
                 // Continue without video - audio is the priority
@@ -98,7 +106,9 @@ export function useRecording() {
 
             // Stop video recording first
             try {
-                await tauri.stopVideoRecording();
+                if ((await getCapabilities()).video_recording) {
+                    await tauri.stopVideoRecording();
+                }
             } catch (videoErr) {
                 console.warn('Video recording failed to stop:', videoErr);
             }
@@ -127,6 +137,7 @@ export function useRecording() {
     }, [state.meetingId]);
 
     const pauseRecording = useCallback(async () => {
+        await invoke("pause_recording");
         setState((prev) => ({
             ...prev,
             isPaused: true,
@@ -134,6 +145,7 @@ export function useRecording() {
     }, []);
 
     const resumeRecording = useCallback(async () => {
+        await invoke("resume_recording");
         setState((prev) => ({
             ...prev,
             isPaused: false,

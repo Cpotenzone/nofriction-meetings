@@ -112,10 +112,23 @@ pub async fn internal_export_meeting(
         ));
     }
 
-    let transcript_tuples: Vec<(String, Option<String>, String)> = transcripts
+    let mut transcript_tuples: Vec<(String, Option<String>, String)> = transcripts
         .iter()
-        .map(|t| (t.text.clone(), t.speaker.clone(), t.timestamp.to_rfc3339()))
+        .map(|t| (crate::redaction::render_plain(&t.text), t.speaker.clone(), t.timestamp.to_rfc3339()))
         .collect();
+    // Stricken screens render as a marker at the moment they covered
+    let strikes = crate::redaction::list_strikes(database.pool(), &meeting_id)
+        .await
+        .map_err(|e| format!("Failed to get redactions: {}", e))?;
+    for (ts, text) in crate::redaction::screen_strike_lines(&strikes) {
+        let ts = chrono::DateTime::parse_from_rfc3339(&ts)
+            .map(|d| d.with_timezone(&chrono::Utc).to_rfc3339())
+            .unwrap_or(ts);
+        transcript_tuples.push((text, None, ts));
+    }
+    transcript_tuples.sort_by_key(|(_, _, ts)| {
+        chrono::DateTime::parse_from_rfc3339(ts).map(|d| d.timestamp_micros()).unwrap_or(0)
+    });
 
     let screenshot_paths: Vec<String> = frames.iter().filter_map(|f| f.file_path.clone()).collect();
 
@@ -365,7 +378,51 @@ pub async fn set_vault_path(state: State<'_, AppState>, vault_path: String) -> R
         .await
         .map_err(|e| format!("Failed to save setting: {}", e))?;
 
+    // m6: keep access across launches. The folder came from the open panel,
+    // so this launch may bookmark it; later launches resolve the bookmark.
+    match crate::bookmarks::create(&vault_path) {
+        Ok(b64) => {
+            let _ = state.settings.set(VAULT_BOOKMARK_KEY, &b64).await;
+        }
+        Err(e) => {
+            // The sandboxed build can't reopen the vault next launch without it
+            let _ = state.settings.delete(VAULT_BOOKMARK_KEY).await;
+            if cfg!(feature = "mas") {
+                return Err(format!("{} — pick the folder again with Select Folder", e));
+            }
+            log::warn!("Vault bookmark not created ({}); using the plain path", e);
+        }
+    }
+
     Ok(())
+}
+
+/// Settings key holding the vault's security-scoped bookmark (base64).
+pub const VAULT_BOOKMARK_KEY: &str = "obsidian_vault_bookmark";
+
+/// Startup: resolve the vault bookmark and start accessing it; fall back to
+/// the plain saved path (Developer ID build). Returns the path to use.
+pub async fn restore_vault_access(settings: &crate::settings::SettingsManager) -> Option<String> {
+    let plain = settings.get("obsidian_vault_path").await.ok().flatten();
+    if let Ok(Some(b64)) = settings.get(VAULT_BOOKMARK_KEY).await {
+        match crate::bookmarks::resolve_and_access(&b64) {
+            Ok(r) => {
+                let path = r.path.to_string_lossy().into_owned();
+                if !r.accessing && cfg!(feature = "mas") {
+                    log::warn!("Vault bookmark resolved but access was refused");
+                }
+                if r.stale || plain.as_deref() != Some(path.as_str()) {
+                    if let Ok(fresh) = crate::bookmarks::create(&path) {
+                        let _ = settings.set(VAULT_BOOKMARK_KEY, &fresh).await;
+                    }
+                    let _ = settings.set_vault_path(&path).await;
+                }
+                return Some(path);
+            }
+            Err(e) => log::warn!("Vault bookmark unusable ({}); falling back to saved path", e),
+        }
+    }
+    plain
 }
 
 // ═══════════════════════════════════════════════════════════════════

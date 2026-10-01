@@ -94,9 +94,7 @@ export const DataChat: React.FC = () => {
     };
 
     const getSourceBadgeClass = (source: string) => {
-        if (source === "pinecone") return "source-badge pinecone";
         if (source === "local") return "source-badge local";
-        if (source === "supabase") return "source-badge supabase";
         return "source-badge";
     };
 

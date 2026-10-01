@@ -8,7 +8,7 @@
 //   vault.rs   — Obsidian vault integration (v3.0.0)
 //   intel.rs   — Calendar intelligence, data chatbot, meeting reports (v3.1.0+)
 //   prompt.rs  — Prompt CRUD, model configuration, themes (v2.6.0+)
-//   ai.rs      — AI chat, TheBrain, RAG, Supabase, Pinecone, conversations
+//   ai.rs      — AI chat, local RAG over meeting transcripts, conversations
 //   capture.rs — Always-on recording, dork mode (study mode)
 
 pub mod vault;
@@ -17,21 +17,23 @@ pub mod prompt;
 pub mod ai;
 pub mod capture;
 pub mod local_stt;
+pub mod capture_sources;
+pub mod people;
 pub use vault::*;
 pub use intel::*;
 pub use prompt::*;
 pub use ai::*;
 pub use capture::*;
 pub use local_stt::*;
+pub use capture_sources::*;
+pub use self::people::*;
 
 use crate::capture_engine::{
     AudioBuffer, AudioDevice, CapturedFrame, MonitorInfo, RecordingStatus,
 };
 use crate::database::{Frame, Meeting, SearchResult, SyncedTimeline, Transcript};
 use crate::meeting_intel::{CalendarEvent, MeetingState, MeetingStateResolver};
-use crate::pinecone_client::ActivityMetadata;
 use crate::settings::AppSettings;
-use crate::supabase_client::Activity;
 use crate::transcription::ProviderType;
 use crate::{AppState, InitStatus, InitializationState};
 use base64::Engine;
@@ -106,7 +108,7 @@ extern "C" {
 
 /// Check screen recording permission on macOS (fast, no capture attempt)
 #[cfg(target_os = "macos")]
-fn check_screen_recording_permission() -> bool {
+pub fn check_screen_recording_permission() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() }
 }
 
@@ -161,7 +163,7 @@ pub async fn get_microphone_auth_status() -> Result<String, String> {
 /// Open the relevant System Settings privacy pane so the user can flip the
 /// toggle when a permission was previously denied.
 #[tauri::command(rename_all = "camelCase")]
-pub async fn open_system_settings(pane: String) -> Result<(), String> {
+pub async fn open_system_settings(app: tauri::AppHandle, pane: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let url = match pane.as_str() {
@@ -176,15 +178,16 @@ pub async fn open_system_settings(pane: String) -> Result<(), String> {
             }
             _ => "x-apple.systempreferences:com.apple.preference.security",
         };
-        std::process::Command::new("open")
-            .arg(url)
-            .spawn()
+        // NSWorkspace via the opener plugin: no child process (App Sandbox)
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(url, None::<&str>)
             .map_err(|e| format!("Failed to open System Settings: {}", e))?;
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = pane;
+        let _ = (app, pane);
         Ok(())
     }
 }
@@ -495,6 +498,11 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         client.get_current_event()
     }; // Guard dropped here before any .await
 
+    // Meeting-end detection uses the event's scheduled end
+    let calendar_window = calendar_event
+        .as_ref()
+        .map(|e| (e.end_time, e.title.clone()));
+
     if let Some(event) = calendar_event {
         log::info!(
             "📅 Calendar match found: '{}' with {} attendees",
@@ -514,22 +522,10 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
             .set_meeting_calendar_event(&meeting_id, &event.event_id)
             .await;
 
-        // Extract and store attendees
-        for email in &event.attendees {
-            let name = crate::attendee_intel::extract_name_from_email(email);
-            let (domain, company_name) = crate::attendee_intel::extract_company_from_email(email);
-            let company = if company_name == "Personal" {
-                None
-            } else {
-                Some(company_name.as_str())
-            };
-
-            let _ = state
-                .database
-                .add_meeting_attendee(&meeting_id, &name, email, company, "attendee")
-                .await;
-
-            log::info!("  👤 Attendee: {} <{}> ({})", name, email, domain);
+        // Store meeting details + attendees (names from the invite)
+        match crate::people::link_meeting_to_event(&state.database.get_pool(), &meeting_id, &event).await {
+            Ok(n) => log::info!("  👥 Linked {} people from calendar", n),
+            Err(e) => log::warn!("Failed to store calendar attendees: {}", e),
         }
 
         // Emit calendar match event to frontend
@@ -544,9 +540,14 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         }
 
         let attendee_names: Vec<String> = event
-            .attendees
+            .participants
             .iter()
-            .map(|e| crate::attendee_intel::extract_name_from_email(e))
+            .filter(|p| !p.is_self)
+            .map(|p| {
+                p.name
+                    .clone()
+                    .unwrap_or_else(|| crate::attendee_intel::extract_name_from_email(&p.email))
+            })
             .collect();
 
         let _ = app.emit(
@@ -687,14 +688,19 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
 
     // Set up audio callback to stream to Transcription Provider
     let transcription_manager = state.transcription_manager.clone();
+    let mixer = Arc::new(crate::audio_mixer::AudioMixer::new());
 
     let audio_callback: Arc<dyn Fn(AudioBuffer) + Send + Sync> = Arc::new(move |buffer| {
         if buffer.samples.is_empty() {
             return;
         }
 
-        // Queue audio to provider (non-blocking)
-        transcription_manager.process_audio(&buffer.samples, buffer.sample_rate, buffer.channels);
+        // Mic and system audio arrive on separate threads; mix them into one
+        // aligned 16kHz stream rather than splicing them end-to-end.
+        // Forwarded under the mixer lock so chunks stay in order (non-blocking)
+        mixer.push_with(buffer.source, &buffer.samples, buffer.sample_rate, buffer.channels, |mixed| {
+            transcription_manager.process_audio(mixed, crate::audio_mixer::MIX_SAMPLE_RATE, 1);
+        });
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -706,6 +712,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     let state_builder = state.state_builder.clone();
     let metrics_collector = state.metrics_collector.clone();
     let settings_for_frames = state.settings.clone();
+    let app_for_frames = app.clone();
 
     // Estimated bytes per frame (for savings calculation)
     const ESTIMATED_FRAME_BYTES: u64 = 50_000; // ~50KB per JPEG
@@ -717,6 +724,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         let builder = state_builder.clone();
         let metrics = metrics_collector.clone();
         let settings = settings_for_frames.clone();
+        let app_handle = app_for_frames.clone();
 
         // Process frame through StateBuilder (stateful dedup)
         tokio::spawn(async move {
@@ -729,7 +737,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
             // Process through StateBuilder (pHash + delta scoring)
             let result = {
                 let builder = builder.read();
-                builder.process_frame(frame.image.clone(), frame.timestamp)
+                builder.process_frame(&frame.source, frame.image.clone(), frame.timestamp)
             };
 
             use crate::state_builder::FrameProcessResult;
@@ -769,7 +777,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
                     // Get pending keyframe to save
                     let pending_keyframe = {
                         let builder = builder.read();
-                        builder.take_pending_keyframe()
+                        builder.take_pending_keyframe(&frame.source)
                     };
 
                     if let Some(keyframe_image) = pending_keyframe {
@@ -809,6 +817,26 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
                             {
                                 log::warn!("Failed to save screen state: {}", e);
                             }
+                            let _ = db
+                                .set_screen_state_source(
+                                    &new_state_id,
+                                    &frame.source,
+                                    &frame.label,
+                                    frame.app_name.as_deref(),
+                                )
+                                .await;
+                            let _ = app_handle.emit(
+                                "frame_captured",
+                                serde_json::json!({
+                                    "state_id": new_state_id,
+                                    "meeting_id": mid,
+                                    "path": keyframe_path.to_string_lossy(),
+                                    "source": frame.source,
+                                    "label": frame.label,
+                                    "timestamp": frame.timestamp.to_rfc3339(),
+                                    "manual": false,
+                                }),
+                            );
 
                             log::debug!("📺 New state: {} → {:?}", new_state_id, keyframe_path);
 
@@ -862,11 +890,17 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         });
     });
 
-    // Load frame capture interval from settings BEFORE acquiring lock
-    let frame_interval = match state.settings.get_all().await {
-        Ok(settings) => settings.frame_capture_interval_ms,
-        Err(_) => 1000, // Default to 1 second
-    };
+    // Load capture settings BEFORE acquiring lock
+    let (frame_interval, capture_mic, capture_system, capture_screen) =
+        match state.settings.get_all().await {
+            Ok(s) => (
+                s.frame_capture_interval_ms,
+                s.capture_microphone,
+                s.capture_system_audio,
+                s.capture_screen,
+            ),
+            Err(_) => (1000, true, true, true),
+        };
 
     // Set callbacks and start capture
     {
@@ -874,10 +908,12 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         engine.set_audio_callback(audio_callback);
         engine.set_frame_callback(frame_callback);
         engine.set_frame_interval(frame_interval);
+        engine.set_sources(capture_mic, capture_system, capture_screen);
     }
 
     // Clone app handle before engine.start() consumes it
     let app_for_segment = app.clone();
+    let app_for_end_monitor = app.clone();
 
     {
         let engine = state.capture_engine.read();
@@ -890,6 +926,10 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         frames_dir
     );
 
+    // Watch for the meeting ending (call app releases the mic, window closes,
+    // calendar end, sustained silence) — see meeting_end.rs
+    crate::meeting_end::start_monitor(app_for_end_monitor, meeting_id.clone(), calendar_window);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Recording Segmentation: emit event at 75 minutes to prompt user
     // ═══════════════════════════════════════════════════════════════════════════
@@ -899,7 +939,15 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         tokio::spawn(async move {
             // Wait 75 minutes
             tokio::time::sleep(std::time::Duration::from_secs(75 * 60)).await;
-            // Emit segmentation prompt — frontend will check if recording is still active
+            // Only prompt if this same meeting is still being recorded
+            let still_recording = {
+                let st = app_seg.state::<AppState>();
+                let engine = st.capture_engine.read();
+                engine.is_recording() && st.state_builder.read().current_meeting_id().as_deref() == Some(mid_seg.as_str())
+            };
+            if !still_recording {
+                return;
+            }
             log::info!(
                 "⏱️ Recording {} has reached 75 minutes — prompting user",
                 mid_seg
@@ -920,10 +968,44 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
 /// Stop recording
 #[tauri::command(rename_all = "camelCase")]
 pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
+    stop_recording_core(&state).await
+}
+
+/// Stop initiated by the backend (meeting-end auto-stop when the UI didn't
+/// act): the same steps as the UI's Stop — video, accessibility unlink,
+/// then the core stop — and tell the UI it happened.
+pub async fn stop_recording_from_backend(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<AppState>()
+        .ok_or_else(|| "App not ready".to_string())?;
+    // ffmpeg video exists only in the DMG build
+    #[cfg(not(feature = "mas"))]
+    {
+        let recorder = video::get_video_recorder();
+        let active = recorder.read().get_status().is_some();
+        if active {
+            if let Err(e) = recorder.write().stop() {
+                log::warn!("Video recording failed to stop: {}", e);
+            }
+            state.power_manager.release_assertion();
+        }
+    }
+    state.accessibility_capture.set_meeting_id(None);
+    stop_recording_core(&state).await?;
+    let _ = app.emit("recording-stopped-automatically", ());
+    Ok(())
+}
+
+/// Shared stop path (UI Stop, tray, and backend auto-stop).
+pub async fn stop_recording_core(state: &AppState) -> Result<(), String> {
     let was_recording = {
         let engine = state.capture_engine.read();
         engine.get_status().is_recording
     };
+    // Read before the state builder forgets it below
+    let stopped_meeting_id = state.state_builder.read().current_meeting_id();
+    // Ends meeting-end detection; Some(end) if this stop follows a detected end
+    let trim_after = crate::meeting_end::on_recording_stopped(stopped_meeting_id.as_deref());
 
     // Stop capture engine
     {
@@ -946,7 +1028,7 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
             state_builder.end_meeting()
         };
 
-        if let Some(completed) = final_state {
+        for completed in final_state {
             log::info!(
                 "📺 Final state completed: {} (duration: {:?}ms)",
                 completed.state_id,
@@ -1079,6 +1161,24 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
 
         log::info!("🎬 Recording stopped successfully (Phase 1-3 finalized)");
 
+        // Close the meeting row (ended_at + duration). Previously never
+        // called, so every meeting stayed "open" and auto-report saw 0s.
+        if let Some(mid) = stopped_meeting_id.as_deref() {
+            if let Err(e) = state.database.end_meeting(mid).await {
+                log::warn!("Failed to mark meeting {} ended: {}", mid, e);
+            }
+            // Drop junk the transcriber produced after the meeting ended.
+            // Delayed so the transcriber's final flush lands first.
+            if let Some(end_at) = trim_after {
+                let db = state.database.clone();
+                let mid = mid.to_string();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    crate::meeting_end::trim_junk_after(&db, &mid, end_at).await;
+                });
+            }
+        }
+
         // v3.0.0: Obsidian Auto-Export
         if let Ok(settings) = state.settings.get_all().await {
             if settings.obsidian_auto_export && settings.obsidian_vault_path.is_some() {
@@ -1117,83 +1217,15 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
         }
     }
 
-    // Gap Fix: Embed audio transcripts to Pinecone for semantic search
-    {
-        let meeting_id = {
-            let timeline = state.timeline_builder.get_events();
-            timeline
-                .first()
-                .map(|e| e.meeting_id.clone())
-                .unwrap_or_default()
-        };
-
-        if !meeting_id.is_empty() {
-            let db_clone = state.database.clone();
-            let pinecone_clone = state.pinecone_client.clone();
-            tokio::spawn(async move {
-                let pinecone_config = { pinecone_clone.read().get_config() };
-                if let Some(config) = pinecone_config {
-                    match db_clone.get_transcripts(&meeting_id).await {
-                        Ok(transcripts) => {
-                            let total = transcripts.len();
-                            let mut embedded = 0;
-                            // Batch in groups of 5 for efficiency
-                            for chunk in transcripts.chunks(5) {
-                                let combined_text: String = chunk
-                                    .iter()
-                                    .map(|t| {
-                                        let speaker = t.speaker.as_deref().unwrap_or("Unknown");
-                                        format!("[{}] {}", speaker, t.text)
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
-
-                                let first_ts = chunk
-                                    .first()
-                                    .map(|t| t.timestamp.to_rfc3339())
-                                    .unwrap_or_default();
-                                let id = format!("transcript_{}_{}", meeting_id, embedded);
-                                let metadata = serde_json::json!({
-                                    "type": "audio_transcript",
-                                    "source": "deepgram",
-                                    "meeting_id": meeting_id,
-                                    "timestamp": first_ts,
-                                    "segment_count": chunk.len(),
-                                });
-
-                                if crate::pinecone_client::pinecone_upsert_generic(
-                                    &config,
-                                    &id,
-                                    &combined_text,
-                                    &metadata,
-                                )
-                                .await
-                                .is_ok()
-                                {
-                                    embedded += chunk.len();
-                                }
-                            }
-                            log::info!(
-                                "📌 Pinecone: embedded {}/{} audio transcript segments for meeting {}",
-                                embedded, total, meeting_id
-                            );
-                        }
-                        Err(e) => log::warn!("📌 Failed to get transcripts for Pinecone: {}", e),
-                    }
-                }
-            });
-        }
-    }
-
     // v3.1.0: Auto-generate AI meeting report for recordings > 6 minutes
     {
-        let meeting_id = {
+        let meeting_id = stopped_meeting_id.clone().unwrap_or_else(|| {
             let timeline = state.timeline_builder.get_events();
             timeline
                 .first()
                 .map(|e| e.meeting_id.clone())
                 .unwrap_or_default()
-        };
+        });
 
         if !meeting_id.is_empty() {
             let db_clone = state.database.clone();
@@ -1211,6 +1243,12 @@ pub async fn stop_recording(state: State<'_, AppState>) -> Result<(), String> {
 
                 if !settings.auto_generate_report {
                     log::info!("📊 Auto-report disabled, skipping");
+                    return;
+                }
+
+                // No AI provider configured (or not yet approved): skip
+                if !crate::ai::is_ready(crate::ai::Kind::Text) {
+                    log::info!("📊 Auto-report skipped — no AI provider ready (Settings → AI Engine)");
                     return;
                 }
 
@@ -1297,9 +1335,10 @@ pub async fn get_transcripts(
     meeting_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<Transcript>, String> {
+    // UI view: keep strike-marker tokens so the transcript can draw the bar
     state
         .database
-        .get_transcripts(&meeting_id)
+        .get_transcripts_marked(&meeting_id)
         .await
         .map_err(|e| format!("Failed to get transcripts: {}", e))
 }
@@ -1537,15 +1576,7 @@ pub async fn get_gemini_api_key(state: State<'_, AppState>) -> Result<Option<Str
         .settings
         .get("gemini_api_key")
         .await
-        .map(|opt| {
-            opt.map(|key| {
-                if key.len() > 4 {
-                    format!("****{}", &key[key.len() - 4..])
-                } else {
-                    "****".to_string()
-                }
-            })
-        })
+        .map(|opt| crate::secrets::masked(opt.as_deref()))
         .map_err(|e| format!("Failed to get settings: {}", e))
 }
 
@@ -1647,22 +1678,17 @@ pub async fn get_deepgram_api_key(state: State<'_, AppState>) -> Result<Option<S
         .await
         .map_err(|e| format!("Failed to get API key: {}", e))?;
 
-    Ok(key.map(|k| {
-        if k.len() > 8 {
-            format!("{}...{}", &k[..4], &k[k.len() - 4..])
-        } else {
-            "****".to_string()
-        }
-    }))
+    Ok(crate::secrets::masked(key.as_deref()))
 }
 
-/// Get all settings
+/// Get all settings. Secret values are never returned; see `secret_status`.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     state
         .settings
         .get_all()
         .await
+        .map(|s| s.redacted_for_ui())
         .map_err(|e| format!("Failed to get settings: {}", e))
 }
 
@@ -1672,6 +1698,10 @@ pub async fn get_setting(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
+    // Secrets never go back to the UI
+    if crate::secrets::is_secret_setting(&key) || crate::secrets::looks_secret(&key) {
+        return Ok(None);
+    }
     state
         .settings
         .get(&key)
@@ -1686,6 +1716,14 @@ pub async fn set_setting(
     value: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    // Known secrets are routed to the Keychain by SettingsManager; anything
+    // else that looks like a credential is refused rather than stored in
+    // plaintext. AI settings have their own commands.
+    if (!crate::secrets::is_secret_setting(&key) && crate::secrets::looks_secret(&key))
+        || key == crate::ai::config::SETTINGS_KEY
+    {
+        return Err(format!("'{}' can't be set here", key));
+    }
     state
         .settings
         .set(&key, &value)
@@ -1931,8 +1969,40 @@ pub async fn get_meeting_timeline(
         }
     }
 
-    // Sort by timestamp
-    entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    // Screen states (the capture pipeline since stateful ingest): one keyframe
+    // per distinct screen, per display/window
+    let screen_states = state
+        .database
+        .get_screen_states(&meeting_id, 20000)
+        .await
+        .unwrap_or_default();
+    for st in &screen_states {
+        if let Some(path) = &st.keyframe_path {
+            if path.is_empty() {
+                continue;
+            }
+            entries.push(TimelineEntry {
+                id: format!("ss_{}", st.state_id),
+                entry_type: "screenshot".to_string(),
+                timestamp: st.start_ts.clone(),
+                text: None,
+                speaker: None,
+                app_name: st.app_name.clone(),
+                window_title: st.window_title.clone(),
+                image_path: Some(path.clone()),
+                confidence: None,
+            });
+        }
+    }
+
+    // Sort by actual time (RFC3339 strings with differing precision/offsets
+    // don't sort lexically)
+    entries.sort_by_key(|e| {
+        chrono::DateTime::parse_from_rfc3339(&e.timestamp)
+            .map(|d| d.timestamp_micros())
+            .unwrap_or(0)
+    });
+    let screenshot_count = entries.iter().filter(|e| e.entry_type == "screenshot").count();
 
     Ok(MeetingTimeline {
         meeting_id: meeting.id,
@@ -1941,7 +2011,7 @@ pub async fn get_meeting_timeline(
         ended_at: meeting.ended_at.map(|e| e.to_rfc3339()),
         transcript_count: transcripts.iter().filter(|t| t.is_final).count(),
         accessibility_count: acc_snapshots.len(),
-        screenshot_count: frames.iter().filter(|f| f.file_path.is_some()).count(),
+        screenshot_count,
         entries,
     })
 }
@@ -2025,53 +2095,6 @@ pub async fn set_frame_capture_interval(
         .map_err(|e| format!("Failed to save setting: {}", e))
 }
 
-// ============================================
-// Knowledge Base Configuration Commands
-// ============================================
-
-/// Configure all knowledge base settings at once
-#[tauri::command(rename_all = "camelCase")]
-pub async fn configure_knowledge_base(
-    supabase_connection: Option<String>,
-    pinecone_api_key: Option<String>,
-    pinecone_index_host: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    // Save settings
-    if let Some(ref conn) = supabase_connection {
-        state
-            .settings
-            .set_supabase_connection(conn)
-            .await
-            .map_err(|e| format!("Failed to save Supabase setting: {}", e))?;
-        // Connect to Supabase
-        state
-            .supabase_client
-            .read()
-            .set_connection_string(conn.clone());
-    }
-
-    if let (Some(ref key), Some(ref host)) = (&pinecone_api_key, &pinecone_index_host) {
-        state
-            .settings
-            .set_pinecone_api_key(key)
-            .await
-            .map_err(|e| format!("Failed to save Pinecone API key: {}", e))?;
-        state
-            .settings
-            .set_pinecone_index_host(host)
-            .await
-            .map_err(|e| format!("Failed to save Pinecone host: {}", e))?;
-        // Configure Pinecone client
-        state
-            .pinecone_client
-            .read()
-            .configure(key.clone(), host.clone(), None);
-    }
-
-    Ok(())
-}
-
 /// Get all capture settings
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_capture_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
@@ -2088,8 +2111,6 @@ pub async fn get_capture_settings(state: State<'_, AppState>) -> Result<serde_js
         "always_on_capture": settings.always_on_capture,
         "queue_frames_for_vlm": settings.queue_frames_for_vlm,
         "frame_capture_interval_ms": settings.frame_capture_interval_ms,
-        "supabase_configured": settings.supabase_connection_string.is_some(),
-        "pinecone_configured": settings.pinecone_api_key.is_some() && settings.pinecone_index_host.is_some(),
     }))
 }
 
@@ -2117,7 +2138,11 @@ pub async fn analyze_pending_frames(
 
     // Check if VLM is available
     if !crate::vlm_client::vlm_is_available().await {
-        return Err("VLM API is not available. Please check SSH tunnel and token.".to_string());
+        // Resolve again to return the precise reason (consent, no vision model, …)
+        return Err(crate::ai::client::resolve(crate::ai::Kind::Vision)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "No vision model is set up (Settings → AI Engine).".to_string()));
     }
 
     // Get pending frames
@@ -2199,9 +2224,6 @@ pub async fn analyze_pending_frames(
                     },
                     confidence: Some(context.confidence),
                     frame_ids: Some(frame.id.to_string()),
-                    pinecone_id: None,
-                    supabase_id: None,
-                    synced_at: None,
                 };
 
                 // Store in activity_log
@@ -2301,164 +2323,15 @@ pub async fn get_activity_stats(
         .map_err(|e| format!("Failed to get stats: {}", e))
 }
 
-/// Get unsynced activities
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_unsynced_activities(
-    limit: Option<i32>,
-    state: State<'_, AppState>,
-) -> Result<Vec<ActivityLogEntry>, String> {
-    state
-        .database
-        .get_unsynced_activities(limit.unwrap_or(50))
-        .await
-        .map_err(|e| format!("Failed to get activities: {}", e))
-}
-
-/// Sync result
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SyncResult {
-    pub activities_synced: usize,
-    pub pinecone_upserts: usize,
-    pub supabase_inserts: usize,
-    pub errors: Vec<String>,
-}
-
-/// Sync activities to cloud (Pinecone + Supabase)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn sync_to_cloud(
-    limit: Option<i32>,
-    state: State<'_, AppState>,
-) -> Result<SyncResult, String> {
-    let limit = limit.unwrap_or(20);
-
-    // Get unsynced activities
-    let activities = state
-        .database
-        .get_unsynced_activities(limit)
-        .await
-        .map_err(|e| format!("Failed to get unsynced activities: {}", e))?;
-
-    if activities.is_empty() {
-        return Ok(SyncResult {
-            activities_synced: 0,
-            pinecone_upserts: 0,
-            supabase_inserts: 0,
-            errors: vec![],
-        });
-    }
-
-    // Check configuration status upfront and get configs (drop guards immediately)
-    let pinecone_config = state.pinecone_client.read().get_config();
-    let _pinecone_configured = pinecone_config.is_some();
-    let supabase_pool = state.supabase_client.read().get_pool();
-    let _supabase_connected = supabase_pool.is_some();
-
-    let mut activities_synced = 0;
-    let mut pinecone_upserts = 0;
-    let mut supabase_inserts = 0;
-    let mut errors = Vec::new();
-
-    for activity in activities {
-        let activity_id = match &activity.id {
-            Some(id) => *id,
-            None => continue,
-        };
-
-        let mut pinecone_id: Option<String> = None;
-        let mut supabase_id: Option<String> = None;
-
-        // Sync to Pinecone (if configured)
-        if let Some(ref config) = pinecone_config {
-            let id = format!("activity_{}", activity_id);
-            let text = format!(
-                "{} - {} - {}",
-                activity.category,
-                activity.summary,
-                activity.focus_area.as_deref().unwrap_or("")
-            );
-
-            let metadata = ActivityMetadata {
-                timestamp: activity.start_time.to_rfc3339(),
-                category: activity.category.clone(),
-                app_name: activity.app_name.clone(),
-                focus_area: activity.focus_area.clone(),
-                summary: activity.summary.clone(),
-            };
-
-            // Use standalone function (no guard held across await)
-            match crate::pinecone_client::pinecone_upsert(config, &id, &text, &metadata).await {
-                Ok(_) => {
-                    pinecone_id = Some(id);
-                    pinecone_upserts += 1;
-                }
-                Err(e) => {
-                    errors.push(format!("Pinecone sync failed: {}", e));
-                }
-            }
-        }
-
-        // Sync to Supabase (if connected)
-        if let Some(ref pool) = supabase_pool {
-            let supabase_activity = Activity {
-                id: None,
-                start_time: activity.start_time,
-                end_time: activity.end_time,
-                duration_seconds: activity.duration_seconds,
-                app_name: activity.app_name.clone(),
-                window_title: activity.window_title.clone(),
-                category: activity.category.clone(),
-                summary: activity.summary.clone(),
-                focus_area: activity.focus_area.clone(),
-                pinecone_id: pinecone_id.clone(),
-                created_at: None,
-            };
-
-            // Use standalone function (no guard held across await)
-            match crate::supabase_client::supabase_insert_activity(pool, &supabase_activity).await {
-                Ok(id) => {
-                    supabase_id = Some(id);
-                    supabase_inserts += 1;
-                }
-                Err(e) => {
-                    errors.push(format!("Supabase sync failed: {}", e));
-                }
-            }
-        }
-
-        // Mark as synced if at least one succeeded
-        if pinecone_id.is_some() || supabase_id.is_some() {
-            let _ = state
-                .database
-                .mark_activity_synced(activity_id, pinecone_id.as_deref(), supabase_id.as_deref())
-                .await;
-            activities_synced += 1;
-        }
-    }
-
-    log::info!(
-        "☁️ Cloud Sync: {} activities synced ({} Pinecone, {} Supabase)",
-        activities_synced,
-        pinecone_upserts,
-        supabase_inserts
-    );
-
-    Ok(SyncResult {
-        activities_synced,
-        pinecone_upserts,
-        supabase_inserts,
-        errors,
-    })
-}
-
 // ============================================
 // Search Commands (Phase 6)
 // ============================================
 
-/// Unified search result combining local, Supabase, and Pinecone results
+/// Knowledge base search result (all local: SQLite activity_log + transcript FTS)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KBSearchResult {
     pub id: String,
-    pub source: String, // "local", "supabase", "pinecone"
+    pub source: String, // always "local"
     pub timestamp: Option<String>,
     pub app_name: Option<String>,
     pub category: Option<String>,
@@ -2469,15 +2342,16 @@ pub struct KBSearchResult {
 /// Search options
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct SearchOptions {
-    pub query: Option<String>,        // Semantic query for Pinecone
+    pub query: Option<String>,        // Free-text query (transcript FTS + activity match)
     pub start_date: Option<String>,   // ISO date for time range
     pub end_date: Option<String>,     // ISO date for time range
     pub category: Option<String>,     // Filter by category
     pub limit: Option<u32>,           // Max results
-    pub sources: Option<Vec<String>>, // ["local", "pinecone", "supabase"]
+    pub sources: Option<Vec<String>>, // accepted for compatibility; everything is local
 }
 
-/// Combined search across local SQLite, Pinecone, and Supabase
+/// Search the local knowledge base: activity_log plus meeting transcripts
+/// (SQLite FTS5, bm25-ranked). Nothing leaves the device.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn search_knowledge_base(
     options: SearchOptions,
@@ -2485,13 +2359,9 @@ pub async fn search_knowledge_base(
 ) -> Result<Vec<KBSearchResult>, String> {
     let mut results = Vec::new();
     let limit = options.limit.unwrap_or(20) as i32;
-    let sources = options
-        .sources
-        .clone()
-        .unwrap_or_else(|| vec!["local".to_string()]);
 
     // Search local SQLite activity_log
-    if sources.contains(&"local".to_string()) {
+    {
         let local_activities = state
             .database
             .get_activities_filtered(
@@ -2530,120 +2400,36 @@ pub async fn search_knowledge_base(
             });
         }
 
-        // Also search meeting transcripts via FTS5 — this is the richest
-        // local data and makes chat useful fully offline (no Pinecone).
-        if let Some(ref query) = options.query {
-            // FTS5 MATCH chokes on punctuation/operators; build a safe
-            // OR-query from the alphanumeric words.
-            let fts_query = query
-                .split(|c: char| !c.is_alphanumeric())
-                .filter(|w| w.len() > 2)
-                .take(8)
-                .map(|w| format!("\"{}\"", w))
-                .collect::<Vec<_>>()
-                .join(" OR ");
-
-            if !fts_query.is_empty() {
-                if let Ok(hits) = state.database.search_transcripts(&fts_query).await {
-                    for hit in hits.into_iter().take(limit as usize) {
-                        results.push(KBSearchResult {
-                            id: format!("transcript-{}", hit.meeting_id),
-                            source: "local".to_string(),
-                            timestamp: Some(hit.timestamp.to_rfc3339()),
-                            app_name: None,
-                            category: Some("transcript".to_string()),
-                            summary: format!(
-                                "[{}] {}",
-                                hit.meeting_title, hit.transcript_text
-                            ),
-                            // bm25 relevance is negative-is-better; normalize
-                            // to a rough 0-1 confidence for ranking
-                            score: Some((1.0 / (1.0 + hit.relevance.abs())) as f32),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    // Semantic search via Pinecone
-    if sources.contains(&"pinecone".to_string()) {
-        if let Some(ref query) = options.query {
-            let config = state.pinecone_client.read().get_config();
-            if let Some(config) = config {
-                if let Ok(matches) =
-                    crate::pinecone_client::pinecone_search(&config, query, limit as u32).await
-                {
-                    for m in matches {
-                        results.push(KBSearchResult {
-                            id: m.id,
-                            source: "pinecone".to_string(),
-                            timestamp: m.metadata.as_ref().and_then(|m| {
-                                m.get("timestamp")
-                                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                            }),
-                            app_name: m.metadata.as_ref().and_then(|m| {
-                                m.get("app_name")
-                                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                            }),
-                            category: m.metadata.as_ref().and_then(|m| {
-                                m.get("category")
-                                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                            }),
-                            summary: m
-                                .metadata
-                                .as_ref()
-                                .and_then(|m| {
-                                    m.get("summary")
-                                        .or_else(|| m.get("text"))
-                                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                                })
-                                .unwrap_or_default(),
-                            score: Some(m.score),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    // Time-based query via Supabase
-    if sources.contains(&"supabase".to_string()) {
-        if let (Some(ref start), Some(ref end)) = (&options.start_date, &options.end_date) {
-            use chrono::{DateTime, Utc};
-            if let (Ok(start), Ok(end)) =
-                (start.parse::<DateTime<Utc>>(), end.parse::<DateTime<Utc>>())
+        // Also search meeting transcripts via FTS5 (bm25-ranked) — the
+        // richest local data.
+        if let Some(fts_query) = options
+            .query
+            .as_deref()
+            .and_then(crate::database::fts_or_query)
+        {
+            if let Ok(hits) = state
+                .database
+                .search_transcript_context(&fts_query, limit as i64)
+                .await
             {
-                let pool = state.supabase_client.read().get_pool();
-                if let Some(pool) = pool {
-                    if let Ok(activities) =
-                        crate::supabase_client::supabase_query_activities(&pool, start, end).await
-                    {
-                        for activity in activities {
-                            // Filter by category if provided
-                            if let Some(ref cat) = options.category {
-                                if activity.category != *cat {
-                                    continue;
-                                }
-                            }
-
-                            results.push(KBSearchResult {
-                                id: activity.id.unwrap_or_default(),
-                                source: "supabase".to_string(),
-                                timestamp: Some(activity.start_time.to_rfc3339()),
-                                app_name: activity.app_name,
-                                category: Some(activity.category),
-                                summary: activity.summary,
-                                score: None,
-                            });
-                        }
-                    }
+                for hit in hits {
+                    results.push(KBSearchResult {
+                        id: format!("transcript-{}-{}", hit.meeting_id, hit.transcript_id),
+                        source: "local".to_string(),
+                        timestamp: Some(hit.timestamp),
+                        app_name: None,
+                        category: Some("transcript".to_string()),
+                        summary: format!("[{}] {}", hit.meeting_title, hit.snippet),
+                        // bm25 relevance is negative-is-better; normalize
+                        // to a rough 0-1 confidence for ranking
+                        score: Some((1.0 / (1.0 + hit.relevance.abs())) as f32),
+                    });
                 }
             }
         }
     }
 
-    // Sort by score (Pinecone results first), then by timestamp
+    // Sort by score, then by timestamp
     results.sort_by(|a, b| match (&b.score, &a.score) {
         (Some(bs), Some(as_)) => bs.partial_cmp(as_).unwrap_or(std::cmp::Ordering::Equal),
         (Some(_), None) => std::cmp::Ordering::Less,
@@ -2656,24 +2442,6 @@ pub async fn search_knowledge_base(
 
     log::info!("🔍 Knowledge base search: {} results", results.len());
     Ok(results)
-}
-
-/// Quick semantic search (just Pinecone)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn quick_semantic_search(
-    query: String,
-    limit: Option<u32>,
-    state: State<'_, AppState>,
-) -> Result<Vec<KBSearchResult>, String> {
-    let options = SearchOptions {
-        query: Some(query),
-        start_date: None,
-        end_date: None,
-        category: None,
-        limit,
-        sources: Some(vec!["pinecone".to_string()]),
-    };
-    search_knowledge_base(options, state).await
 }
 
 /// Get local activity history (from activity_log)
@@ -2749,6 +2517,25 @@ pub async fn export_data(state: State<'_, AppState>) -> Result<String, String> {
             .await
             .unwrap_or_default();
 
+        // Markers only (when/why), never content
+        let stricken_screens: Vec<serde_json::Value> = crate::redaction::list_strikes(
+            state.database.pool(),
+            &meeting.id,
+        )
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| r.kind == "screen")
+        .map(|r| {
+            serde_json::json!({
+                "at": r.media_start,
+                "text": crate::redaction::SCREEN_STRICKEN_PLACEHOLDER,
+                "count": r.item_count,
+                "reason": r.reason,
+            })
+        })
+        .collect();
+
         meetings_array.push(serde_json::json!({
             "id": meeting.id,
             "title": meeting.title,
@@ -2757,6 +2544,7 @@ pub async fn export_data(state: State<'_, AppState>) -> Result<String, String> {
             "duration_seconds": meeting.duration_seconds,
             "transcripts": transcripts,
             "frame_count": frames.len(),
+            "stricken_screens": stricken_screens,
         }));
     }
 
@@ -3038,6 +2826,14 @@ pub async fn mark_decision(
 // Video Recording Commands
 // ============================================================================
 
+// m1: compiled out of the Mac App Store build (ffmpeg is not available in
+// the App Sandbox). Screenshots from capture_engine still feed the timeline.
+#[cfg(not(feature = "mas"))]
+pub use video::*;
+
+#[cfg(not(feature = "mas"))]
+mod video {
+use super::*;
 use crate::chunk_manager::{ChunkManager, StorageStats};
 use crate::frame_extractor::{ExtractedFrame, FrameExtractor};
 use crate::video_recorder::{PinMoment, RecordingSession, VideoRecorder};
@@ -3048,8 +2844,16 @@ static VIDEO_RECORDER: OnceLock<parking_lot::RwLock<VideoRecorder>> = OnceLock::
 static FRAME_EXTRACTOR: OnceLock<FrameExtractor> = OnceLock::new();
 static CHUNK_MANAGER: OnceLock<ChunkManager> = OnceLock::new();
 
-fn get_video_recorder() -> &'static parking_lot::RwLock<VideoRecorder> {
+pub(super) fn get_video_recorder() -> &'static parking_lot::RwLock<VideoRecorder> {
     VIDEO_RECORDER.get_or_init(|| parking_lot::RwLock::new(VideoRecorder::default()))
+}
+
+/// Meeting whose screen video is being recorded right now, if any (its
+/// current chunk can't be re-encoded by a screen delete/strike).
+pub fn video_recording_meeting() -> Option<String> {
+    let rec = VIDEO_RECORDER.get()?;
+    let status = rec.read().get_status()?;
+    status.is_active.then_some(status.meeting_id)
 }
 
 fn get_frame_extractor() -> &'static FrameExtractor {
@@ -3169,6 +2973,7 @@ pub async fn delete_video_storage(meeting_id: String) -> Result<u64, String> {
     let manager = get_chunk_manager();
     manager.delete_meeting(&meeting_id)
 }
+}
 
 // ============================================
 // VLM Scheduler Commands
@@ -3247,52 +3052,6 @@ pub async fn get_ai_chat_model(state: State<'_, AppState>) -> Result<Option<Stri
         .map_err(|e| format!("Failed to get model: {}", e))
 }
 
-/// Set AI provider configuration
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_ai_provider_settings(
-    provider: String,
-    url: Option<String>,
-    key: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    state
-        .settings
-        .set_ai_provider(&provider)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if let Some(u) = url {
-        state
-            .settings
-            .set_ai_remote_url(&u)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
-    if let Some(k) = key {
-        state
-            .settings
-            .set_ai_remote_key(&k)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-/// Get AI provider configuration
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_ai_provider_settings(
-    state: State<'_, AppState>,
-) -> Result<(String, Option<String>, Option<String>), String> {
-    let settings = state.settings.get_all().await.map_err(|e| e.to_string())?;
-    Ok((
-        settings.ai_provider,
-        settings.ai_remote_url,
-        settings.ai_remote_key,
-    ))
-}
-
 // ============================================
 // Accessibility Capture Commands
 // ============================================
@@ -3327,11 +3086,9 @@ pub async fn start_accessibility_capture(state: State<'_, AppState>) -> Result<(
 
     // Start the service if not running
     if !state.accessibility_capture.is_running() {
-        state.accessibility_capture.start(
-            state.database.clone(),
-            state.settings.clone(),
-            state.pinecone_client.clone(),
-        )?;
+        state
+            .accessibility_capture
+            .start(state.database.clone(), state.settings.clone())?;
     }
 
     log::info!("📝 Accessibility capture started");
@@ -3371,158 +3128,6 @@ pub async fn set_accessibility_meeting_id(
         meeting_id
     );
     Ok(())
-}
-
-// ============================================
-// Intelligence Pipeline Commands
-// ============================================================================
-
-/// Set enable ingest flag
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_enable_ingest(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .settings
-        .set("enable_ingest", &enabled.to_string())
-        .await
-        .map_err(|e| format!("Failed to set enable_ingest: {}", e))
-}
-
-/// Set ingest configuration (base URL and bearer token)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_ingest_config(
-    base_url: String,
-    bearer_token: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    state
-        .settings
-        .set("ingest_base_url", &base_url)
-        .await
-        .map_err(|e| format!("Failed to set ingest_base_url: {}", e))?;
-    state
-        .settings
-        .set("ingest_bearer_token", &bearer_token)
-        .await
-        .map_err(|e| format!("Failed to set ingest_bearer_token: {}", e))?;
-    Ok(())
-}
-
-/// Get ingest queue statistics
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_ingest_queue_stats(state: State<'_, AppState>) -> Result<(usize, usize), String> {
-    let queue = state.ingest_queue.lock();
-    queue.get_stats().map_err(|e| e.to_string())
-}
-
-/// Test ingest connection
-#[tauri::command(rename_all = "camelCase")]
-pub async fn test_ingest_connection(state: State<'_, AppState>) -> Result<bool, String> {
-    if let Some(ref client) = state.ingest_client {
-        client.health_check().await.map_err(|e| e.to_string())
-    } else {
-        Err("Ingest client not initialized".to_string())
-    }
-}
-
-/// Trigger manual ingest of a meeting
-#[tauri::command(rename_all = "camelCase")]
-pub async fn trigger_meeting_ingest(
-    meeting_id: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let client = state
-        .ingest_client
-        .as_ref()
-        .ok_or_else(|| "Ingest client not initialized".to_string())?;
-
-    // Get meeting details
-    let meeting = state
-        .database
-        .get_meeting(&meeting_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Meeting not found".to_string())?;
-
-    // Create session start request
-    let started_at = meeting.started_at.to_rfc3339();
-    let metadata = serde_json::json!({
-        "title": meeting.title,
-        "meeting_id": meeting.id,
-        "source": "nofriction_meetings",
-        "manual_trigger": true
-    });
-
-    // Start session
-    log::info!("Starting ingest session for meeting {}", meeting_id);
-    let session_id = client
-        .start_session(None, started_at, metadata)
-        .await
-        .map_err(|e| format!("Failed to start session: {}", e))?;
-
-    // Get transcripts
-    let transcripts = state
-        .database
-        .get_transcripts(&meeting_id)
-        .await
-        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
-
-    // Convert transcripts
-    let segments: Vec<crate::ingest_client::TranscriptSegment> = transcripts
-        .into_iter()
-        .map(|t| crate::ingest_client::TranscriptSegment {
-            start_at: t.timestamp.to_rfc3339(),
-            end_at: t.timestamp.to_rfc3339(),
-            text: t.text,
-            speaker: t.speaker,
-            confidence: Some(t.confidence as f64),
-        })
-        .collect();
-
-    let segment_count = segments.len();
-
-    if !segments.is_empty() {
-        log::info!("Uploading {} transcript segments...", segment_count);
-        client
-            .upload_transcript(session_id, segments)
-            .await
-            .map_err(|e| format!("Failed to upload transcripts: {}", e))?;
-    }
-
-    // Get frames (limit to avoid overload)
-    let frames = state
-        .database
-        .get_frames(&meeting_id, 200)
-        .await
-        .map_err(|e| e.to_string())?;
-    log::info!("Found {} frames to upload...", frames.len());
-
-    let mut success_frames = 0;
-    for frame in frames {
-        if let Some(path_str) = frame.file_path {
-            let path = std::path::PathBuf::from(path_str);
-            if path.exists() {
-                match client
-                    .upload_frame(session_id, frame.timestamp.to_rfc3339(), &path, None)
-                    .await
-                {
-                    Ok(_) => success_frames += 1,
-                    Err(e) => log::warn!("Failed to upload frame {}: {}", frame.id, e),
-                }
-            }
-        }
-    }
-
-    // End session
-    let ended_at = meeting.ended_at.unwrap_or(chrono::Utc::now()).to_rfc3339();
-    client
-        .end_session(session_id, ended_at)
-        .await
-        .map_err(|e| format!("Failed to end session: {}", e))?;
-
-    Ok(format!(
-        "Ingest complete. Uploaded {} frames and {} transcripts.",
-        success_frames, segment_count
-    ))
 }
 
 // ===== Calendar Integration Commands =====
@@ -3923,7 +3528,7 @@ pub async fn get_meeting_analysis(
 
     let transcripts = state
         .database
-        .get_transcripts(&meeting_id)
+        .get_transcripts_marked(&meeting_id)
         .await
         .map_err(|e| format!("Failed to get transcripts: {}", e))?;
 

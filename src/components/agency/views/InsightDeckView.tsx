@@ -3,8 +3,9 @@ import { MeetingHistory } from '../../MeetingHistory';
 import { KBSearch } from '../../KBSearch';
 import { InsightsView } from '../../InsightsView';
 import { RewindGallery } from '../../RewindGallery';
+import { MeetingPeople, PeopleDirectory } from '../../People';
 
-type DeckTab = 'history' | 'insights' | 'search';
+type DeckTab = 'history' | 'people' | 'insights' | 'search';
 
 interface InsightDeckViewProps {
     onSelectMeeting: (id: string) => void;
@@ -24,6 +25,12 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         onClick={() => setActiveTab('history')}
                     >
                         RECORDINGS
+                    </button>
+                    <button
+                        className={`deck-tab ${activeTab === 'people' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('people')}
+                    >
+                        PEOPLE
                     </button>
                     <button
                         className={`deck-tab ${activeTab === 'insights' ? 'active' : ''}`}
@@ -50,10 +57,19 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                             compact={!!selectedMeetingId}
                         />
                         {selectedMeetingId && (
-                            <div className="deck-playback-panel" style={{ overflow: 'hidden', height: '100%' }}>
-                                <RewindGallery meetingId={selectedMeetingId} isRecording={false} />
+                            <div className="deck-playback-panel" style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <MeetingPeople meetingId={selectedMeetingId} />
+                                <div style={{ flex: 1, minHeight: 0 }}>
+                                    <RewindGallery meetingId={selectedMeetingId} isRecording={false} />
+                                </div>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {activeTab === 'people' && (
+                    <div className="deck-panel" style={{ overflowY: 'auto' }}>
+                        <PeopleDirectory />
                     </div>
                 )}
 

@@ -702,6 +702,12 @@ impl GoogleSTTProvider {
             if text.is_empty() {
                 continue;
             }
+            // Shared hallucination filter (all results here are final)
+            let cleaned = match super::accept_final(text) {
+                Some(t) => t,
+                None => continue,
+            };
+            let text = cleaned.as_str();
 
             // Anchor word offsets (relative to the utterance) to wall clock
             let (rel_start, rel_end) = alt
@@ -734,7 +740,7 @@ impl GoogleSTTProvider {
                 speaker: speaker.clone(),
             };
 
-            log::info!("📝 GCP STT [{:.1}s]: {}", duration, text);
+            log::info!("📝 GCP STT [{:.1}s]: {} chars", duration, text.chars().count());
 
             if let Err(e) = app.emit("live_transcript", &segment) {
                 log::error!("Emit failed: {}", e);

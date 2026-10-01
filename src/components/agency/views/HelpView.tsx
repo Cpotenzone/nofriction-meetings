@@ -275,8 +275,8 @@ const TechSpec: React.FC = () => (
                 Frontend: React + TypeScript + Vite{"\n"}
                 Backend: Rust (Tauri v2){"\n"}
                 Database: SQLite (sqlx){"\n"}
-                Transcription: Deepgram Nova-3 (WebSocket streaming){"\n"}
-                AI Reports: Serendipity API (qwen3:8b){"\n"}
+                Transcription: Whisper on-device (default); Deepgram, Gemini, Gladia, Google optional with your key{"\n"}
+                AI: your provider and key (OpenAI default; Anthropic, Gemini, xAI Grok, Groq, local models, …){"\n"}
                 Screen Capture: xcap (native screen capturing){"\n"}
                 Calendar: Apple EventKit (macOS native)
             </div>
@@ -320,7 +320,7 @@ const TechSpec: React.FC = () => (
             <ol>
                 <li><strong>Trigger</strong>: When <code>stop_recording</code> completes and duration &gt; 6 minutes.</li>
                 <li><strong>Prompt Assembly</strong>: The stored master prompt (editable in Settings) is combined with the transcript text.</li>
-                <li><strong>API Call</strong>: Sent to the Serendipity API (<code>/v1/chat/completions</code>) using model <code>qwen3:8b</code>.</li>
+                <li><strong>API Call</strong>: Sent straight from the app to the AI provider you chose in Settings → AI Engine, with your own key (after you've allowed that provider).</li>
                 <li><strong>Parse</strong>: Response is parsed as JSON into structured <code>GeneratedNotes</code>.</li>
                 <li><strong>Storage</strong>: Report is saved to the <code>meeting_notes</code> table.</li>
                 <li><strong>Display</strong>: Report appears in REWIND view when viewing the meeting.</li>
@@ -388,9 +388,10 @@ const SecurityManual: React.FC = () => (
         <div className="help-section">
             <h3>Data Privacy & Local Storage</h3>
             <div className="help-callout security">
-                <p><strong>All data stays on your device.</strong> Recordings, transcripts, frames, and meeting reports
-                    are stored locally in SQLite. Nothing is uploaded to any server unless you explicitly configure
-                    external integrations (Pinecone, Supabase, Obsidian).</p>
+                <p><strong>Your data is stored only on this Mac.</strong> Recordings, transcripts, frames and meeting
+                    reports live in a local SQLite database. There is no noFriction server or cloud database. The only
+                    network calls go directly to the AI or cloud-transcription provider you set up with your own key,
+                    and the app asks before sending anything to an AI provider for the first time.</p>
             </div>
             <p>
                 The SQLite database is located in your system's app data directory:
@@ -403,16 +404,12 @@ const SecurityManual: React.FC = () => (
         <div className="help-section">
             <h3>API Key Security</h3>
             <ul>
-                <li><strong>Deepgram API Key</strong>: Stored locally in SQLite settings. Used only for direct WebSocket
-                    connections to Deepgram's servers. Never sent to any other endpoint.</li>
-                <li><strong>Serendipity AI Key</strong>: Bearer token used to authenticate with the AI report generation API.
-                    Transmitted over HTTPS only.</li>
-                <li><strong>Pinecone API Key</strong>: Used for optional semantic search embedding. Only sent to Pinecone endpoints.</li>
+                <li><strong>Where keys live</strong>: every API key (AI providers and cloud transcription) is stored in
+                    the macOS Keychain, never in the database or in files. Settings only ever shows the last 4 characters.</li>
+                <li><strong>Where keys go</strong>: each key is sent only to its own provider, over HTTPS (local models
+                    can use http on your own network). Redirects are refused, so a key can't be forwarded elsewhere.</li>
+                <li><strong>Removing a key</strong>: Settings → AI Engine → remove, which deletes it from the Keychain.</li>
             </ul>
-            <div className="help-callout warning">
-                <p><strong>Warning:</strong> API keys are stored in plaintext in the local SQLite database.
-                    Ensure your machine has appropriate access controls (disk encryption, login password).</p>
-            </div>
         </div>
 
         <div className="help-section">
@@ -422,15 +419,14 @@ const SecurityManual: React.FC = () => (
                     <tr><th>Service</th><th>Protocol</th><th>Data Sent</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td>Deepgram</td><td>WSS (WebSocket Secure)</td><td>Raw audio stream</td></tr>
-                    <tr><td>Serendipity AI</td><td>HTTPS</td><td>Transcript text (for report generation)</td></tr>
-                    <tr><td>Pinecone (optional)</td><td>HTTPS</td><td>Text embeddings for semantic search</td></tr>
-                    <tr><td>Supabase (optional)</td><td>HTTPS</td><td>Activity logs and metadata</td></tr>
+                    <tr><td>Your AI provider (only once you've added a key and allowed it)</td><td>HTTPS</td><td>Transcript text, meeting title, attendee names; screenshots for screen features</td></tr>
+                    <tr><td>Cloud transcription (only if you choose Deepgram, Gemini, Gladia or Google)</td><td>WSS / HTTPS</td><td>Meeting audio</td></tr>
+                    <tr><td>Hugging Face (once)</td><td>HTTPS</td><td>Nothing; downloads the Whisper model</td></tr>
                 </tbody>
             </table>
             <p>
-                All external communication uses TLS encryption. No data is sent to any service
-                without explicit user configuration.
+                Cloud services are always reached over TLS. With local Whisper and a local or Apple on-device model,
+                nothing leaves this Mac.
             </p>
         </div>
 
@@ -525,30 +521,6 @@ const ServicesManual: React.FC = () => (
                 GET  /api/models          — List available models{"\n"}
                 GET  /api/tags            — Check API availability
             </div>
-        </div>
-
-        <div className="help-section">
-            <h3>Pinecone — Semantic Search <span className="help-version">OPTIONAL</span></h3>
-            <table className="help-table">
-                <tbody>
-                    <tr><td><strong>Website</strong></td><td>pinecone.io</td></tr>
-                    <tr><td><strong>API Type</strong></td><td>REST</td></tr>
-                    <tr><td><strong>Used For</strong></td><td>Embedding audio transcripts for semantic similarity search across meetings</td></tr>
-                    <tr><td><strong>Setup</strong></td><td>Settings → Knowledge Base → enter API key, index host, and namespace</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div className="help-section">
-            <h3>Supabase — Cloud Sync <span className="help-version">OPTIONAL</span></h3>
-            <table className="help-table">
-                <tbody>
-                    <tr><td><strong>Website</strong></td><td>supabase.com</td></tr>
-                    <tr><td><strong>API Type</strong></td><td>PostgreSQL (connection string)</td></tr>
-                    <tr><td><strong>Used For</strong></td><td>Syncing activity logs and metadata to cloud storage</td></tr>
-                    <tr><td><strong>Setup</strong></td><td>Settings → Knowledge Base → enter connection string</td></tr>
-                </tbody>
-            </table>
         </div>
 
         <div className="help-section">

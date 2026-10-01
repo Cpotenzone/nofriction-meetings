@@ -470,8 +470,17 @@ impl DeepgramProvider {
                                 if let Some(alt) = channel.alternatives.first() {
                                     if !alt.transcript.is_empty() {
                                         let is_final = response.is_final.unwrap_or(false);
+                                        // Finals pass the shared hallucination filter
+                                        let text_out = if is_final {
+                                            match super::accept_final(&alt.transcript) {
+                                                Some(t) => t,
+                                                None => continue,
+                                            }
+                                        } else {
+                                            alt.transcript.clone()
+                                        };
                                         let segment = TranscriptSegment {
-                                            text: alt.transcript.clone(),
+                                            text: text_out,
                                             is_final,
                                             confidence: alt.confidence,
                                             start: response.start.unwrap_or(0.0),
@@ -491,7 +500,7 @@ impl DeepgramProvider {
                                         }
 
                                         if is_final {
-                                            log::info!("📝 TRANSCRIPT [FINAL]: {}", alt.transcript);
+                                            log::info!("📝 TRANSCRIPT [FINAL]: {} chars", alt.transcript.chars().count());
                                         } else {
                                             log::debug!(
                                                 "📝 transcript [interim]: {}",
@@ -524,7 +533,7 @@ impl DeepgramProvider {
                                                 if let Some(mid) =
                                                     meeting_id_recv.read().as_ref().cloned()
                                                 {
-                                                    let text_clone = alt.transcript.clone();
+                                                    let text_clone = segment.text.clone();
                                                     let speaker_clone = segment.speaker.clone();
                                                     let confidence = alt.confidence;
                                                     tokio::spawn(async move {

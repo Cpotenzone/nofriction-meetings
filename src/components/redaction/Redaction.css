@@ -1,0 +1,397 @@
+/* Editing + "Strike from the record" (docs/REDACTION.md)
+   Dark tactical theme, hazard-yellow accents (App.css tokens). */
+
+/* ── Word tokens ─────────────────────────────────────────────── */
+.rd-line {
+    user-select: none;
+    -webkit-user-select: none;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.rd-word {
+    border-radius: 3px;
+    cursor: text;
+    padding: 0 1px;
+    transition: background var(--transition-fast, 0.1s ease);
+}
+
+.rd-line.rd-editable .rd-word:hover {
+    background: rgba(250, 204, 21, 0.12);
+}
+
+.rd-word.rd-sel {
+    background: rgba(250, 204, 21, 0.32);
+    color: #fff;
+    box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.55);
+}
+
+/* ── Stricken marker (transcript) ────────────────────────────── */
+.rd-marker {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 1px 2px;
+    padding: 1px 8px 2px;
+    background: #000;
+    border: 1px solid #262626;
+    border-left: 3px solid var(--hazard-yellow, #facc15);
+    border-radius: 3px;
+    color: #e5e5e5;
+    vertical-align: baseline;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+}
+
+.rd-marker-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.rd-marker-caption {
+    font-family: var(--ds-font-mono, 'JetBrains Mono', monospace);
+    font-size: 0.65rem;
+    color: var(--text-secondary, #a3a3a3);
+}
+
+/* ── Stricken screen placeholder ─────────────────────────────── */
+.rd-screen-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px;
+    box-sizing: border-box;
+    background: repeating-linear-gradient(-45deg, #0b0b0b 0 6px, #1b1b1b 6px 12px);
+    border: 1px solid #333;
+    border-left: 3px solid var(--hazard-yellow, #facc15);
+    border-radius: 6px;
+    color: #e5e5e5;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+    overflow: hidden;
+}
+
+/* Beat .thumbnail's solid background when used in the thumbnail strip */
+.thumbnail.rd-screen-card,
+.rd-screen-card.thumbnail:hover {
+    background: repeating-linear-gradient(-45deg, #0b0b0b 0 6px, #1b1b1b 6px 12px);
+    border: 1px solid #333;
+    border-left: 3px solid var(--hazard-yellow, #facc15);
+    transform: none;
+    cursor: default;
+}
+
+.rd-screen-card .rd-marker-label {
+    background: #000;
+    align-self: flex-start;
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 0.68rem;
+}
+
+.rd-screen-card .rd-marker-caption {
+    font-size: 0.6rem;
+    line-height: 1.35;
+    background: rgba(0, 0, 0, 0.75);
+    align-self: flex-start;
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+/* ── Selected screen thumbnails ──────────────────────────────── */
+.thumbnail.rd-selected {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 1px;
+    position: relative;
+}
+
+.rd-check {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--hazard-yellow, #facc15);
+    color: #000;
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+/* ── Action bar ──────────────────────────────────────────────── */
+.rd-actionbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    background: #0d0d0d;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.5));
+    font-size: var(--ds-text-sm, 0.8125rem);
+    color: var(--text-primary, #f5f5f5);
+}
+
+.rd-actionbar-sticky {
+    position: sticky;
+    bottom: 8px;
+    z-index: 5;
+    margin-top: 8px;
+}
+
+.rd-actionbar-count {
+    font-family: var(--ds-font-mono, monospace);
+    color: var(--text-secondary, #a3a3a3);
+    margin-right: auto;
+}
+
+.rd-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #404040;
+    background: transparent;
+    color: var(--text-primary, #f5f5f5);
+    font-size: var(--ds-text-sm, 0.8125rem);
+    cursor: pointer;
+    transition: background var(--transition-fast, 0.1s ease), border-color var(--transition-fast, 0.1s ease);
+}
+
+.rd-btn:hover:not(:disabled) {
+    background: #1a1a1a;
+    border-color: #525252;
+}
+
+.rd-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.rd-btn-strike {
+    background: var(--hazard-yellow, #facc15);
+    border-color: var(--hazard-yellow, #facc15);
+    color: #000;
+    font-weight: 700;
+}
+
+.rd-btn-strike:hover:not(:disabled) {
+    background: #eab308;
+    border-color: #eab308;
+}
+
+.rd-btn-ghost {
+    border-color: transparent;
+    color: var(--text-secondary, #a3a3a3);
+}
+
+.rd-btn:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 2px;
+}
+
+/* ── Confirmation modal ──────────────────────────────────────── */
+.rd-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.rd-modal {
+    width: min(520px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    background: #0d0d0d;
+    border: 1px solid #333;
+    border-top: 3px solid var(--hazard-yellow, #facc15);
+    border-radius: 10px;
+    padding: 20px;
+    color: var(--text-primary, #f5f5f5);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.rd-modal h2 {
+    margin: 0 0 6px;
+    font-size: var(--ds-text-lg, 1.125rem);
+}
+
+.rd-modal-lead {
+    margin: 0 0 14px;
+    color: var(--text-secondary, #a3a3a3);
+    font-size: var(--ds-text-sm, 0.8125rem);
+    line-height: 1.5;
+}
+
+.rd-quote {
+    margin: 0 0 14px;
+    padding: 8px 10px;
+    background: #050505;
+    border: 1px solid #262626;
+    border-radius: 6px;
+    font-size: var(--ds-text-sm, 0.8125rem);
+    max-height: 96px;
+    overflow-y: auto;
+    text-decoration: line-through;
+    text-decoration-color: var(--hazard-yellow, #facc15);
+    color: #d4d4d4;
+}
+
+.rd-modal h3 {
+    margin: 0 0 6px;
+    font-size: var(--ds-text-xs, 0.6875rem);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary, #a3a3a3);
+}
+
+.rd-list {
+    margin: 0 0 14px;
+    padding-left: 18px;
+    font-size: var(--ds-text-sm, 0.8125rem);
+    line-height: 1.55;
+}
+
+.rd-list li.rd-note {
+    color: var(--text-secondary, #a3a3a3);
+}
+
+.rd-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+    font-size: var(--ds-text-sm, 0.8125rem);
+}
+
+.rd-field input {
+    padding: 8px 10px;
+    background: #050505;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: var(--text-primary, #f5f5f5);
+    font-size: var(--ds-text-sm, 0.8125rem);
+}
+
+.rd-field input:focus {
+    outline: none;
+    border-color: var(--hazard-yellow, #facc15);
+}
+
+.rd-hint {
+    color: var(--text-secondary, #a3a3a3);
+    font-size: var(--ds-text-xs, 0.6875rem);
+}
+
+.rd-error {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border: 1px solid #7f1d1d;
+    background: rgba(127, 29, 29, 0.25);
+    border-radius: 6px;
+    color: #fca5a5;
+    font-size: var(--ds-text-sm, 0.8125rem);
+}
+
+.rd-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ── Undo / status toast ─────────────────────────────────────── */
+.rd-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: calc(100vw - 32px);
+    padding: 10px 14px;
+    background: #171717;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.5));
+    color: var(--text-primary, #f5f5f5);
+    font-size: var(--ds-text-sm, 0.8125rem);
+}
+
+.rd-toast.rd-toast-error {
+    border-color: #7f1d1d;
+    color: #fca5a5;
+}
+
+.rd-toast button {
+    background: none;
+    border: none;
+    color: var(--hazard-yellow, #facc15);
+    font-weight: 700;
+    cursor: pointer;
+    font-size: inherit;
+    padding: 2px 4px;
+}
+
+.rd-toast-count {
+    font-family: var(--ds-font-mono, monospace);
+    color: var(--text-secondary, #a3a3a3);
+    min-width: 2ch;
+    text-align: right;
+}
+
+/* ── Deletes that couldn't be completed yet ─────────────────── */
+.rd-failed {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0;
+    padding: 8px 12px;
+    border: 1px solid #7f1d1d;
+    border-radius: 8px;
+    background: rgba(127, 29, 29, 0.15);
+    color: #fca5a5;
+    font-size: 13px;
+}
+
+.rd-failed-reason {
+    color: var(--text-secondary, #a3a3a3);
+}
+
+/* ── "Made before an edit" banner ────────────────────────────── */
+.rd-stale {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    margin: 0 0 8px;
+    border: 1px solid rgba(250, 204, 21, 0.35);
+    background: rgba(250, 204, 21, 0.07);
+    border-radius: 6px;
+    font-size: var(--ds-text-sm, 0.8125rem);
+    color: var(--text-primary, #f5f5f5);
+}
+
+.rd-stale span {
+    margin-right: auto;
+}
+
+.rd-tip {
+    font-size: var(--ds-text-xs, 0.6875rem);
+    color: var(--text-secondary, #a3a3a3);
+    margin: 0 0 6px;
+}

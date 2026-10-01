@@ -20,20 +20,10 @@ interface ServiceHealth {
     last_check: string;
 }
 
-interface QueueStats {
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-    total_bytes: number;
-    total_bytes_formatted: string;
-}
-
 interface FeatureFlags {
     admin_console_enabled: boolean;
     dedup_enabled: boolean;
     vlm_auto_process: boolean;
-    enable_ingest: boolean;
     queue_frames_for_vlm: boolean;
 }
 
@@ -110,19 +100,14 @@ function AboutPanel() {
 
 function SystemHealth() {
     const [services, setServices] = useState<ServiceHealth[]>([]);
-    const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const loadHealth = async () => {
         setIsLoading(true);
         try {
-            const [health, queue] = await Promise.all([
-                invoke<ServiceHealth[]>('get_system_health'),
-                invoke<QueueStats>('get_admin_queue_stats')
-            ]);
+            const health = await invoke<ServiceHealth[]>('get_system_health');
             setServices(health);
-            setQueueStats(queue);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -193,30 +178,6 @@ function SystemHealth() {
                     </div>
                 ))}
             </div>
-
-            {queueStats && (
-                <div className="queue-stats">
-                    <h4>📊 Ingest Queue</h4>
-                    <div className="queue-stats-grid">
-                        <div className="queue-stat">
-                            <div className="stat-value">{queueStats.pending}</div>
-                            <div className="stat-label">Pending</div>
-                        </div>
-                        <div className="queue-stat">
-                            <div className="stat-value">{queueStats.processing}</div>
-                            <div className="stat-label">Processing</div>
-                        </div>
-                        <div className="queue-stat">
-                            <div className="stat-value">{queueStats.completed}</div>
-                            <div className="stat-label">Completed</div>
-                        </div>
-                        <div className="queue-stat warning">
-                            <div className="stat-value">{queueStats.failed}</div>
-                            <div className="stat-label">Failed</div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
@@ -276,7 +237,6 @@ function FeatureFlagsPanel() {
     const flagConfigs = [
         { key: 'dedup_enabled', label: 'Frame Deduplication', description: 'Reduce storage by skipping duplicate frames', icon: '🔄' },
         { key: 'vlm_auto_process', label: 'VLM Auto Process', description: 'Automatically process frames with Vision LLM', icon: '🧠' },
-        { key: 'enable_ingest', label: 'Intelligence Ingest', description: 'Send data to intelligence pipeline', icon: '📡' },
         { key: 'queue_frames_for_vlm', label: 'Queue VLM Frames', description: 'Queue captured frames for VLM analysis', icon: '📸' },
     ];
 

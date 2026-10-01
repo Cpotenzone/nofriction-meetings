@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "noFriction Meetings",
-  "version": "3.5.0",
-  "identifier": "ai.nofriction.meetings",
+  "version": "3.6.0",
+  "identifier": "com.nofriction.meetings",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -24,7 +24,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.deepgram.com https://*.pinecone.io https://generativelanguage.googleapis.com https://api.deepgram.com https://api.gladia.io; font-src 'self' data:"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' wss://*.deepgram.com https://generativelanguage.googleapis.com https://api.deepgram.com https://api.gladia.io; font-src 'self' data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/**",
+          "$APPCACHE/**"
+        ]
+      }
     }
   },
   "bundle": {
@@ -42,10 +49,12 @@
     ],
     "category": "Productivity",
     "shortDescription": "Live meeting transcription for macOS",
-    "longDescription": "noFriction Meetings captures your screen and audio to provide real-time meeting transcription \u2014 fully on-device by default (local Whisper + Ollama), with optional cloud providers.",
+    "longDescription": "noFriction Meetings captures your screen and audio to provide real-time meeting transcription — fully on-device by default (local Whisper + Ollama), with optional cloud providers.",
     "macOS": {
       "entitlements": "entitlements.plist",
-      "minimumSystemVersion": "12.3"
+      "minimumSystemVersion": "12.3",
+      "signingIdentity": "Developer ID Application: casey potenzone (C7GCEESE2V)",
+      "hardenedRuntime": true
     }
   }
 }

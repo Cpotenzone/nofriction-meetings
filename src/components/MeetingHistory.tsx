@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
 import type { Meeting, CalendarMatchEvent } from "../lib/tauri";
 import EmptyState from "./EmptyState";
-import { CalendarIcon, BrainIcon, TrashIcon } from "./icons";
+import { CalendarIcon, TrashIcon } from "./icons";
 import { withFallback, mockMeetings } from "../lib/offline";
 
 interface MeetingHistoryProps {
@@ -238,19 +238,6 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                                         )}
                                     </div>
                                 </div>
-                                <button
-                                    className="btn btn-ghost"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        // TODO: Add visual feedback for ingest trigger
-                                        tauri.triggerMeetingIngest(meeting.id)
-                                            .catch(err => console.error(err));
-                                    }}
-                                    title="Send to Intel Workflow"
-                                    style={{ padding: "4px 8px", fontSize: "0.75rem", marginRight: "4px" }}
-                                >
-                                    <BrainIcon size={14} />
-                                </button>
                                 <button
                                     className="btn btn-ghost"
                                     onClick={(e) => handleDelete(e, meeting.id)}

@@ -61,18 +61,8 @@ pub struct AppSettings {
     pub product_dev_interval_ms: u32,
     pub admin_interval_ms: u32,
     pub personal_interval_ms: u32,
-    // Knowledge base settings
-    pub supabase_connection_string: Option<String>,
-    pub pinecone_api_key: Option<String>,
-    pub pinecone_index_host: Option<String>,
-    pub pinecone_namespace: Option<String>,
-    // Intelligence Pipeline settings
-    pub enable_ingest: Option<bool>,
-    pub ingest_base_url: Option<String>,
-    pub ingest_bearer_token: Option<String>,
     // VLM API settings (centralized service)
     pub vlm_base_url: Option<String>,
-    pub vlm_bearer_token: Option<String>,
     pub vlm_model_primary: Option<String>,
     pub vlm_model_fallback: Option<String>,
     // Stateful Screen Ingest - Dedup thresholds (Phase 1)
@@ -83,10 +73,6 @@ pub struct AppSettings {
     // Accessibility capture settings
     pub accessibility_capture_enabled: bool,
     pub accessibility_capture_interval_secs: u32,
-    // AI Provider settings
-    pub ai_provider: String, // "local" or "remote"
-    pub ai_remote_url: Option<String>,
-    pub ai_remote_key: Option<String>,
     // Session Mode settings
     pub session_mode: String, // "standard" or "dork" (study mode)
     // Obsidian Vault settings
@@ -96,6 +82,10 @@ pub struct AppSettings {
     // Meeting Report settings
     pub auto_generate_report: bool,
     pub meeting_report_prompt: String,
+    /// `{configured, last4}` per secret setting key; filled only in the
+    /// copy sent to the UI (secret values themselves are blanked there).
+    #[serde(default)]
+    pub secret_status: std::collections::BTreeMap<String, crate::secrets::SecretStatus>,
 }
 
 impl AppSettings {
@@ -108,8 +98,8 @@ impl AppSettings {
             google_stt_key_json: None,
             deepgram_model: Some("nova-3".to_string()),
             gemini_model: Some("models/gemini-2.0-flash-exp".to_string()),
-            transcription_provider: "deepgram".to_string(),
-            local_whisper_model: Some("small.en".to_string()), // best accuracy/speed balance
+            transcription_provider: "local".to_string(), // m12: on-device Whisper, no key needed
+            local_whisper_model: Some("large-v3-turbo-q5_0".to_string()), // best accuracy/speed balance on Apple Silicon
             selected_microphone: None,
             selected_monitor: None,
             auto_start_recording: false,
@@ -129,15 +119,7 @@ impl AppSettings {
             product_dev_interval_ms: 2000,           // 2 seconds
             admin_interval_ms: 2000,                 // 2 seconds
             personal_interval_ms: 3000,              // 3 seconds
-            supabase_connection_string: None,
-            pinecone_api_key: None,
-            pinecone_index_host: None,
-            pinecone_namespace: Some("default".to_string()),
-            enable_ingest: Some(false), // Disabled by default
-            ingest_base_url: None,
-            ingest_bearer_token: None,
             vlm_base_url: None, // None = local Ollama (http://localhost:11434)
-            vlm_bearer_token: None,
             vlm_model_primary: Some("qwen2.5vl:7b".to_string()),
             vlm_model_fallback: Some("qwen2.5vl:3b".to_string()),
             // Stateful Screen Ingest defaults
@@ -148,10 +130,6 @@ impl AppSettings {
             // Accessibility capture defaults
             accessibility_capture_enabled: false, // OFF by default
             accessibility_capture_interval_secs: 10, // 10 seconds
-            // AI Provider defaults
-            ai_provider: "remote".to_string(), // Default to remote for reliability
-            ai_remote_url: None,
-            ai_remote_key: None,
             // Session Mode defaults
             session_mode: "standard".to_string(), // Default to standard recording
             // Obsidian Vault defaults
@@ -161,7 +139,26 @@ impl AppSettings {
             // Meeting Report defaults
             auto_generate_report: true,
             meeting_report_prompt: DEFAULT_REPORT_PROMPT.to_string(),
+            secret_status: Default::default(),
         }
+    }
+
+    /// Copy safe to send to the frontend: secret values removed, replaced by
+    /// `secret_status` ({configured, last4}).
+    pub fn redacted_for_ui(mut self) -> Self {
+        let mut status = std::collections::BTreeMap::new();
+        {
+            let mut take = |key: &str, v: &mut Option<String>| {
+                status.insert(key.to_string(), crate::secrets::status_of(v.as_deref()));
+                *v = None;
+            };
+            take("deepgram_api_key", &mut self.deepgram_api_key);
+            take("gemini_api_key", &mut self.gemini_api_key);
+            take("gladia_api_key", &mut self.gladia_api_key);
+            take("google_stt_key_json", &mut self.google_stt_key_json);
+        }
+        self.secret_status = status;
+        self
     }
 }
 
@@ -191,8 +188,11 @@ impl SettingsManager {
         Ok(())
     }
 
-    /// Get a setting value
+    /// Get a setting value. Secret keys are read from the Keychain.
     pub async fn get(&self, key: &str) -> Result<Option<String>, sqlx::Error> {
+        if crate::secrets::is_secret_setting(key) {
+            return Ok(crate::secrets::get(crate::secrets::SECRETS_SERVICE, key));
+        }
         let result: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
             .bind(key)
             .fetch_optional(self.pool.as_ref())
@@ -201,8 +201,12 @@ impl SettingsManager {
         Ok(result.map(|(v,)| v))
     }
 
-    /// Set a setting value
+    /// Set a setting value. Secret keys go to the Keychain, never SQLite.
     pub async fn set(&self, key: &str, value: &str) -> Result<(), sqlx::Error> {
+        if crate::secrets::is_secret_setting(key) {
+            return crate::secrets::set(crate::secrets::SECRETS_SERVICE, key, value)
+                .map_err(sqlx::Error::Protocol);
+        }
         sqlx::query(
             r#"
             INSERT INTO settings (key, value, updated_at)
@@ -217,8 +221,31 @@ impl SettingsManager {
         Ok(())
     }
 
-    /// Delete a setting
+    /// Delete a setting (secret keys: removed from the Keychain)
     pub async fn delete(&self, key: &str) -> Result<(), sqlx::Error> {
+        if crate::secrets::is_secret_setting(key) {
+            return crate::secrets::delete(crate::secrets::SECRETS_SERVICE, key)
+                .map_err(sqlx::Error::Protocol);
+        }
+        self.raw_delete(key).await
+    }
+
+    /// All plaintext rows (for the one-time secret migration only).
+    pub async fn raw_rows(&self) -> Result<Vec<(String, String)>, sqlx::Error> {
+        sqlx::query_as("SELECT key, value FROM settings")
+            .fetch_all(self.pool.as_ref())
+            .await
+    }
+
+    /// After deleting plaintext secret rows: push the change out of the WAL
+    /// and truncate it, so no pre-delete page copy (with the key) remains.
+    /// The pool has `secure_delete` on, so the freed cells are zeroed too.
+    pub async fn scrub_wal(&self) -> Result<(), String> {
+        crate::redaction::wal_checkpoint_truncate(self.pool.as_ref()).await
+    }
+
+    /// Delete a SQLite row directly, bypassing the Keychain routing.
+    pub async fn raw_delete(&self, key: &str) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM settings WHERE key = ?")
             .bind(key)
             .execute(self.pool.as_ref())
@@ -285,19 +312,6 @@ impl SettingsManager {
         if let Some(v) = self.get("frame_capture_interval_ms").await? {
             settings.frame_capture_interval_ms = v.parse().unwrap_or(1000);
         }
-        // Knowledge base settings
-        if let Some(v) = self.get("supabase_connection_string").await? {
-            settings.supabase_connection_string = Some(v);
-        }
-        if let Some(v) = self.get("pinecone_api_key").await? {
-            settings.pinecone_api_key = Some(v);
-        }
-        if let Some(v) = self.get("pinecone_index_host").await? {
-            settings.pinecone_index_host = Some(v);
-        }
-        if let Some(v) = self.get("pinecone_namespace").await? {
-            settings.pinecone_namespace = Some(v);
-        }
         // VLM auto-processing settings
         if let Some(v) = self.get("vlm_auto_process").await? {
             settings.vlm_auto_process = v == "true";
@@ -329,23 +343,9 @@ impl SettingsManager {
             settings.personal_interval_ms = v.parse().unwrap_or(3000);
         }
 
-        // Intelligence Pipeline settings
-        if let Some(v) = self.get("enable_ingest").await? {
-            settings.enable_ingest = Some(v == "true");
-        }
-        if let Some(v) = self.get("ingest_base_url").await? {
-            settings.ingest_base_url = Some(v);
-        }
-        if let Some(v) = self.get("ingest_bearer_token").await? {
-            settings.ingest_bearer_token = Some(v);
-        }
-
         // VLM API settings (centralized service)
         if let Some(v) = self.get("vlm_base_url").await? {
             settings.vlm_base_url = Some(v);
-        }
-        if let Some(v) = self.get("vlm_bearer_token").await? {
-            settings.vlm_bearer_token = Some(v);
         }
         if let Some(v) = self.get("vlm_model_primary").await? {
             settings.vlm_model_primary = Some(v);
@@ -362,16 +362,6 @@ impl SettingsManager {
             settings.accessibility_capture_interval_secs = v.parse().unwrap_or(10);
         }
 
-        // AI Provider settings
-        if let Some(v) = self.get("ai_provider").await? {
-            settings.ai_provider = v;
-        }
-        if let Some(v) = self.get("ai_remote_url").await? {
-            settings.ai_remote_url = Some(v);
-        }
-        if let Some(v) = self.get("ai_remote_key").await? {
-            settings.ai_remote_key = Some(v);
-        }
 
         // Session Mode settings
         if let Some(v) = self.get("session_mode").await? {
@@ -586,30 +576,6 @@ impl SettingsManager {
     }
 
     // ============================================
-    // Knowledge Base Settings
-    // ============================================
-
-    /// Set Supabase connection string
-    pub async fn set_supabase_connection(&self, conn: &str) -> Result<(), sqlx::Error> {
-        self.set("supabase_connection_string", conn).await
-    }
-
-    /// Set Pinecone API key
-    pub async fn set_pinecone_api_key(&self, key: &str) -> Result<(), sqlx::Error> {
-        self.set("pinecone_api_key", key).await
-    }
-
-    /// Set Pinecone index host
-    pub async fn set_pinecone_index_host(&self, host: &str) -> Result<(), sqlx::Error> {
-        self.set("pinecone_index_host", host).await
-    }
-
-    /// Set Pinecone namespace
-    pub async fn set_pinecone_namespace(&self, namespace: &str) -> Result<(), sqlx::Error> {
-        self.set("pinecone_namespace", namespace).await
-    }
-
-    // ============================================
     // VLM Auto-Processing Settings
     // ============================================
 
@@ -688,22 +654,6 @@ impl SettingsManager {
             .await?
             .and_then(|v| v.parse().ok())
             .unwrap_or(default))
-    }
-
-    // ============================================
-    // AI Provider Settings
-    // ============================================
-
-    pub async fn set_ai_provider(&self, provider: &str) -> Result<(), sqlx::Error> {
-        self.set("ai_provider", provider).await
-    }
-
-    pub async fn set_ai_remote_url(&self, url: &str) -> Result<(), sqlx::Error> {
-        self.set("ai_remote_url", url).await
-    }
-
-    pub async fn set_ai_remote_key(&self, key: &str) -> Result<(), sqlx::Error> {
-        self.set("ai_remote_key", key).await
     }
 
     // ============================================

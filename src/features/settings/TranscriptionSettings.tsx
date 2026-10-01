@@ -31,7 +31,7 @@ interface WhisperDownloadProgress {
 }
 
 export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
-    const [provider, setProvider] = useState("deepgram");
+    const [provider, setProvider] = useState("local");
     const [deepgramKey, setDeepgramKey] = useState("");
     const [deepgramModel, setDeepgramModel] = useState("nova-3");
     const [geminiKey, setGeminiKey] = useState("");
@@ -109,7 +109,7 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
     const loadSettings = async () => {
         try {
             const settings = await invoke<any>("get_settings");
-            setProvider(settings.transcription_provider || "deepgram");
+            setProvider(settings.transcription_provider || "local");
 
             // Keys are not returned by get_settings for security (usually), 
             // but we might want placeholders or status indicators.

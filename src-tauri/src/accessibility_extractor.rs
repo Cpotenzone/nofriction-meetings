@@ -3,11 +3,15 @@
 //
 // This provides faster, more accurate text extraction than OCR for apps that
 // expose their content via the accessibility hierarchy.
+//
+// m2: compiled out of the Mac App Store (`mas`) build — reading other apps'
+// UI through AX isn't allowed in the App Sandbox. There the stubs below
+// report "not trusted" and never prompt; callers fall back to OCR.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "mas")))]
 use std::ffi::c_void;
 
 /// Result from accessibility text extraction
@@ -70,6 +74,7 @@ impl Default for AccessibilityConfig {
 }
 
 /// Accessibility text extractor for macOS
+#[cfg_attr(feature = "mas", allow(dead_code))]
 pub struct AccessibilityExtractor {
     config: AccessibilityConfig,
 }
@@ -84,7 +89,7 @@ impl AccessibilityExtractor {
     }
 
     /// Check if accessibility permission is granted
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "mas")))]
     pub fn is_trusted() -> bool {
         use objc::runtime::{Class, Object, BOOL};
         use objc::{msg_send, sel, sel_impl};
@@ -113,7 +118,7 @@ impl AccessibilityExtractor {
     }
 
     /// Request accessibility permission (triggers macOS prompt)
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "mas")))]
     pub fn request_permission_with_prompt() -> bool {
         use objc::runtime::{Class, Object, BOOL};
         use objc::{msg_send, sel, sel_impl};
@@ -141,13 +146,14 @@ impl AccessibilityExtractor {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(all(target_os = "macos", not(feature = "mas"))))]
     pub fn request_permission_with_prompt() -> bool {
-        true // Non-macOS always granted
+        // Mac App Store build (m2): the AX API is compiled out; never prompt.
+        false
     }
 
     /// Extract text from the currently focused window
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "mas")))]
     pub fn extract_focused_window(&self) -> Result<AccessibilityResult, String> {
         let start = std::time::Instant::now();
 
@@ -272,7 +278,7 @@ impl AccessibilityExtractor {
     }
 
     /// Recursively extract text from an accessibility element
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "mas")))]
     fn extract_text_from_element(
         &self,
         element: *mut c_void,
@@ -380,14 +386,14 @@ impl AccessibilityExtractor {
     }
 
     /// Non-macOS stub
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(all(target_os = "macos", not(feature = "mas"))))]
     pub fn is_trusted() -> bool {
         false
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(all(target_os = "macos", not(feature = "mas"))))]
     pub fn extract_focused_window(&self) -> Result<AccessibilityResult, String> {
-        Err("Accessibility extraction only available on macOS".to_string())
+        Err("Accessibility text capture isn't available in this build".to_string())
     }
 }
 
@@ -399,7 +405,7 @@ impl Default for AccessibilityExtractor {
 
 /// Helper to convert NSString to Rust String
 /// Also handles NSNumber by converting to string representation
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "mas")))]
 unsafe fn nsstring_to_rust(nsstring: *mut objc::runtime::Object) -> String {
     use objc::{class, msg_send, sel, sel_impl};
     use std::ffi::CStr;
@@ -467,7 +473,7 @@ mod tests {
         assert!(!result.is_accessible);
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "mas")))]
     #[test]
     fn test_is_trusted_check() {
         // Just verify this doesn't crash
