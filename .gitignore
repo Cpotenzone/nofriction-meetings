@@ -38,3 +38,13 @@ src-tauri/icons/source_*.png
 *.key
 secrets.json
 .gstack/
+
+# Mac App Store build (scripts/release-mas.sh)
+*.provisionprofile
+*.pkg
+src-tauri/swift/NoFrictionBridge/.build/
+src-tauri/swift/NoFrictionBridge/.swiftpm/
+
+# tauri icon also emits mobile icon sets; the iPhone app lives in ios/
+src-tauri/icons/android/
+src-tauri/icons/ios/
