@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.6.0] - 2026-10-01
+
+Ready for TestFlight on iPhone, iPad and Mac. Users bring their own AI key,
+and nothing goes through a noFriction server.
+
+### Added
+- **Use any AI with your own key.** Paste a key in Settings → AI Engine and the
+  app recognizes the provider and checks that the key works. Supported:
+  OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter,
+  Mistral, DeepSeek, Perplexity and Together. Local models work too (Ollama,
+  LM Studio, any OpenAI-compatible URL), and Apple's on-device model needs no
+  key. Keys live in the Keychain. The app asks before sending meeting content
+  to a provider for the first time.
+- **Delete and "Strike from the record."** Remove words, whole lines or
+  screens from a meeting:
+  - **Delete** leaves no trace and has 5 seconds of undo.
+  - **Strike** destroys the content permanently and leaves a marker with the
+    time, the date and an optional reason.
+  - Removed content is purged from the transcript, search, recorded audio
+    (iPhone), screenshots and screen video, AI notes, exports, app backups and
+    database free space.
+- **Recordings stop when the meeting ends.** The app notices when Zoom, Teams,
+  Meet or FaceTime lets go of the mic, the call window closes, the calendar
+  event is over, or nobody has spoken for a few minutes. A 30-second banner
+  lets you keep recording.
+- **iPhone and iPad app.**
+  - Settings tab.
+  - Subscription (noFriction Pro, monthly or yearly) through the App Store.
+  - Recording-consent notice.
+  - Privacy manifest.
+- **Mac App Store build** (sandboxed): `scripts/release-mas.sh`, with StoreKit
+  and Apple on-device AI through a small Swift bridge.
+- **Privacy policy and support pages** in `site/`.
+- **New app icon.**
+
+### Changed
+- **Client-only.** Supabase, Pinecone and the ingest server were removed.
+  Search and "chat with your meetings" now run on the local full-text index.
+- Local Whisper is the default transcription. Cloud transcription is optional,
+  with your own key.
+- The app's identifier is now `com.nofriction.meetings` on every platform. The
+  Mac data folder moves on first launch, and nothing is deleted.
+
+### Fixed
+- **No more "bye bye bye" loops.** Whisper's invented filler on silence or
+  noise is filtered out.
+- **Meetings are marked as ended when you stop recording.** Before, they never
+  were, so automatic reports never ran. Meetings left open by earlier versions
+  are closed on launch.
+- Fresh installs could randomly hit "no such table" right after setting up the
+  database.
+- Screen-recording permission prompts no longer repeat.
+- Release builds refuse to ship a broken code signature, the cause of the
+  repeated mic and screen permission prompts.
+- Transcripts are no longer written to the log file.
+
+---
+
 ## [2.7.0] - 2026-02-13
 
 ### Added

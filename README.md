@@ -20,18 +20,20 @@
 
 | Feature | Description |
 |---------|-------------|
-| **Live Transcription** | Real-time speech-to-text — on-device Whisper by default (fully offline), or cloud providers (Deepgram, Google Chirp 2, Gladia) |
+| **Live Transcription** | Words appear as they're spoken (live partials every ~0.8s, finalized on each pause) — on-device Whisper large-v3-turbo by default, fully offline. Cloud providers (Deepgram, Google Chirp 2, Gladia) optional |
+| **Choose What's Captured** | Pick any displays or individual windows from a thumbnail picker (Live → Change). Each source is deduplicated independently, so a screenshot is saved only when that source changes |
+| **Snap** | One click (or ⌘⇧S) saves full-resolution snapshots of the chosen sources into the meeting timeline |
 | **Rewind** | Visual playback with synchronized screenshots and transcripts |
-| **Deep Intel** | AI summaries, action items, and insights via local Ollama (or a remote endpoint) |
+| **Deep Intel** | AI summaries, action items, emails and insights from **your own AI provider**. Paste an API key for OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity or Together, or point it at a local model (Ollama, LM Studio, any OpenAI-compatible URL) |
 | **Knowledge Base** | Full-text search across all your past meetings, entirely local |
-| **Offline by Default** | Capture, transcription, storage, search, and AI all run on your Mac — no account, no API key, no network required |
+| **Private by Default** | Capture, transcription, storage and search run on your Mac. No account, and no noFriction servers. AI features send text only to the provider you choose (asking first), using your key, which is kept in the Keychain |
 
 ### Running fully offline
 
-Out of the box the app records, transcribes (local Whisper, one-time 142 MB
+Out of the box the app records, transcribes (local Whisper, one-time 547 MB
 model download), stores, and searches with zero cloud dependencies. For AI
-chat/summaries/frame analysis, install [Ollama](https://ollama.com) and pull
-a model:
+without any cloud provider, install [Ollama](https://ollama.com), pull a model,
+and choose **Ollama (local)** in Settings → AI Engine:
 
 ```bash
 brew install ollama
@@ -39,7 +41,9 @@ ollama pull qwen3:8b        # chat, summaries, insights
 ollama pull qwen3-vl:8b     # optional: screenshot analysis
 ```
 
-Cloud providers remain available as opt-in upgrades in Settings.
+Or paste an API key from any supported provider in Settings → AI Engine. The app
+recognizes the provider from the key and checks that it works. See
+[docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md).
 
 ---
 
@@ -60,6 +64,7 @@ Cloud providers remain available as opt-in upgrades in Settings.
 | Open search | / |
 | Clear | Esc |
 | Sync scrolling | 🔗 button |
+| Snap chosen screens/windows | ⌘⇧S |
 
 ---
 
