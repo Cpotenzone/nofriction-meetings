@@ -2780,7 +2780,17 @@ pub async fn get_live_insights(
     // "Live insights during meetings" off → no rule-based events AND no AI
     // call. The AI phase below sends the transcript to the user's provider,
     // so the switch must gate it too (privacy policy promises an off switch).
-    if !crate::live_intel_agent::is_enabled() {
+    // Read the saved setting too: the in-memory flag defaults to on until
+    // startup loads it, and an "off" choice must hold from the first call.
+    let saved = state
+        .settings
+        .get(crate::live_intel_agent::SETTING_ENABLED)
+        .await
+        .ok()
+        .flatten();
+    if !crate::live_intel_agent::is_enabled()
+        || !crate::live_intel_agent::parse_enabled(saved.as_deref())
+    {
         return Ok(Vec::new());
     }
 
