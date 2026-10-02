@@ -1,326 +1,142 @@
-# noFriction Meetings - Complete System Documentation
+# noFriction architecture
 
-## What Is This Application?
-
-noFriction Meetings is a **professional macOS meeting companion** that automatically records, transcribes, and analyzes meetings. It captures audio, screen content, and generates AI-powered insights—all while respecting privacy with local-first processing.
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           noFriction Meetings                               │
-│                          (Tauri Desktop App)                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  FRONTEND (React + TypeScript)              BACKEND (Rust)                  │
-│  ┌──────────────────────────────┐           ┌────────────────────────────┐ │
-│  │ 43 React Components          │           │ 45 Rust Modules            │ │
-│  │ • AIChat, CopilotPanel       │    IPC    │ • capture_engine           │ │
-│  │ • RewindGallery              │◄─────────►│ • transcription/           │ │
-│  │ • ActivityTimeline           │           │ • database                  │ │
-│  │ • AdminConsole               │           │ • vlm_client               │ │
-│  │ • PromptLibrary              │           │ • pinecone_client          │ │
-│  │ • KnowledgeBaseSettings      │           │ • supabase_client          │ │
-│  └──────────────────────────────┘           └────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           EXTERNAL SERVICES                                 │
-├─────────────────┬─────────────────┬─────────────────┬───────────────────────┤
-│  Whisper(local) │  Ollama(local)  │   Pinecone*     │   Supabase*          │
-│   (Speech→Text) │   (AI/LLM)      │   (Vectors)     │   (PostgreSQL)       │
-└─────────────────┴─────────────────┴─────────────────┴───────────────────────┘
-```
-
----
-
-## Core Features
-
-### 1. Recording System
-
-**What it does:** Captures microphone audio, system audio, and screen content simultaneously.
-
-**Components:**
-- `capture_engine.rs` - Main capture coordinator
-- `video_recorder.rs` - Screen recording (video)
-- `ambient_capture.rs` - Always-on background capture
-- `frame_extractor.rs` - Periodic screenshot extraction
-
-**Modes:**
-| Mode | Description |
-|------|-------------|
-| Meeting Capture | Full recording when meetings detected |
-| Ambient Capture | Low-power background monitoring |
-| Manual Recording | User-initiated sessions |
-
----
-
-### 2. Transcription System
-
-**What it does:** Converts speech to text in real-time using Deepgram.
-
-**Components:**
-- `transcription/` module - Multi-provider support
-- `deepgram_client.rs` - WebSocket streaming
-- Speaker diarization (who said what)
-
-**Providers Supported:**
-- Deepgram (primary)
-- Gladia
-- Google Speech-to-Text
-
----
-
-### 3. Visual Intelligence (VLM)
-
-**What it does:** Analyzes screenshots using vision-language models to understand screen content.
-
-**Components:**
-- `vlm_client.rs` - AI engine integration (local Ollama by default)
-- `vlm_scheduler.rs` - Batch processing queue
-- `vision_ocr.rs` - Native macOS text extraction
-- `snapshot_extractor.rs` - Text/UI element extraction
-
-**Pipeline:**
-```
-Screenshot → OCR Text → VLM Analysis → Structured Data → Database
-```
-
----
-
-### 4. AI Chat & RAG Pipeline
-
-**What it does:** Intelligent chatbot that searches your meeting history for context before responding.
-
-**Components:**
-- `ai_client.rs` - Local Ollama models
-- `vlm_client.rs` - AI engine client (Ollama-compatible)
-- `pinecone_client.rs` - Vector search
-- `commands.rs` - RAG commands
-
-**Flow:**
-```
-Question → Local FTS5 / Pinecone Search → Context Assembly → Ollama → Response
-           ↓
-    Store conversation for future retrieval
-```
-
----
-
-### 5. Knowledge Base
-
-**What it does:** Searchable index of all your meetings, transcripts, and AI analyses.
-
-**Storage:**
-| Data | Local (SQLite) | Pinecone | Supabase |
-|------|----------------|----------|----------|
-| Transcripts | ✅ | ✅ | ✅ |
-| Frames/OCR | ✅ | ✅ | ✅ |
-| AI Insights | ✅ | ✅ | ✅ |
-| Conversations | ✅ | ✅ | ✅ |
-
-**Search Types:**
-- Keyword search (SQLite FTS)
-- Semantic search (Pinecone vectors)
-- Timeline-based browsing
-
----
-
-### 6. Meeting Detection
-
-**What it does:** Automatically detects when video meetings start (Zoom, Google Meet, Teams).
-
-**Components:**
-- `meeting_trigger.rs` - App detection
-- `calendar_client.rs` - macOS Calendar integration
-
-**Triggers:**
-- Meeting apps becoming active
-- Calendar events starting
-- Audio input activation
-
----
-
-### 7. Timeline & Rewind
-
-**What it does:** Visual playback of past sessions with synchronized audio, transcripts, and screenshots.
-
-**Components:**
-- `timeline_builder.rs` - Event aggregation
-- `episode_builder.rs` - Session chunking
-- `state_builder.rs` - Diff-based states
-
-**UI Components:**
-- `RewindGallery.tsx` - Visual timeline
-- `SyncedTimeline.tsx` - Transcript sync
-- `ActivityTimeline.tsx` - Activity feed
-
----
-
-### 8. Prompt Library
-
-**What it does:** Customizable AI prompts for different analysis types and themes.
-
-**Components:**
-- `prompt_manager.rs` - Prompt CRUD
-- `PromptLibrary.tsx` - UI editor
-- `semantic_classifier.rs` - Context classification
-
-**Features:**
-- Prompt templates with variables
-- Theme-specific prompts
-- A/B testing (comparison lab)
-
----
-
-### 9. Admin Console
-
-**What it does:** System management, storage, and data editing.
-
-**Components:**
-- `admin_commands.rs` - Admin operations
-- `audit_log.rs` - Action logging
-- `data_editor.rs` - Learned data management
-- `storage_manager.rs` - Storage stats
-
-**Capabilities:**
-- Storage usage visualization
-- Recording deletion with preview
-- Learned data editing/versioning
-- System health monitoring
-
----
-
-## Data Flow Diagram
+noFriction is two native-feeling clients with **no backend**: a Mac app
+(Tauri 2: Rust + React/TypeScript) and an iPhone/iPad app (SwiftUI). Each
+records, transcribes and stores meetings on the device. AI features call the
+AI provider the user picked, directly from the device, with the user's own
+key (or Apple's on-device model). Licensing is StoreKit 2, verified on the
+device. There are no accounts, no noFriction servers, no analytics.
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   CAPTURE    │     │   PROCESS    │     │    STORE     │
-├──────────────┤     ├──────────────┤     ├──────────────┤
-│ • Microphone │     │ • Deepgram   │     │ • SQLite     │
-│ • System     │────►│ • Vision OCR │────►│ • Pinecone   │
-│   Audio      │     │ • VLM        │     │ • Supabase   │
-│ • Screen     │     │ • Classifier │     │              │
-└──────────────┘     └──────────────┘     └──────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│                       RETRIEVE                           │
-├──────────────────────────────────────────────────────────┤
-│ • Search (keyword, semantic)                             │
-│ • Timeline browsing                                      │
-│ • AI chat with RAG                                       │
-│ • Export                                                 │
-└──────────────────────────────────────────────────────────┘
+                 ┌──────────────────────── device ────────────────────────┐
+ mic / system    │ capture ─► transcription (on-device) ─► local store    │
+ audio, screens, │    │            Whisper (Mac)            SQLite (Mac)  │
+ photos          │    │            Apple Speech (iOS)       SwiftData(iOS)│
+                 │    ▼                                         │         │
+ calendar ──────►│ meeting match + attendees ──────────────────►│         │
+ (read-only)     │                                              ▼         │
+                 │  UI: live view, meetings, people, search, edit/strike  │
+                 │                    │ AI feature (Pro)                  │
+                 │                    ▼                                   │
+                 │  provider layer (keys in Keychain, consent per provider)│
+                 └────────────┬───────────────────────┬───────────────────┘
+                              ▼                       ▼
+                user's cloud provider          local model / Apple on-device
+                (OpenAI default, …)            (Ollama, LM Studio, Foundation Models)
 ```
 
----
+Specs shared by both apps:
+- [AI_PROVIDERS.md](AI_PROVIDERS.md): presets, paste-a-key detection,
+  guardrails, Keychain storage, consent, StoreKit licensing and Pro gating.
+- [REDACTION.md](REDACTION.md): Delete and "Strike from the record".
 
-## Configuration
-
-### Required API Keys
-
-| Service | Setting Location | Purpose |
-|---------|------------------|---------|
-| Deepgram | Settings → Transcription | Speech-to-text |
-| Ollama (local) | Settings → AI | On-device LLM (default) |
-| Pinecone | Settings → Knowledge Base | Vector search |
-| Supabase | Settings → Knowledge Base | Cloud storage |
-
-### macOS Permissions
-
-| Permission | Why Needed |
-|------------|------------|
-| Microphone | Audio capture |
-| Screen Recording | Visual capture |
-| Accessibility | Text extraction |
-| Calendar | Meeting detection |
+Release and distribution:
+- [APP_STORE_RELEASE.md](APP_STORE_RELEASE.md) (App Store plan),
+  [MAC_APP_STORE_BUILD.md](MAC_APP_STORE_BUILD.md) (sandboxed `mas` flavor),
+  [RELEASE_RUNBOOK.md](RELEASE_RUNBOOK.md) (Developer ID DMG),
+  [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md).
 
 ---
 
-## Frontend Components
+## Mac app (`src/`, `src-tauri/`)
 
-| Component | Purpose |
-|-----------|---------|
-| `App.tsx` | Main layout + routing |
-| `AIChat.tsx` | AI chat with RAG |
-| `CopilotPanel.tsx` | Side panel chat |
-| `RewindGallery.tsx` | Visual timeline |
-| `ActivityTimeline.tsx` | Activity feed |
-| `FullSettings.tsx` | All settings |
-| `AdminConsole.tsx` | System management |
-| `PromptLibrary.tsx` | Prompt editor |
-| `KnowledgeBaseSettings.tsx` | KB config |
-| `SetupWizard.tsx` | First-run setup |
+### Flavors
 
----
+One codebase, two builds. The UI asks the backend what it can do
+(`get_build_capabilities`: `src-tauri/src/build_info.rs`, `src/lib/build.ts`).
 
-## Backend Modules
+| | Developer ID DMG | Mac App Store (`--features mas`) |
+|---|---|---|
+| Sandbox | no (hardened runtime) | App Sandbox |
+| Screen video (ffmpeg) | yes | no; screenshots only |
+| Accessibility text capture | yes (optional) | no |
+| Admin console | yes | hidden |
+| StoreKit / Pro gating | none | AI gated behind noFriction Pro |
 
-### Core
-| Module | Purpose |
-|--------|---------|
-| `lib.rs` | App initialization |
-| `commands.rs` | Tauri command handlers |
-| `database.rs` | SQLite operations |
-| `settings.rs` | App settings |
+Details: [MAC_APP_STORE_BUILD.md](MAC_APP_STORE_BUILD.md).
 
-### Capture
-| Module | Purpose |
-|--------|---------|
-| `capture_engine.rs` | Recording coordinator |
-| `video_recorder.rs` | Screen video |
-| `ambient_capture.rs` | Background mode |
-| `frame_extractor.rs` | Screenshot extraction |
+### Backend modules (`src-tauri/src/`)
 
-### AI/ML
-| Module | Purpose |
-|--------|---------|
-| `ai_client.rs` | Ollama client |
-| `vlm_client.rs` | AI engine client |
-| `pinecone_client.rs` | Vector DB |
-| `prompt_manager.rs` | Prompt templates |
+| Area | Modules |
+|---|---|
+| App wiring, commands | `lib.rs`, `commands/` (`mod.rs`, `ai.rs`, `capture.rs`, `capture_sources.rs`, `intel.rs`, `local_stt.rs`, `people.rs`, `prompt.rs`, `vault.rs`) |
+| Storage | `database.rs` (SQLite via sqlx, FTS5 search), `settings.rs`, `paths.rs` (data folder + one-time migration), `storage_manager.rs` |
+| Capture | `capture_engine.rs` (screenshots of chosen displays/windows, dedupe), `audio_mixer.rs` (mic + system audio), `core_audio.rs`, `privacy_filter.rs`, `dedupe_gate.rs`; DMG only: `video_recorder.rs`, `frame_extractor.rs`, `chunk_manager.rs`, `accessibility_*.rs` |
+| Transcription | `transcription/`: `local_whisper.rs` (default, whisper.cpp model `large-v3-turbo` q5, downloaded once into `<app data>/models`), optional bring-your-own-key `deepgram.rs`, `gladia.rs`, `google_stt.rs`, `gemini.rs`; `filter.rs` drops Whisper's invented filler on silence |
+| Meetings | `meeting_trigger.rs` (meeting-app / mic detection), `meeting_end.rs` (auto-stop), `calendar_client.rs`, `people.rs`, `attendee_intel.rs` |
+| AI | `ai/` (`providers.rs` presets, detection, URL policy, log redaction; `client.rs` adapters + guardrails; `config.rs`; `commands.rs`), `ai_client.rs` (prompt-level helpers), `meeting_notes.rs`, `live_intel_agent.rs`, `meeting_intel.rs`, `catch_up_agent.rs`, `vlm_client.rs` + `vlm_scheduler.rs` (screenshot analysis via the vision provider), `vision_ocr.rs` (Apple Vision OCR, local), `prompt_manager.rs` |
+| Editing | `redaction.rs` (+ `redaction/tests.rs`): Delete / Strike purge pipeline |
+| Secrets | `secrets.rs`: Keychain; migrates and deletes old plaintext keys; removes leftovers of retired integrations |
+| Store | `store.rs` + `swift/NoFrictionBridge/` (StoreKit 2 in `mas`, Apple Foundation Models in both), `entitlement.rs` |
+| Export | `obsidian_vault.rs` + `bookmarks.rs` (security-scoped folder access) |
 
-### Intelligence
-| Module | Purpose |
-|--------|---------|
-| `meeting_intel.rs` | Meeting insights |
-| `live_intel_agent.rs` | Real-time extraction (8 event types, sentiment, energy, deadline detection) |
-| `semantic_classifier.rs` | Content classification |
-| `timeline_builder.rs` | Event aggregation |
+Every LLM call goes through `ai::client::complete`, which applies the
+guardrails and (in `mas`) `entitlement::require_pro()`.
 
----
+### Frontend (`src/`)
 
-## Version History
+`App.tsx` hosts `components/agency/AgencyLayout.tsx`. Main views
+(`AgencyNavbar.tsx`): **Live** (recording, live transcript), **Rewind**
+(meeting history, timeline of transcript + screenshots, notes), **Intel**,
+**Chat** (ask questions across meetings, answered from local search results),
+plus **Vault**, **Zen**, **Prompts** and **Help** under "More views".
+Settings (`features/settings/FullSettings.tsx`): General, Transcription,
+Obsidian, AI Engine, Subscription (`mas` only), Data. Consent and paywall:
+`AiConsentModal.tsx`, `PaywallModal.tsx`, `withAiConsent()` in `lib/ai.ts`.
+Editing UI: `components/redaction/Redaction.tsx`.
 
-| Version | Features |
-|---------|----------|
-| v2.7.0 | Smart Live Intel v2, Qwen3 8B, Sentiment/Energy, Deadlines |
-| v2.6.0 | Prompt Studio, AI Intelligence Pipeline |
-| v2.5.0 | Always-On Recording, Meeting Detection, RAG Pipeline |
-| v2.1.0 | Admin Console, Calendar, OCR, Classification |
-| Current | RAG Pipeline, local-first AI (Ollama + Whisper) |
+### Chat with your meetings
 
----
+`chat_with_data` (`commands/intel.rs`) searches the local SQLite FTS index
+(`search_knowledge_base`), puts the top results into the prompt, and asks the
+active text provider. There is no vector database and nothing is uploaded
+except that prompt.
 
-## Getting Started
+### Data on disk
 
-1. **Install:** Download DMG → Drag to Applications
-2. **Permissions:** Grant Microphone, Screen Recording, Accessibility
-3. **Configure:** Add Deepgram API key in Settings → Transcription
-4. **Record:** Click "Record" or wait for auto-detection
-5. **Review:** Use Rewind tab to browse recordings
-6. **Chat:** Ask the AI about your meetings
+| Item | DMG | Mac App Store |
+|---|---|---|
+| Data folder | `~/Library/Application Support/com.nofriction.meetings/` | `~/Library/Containers/com.nofriction.meetings/Data/Library/Application Support/com.nofriction.meetings/` |
+| Database | `nofriction_meetings.db` in the data folder | same |
+| Logs | `logs/` in the data folder (no transcript text) | same |
+| Whisper models | `models/` in the data folder | same |
+| API keys | login Keychain, service `com.nofriction.meetings.ai` | data-protection Keychain |
 
 ---
 
-## Troubleshooting
+## iPhone / iPad app (`ios/`)
 
-| Issue | Solution |
-|-------|----------|
-| No transcription | Check Deepgram API key |
-| No screenshots | Grant Screen Recording permission |
-| AI not responding | Check Ollama is running (`ollama serve`) |
-| Search returns nothing | Ensure Pinecone is configured |
+SwiftUI, iOS/iPadOS 18+, generated with XcodeGen (`ios/project.yml`). File
+map and test commands: [ios/README.md](../ios/README.md).
+
+- **Capture**: `AudioCapture` writes an AAC file per meeting and keeps
+  recording with the screen locked (background audio mode).
+  `RecordingSession` handles start/stop/pause and the calendar match.
+  `MeetingEndDetector` decides when the meeting is over.
+- **Transcription** (on device only): `SpeechAnalyzer`/`SpeechTranscriber`
+  on iOS 26+, on-device `SFSpeechRecognizer` on iOS 18–25. Word timings are
+  stored for precise audio removal.
+- **Screens**: iOS can't capture other apps, so meetings get photos (camera)
+  or images imported from Photos.
+- **Store**: SwiftData (`Meeting`, `Segment`, `Snapshot`, `Person`,
+  `Attendance`, `Redaction`).
+- **AI**: `AI/` mirrors the Mac provider layer; `MeetingAI` has two features:
+  notes (summary, decisions, action items) and a follow-up email draft.
+- **StoreKit 2**: `Store/Store.swift`, `Views/PaywallView.swift`.
+
+---
+
+## Shared rules
+
+- **No servers.** Network traffic is limited to: the user's AI provider, the
+  user's optional cloud transcription provider (Mac), the one-time Whisper
+  model download (Mac, Hugging Face), StoreKit (Apple), and links the user
+  opens (LinkedIn search, provider key pages).
+- **Keys** live only in the Keychain and never reach the UI (only `last4`).
+- **Consent** is asked once per cloud provider before the first request.
+- **Free vs Pro**: recording, transcription, calendar/people, photos and
+  screens, search and export are free; AI features need noFriction Pro
+  (App Store builds only).
+- **Universal Purchase**: both apps use bundle id `com.nofriction.meetings`
+  and the subscription group "noFriction Pro"
+  (`com.nofriction.meetings.pro.monthly`, `.pro.yearly`).

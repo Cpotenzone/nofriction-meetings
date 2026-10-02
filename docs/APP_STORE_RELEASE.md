@@ -37,7 +37,7 @@ gap list, kept for reference.
   migrations). Migrations now run on one connection.
 - **Static pages** for Privacy and Support are in `site/`.
 
-**Only you can do these (portal / accounts):**
+**Only you can do these (portal / accounts):** (tracked with owners and order in [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md); paste-ready metadata in [APP_STORE_LISTING.md](APP_STORE_LISTING.md))
 1. §5.1: Paid Apps agreement, tax, banking, DSA trader status, Small Business Program.
 2. §5.2–5.3: App ID `com.nofriction.meetings` (iOS + macOS) and the app record.
 3. §5.4: subscription group "noFriction Pro" with `…pro.monthly` / `…pro.yearly` and the trial.
@@ -69,6 +69,8 @@ These are hard or impossible to change later.
 ---
 
 ## 2. AI providers ("point to any model"): what to build
+
+> **Historical.** Gap analysis from before 3.6.0, kept for reference. The code items are resolved (see Status above); manual device checks are tracked in [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md). "Current state" below describes the old code.
 
 **Current state:** there is no OpenAI path at all.
 - Text AI goes Castle Chat → local Ollama. Castle's URL is my private tailnet host, hardcoded in `ai_client.rs:149` and `CastleChat.swift:16`.
@@ -110,6 +112,8 @@ Transcription stays on-device by default:
 
 ## 3. iOS: what's missing before TestFlight
 
+> **Historical.** Gap analysis from before 3.6.0, kept for reference. The code items are resolved (see Status above); manual device checks are tracked in [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md). "Current state" below describes the old code.
+
 Already fine:
 - builds and tests pass
 - on-device transcription
@@ -133,6 +137,8 @@ Already fine:
 | i10 | Real-device test of recording, lock screen and a long meeting. Transcription doesn't run in the Simulator. | TestFlight quality | Manual |
 
 ## 4. Mac: what's missing before Mac App Store / TestFlight
+
+> **Historical.** Gap analysis from before 3.6.0, kept for reference. The code items are resolved (see Status above); manual device checks are tracked in [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md). "Current state" below describes the old code.
 
 The Mac app is signed for Developer ID (DMG). Mac App Store builds must be
 **sandboxed**, signed with **Apple Distribution**, embed a **provisioning

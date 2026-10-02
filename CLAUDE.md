@@ -102,6 +102,69 @@ with conflicting shapes, the loser silently corrupts the consumer that ran secon
 Centralizing ownership prevents this. The `findings.provenance JSONB` column for
 the WC audit→twin loop landed via this pattern in PR #13.
 
+## noFriction Meetings: project rules and hard-won lessons
+
+The two sections above ("Secrets, deploys…" and "Cross-subsystem schema
+ownership") describe the CriticalAsset web platform, not this repo. For
+noFriction (Tauri Mac app in `src-tauri/` + `src/`, SwiftUI iOS app in `ios/`),
+these rules apply.
+
+**Product invariants (don't regress):**
+- **Client-only.** No noFriction servers. Never add Supabase, Pinecone, an
+  ingest server or any owner-hosted endpoint. AI and cloud transcription go
+  straight from the client to the user's chosen provider with the user's own
+  key. Spec: `docs/AI_PROVIDERS.md`.
+- **Never ship or hardcode an API key**, and never hardcode a private host (the
+  old Castle/GX10 tailnet URL was removed). Keys live only in the Keychain
+  (`secrets.rs` on the Mac, `KeychainStore` on iOS). Never return a key to the
+  UI (only `last4`), and never log keys or transcript text.
+- **Consent before any non-local endpoint.** Whether an endpoint counts as
+  local depends on its URL, not the preset name.
+- **Delete and Strike must purge everywhere.** The checklist is in
+  `docs/REDACTION.md`. Any new place that stores transcript or screen text must
+  be added to that purge.
+- Two Mac flavors must always build: the default (Developer ID DMG) and
+  `--features mas` (sandboxed Mac App Store build). In `mas`: no ffmpeg,
+  Accessibility, osascript, shell plugin or `.env`; Pro gating goes through
+  `entitlement::require_pro()` in `ai::client::complete`.
+
+**Lessons that cost real time:**
+- **Migrations run on ONE connection** (`run_migrations` acquires a single
+  connection). Running them back-to-back on `&pool` opened extra connections
+  mid-migration, and one could keep a stale schema ("no such table" on fresh
+  installs, about 30% under load). To reproduce flaky DB bugs, run the lib test
+  binary with `--test-threads=32` 10+ times.
+- **Signing:** a custom "Always Trust" on the Developer ID cert makes codesign
+  emit a non-Apple-anchored requirement. The app then fails its own signature
+  check, macOS can't attach permission grants to it, and the mic and screen
+  prompts repeat forever. `release-macos.sh` now refuses such a build. Check
+  with `codesign -dr - <app>` (it must contain `anchor apple generic`).
+- **Screen capture** without Screen Recording permission shows the macOS prompt
+  on every capture call. Always check permission (`CGPreflightScreenCaptureAccess`)
+  before capturing.
+- **Whisper invents text on silence** ("Bye-bye. Bye-bye."). Keep
+  `transcription/filter.rs` in the path of every provider, and never feed
+  filtered text back as prompt context.
+- **Stop must call `end_meeting`.** It once didn't, so every meeting had zero
+  duration and reports never ran.
+- **Before reinstalling the Mac app,** check that no recording is running
+  (latest transcript timestamp). Quitting the app mid-recording loses the stop.
+- The bundle ID is `com.nofriction.meetings` everywhere. The Mac data folder
+  migrated from `ai.nofriction.meetings`. `paths.rs` never deletes old data.
+- **Shell gotchas:** `wc -l` pads with spaces, so compare with `-gt`/`-eq` or
+  `tr -d ' '`. macOS `sed` doesn't support `0,/re/`. Don't run `npm run build`
+  for checks, because its prebuild bumps `build_number.txt`; use
+  `npx tsc && npx vite build`.
+
+**Verify before claiming done:**
+- `cargo test --lib` and `cargo test --lib --features mas` (in `src-tauri/`)
+- `npx tsc --noEmit`
+- the iOS command: `xcodebuild test -project ios/NoFriction.xcodeproj -scheme NoFriction -only-testing:NoFrictionTests` on a simulator
+
+**Release docs:** `docs/APP_STORE_RELEASE.md` (status + owner tasks),
+`docs/MAC_APP_STORE_BUILD.md`, `scripts/release-macos.sh` (DMG),
+`scripts/release-mas.sh` (Mac App Store), `site/` (privacy/support pages).
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill

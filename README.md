@@ -1,95 +1,74 @@
-# noFriction Meetings
+# noFriction
 
-**Version 3.4.0** — Your AI-powered meeting companion for macOS
+Meeting recorder for **iPhone, iPad and Mac**. It records and transcribes on
+the device, matches each meeting to your calendar and its attendees, keeps
+photos (iOS) or screenshots (Mac) next to the transcript, and writes notes
+with **the AI you choose, using your own key**. No accounts, no noFriction
+servers, no analytics.
 
----
+| | iPhone / iPad | Mac |
+|---|---|---|
+| App | SwiftUI, iOS/iPadOS 18+ (`ios/`) | Tauri 2: Rust + React (`src-tauri/`, `src/`), macOS 12.3+ |
+| Version | 1.0.0 | 3.6.0 |
+| Transcription | Apple on-device speech | Local Whisper (default); optional cloud with your own key (Deepgram, Gladia, Google, Gemini) |
+| Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |
+| AI (noFriction Pro) | Notes (summary, decisions, action items), follow-up email | Chat across meetings, live insights, after-meeting report, meeting prep brief, screenshot analysis |
+| Also | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Markdown share | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Obsidian export, JSON export |
 
-## ✨ What's New in 3.4
+**AI providers** (paste a key; the provider is detected and checked): OpenAI
+(default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral,
+DeepSeek, Perplexity, Together; local Ollama, LM Studio or any
+OpenAI-compatible server; Apple's on-device model with no key (iOS/macOS 26+
+with Apple Intelligence). Keys live in the Keychain. The app asks before
+sending meeting content to a cloud provider for the first time.
 
-- **Obsidian Vault Integration** — Bidirectional sync of meeting notes to your vault
-- **Calendar Intelligence** — Auto-enriched meeting context from macOS Calendar
-- **Data Chatbot (RAG)** — Ask questions across all your meeting history
-- **Meeting Reports** — Custom prompt-driven report generation
-- **Prompt Studio** — Create and tune prompts for AI analysis
-- **Intel Dashboard** — Live meeting intelligence with sentiment and energy scoring
+**Business model:** free download. Recording, transcription, calendar and
+people, photos/screens, search and export are free. AI features need the
+**noFriction Pro** subscription (monthly or yearly, StoreKit 2, verified on
+the device). Bundle id `com.nofriction.meetings` on both platforms, so one
+subscription covers both (Universal Purchase). The Developer ID (DMG) Mac
+build has no StoreKit and no gating.
 
+## Documentation
 
----
+For customers:
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): how to use the apps
+- [site/](site/): website (landing, support, privacy policy, terms); deploy steps in [site/README.md](site/README.md)
 
-## Features
+For launch:
+- [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md): the end-to-end commercial launch checklist
+- [docs/APP_STORE_LISTING.md](docs/APP_STORE_LISTING.md): App Store metadata, privacy label, age rating, review notes, screenshot plan
+- [docs/APP_STORE_RELEASE.md](docs/APP_STORE_RELEASE.md): App Store plan and portal steps
+- [docs/MAC_APP_STORE_BUILD.md](docs/MAC_APP_STORE_BUILD.md): sandboxed Mac App Store build
+- [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md): Developer ID DMG build and notarization
 
-| Feature | Description |
-|---------|-------------|
-| **Live Transcription** | Words appear as they're spoken (live partials every ~0.8s, finalized on each pause) — on-device Whisper large-v3-turbo by default, fully offline. Cloud providers (Deepgram, Google Chirp 2, Gladia) optional |
-| **Choose What's Captured** | Pick any displays or individual windows from a thumbnail picker (Live → Change). Each source is deduplicated independently, so a screenshot is saved only when that source changes |
-| **Snap** | One click (or ⌘⇧S) saves full-resolution snapshots of the chosen sources into the meeting timeline |
-| **Rewind** | Visual playback with synchronized screenshots and transcripts |
-| **Deep Intel** | AI summaries, action items, emails and insights from **your own AI provider**. Paste an API key for OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity or Together, or point it at a local model (Ollama, LM Studio, any OpenAI-compatible URL) |
-| **Knowledge Base** | Full-text search across all your past meetings, entirely local |
-| **Private by Default** | Capture, transcription, storage and search run on your Mac. No account, and no noFriction servers. AI features send text only to the provider you choose (asking first), using your key, which is kept in the Keychain |
+For developers:
+- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md): build, run, test
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the apps fit together
+- [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md): AI provider, key, consent and licensing spec (shared by both apps)
+- [docs/REDACTION.md](docs/REDACTION.md): Delete and "Strike from the record" spec
+- [ios/README.md](ios/README.md): iOS app file map and tests
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): release history
+- [DESIGN.md](DESIGN.md): design system (hazard yellow on matte black)
 
-### Running fully offline
-
-Out of the box the app records, transcribes (local Whisper, one-time 547 MB
-model download), stores, and searches with zero cloud dependencies. For AI
-without any cloud provider, install [Ollama](https://ollama.com), pull a model,
-and choose **Ollama (local)** in Settings → AI Engine:
+## Quick start (developers)
 
 ```bash
-brew install ollama
-ollama pull qwen3:8b        # chat, summaries, insights
-ollama pull qwen3-vl:8b     # optional: screenshot analysis
-```
-
-Or paste an API key from any supported provider in Settings → AI Engine. The app
-recognizes the provider from the key and checks that it works. See
-[docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md).
-
----
-
-## Getting Started
-
-1. **Install:** Download the `.dmg` and drag `noFriction Meetings` to Applications
-2. **Permissions:** Grant Microphone, Screen Recording, and Accessibility
-3. **Record:** Click "Record" in the sidebar to start capturing
-4. **Review:** Use the **⏪ Rewind** tab to review with visual context
-
----
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Navigate timeline | ↑↓ or J/K |
-| Open search | / |
-| Clear | Esc |
-| Sync scrolling | 🔗 button |
-| Snap chosen screens/windows | ⌘⇧S |
-
----
-
-## Troubleshooting
-
-- **No Audio:** System Settings → Privacy → Microphone
-- **No Screenshots:** System Settings → Privacy → Screen Recording
-- **Support:** support@nofriction.ai
-
----
-
-## Development
-
-### Prerequisites
-- Rust (latest stable)
-- Node.js (v18+)
-- Xcode (for macOS build tools)
-
-### Build
-```bash
+# Mac app
 npm install
-npm run tauri dev    # Run locally
-npm run tauri build  # Build release DMG
+npm run tauri dev
+(cd src-tauri && cargo test)
+
+# iPhone/iPad app
+cd ios && xcodegen generate && open NoFriction.xcodeproj
 ```
 
----
+Requirements: macOS with Xcode, Rust (stable), Node.js 18+, XcodeGen. No API
+keys are needed to build; paste keys in the running app (never commit them).
+Details: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
 
-© 2026 noFriction AI. All rights reserved.
+## Support
+
+support@nofriction.ai
+
+© 2026 noFriction. All rights reserved.

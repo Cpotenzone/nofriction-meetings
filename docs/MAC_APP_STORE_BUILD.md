@@ -13,7 +13,7 @@ The Mac app ships in two flavors from one codebase:
 | AI features | always on (owner's build) | need **noFriction Pro** (StoreKit 2) |
 | Screen video (ffmpeg) | yes | no; screenshots still feed the timeline |
 | Accessibility text capture | yes | no |
-| Ingest / Supabase / Pinecone / Admin console | yes (Settings → AI Engine → Advanced, Admin Console) | hidden |
+| Admin console (owner tools) | yes (Settings → Admin Console) | hidden |
 
 The UI asks the backend which flavor it is (`get_build_capabilities`, see
 `src-tauri/src/build_info.rs` and `src/lib/build.ts`) and hides what the
@@ -113,7 +113,7 @@ architecture, which the App Store accepts because the minimum macOS is 12.3.
 | m11 StoreKit | Swift bridge (below). |
 | m12 transcription default | **Fixed (both)**: new installs default to local Whisper, and a saved cloud provider with no key falls back to local Whisper at startup. The model downloads from Hugging Face into `<app data>/models` (needs `network.client`). |
 | m13 keys in SQLite | Done earlier (Keychain). The `mas` build uses the data-protection keychain (no `keychain-access-groups` needed; the default group is the app's application-identifier from the profile). A profile-less local test build falls back to the login keychain. |
-| m14 owner infra | Hidden in `mas`: Admin Console tab, Supabase/Pinecone settings. (The ingest settings screen isn't mounted in either flavor.) |
+| m14 owner infra | Hidden in `mas`: the Admin Console tab. Supabase, Pinecone and the ingest server were later removed from both flavors (3.6.0); leftover keys are deleted at startup (`secrets.rs`). |
 | m15 release script | `scripts/release-mas.sh` (above). |
 
 ## StoreKit and the Apple on-device model (Swift bridge)
