@@ -12,7 +12,7 @@ struct StrickenBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Rectangle().fill(Theme.accent).frame(width: 3)
+            Rectangle().fill(Theme.accent).frame(width: 3).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Label("Stricken from the record", systemImage: "eye.slash")
                     .font(.footnote.weight(.semibold))
@@ -31,6 +31,7 @@ struct StrickenBar: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.hairline))
         .accessibilityElement(children: .combine)
+        .accessibilityHint("The original was permanently removed")
         .accessibilityIdentifier("stricken-marker")
     }
 }
@@ -106,6 +107,8 @@ struct EditableTranscriptRow: View {
     let meeting: Meeting
     let selecting: Bool
     let selected: Bool
+    /// Time column grows with Dynamic Type so "10:42" never wraps
+    @ScaledMetric(relativeTo: .caption2) var timeWidth: CGFloat = 52
 
     var body: some View {
         let pieces = RedactionText.pieces(segment.text)
@@ -114,11 +117,14 @@ struct EditableTranscriptRow: View {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(selected ? Theme.accent : .secondary)
                     .opacity(hasWords(pieces) ? 1 : 0.25)
+                    .accessibilityLabel(selected ? "Selected" : "Not selected")
             }
             Text(segment.start.formatted(date: .omitted, time: .shortened))
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.tertiary)
-                .frame(width: 52, alignment: .trailing)
+                .frame(width: timeWidth, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
                     switch piece {
@@ -134,6 +140,7 @@ struct EditableTranscriptRow: View {
             }
         }
         .contentShape(Rectangle())
+        .accessibilityAddTraits(selecting && selected ? .isSelected : [])
     }
 
     private func hasWords(_ pieces: [RedactionText.Piece]) -> Bool {
@@ -222,6 +229,7 @@ struct WordEditorSheet: View {
         switch token.kind {
         case .marker:
             Label("Stricken", systemImage: "eye.slash")
+                .accessibilityLabel("Stricken from the record, can't be selected")
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 8).padding(.vertical, 5)
                 .background(Color.black, in: RoundedRectangle(cornerRadius: 6))
@@ -237,9 +245,16 @@ struct WordEditorSheet: View {
                 .onTapGesture { tap(i) }
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityValue("Word \(wordNumber(i)) of \(wordCount)")
+                .accessibilityHint(on ? "Selected. Double-tap to change the selection."
+                                      : range?.count == 1 ? "Selects the words from the first selected word to this one"
+                                                         : "Selects this word")
                 .accessibilityIdentifier("word-\(i)")
         }
     }
+
+    private var wordCount: Int { tokens.filter(\.isWord).count }
+    private func wordNumber(_ i: Int) -> Int { tokens[...i].filter(\.isWord).count }
 
     private func tap(_ i: Int) {
         wholeLine = false
@@ -263,23 +278,50 @@ struct EditActionBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let cancel {
-                Button("Cancel", action: cancel).buttonStyle(.bordered).tint(.secondary)
+            // One row; at large text sizes the actions stack so none is cut off
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    if let cancel { cancelButton(cancel) }
+                    Spacer(minLength: 0)
+                    deleteButton
+                    strikeButton
+                }
+                VStack(spacing: 8) {
+                    strikeButton.frame(maxWidth: .infinity)
+                    HStack(spacing: 12) {
+                        if let cancel { cancelButton(cancel) }
+                        Spacer(minLength: 0)
+                        deleteButton
+                    }
+                }
             }
-            Spacer(minLength: 0)
-            Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("edit-delete")
-            Button("Strike from the record…", systemImage: "eye.slash", action: onStrike)
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
-                .foregroundStyle(.black)
-                .accessibilityIdentifier("edit-strike")
         }
         .font(.subheadline.weight(.medium))
         .disabled(!enabled)
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(.bar)
+    }
+
+    private func cancelButton(_ cancel: @escaping () -> Void) -> some View {
+        Button("Cancel", action: cancel).buttonStyle(.bordered).tint(.secondary).fixedSize()
+    }
+
+    private var deleteButton: some View {
+        Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+            .buttonStyle(.bordered)
+            .fixedSize()
+            .accessibilityHint("Removes the selection. You can undo for a few seconds.")
+            .accessibilityIdentifier("edit-delete")
+    }
+
+    private var strikeButton: some View {
+        Button("Strike from the record…", systemImage: "eye.slash", action: onStrike)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.accent)
+            .foregroundStyle(.black)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHint("Permanently destroys the selection, audio included, and leaves a marker")
+            .accessibilityIdentifier("edit-strike")
     }
 }
 
@@ -452,7 +494,7 @@ struct RedactionToast: View {
         Group {
             if let p = redactions.pending {
                 toast {
-                    Image(systemName: "trash")
+                    Image(systemName: "trash").accessibilityHidden(true)
                     Text(p.label)
                     Spacer(minLength: 8)
                     Button("Undo") { redactions.undo() }
@@ -466,6 +508,7 @@ struct RedactionToast: View {
                     Text(message).lineLimit(3)
                     Spacer(minLength: 8)
                     Button { redactions.errorMessage = nil } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Dismiss")
                 }
             }
         }

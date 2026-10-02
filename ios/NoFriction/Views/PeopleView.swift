@@ -93,11 +93,13 @@ struct PersonRow: View {
                 .frame(width: 36, height: 36)
                 .background(Theme.card, in: Circle())
                 .overlay(Circle().stroke(Theme.hairline))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(person.displayName).font(.body.weight(.medium)).lineLimit(1)
                     if role == "organizer" {
                         Text("ORGANIZER").font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent)
+                            .accessibilityLabel("Organizer")
                     }
                 }
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -221,6 +223,7 @@ struct CalendarConnectCard: View {
                 Image(systemName: "calendar")
                     .font(.title3)
                     .foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(authorized ? "Calendar connected" : "Connect your calendar").font(.subheadline.weight(.semibold))
                     Text(result ?? "Meetings get their real names and attendees, so you can link each person's LinkedIn.")

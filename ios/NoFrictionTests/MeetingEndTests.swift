@@ -71,6 +71,26 @@ final class TranscriptFilterTests: XCTestCase {
         XCTAssertEqual(kept("Let's ship it. Thank you thank you thank you thank")?.text, "Let's ship it. Thank you")
     }
 
+    func testCollapseKeepsTrailingPunctuation() {
+        XCTAssertEqual(kept("no no no no, that's wrong")?.text, "no, that's wrong")
+        XCTAssertEqual(kept("No no no no no. Next item")?.text, "No. Next item")
+        XCTAssertEqual(kept("Wait wait wait wait? Okay")?.text, "Wait? Okay")
+        // The kept word already has its own punctuation: nothing doubled
+        XCTAssertEqual(kept("We're all done here. Bye. Bye. Bye. Bye.")?.text, "We're all done here. Bye.")
+        // Word timings after the insertion shift by the carried punctuation
+        let text = "no no no no, fine"
+        let words = [
+            WordTiming(location: 0, length: 2, start: 0, end: 0.2),
+            WordTiming(location: 3, length: 2, start: 0.3, end: 0.5),
+            WordTiming(location: 6, length: 2, start: 0.6, end: 0.8),
+            WordTiming(location: 9, length: 2, start: 0.9, end: 1.1),
+            WordTiming(location: 13, length: 4, start: 1.3, end: 1.6),
+        ]
+        let k = kept(text, words: words)
+        XCTAssertEqual(k?.text, "no, fine")
+        XCTAssertEqual(k?.words, [words[0], WordTiming(location: 4, length: 4, start: 1.3, end: 1.6)])
+    }
+
     func testCollapseKeepsWordTimingsAligned() {
         // "Ship it bye bye bye bye" — word offsets in UTF-16
         let text = "Ship it bye bye bye bye"

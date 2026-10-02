@@ -104,9 +104,24 @@ enum TranscriptFilter {
             let lastEnd = toks[run.end - 1].range
             let from = keepEnd.location + keepEnd.length
             let remove = NSRange(location: from, length: lastEnd.location + lastEnd.length - from)
+            // The loop's last word may carry the punctuation that belongs to
+            // the sentence ("no no no no, that's wrong"): keep it on the
+            // surviving word unless that word already ends in punctuation.
+            let ns = trimmed as NSString
+            let carried = trailingPunctuation(ns.substring(with: lastEnd))
+            let keptHas = !trailingPunctuation(ns.substring(with: keepEnd)).isEmpty
             let step = RedactionText.splice(out.text, timings: out.timings, removing: remove)
             out.text = step.text
             out.timings = step.timings
+            if !carried.isEmpty && !keptHas {
+                let insert = (carried as NSString).length
+                out.text = (out.text as NSString).replacingCharacters(in: NSRange(location: from, length: 0), with: carried)
+                out.timings = out.timings.map { t in
+                    var t = t
+                    if t.location >= from { t.location += insert }
+                    return t
+                }
+            }
         }
         let substantive = !tokens(out.text).allSatisfy { fillers.contains($0.norm) }
         return .keep(text: out.text, words: out.timings, substantive: substantive)
@@ -134,6 +149,11 @@ enum TranscriptFilter {
             }
         }
         return out
+    }
+
+    /// Sentence punctuation at the end of a token ("no," → ",", "bye." → ".").
+    static func trailingPunctuation(_ token: String) -> String {
+        String(token.reversed().prefix { ".?!,;:…".contains($0) }.reversed())
     }
 
     static func normalize(_ word: String) -> String {

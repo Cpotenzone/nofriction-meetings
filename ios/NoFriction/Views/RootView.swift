@@ -9,6 +9,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(RedactionCenter.self) private var redactions
     @State private var tab: AppTab = .now
+    @AppStorage(Onboarding.completedKey) private var onboardingCompleted = false
 
     enum AppTab: Hashable { case now, meetings, people, settings }
 
@@ -31,12 +32,18 @@ struct RootView: View {
         .overlay(alignment: .bottom) {
             RedactionToast().padding(.bottom, 64)
         }
+        .fullScreenCover(isPresented: Binding(get: { !onboardingCompleted }, set: { onboardingCompleted = !$0 })) {
+            OnboardingView { onboardingCompleted = true }
+        }
         .onAppear {
             session.attach(context)
             // Finish any Delete cut short by the app being killed in its undo window
             redactions.recover(context: context)
             #if DEBUG
             DemoData.seedIfRequested(context)
+            if ProcessInfo.processInfo.arguments.contains("-NFDemoLive") {
+                DemoData.showLiveMeeting(session: session, context: context)
+            }
             if ProcessInfo.processInfo.arguments.contains("-NFAutoRecord") {
                 Task { await session.start() }
             }

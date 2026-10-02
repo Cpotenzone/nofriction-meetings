@@ -309,6 +309,22 @@ final class RecordingSession {
         }
     }
 
+    #if DEBUG
+    /// Screenshots / layout checks: show `meeting` as if it were being
+    /// recorded right now. No mic, no engine; Stop just ends the demo.
+    func showDemo(meeting: Meeting, startedAt: Date, partial: String, level: Float = 0.4) {
+        guard phase == .idle else { return }
+        self.meeting = meeting
+        self.startedAt = startedAt
+        self.partial = partial
+        self.level = level
+        self.pausedTotal = 0
+        self.pausedAt = nil
+        self.engineName = "Demo"
+        phase = .recording
+    }
+    #endif
+
     static func defaultTitle(for date: Date) -> String {
         "Meeting · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
     }

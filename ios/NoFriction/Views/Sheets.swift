@@ -13,6 +13,7 @@ struct AIConsentSheet: View {
                     Image(systemName: "paperplane.circle.fill")
                         .font(.system(size: 44))
                         .foregroundStyle(Theme.ai)
+                        .accessibilityHidden(true)
                     Text("Send meeting content to \(provider.name)?")
                         .font(.title2.weight(.semibold))
                     Text(Self.body(provider.name))
@@ -34,6 +35,7 @@ struct AIConsentSheet: View {
                         Text("Allow").frame(maxWidth: .infinity).padding(.vertical, 6)
                     }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(.black)
                     .accessibilityIdentifier("consent-allow")
                     Button("Not now") { dismiss() }
                         .accessibilityIdentifier("consent-not-now")
@@ -66,8 +68,10 @@ struct RecordingNoticeSheet: View {
             Image(systemName: "person.wave.2.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(Theme.accent)
+                .accessibilityHidden(true)
             Text("Before you record")
                 .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Text(Self.text)
                 .foregroundStyle(.secondary)
             Text("Audio and transcripts are stored only on this device.")
@@ -81,6 +85,7 @@ struct RecordingNoticeSheet: View {
                 Text("I understand").frame(maxWidth: .infinity).padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(.black)
             .accessibilityIdentifier("recording-notice-continue")
             Button("Cancel") { dismiss() }
                 .frame(maxWidth: .infinity)

@@ -66,6 +66,8 @@ struct MeetingDetailView: View {
                 ShareLink(item: MeetingExport.markdown(meeting), subject: Text(meeting.title)) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .accessibilityLabel("Share meeting")
+                .accessibilityHint("Shares the title, people, notes and transcript as text")
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button("Delete Meeting", systemImage: "trash", role: .destructive) { confirmDelete = true }
@@ -135,8 +137,11 @@ struct MeetingDetailView: View {
                     .background(Theme.card, in: Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(player.isPlaying ? "Pause recording" : "Play recording")
+            .accessibilityIdentifier("playback-button")
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: player.progress).tint(Theme.accent)
+                    .accessibilityLabel("Playback position")
                 Text(player.isPlaying || player.progress > 0 ? "\(player.currentTime.clock) / \(player.duration.clock)" : "Recording")
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
@@ -157,6 +162,7 @@ struct MeetingDetailView: View {
                             .foregroundStyle(Theme.ai)
                         Spacer(minLength: 0)
                         Button("Regenerate") { requestAI(.notes) }
+                            .accessibilityLabel("Regenerate notes")
                             .font(.footnote.weight(.semibold))
                             .tint(Theme.ai)
                             .disabled(aiWorking != nil)
@@ -187,10 +193,12 @@ struct MeetingDetailView: View {
                     Button(meeting.aiNotes == nil ? "Summarize" : "Redo notes", systemImage: "sparkles") {
                         requestAI(.notes)
                     }
+                    .accessibilityHint("Writes a summary, decisions and action items with your AI provider")
                     .accessibilityIdentifier("ai-summarize")
                     Button("Follow-up email", systemImage: "envelope") {
                         requestAI(.email)
                     }
+                    .accessibilityHint("Drafts a follow-up email with your AI provider")
                     .accessibilityIdentifier("ai-email")
                 }
                 .buttonStyle(.bordered)
@@ -303,6 +311,7 @@ struct MeetingDetailView: View {
                             .overlay(alignment: .topTrailing) {
                                 if selectingPhotos {
                                     Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                                        .accessibilityHidden(true)
                                         .font(.title3)
                                         .foregroundStyle(on ? Theme.accent : .white)
                                         .shadow(radius: 2)
@@ -320,7 +329,15 @@ struct MeetingDetailView: View {
                                 startSelection(photos: true)
                                 selectedPhotos.insert(snapshot.persistentModelID)
                             }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Photo, \(snapshot.takenAt.formatted(date: .omitted, time: .shortened))")
+                            .accessibilityHint(selectingPhotos ? "Selects or deselects this photo" : "Opens the photo. Touch and hold to select photos.")
                             .accessibilityAddTraits(.isButton)
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                            .accessibilityAction(named: "Select") {
+                                if !selectingPhotos { startSelection(photos: true) }
+                                togglePhoto(snapshot)
+                            }
                             .accessibilityIdentifier("photo-thumb")
                     case .struck(let r):
                         StrickenScreenCard(redaction: r)
@@ -351,6 +368,12 @@ struct MeetingDetailView: View {
                             .onTapGesture {
                                 guard hasWords else { return }
                                 if selectingLines { toggleLine(segment) } else { editingSegment = segment }
+                            }
+                            .accessibilityHint(!hasWords ? "" : selectingLines
+                                ? "Selects or deselects this line"
+                                : "Opens the line to delete or strike words from the record")
+                            .accessibilityAction(named: "Edit words") {
+                                if hasWords && !selectingLines { editingSegment = segment }
                             }
                             .contextMenu {
                                 if hasWords && !selectingLines {
@@ -526,11 +549,13 @@ private struct SnapshotViewer: View {
                 ShareLink(item: Image(uiImage: image), preview: SharePreview("Snapshot", image: Image(uiImage: image))) {
                     Image(systemName: "square.and.arrow.up").padding(12).background(.ultraThinMaterial, in: Circle())
                 }
+                .accessibilityLabel("Share photo")
                 .padding(.top, 16).padding(.trailing, 70)
             }
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.headline).padding(12).background(.ultraThinMaterial, in: Circle())
             }
+            .accessibilityLabel("Close")
             .padding(16)
         }
     }

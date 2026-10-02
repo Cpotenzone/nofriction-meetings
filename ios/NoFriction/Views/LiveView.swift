@@ -75,6 +75,7 @@ struct LiveView: View {
                             .font(.system(.body, design: .monospaced).weight(.medium))
                             .foregroundStyle(session.phase == .paused ? .secondary : .primary)
                             .contentTransition(.numericText())
+                            .accessibilityLabel("Elapsed \(Duration.seconds(session.elapsed(at: ctx.date)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide)))")
                     }
                 }
             }
@@ -126,6 +127,7 @@ struct LiveView: View {
                          enabled: session.phase == .recording || session.phase == .paused) {
                 session.togglePause()
             }
+            .accessibilityHint(session.phase == .paused ? "Continues recording" : "Pauses recording. Nothing is recorded while paused.")
             Spacer()
             RecordButton(phase: session.phase, level: session.level) {
                 if session.isActive {
@@ -151,6 +153,8 @@ struct LiveView: View {
                 if UIImagePickerController.isSourceTypeAvailable(.camera) { showCamera = true }
             }
             .disabled(!session.isActive)
+            .accessibilityLabel("Snap")
+            .accessibilityHint(session.isActive ? "Adds a photo of a slide, whiteboard or screen to this meeting" : "Available while recording")
         }
         .padding(.horizontal, 36)
         .padding(.top, 14)
@@ -200,6 +204,8 @@ private struct TranscriptStream: View {
                 }
             }
             .scrollDismissesKeyboard(.immediately)
+            // A live transcript opens at its newest line
+            .defaultScrollAnchor(.bottom)
             .onChange(of: segments.count) { _, _ in withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("end", anchor: .bottom) } }
             .onChange(of: partial) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
         }
@@ -210,20 +216,28 @@ struct TranscriptLine: View {
     let time: Date?
     let text: String
     var provisional = false
+    /// Time column grows with Dynamic Type so "10:42" never wraps
+    @ScaledMetric(relativeTo: .caption2) var timeWidth: CGFloat = 52
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text(time.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.tertiary)
-                .frame(width: 52, alignment: .trailing)
+                .frame(width: timeWidth, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             (Text(text) + (provisional ? Text(" ▍").foregroundStyle(Theme.accent) : Text("")))
-                .font(.body)
+                .font(sizeClass == .regular ? .title3 : .body)   // iPad: readable across the room
                 .lineSpacing(3)
                 .foregroundStyle(provisional ? .secondary : .primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(provisional ? "\(text), still listening" : text)
+        .accessibilityValue(time.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")
     }
 }
 
@@ -236,6 +250,7 @@ private struct EmptyTranscript: View {
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(phase == .recording ? Theme.accent : .secondary)
                 .symbolEffect(.variableColor.iterative, isActive: phase == .recording)
+                .accessibilityHidden(true)
             Text(phase == .recording ? "Listening" : "Tap to record")
                 .font(.headline)
             Text(phase == .recording ? "Words appear as they're spoken." : "Your calendar names the meeting and who's in it.")
@@ -284,6 +299,8 @@ private struct RecordButton: View {
         .buttonStyle(.plain)
         .disabled(phase == .starting || phase == .stopping)
         .accessibilityLabel(active ? "Stop recording" : "Start recording")
+        .accessibilityHint(active ? "Stops and saves the meeting" : "Records and transcribes on this device")
+        .accessibilityIdentifier("record-button")
     }
 }
 
@@ -323,9 +340,11 @@ struct NoticeBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.accent)
+                .accessibilityHidden(true)
             Text(text).font(.footnote)
             Spacer(minLength: 0)
         }
+        .accessibilityElement(children: .combine)
         .padding(12)
         .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 16)
@@ -343,6 +362,7 @@ struct MeetingEndBanner: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: "moon.zzz.fill").foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
                     let left = max(0, Int(deadline.timeIntervalSince(ctx.date).rounded(.up)))
                     Text("Meeting seems to have ended — stopping in \(left) s")
@@ -351,14 +371,10 @@ struct MeetingEndBanner: View {
                 }
                 Spacer(minLength: 0)
             }
-            HStack(spacing: 10) {
-                Button("Keep recording", action: keep)
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("meeting-end-keep")
-                Button("Stop now", role: .destructive, action: stop)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.recording)
-                    .accessibilityIdentifier("meeting-end-stop")
+            // Side by side; stacked when large text wouldn't fit
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { bannerButtons }
+                VStack(alignment: .leading, spacing: 8) { bannerButtons }
             }
             .font(.footnote.weight(.medium))
         }
@@ -368,6 +384,20 @@ struct MeetingEndBanner: View {
         .padding(.bottom, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("meeting-end-banner")
+    }
+
+    @ViewBuilder private var bannerButtons: some View {
+        Button("Keep recording", action: keep)
+            .buttonStyle(.bordered)
+            .fixedSize()
+            .accessibilityHint("Cancels the automatic stop")
+            .accessibilityIdentifier("meeting-end-keep")
+        Button("Stop now", role: .destructive, action: stop)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.recordingStrong)
+            .fixedSize()
+            .accessibilityHint("Stops and saves the meeting now")
+            .accessibilityIdentifier("meeting-end-stop")
     }
 }
 

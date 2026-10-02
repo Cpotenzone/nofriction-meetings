@@ -13,7 +13,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
 
 targets:
   NoFriction:
@@ -30,15 +30,17 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark   # dark-only app; system UI (alerts, launch) matches
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "noFriction records the meeting so it can transcribe it on this device. Audio stays on this device."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Speech is transcribed on this device. Audio never leaves it."
-        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "noFriction matches each recording to your calendar to name the meeting and list who attended."
-        INFOPLIST_KEY_NSCameraUsageDescription: "Snap slides, whiteboards or screens during a meeting."
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Add screenshots or photos to a meeting."
+        # Usage strings: audio, photos and transcripts stay on the device; meeting
+        # text goes only to the AI provider the user picks, when they use an AI feature.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "noFriction records your meetings so it can transcribe them. The audio is stored and transcribed on this device and never uploaded."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "noFriction turns your recordings into text with speech recognition on this device. Audio never leaves it; transcript text goes only to the AI provider you choose, when you use an AI feature."
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "noFriction reads your calendar to name each recording and list who attended. It never changes your calendar."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of slides, whiteboards or screens during a meeting. Photos stay on this device."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Add screenshots or photos from your library to a meeting. They stay on this device."
     info:
       path: NoFriction/Info.plist
       properties:
@@ -46,6 +48,9 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UIBackgroundModes: [audio]
         ITSAppUsesNonExemptEncryption: false
+        # Dark launch screen (no white flash before the first frame)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         # Optional: AI on the user's own Ollama / LM Studio server on the LAN
         NSLocalNetworkUsageDescription: "noFriction connects to an AI server on your network (such as Ollama or LM Studio) only if you add one in Settings."
         NSAppTransportSecurity:

@@ -16,8 +16,30 @@ open NoFriction.xcodeproj
 ```
 
 Team `C7GCEESE2V`, automatic signing. Bundle id `com.nofriction.meetings` (shared with
-the Mac app for Universal Purchase). Version = `MARKETING_VERSION`, build =
-`CURRENT_PROJECT_VERSION` in `project.yml`; bump the build for every upload.
+the Mac app for Universal Purchase). Version = `MARKETING_VERSION` in `project.yml`;
+the build number comes from `build_number.txt` (last one used), bumped by the release script.
+
+## Release (TestFlight / App Store)
+
+```bash
+scripts/release-ios.sh --check     # validate config, change nothing
+scripts/release-ios.sh             # archive + export an App Store .ipa
+ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=~/keys/AuthKey_….p8 \
+  scripts/release-ios.sh --upload  # archive + upload to App Store Connect
+```
+
+Export settings live in `ExportOptions.plist`. The API key is read from the
+environment only; never commit it.
+
+## App Store screenshots
+
+```bash
+scripts/ios-screenshots.sh         # iPhone 6.9" + iPad 13" → AppStore/screenshots/<device>/NN-name.png
+```
+
+Creates/boots the simulators, sets the 9:41 status bar, runs
+`NoFrictionUITests/AppStoreScreenshots` on invented sample data
+(`-NFSeedDemo -NFDemoLive`) and checks the pixel sizes.
 
 Debug runs use `NoFriction.storekit` (local StoreKit testing: both Pro products with
 a 1-week free trial). Release/TestFlight builds use the real App Store; there is no
@@ -41,6 +63,7 @@ Pro bypass.
 | Edit / Delete / Strike from the record (spec: `docs/REDACTION.md`) | `Redaction/`, `Views/TranscriptEditing.swift` |
 | StoreKit 2 (noFriction Pro) + paywall | `Store/Store.swift`, `Views/PaywallView.swift` |
 | Settings tab, consent + recording notices | `Views/SettingsView.swift`, `Views/Sheets.swift` |
+| First-run welcome (consent, permissions in context, AI setup, Pro); Settings → Show welcome again | `Views/OnboardingView.swift` |
 | Privacy manifest | `PrivacyInfo.xcprivacy` |
 
 **AI** follows `docs/AI_PROVIDERS.md` (shared with the Mac app): paste a key in
@@ -77,7 +100,10 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFriction \
 - `NoFrictionTests/RedactionTests` — word splicing, strike markers, AI-notes redaction, export/prompt
   placeholders, audio silencing (decoded zeros, same length), photo purge, store files free of struck text.
 - `NoFrictionUITests/ScreensTests` — walks every screen with sample data
-  (`-NFSeedDemo`), saving screenshots to `$NF_SCREENSHOT_DIR`.
+  (`-NFSeedDemo`), saving screenshots to `$NF_SCREENSHOT_DIR`; `AppStoreScreenshots`
+  writes the store set to `$NF_APPSTORE_DIR`.
+- `NoFrictionUITests/OnboardingTests` — the first-run flow end to end (`-NFResetOnboarding`),
+  reopening it from Settings; `DynamicTypeTests` checks critical controls at XXXL text.
 - `NoFrictionUITests/RecordingFlowTests` — end-to-end recording from an audio
   file (`NF_TEST_AUDIO`, debug builds only) — **device only**. Copy the file
   into the app's Documents with `xcrun devicectl device copy to …` and pass

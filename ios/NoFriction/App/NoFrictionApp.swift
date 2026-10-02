@@ -14,6 +14,17 @@ struct NoFrictionApp: App {
         Storage.prepare()
         // Meeting-end prompt actions can arrive while recording in the background
         MeetingEndNotifier.shared.install()
+        #if DEBUG
+        // UI tests: -NFResetOnboarding starts from a first launch;
+        // demo / auto-record runs skip the welcome
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-NFResetOnboarding") {
+            UserDefaults.standard.removeObject(forKey: Onboarding.completedKey)
+            UserDefaults.standard.removeObject(forKey: "recordingNoticeAccepted")
+        } else if args.contains("-NFSkipOnboarding") || args.contains("-NFSeedDemo") || args.contains("-NFAutoRecord") {
+            UserDefaults.standard.set(true, forKey: Onboarding.completedKey)
+        }
+        #endif
     }
 
     var body: some Scene {
@@ -36,6 +47,8 @@ enum Theme {
     static let card = Color(red: 0.085, green: 0.085, blue: 0.095)
     static let hairline = Color.white.opacity(0.08)
     static let recording = Color(red: 0.94, green: 0.27, blue: 0.27)
+    /// Filled red behind white text (5.4:1; `recording` is 3.7:1)
+    static let recordingStrong = Color(red: 0.80, green: 0.16, blue: 0.16)
     static let linkedIn = Color(red: 10 / 255, green: 102 / 255, blue: 194 / 255)
     /// AI features: majolica cobalt from the Trinacria icon, lifted for the dark background
     static let ai = Color(red: 90 / 255, green: 140 / 255, blue: 230 / 255)

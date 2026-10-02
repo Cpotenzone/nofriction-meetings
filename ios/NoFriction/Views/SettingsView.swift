@@ -98,22 +98,27 @@ struct AIKeySection: View {
                     .privacySensitive()
                     .submitLabel(.go)
                     .onSubmit { connect() }
+                    .accessibilityLabel("API key")
+                    .accessibilityHint("Paste a key from OpenAI, Anthropic, Gemini or another provider.")
                     .accessibilityIdentifier("api-key-field")
                 HStack(spacing: 10) {
                     Button("Paste", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel("Paste key")
+                        .accessibilityHint("Pastes an API key from the clipboard. The provider is detected from the key.")
                     Button {
                         connect()
                     } label: {
                         Label("Connect", systemImage: "bolt.horizontal")
                     }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(.black)   // readable on hazard yellow
                     .disabled(model.normalizedKey.isEmpty || model.isBusy)
                     .accessibilityIdentifier("connect-key")
                 }
                 if !model.normalizedKey.isEmpty {
                     if let p = model.detected {
-                        Label("Looks like a \(p.name) key", systemImage: "checkmark.seal")
+                        Label("Detected: \(p.name) key", systemImage: "checkmark.seal")
                             .font(.footnote).foregroundStyle(.secondary)
                     } else {
                         Picker("Provider", selection: $model.manualProvider) {
@@ -211,14 +216,15 @@ struct SettingsView: View {
     @State private var customModel = ""
     @AppStorage(MeetingEndDetector.Config.enabledKey) private var autoStop = true
     @AppStorage(MeetingEndDetector.Config.minutesKey) private var autoStopMinutes = 3
+    @AppStorage(Onboarding.completedKey) private var onboardingCompleted = false
 
     var body: some View {
         NavigationStack {
             Form {
-                recordingSection
                 activeSection
                 AIKeySection(model: connect)
                 savedSection
+                recordingSection
                 serverSection
                 privacySection
                 subscriptionSection
@@ -316,9 +322,12 @@ struct SettingsView: View {
                             Spacer()
                             if settings.effectiveProvider == p {
                                 Image(systemName: "checkmark").foregroundStyle(Theme.ai)
+                                    .accessibilityHidden(true)
                             }
                         }
                     }
+                    .accessibilityAddTraits(settings.effectiveProvider == p ? .isSelected : [])
+                    .accessibilityHint("Makes this the active AI provider")
                     .swipeActions {
                         Button("Delete", role: .destructive) { settings.remove(p) }
                     }
@@ -369,6 +378,7 @@ struct SettingsView: View {
                     Spacer()
                     Button("Revoke", role: .destructive) { settings.revokeConsent(p) }
                         .buttonStyle(.borderless)
+                        .accessibilityLabel("Revoke sharing with \(p.name)")
                 }
             }
             DisclosureGroup("Get an API key") {
@@ -421,6 +431,8 @@ struct SettingsView: View {
             Link("Privacy Policy", destination: AppLinks.privacyPolicy)
             Link("Terms of Use (EULA)", destination: AppLinks.terms)
             Link("Contact Support (\(AppLinks.supportEmail))", destination: AppLinks.supportMail)
+            Button("Show welcome again") { onboardingCompleted = false }
+                .accessibilityIdentifier("show-welcome")
             LabeledContent("Version", value: AppLinks.versionString)
         }
     }
