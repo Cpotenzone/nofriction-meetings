@@ -217,7 +217,7 @@ Meetings don't sync between devices. Each device keeps what it recorded.
 - AI features send meeting text (and, on the Mac, screenshots for screen
   features) straight to the provider you chose. On the Mac, once a provider is
   connected and approved, live insights and the after-meeting report use it
-  automatically.
+  automatically. Turn either off in **Settings → AI Engine → Automatic AI**.
 - No accounts, no analytics, no tracking, no noFriction servers.
 
 Full policy: [nofriction.ai/privacy](https://nofriction.ai/privacy).

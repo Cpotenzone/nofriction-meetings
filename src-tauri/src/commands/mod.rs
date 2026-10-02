@@ -2777,6 +2777,13 @@ pub async fn get_live_insights(
     meeting_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<LiveInsightEvent>, String> {
+    // "Live insights during meetings" off → no rule-based events AND no AI
+    // call. The AI phase below sends the transcript to the user's provider,
+    // so the switch must gate it too (privacy policy promises an off switch).
+    if !crate::live_intel_agent::is_enabled() {
+        return Ok(Vec::new());
+    }
+
     // Get recent transcripts
     let transcripts = state
         .database
