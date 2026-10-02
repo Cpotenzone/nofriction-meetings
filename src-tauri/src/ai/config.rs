@@ -281,6 +281,7 @@ pub async fn autodetect_local() {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn set_for_tests(cfg: AiConfig) {
     *CONFIG.write() = cfg;
 }

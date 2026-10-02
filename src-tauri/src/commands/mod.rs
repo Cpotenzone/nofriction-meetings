@@ -176,6 +176,8 @@ pub async fn open_system_settings(app: tauri::AppHandle, pane: String) -> Result
             "accessibility" => {
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             }
+            "calendar" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
+            "notifications" => "x-apple.systempreferences:com.apple.preference.notifications",
             _ => "x-apple.systempreferences:com.apple.preference.security",
         };
         // NSWorkspace via the opener plugin: no child process (App Sandbox)
@@ -1767,8 +1769,52 @@ pub async fn delete_meeting(meeting_id: String, state: State<'_, AppState>) -> R
         .await
         .map_err(|e| format!("Failed to delete meeting: {}", e))?;
 
-    log::info!("Meeting deleted: {}", meeting_id);
+    // Rows in other tables go with ON DELETE CASCADE; the meeting's files
+    // (screenshots, screen video, cached frames) go here.
+    let dirs = meeting_file_dirs(&crate::paths::app_data_dir(), &crate::paths::app_cache_dir(), &meeting_id);
+    let mut failed = 0;
+    for d in dirs.iter().filter(|d| d.exists()) {
+        if let Err(e) = std::fs::remove_dir_all(d) {
+            failed += 1;
+            log::warn!("Could not remove {} for deleted meeting: {}", d.display(), e);
+        }
+    }
+    log::info!("Meeting deleted: {} ({} file folder(s) left behind)", meeting_id, failed);
     Ok(())
+}
+
+/// Folders that hold one meeting's files: `<data>/frames/<id>` (screenshots),
+/// `<data>/<id>` (screen video, DMG build) and `<cache>/<id>` (extracted
+/// frames/thumbnails). Empty when `meeting_id` isn't a plain id, so a bad
+/// value can never point outside those folders.
+pub fn meeting_file_dirs(data: &std::path::Path, cache: &std::path::Path, meeting_id: &str) -> Vec<std::path::PathBuf> {
+    let safe = !meeting_id.is_empty()
+        && meeting_id.len() <= 64
+        && meeting_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && !["frames", "models", "logs", "backups", "snapshots"].contains(&meeting_id);
+    if !safe {
+        return Vec::new();
+    }
+    vec![data.join("frames").join(meeting_id), data.join(meeting_id), cache.join(meeting_id)]
+}
+
+#[cfg(test)]
+mod meeting_file_tests {
+    use super::meeting_file_dirs;
+    use std::path::Path;
+
+    #[test]
+    fn meeting_dirs_only_for_plain_ids() {
+        let (d, c) = (Path::new("/data"), Path::new("/cache"));
+        let id = "508b6752-52a7-48ca-a682-fb039c90be9b";
+        assert_eq!(
+            meeting_file_dirs(d, c, id),
+            vec![d.join("frames").join(id), d.join(id), c.join(id)]
+        );
+        for bad in ["", "..", "../x", "a/b", "frames", "models", "logs", "backups", "snapshots", "x y"] {
+            assert!(meeting_file_dirs(d, c, bad).is_empty(), "{:?}", bad);
+        }
+    }
 }
 
 /// Get synced timeline for rewind (frames + transcripts aligned by timestamp)
@@ -3470,89 +3516,6 @@ pub async fn get_meeting_notes(
         .get_meeting_notes(&meeting_id)
         .await
         .map_err(|e| format!("Failed to get meeting notes: {}", e))
-}
-
-/// Add a comment to a meeting
-#[tauri::command(rename_all = "camelCase")]
-pub async fn add_meeting_comment(
-    state: State<'_, AppState>,
-    meeting_id: String,
-    comment: String,
-    comment_type: Option<String>,
-    timestamp_ref: Option<f64>,
-    parent_id: Option<String>,
-) -> Result<String, String> {
-    let id = uuid::Uuid::new_v4().to_string();
-
-    state
-        .database
-        .add_meeting_comment(
-            &id,
-            &meeting_id,
-            &comment,
-            comment_type.as_deref(),
-            timestamp_ref,
-            parent_id.as_deref(),
-        )
-        .await
-        .map_err(|e| format!("Failed to add comment: {}", e))?;
-
-    Ok(id)
-}
-
-/// Get comments for a meeting
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_meeting_comments(
-    state: State<'_, AppState>,
-    meeting_id: String,
-) -> Result<Vec<crate::database::MeetingComment>, String> {
-    state
-        .database
-        .get_meeting_comments(&meeting_id)
-        .await
-        .map_err(|e| format!("Failed to get comments: {}", e))
-}
-
-/// Get full meeting analysis (notes + comments + transcripts)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_meeting_analysis(
-    state: State<'_, AppState>,
-    meeting_id: String,
-) -> Result<serde_json::Value, String> {
-    let meeting = state
-        .database
-        .get_meeting(&meeting_id)
-        .await
-        .map_err(|e| format!("Failed to get meeting: {}", e))?
-        .ok_or("Meeting not found")?;
-
-    let transcripts = state
-        .database
-        .get_transcripts_marked(&meeting_id)
-        .await
-        .map_err(|e| format!("Failed to get transcripts: {}", e))?;
-
-    let notes = state
-        .database
-        .get_meeting_notes(&meeting_id)
-        .await
-        .map_err(|e| format!("Failed to get notes: {}", e))?;
-
-    let comments = state
-        .database
-        .get_meeting_comments(&meeting_id)
-        .await
-        .map_err(|e| format!("Failed to get comments: {}", e))?;
-
-    Ok(serde_json::json!({
-        "meeting": meeting,
-        "transcripts": transcripts,
-        "notes": notes,
-        "comments": comments,
-        "transcript_count": transcripts.len(),
-        "comment_count": comments.len(),
-        "has_notes": notes.is_some(),
-    }))
 }
 
 // ============================================================================

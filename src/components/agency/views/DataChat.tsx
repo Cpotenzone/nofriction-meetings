@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { chatWithData, ChatHistoryMessage, ChatSource } from "../../../lib/tauri";
 import "./DataChat.css";
 import { BrainIcon } from "../../icons";
+import { aiErrorClass, friendlyAiError, isNoProviderError } from "../../../lib/ai";
+import { AiSetupNotice, useAiStatus } from "../../AiSetupNotice";
 
 interface DisplayMessage {
     role: "user" | "assistant";
@@ -17,6 +19,13 @@ export const DataChat: React.FC = () => {
     const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const { configured } = useAiStatus();
+    const [needsAi, setNeedsAi] = useState(false);
+    const showSetup = configured === false || needsAi;
+    // A provider was just connected in Settings: clear the earlier failure
+    useEffect(() => {
+        if (configured) setNeedsAi(false);
+    }, [configured]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -59,8 +68,16 @@ export const DataChat: React.FC = () => {
             };
             setMessages((prev) => [...prev, assistantMessage]);
         } catch (err) {
-            console.error("Chat error:", err);
-            setError(String(err));
+            console.error("Chat error:", friendlyAiError(err));
+            if (isNoProviderError(err)) {
+                setNeedsAi(true);
+            } else if (aiErrorClass(err) === "pro_required") {
+                setError("Chat is part of noFriction Pro.");
+            } else if (aiErrorClass(err) === "consent_required") {
+                setError("Chat needs your permission to send meeting excerpts to your AI provider. Ask again and choose Allow.");
+            } else {
+                setError(friendlyAiError(err));
+            }
         } finally {
             setIsLoading(false);
         }
@@ -124,10 +141,10 @@ export const DataChat: React.FC = () => {
                 <div>
                     <h2>
                         <span className="header-icon">💬</span>
-                        DATA INTEL CHAT
+                        CHAT WITH YOUR MEETINGS
                     </h2>
                     <span className="header-status">
-                        RAG-powered • Local + Vector DB
+                        Your meetings, searched on this Mac
                     </span>
                 </div>
                 {messages.length > 0 && (
@@ -137,6 +154,12 @@ export const DataChat: React.FC = () => {
                 )}
             </div>
 
+            {showSetup && (
+                <div style={{ padding: "12px 20px 0" }}>
+                    <AiSetupNotice feature="Chat" />
+                </div>
+            )}
+
             {/* Messages */}
             <div className="data-chat-messages">
                 {messages.length === 0 && !isLoading ? (
@@ -144,8 +167,8 @@ export const DataChat: React.FC = () => {
                         <span className="empty-icon"><BrainIcon size={40} strokeWidth={1.5} /></span>
                         <span className="empty-title">Talk to your data</span>
                         <span className="empty-subtitle">
-                            Ask questions about your meetings, transcripts, screen activity, and knowledge base.
-                            I'll search across all your data sources to find the answer.
+                            Ask about your meetings, transcripts and screen activity. noFriction searches them on this
+                            Mac and sends only the most relevant excerpts to your AI provider for the answer.
                         </span>
                         <div className="empty-suggestions">
                             {suggestions.map((s, i) => (
@@ -241,12 +264,12 @@ export const DataChat: React.FC = () => {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={1}
-                    disabled={isLoading}
+                    disabled={isLoading || showSetup}
                 />
                 <button
                     className={`chat-send-btn ${isLoading ? "sending" : ""}`}
                     onClick={handleSend}
-                    disabled={!input.trim() || isLoading}
+                    disabled={!input.trim() || isLoading || showSetup}
                     title="Send message"
                 >
                     ▶

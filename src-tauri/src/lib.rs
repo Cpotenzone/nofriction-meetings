@@ -70,7 +70,7 @@ pub mod ambient_capture;
 pub mod continue_prompt;
 pub mod interaction_loop;
 pub mod meeting_end;
-pub mod meeting_trigger;
+pub mod notifications;
 pub mod power_manager;
 pub mod privacy_filter;
 pub mod tray_builder;
@@ -91,7 +91,6 @@ use database::DatabaseManager;
 use ambient_capture::AmbientCaptureService;
 use interaction_loop::InteractionLoop;
 use live_intel_agent::LiveIntelAgent;
-use meeting_trigger::MeetingTriggerEngine;
 use power_manager::PowerManager;
 use prompt_manager::PromptManager;
 use settings::SettingsManager;
@@ -117,7 +116,6 @@ pub struct AppState {
     // v2.5.0: Always-On Recording
     pub power_manager: Arc<PowerManager>,
     pub ambient_capture: Arc<AmbientCaptureService>,
-    pub meeting_trigger: Arc<MeetingTriggerEngine>,
     pub interaction_loop: Arc<InteractionLoop>,
     // v2.7.0: Continuous Accessibility Capture
     pub accessibility_capture: Arc<accessibility_capture::AccessibilityCaptureService>,
@@ -370,10 +368,6 @@ impl AppState {
         log::info!("Initializing Ambient Capture Service...");
         let ambient_capture = AmbientCaptureService::new();
 
-        // Initialize v2.5.0: Meeting Trigger Engine
-        log::info!("Initializing Meeting Trigger Engine...");
-        let meeting_trigger = MeetingTriggerEngine::new();
-
         // Initialize v2.5.0: Interaction Loop for human check-ins
         log::info!("Initializing Interaction Loop...");
         let interaction_loop = InteractionLoop::new();
@@ -428,7 +422,6 @@ impl AppState {
             calendar_client: Arc::new(RwLock::new(calendar_client::CalendarClient::new())),
             power_manager: Arc::new(power_manager),
             ambient_capture: Arc::new(ambient_capture),
-            meeting_trigger: Arc::new(meeting_trigger),
             interaction_loop: Arc::new(interaction_loop),
             accessibility_capture,
             // v2.8.0: Dork Mode (Study Mode)
@@ -520,13 +513,19 @@ pub fn run() {
     );
     log::info!("Build flavor: {}", build_info::FLAVOR);
     paths::log_migration(&data_migration);
+    // The removed ingest feature left ingest_queue.db behind: archive it
+    // into <app data>/backups (never deleted).
+    paths::archive_removed_ingest_queue_at_startup();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             ai::set_app_handle(handle.clone());
+            // Notification clicks (app activation) bring the window back
+            notifications::init(&handle);
             // StoreKit: start the Transaction.updates listener and load the
             // current entitlement (no-op outside the `mas` build).
             store::start(handle.clone());
@@ -568,6 +567,15 @@ pub fn run() {
                                         handle_clone.emit("init-step", "Finalizing App State...");
                                     log::info!("AppState created, managing state...");
                                     handle_clone.manage(state);
+                                    // "Live insights during meetings" switch
+                                    {
+                                        let h = handle_clone.clone();
+                                        tauri::async_runtime::spawn(async move {
+                                            if let Some(st) = h.try_state::<AppState>() {
+                                                commands::intel::load_ai_automation(&st).await;
+                                            }
+                                        });
+                                    }
 
                                     // Update status to Ready
                                     *init_state_clone.write() = InitStatus::Ready;
@@ -848,9 +856,6 @@ pub fn run() {
             commands::pause_capture,
             commands::get_always_on_settings,
             commands::set_always_on_enabled,
-            commands::get_running_meeting_apps,
-            commands::check_audio_usage,
-            commands::dismiss_meeting_detection,
             commands::set_genie_mode,
             // v2.8.0: Dork Mode (Study Mode) Commands
             commands::set_session_mode,
@@ -893,10 +898,12 @@ pub fn run() {
             commands::get_meeting_report_prompt,
             commands::set_meeting_report_prompt,
             commands::generate_meeting_report,
-            // Meeting detail view (notes, comments, analysis)
+            commands::get_ai_automation,
+            commands::draft_followup_email,
+            commands::set_ai_automation,
+            // Meeting notes (Recordings → Notes)
             commands::generate_meeting_notes,
-            commands::get_meeting_analysis,
-            commands::add_meeting_comment,
+            commands::get_meeting_notes,
             // Editing + "Strike from the record"
             redaction::commands::delete_transcript_words,
             redaction::commands::strike_transcript_words,

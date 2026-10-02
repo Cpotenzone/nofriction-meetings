@@ -1,0 +1,178 @@
+/* Recordings → Notes (MeetingNotesPanel) */
+
+.mn-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  color: var(--text-primary, #f5f5f5);
+}
+
+.mn-center {
+  align-items: center;
+  justify-content: center;
+}
+
+.mn-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px;
+  border: 1px dashed var(--border-primary, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+}
+
+.mn-empty h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mn-empty p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+  max-width: 520px;
+}
+
+.mn-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mn-section h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.mn-section p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.mn-section ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.mn-section li + li {
+  margin-top: 4px;
+}
+
+.mn-muted {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  font-size: 12px;
+}
+
+.mn-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+}
+
+.mn-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mn-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mn-actions.end {
+  justify-content: flex-end;
+}
+
+.mn-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.15));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mn-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mn-btn.primary {
+  background: var(--accent-primary, #facc15);
+  border-color: var(--accent-primary, #facc15);
+  color: #0a0a0a;
+}
+
+.mn-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mn-sheet-overlay {
+  z-index: 3000;
+}
+
+.mn-sheet {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: var(--surface-primary, #1c1f2b);
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary, #f5f5f5);
+}
+
+.mn-sheet h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.mn-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.mn-input,
+.mn-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.15));
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.mn-textarea {
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+}

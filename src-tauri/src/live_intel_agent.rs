@@ -5,6 +5,25 @@
 use crate::catch_up_agent::TranscriptSegment;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Setting key: "Live insights during meetings" (Settings → AI Engine).
+pub const SETTING_ENABLED: &str = "live_insights_enabled";
+
+static ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Saved setting value → enabled. Missing/unknown = on (the default).
+pub fn parse_enabled(v: Option<&str>) -> bool {
+    !matches!(v.map(str::trim), Some("false") | Some("0") | Some("off"))
+}
+
+pub fn set_enabled(enabled: bool) {
+    ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn is_enabled() -> bool {
+    ENABLED.load(Ordering::SeqCst)
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Event Types
@@ -279,6 +298,10 @@ impl LiveIntelAgent {
 
     /// Process a new transcript segment and extract insights
     pub fn process_segment(&mut self, segment: TranscriptSegment) -> Vec<LiveInsightEvent> {
+        // Turned off in Settings → AI Engine: nothing is analyzed or kept
+        if !is_enabled() {
+            return Vec::new();
+        }
         let mut events = Vec::new();
 
         // Add to context window
@@ -1235,7 +1258,7 @@ mod tests {
     fn test_detect_action_item_weak_patterns_need_two() {
         let mut agent = LiveIntelAgent::new();
         // Single weak pattern — should NOT trigger
-        let events = agent.process_segment(make_segment(
+        let _events = agent.process_segment(make_segment(
             "can you check on the project status update",
             None,
             1000,
@@ -1244,7 +1267,7 @@ mod tests {
         // However "can you" is also a strong pattern ("can you take")
         // Test with just "please" alone
         let mut agent2 = LiveIntelAgent::new();
-        let events2 = agent2.process_segment(make_segment(
+        let _events2 = agent2.process_segment(make_segment(
             "please review the document before submission",
             None,
             1000,
@@ -1528,5 +1551,16 @@ mod tests {
             "Full meeting should produce at least one decision, action item, or risk"
         );
     }
+
+    #[test]
+    fn live_insights_setting_parsing() {
+        assert!(parse_enabled(None));
+        assert!(parse_enabled(Some("true")));
+        assert!(parse_enabled(Some("")));
+        assert!(!parse_enabled(Some("false")));
+        assert!(!parse_enabled(Some(" off ")));
+        assert!(!parse_enabled(Some("0")));
+    }
+
 }
 

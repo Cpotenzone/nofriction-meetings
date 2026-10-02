@@ -25,13 +25,10 @@ export async function withFallback<T>(
   tauriCall: () => Promise<T>,
   fallback: T,
 ): Promise<T> {
+  // Mock data only in a browser preview. In the app a failing call must
+  // surface as an error, never as fake meetings.
   if (isOffline()) return fallback;
-  try {
-    return await tauriCall();
-  } catch (err) {
-    console.warn('[offline] Tauri call failed, using fallback:', err);
-    return fallback;
-  }
+  return tauriCall();
 }
 
 // ─── Mock Data ──────────────────────────────────────────────────────

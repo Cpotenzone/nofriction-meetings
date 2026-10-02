@@ -105,9 +105,101 @@ pub fn log_migration(m: &Migration) {
     }
 }
 
+/// Database left behind by the removed screen-ingest feature (pre-3.6).
+pub const REMOVED_INGEST_QUEUE_DB: &str = "ingest_queue.db";
+
+/// Outcome of [`archive_removed_ingest_queue`].
+#[derive(Debug, PartialEq, Eq)]
+pub enum IngestQueueArchive {
+    NothingToDo,
+    Moved { to: PathBuf },
+    Failed { error: String },
+}
+
+/// Move `<data>/ingest_queue.db` (and any `-wal`/`-shm` sidecars) into
+/// `<data>/backups/removed-ingest-queue-<date>.db`. Never deletes: if the
+/// name is taken a counter is appended; if the move fails the file stays.
+pub fn archive_removed_ingest_queue(data_dir: &Path, date: &str) -> IngestQueueArchive {
+    let src = data_dir.join(REMOVED_INGEST_QUEUE_DB);
+    if !src.is_file() {
+        return IngestQueueArchive::NothingToDo;
+    }
+    let backups = data_dir.join("backups");
+    if let Err(e) = std::fs::create_dir_all(&backups) {
+        return IngestQueueArchive::Failed { error: e.to_string() };
+    }
+    let mut dest = backups.join(format!("removed-ingest-queue-{}.db", date));
+    let mut n = 2;
+    while dest.exists() {
+        dest = backups.join(format!("removed-ingest-queue-{}-{}.db", date, n));
+        n += 1;
+    }
+    if let Err(e) = std::fs::rename(&src, &dest) {
+        return IngestQueueArchive::Failed { error: e.to_string() };
+    }
+    for suffix in ["-wal", "-shm"] {
+        let side = data_dir.join(format!("{}{}", REMOVED_INGEST_QUEUE_DB, suffix));
+        if side.is_file() {
+            let side_dest = PathBuf::from(format!("{}{}", dest.display(), suffix));
+            let _ = std::fs::rename(&side, &side_dest);
+        }
+    }
+    IngestQueueArchive::Moved { to: dest }
+}
+
+/// Startup hook: archive the removed ingest queue in the app data folder
+/// and log the outcome once (silent when there is nothing to do).
+pub fn archive_removed_ingest_queue_at_startup() {
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    match archive_removed_ingest_queue(&app_data_dir(), &date) {
+        IngestQueueArchive::NothingToDo => {}
+        IngestQueueArchive::Moved { to } => log::info!(
+            "📦 Moved {} from the removed ingest feature to {} (kept, not deleted)",
+            REMOVED_INGEST_QUEUE_DB,
+            to.display()
+        ),
+        IngestQueueArchive::Failed { error } => log::warn!(
+            "📦 Could not move the old {} into backups ({}); left in place",
+            REMOVED_INGEST_QUEUE_DB,
+            error
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn archives_removed_ingest_queue_without_deleting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path();
+        // Nothing there: no-op, no backups folder created
+        assert_eq!(archive_removed_ingest_queue(data, "2026-10-02"), IngestQueueArchive::NothingToDo);
+        assert!(!data.join("backups").exists());
+
+        std::fs::write(data.join("ingest_queue.db"), b"q1").unwrap();
+        std::fs::write(data.join("ingest_queue.db-wal"), b"w").unwrap();
+        let IngestQueueArchive::Moved { to } = archive_removed_ingest_queue(data, "2026-10-02") else {
+            panic!("expected a move")
+        };
+        assert_eq!(to, data.join("backups/removed-ingest-queue-2026-10-02.db"));
+        assert_eq!(std::fs::read(&to).unwrap(), b"q1");
+        assert!(data.join("backups/removed-ingest-queue-2026-10-02.db-wal").exists());
+        assert!(!data.join("ingest_queue.db").exists());
+        assert!(!data.join("ingest_queue.db-wal").exists());
+
+        // Same day again (e.g. restored by hand): never overwrites
+        std::fs::write(data.join("ingest_queue.db"), b"q2").unwrap();
+        let IngestQueueArchive::Moved { to: to2 } = archive_removed_ingest_queue(data, "2026-10-02") else {
+            panic!("expected a move")
+        };
+        assert_eq!(to2, data.join("backups/removed-ingest-queue-2026-10-02-2.db"));
+        assert_eq!(std::fs::read(&to).unwrap(), b"q1");
+        assert_eq!(std::fs::read(&to2).unwrap(), b"q2");
+        // Second launch: nothing left to do
+        assert_eq!(archive_removed_ingest_queue(data, "2026-10-03"), IngestQueueArchive::NothingToDo);
+    }
 
     #[test]
     fn moves_when_destination_missing() {

@@ -30,6 +30,8 @@ import {
     VaultSearchResult,
 } from '../../../lib/tauri';
 import './IntelDashboard.css';
+import { friendlyAiError, isNoProviderError } from '../../../lib/ai';
+import { AiSetupNotice } from '../../AiSetupNotice';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -76,6 +78,8 @@ export const IntelDashboard: React.FC = () => {
     const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
     const [eventIntel, setEventIntel] = useState<Record<string, any>>({});
     const [lookingUp, setLookingUp] = useState<Record<string, boolean>>({});
+    const [lookupError, setLookupError] = useState<string | null>(null);
+    const [lookupNeedsAi, setLookupNeedsAi] = useState(false);
 
     // Graph state
     const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -603,6 +607,8 @@ export const IntelDashboard: React.FC = () => {
                                             <h3><CalendarDays size={14} /> Upcoming Meetings</h3>
                                         </div>
                                         <div className="intel-section-body">
+                                            {lookupNeedsAi && <AiSetupNotice feature="Attendee lookups" compact />}
+                                            {lookupError && <p className="intel-timeline-meta" role="alert">Lookup failed: {lookupError}</p>}
                                             <div className="intel-timeline">
                                                 {calendarEvents.map((event: any) => {
                                                     const start = new Date(event.start_time);
@@ -640,12 +646,16 @@ export const IntelDashboard: React.FC = () => {
                                                                         style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}
                                                                         onClick={async () => {
                                                                             setLookingUp(prev => ({ ...prev, [event.event_id]: true }));
+                                                                            setLookupError(null);
+                                                                            setLookupNeedsAi(false);
                                                                             try {
                                                                                 const emails = event.attendees.map((a: any) => a.email);
                                                                                 const result = await tauri.lookupAttendees(event.title, emails);
                                                                                 setEventIntel(prev => ({ ...prev, [event.event_id]: result }));
                                                                             } catch (err) {
-                                                                                console.error('Lookup failed:', err);
+                                                                                console.error('Lookup failed:', friendlyAiError(err));
+                                                                                if (isNoProviderError(err)) setLookupNeedsAi(true);
+                                                                                else setLookupError(friendlyAiError(err));
                                                                             } finally {
                                                                                 setLookingUp(prev => ({ ...prev, [event.event_id]: false }));
                                                                             }

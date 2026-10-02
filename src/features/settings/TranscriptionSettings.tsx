@@ -119,11 +119,11 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             const dgKey = await invoke<string | null>("get_deepgram_api_key");
             if (dgKey) setDeepgramKey(dgKey);
 
-            const dgModel = await invoke<string | null>("get_deepgram_model");
+            const dgModel = await invoke<string | null>("get_setting", { key: "deepgram_model" });
             if (dgModel) setDeepgramModel(dgModel);
 
 
-            const gModel = await invoke<string | null>("get_gemini_model");
+            const gModel = await invoke<string | null>("get_setting", { key: "gemini_model" });
             if (gModel) setGeminiModel(gModel);
 
             const gKey = await invoke<string | null>("get_gemini_api_key");
@@ -163,8 +163,9 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
 
             // Save models
             try {
-                await invoke("set_deepgram_model", { model: deepgramModel });
-                await invoke("set_gemini_model", { model: geminiModel });
+                // Read by the providers at connect time (settings.rs)
+                await invoke("set_setting", { key: "deepgram_model", value: deepgramModel });
+                await invoke("set_setting", { key: "gemini_model", value: geminiModel });
             } catch (err) {
                 console.error("Failed to save models", err);
             }

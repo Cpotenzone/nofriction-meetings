@@ -18,6 +18,8 @@ import {
     Building2,
     CheckCircle2
 } from 'lucide-react';
+import { friendlyAiError, isNoProviderError } from '../../../lib/ai';
+import { AiSetupNotice } from '../../AiSetupNotice';
 import * as tauri from '../../../lib/tauri';
 import {
     VaultTopic,
@@ -65,6 +67,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
     const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
     const [isGeneratingIntel, setIsGeneratingIntel] = useState<string | null>(null);
     const [intelResult, setIntelResult] = useState<MeetingIntelResult | null>(null);
+    const [intelError, setIntelError] = useState<string | null>(null);
+    const [intelNeedsAi, setIntelNeedsAi] = useState(false);
 
     useEffect(() => {
         loadVaultData();
@@ -126,6 +130,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         if (!selectedTopic) return;
         setIsGeneratingIntel(eventId);
         setIntelResult(null);
+        setIntelError(null);
+        setIntelNeedsAi(false);
         try {
             const result = await tauri.generateMeetingIntel(eventId, selectedTopic.name);
             setIntelResult(result);
@@ -134,7 +140,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
             // Auto-dismiss after 10s
             setTimeout(() => setIntelResult(null), 10000);
         } catch (err) {
-            console.error("Intel generation failed:", err);
+            console.error("Intel generation failed:", friendlyAiError(err));
+            if (isNoProviderError(err)) setIntelNeedsAi(true);
+            else setIntelError(friendlyAiError(err));
         } finally {
             setIsGeneratingIntel(null);
         }
@@ -600,6 +608,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                     ) : (
                         <p className="empty-text">No upcoming meetings found</p>
                     )}
+
+                    {intelNeedsAi && <AiSetupNotice feature="Attendee briefings" compact />}
+                    {intelError && <p className="empty-text" role="alert">Couldn't write the briefing: {intelError}</p>}
 
                     {intelResult && (
                         <div className="intel-result-banner">

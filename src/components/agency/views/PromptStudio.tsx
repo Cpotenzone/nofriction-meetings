@@ -10,6 +10,8 @@ import {
     type PromptUpdate,
 } from '../../../lib/tauri';
 import './PromptStudio.css';
+import { friendlyAiError } from '../../../lib/ai';
+import { AiSetupNotice, useAiStatus } from '../../AiSetupNotice';
 
 type CategoryFilter = 'all' | 'intelligence' | 'meeting' | 'vlm';
 const CATEGORIES: { key: CategoryFilter; label: string }[] = [
@@ -46,6 +48,7 @@ export const PromptStudio: React.FC = () => {
     const [testResponse, setTestResponse] = useState('');
     const [testing, setTesting] = useState(false);
     const [showTest, setShowTest] = useState(false);
+    const { configured: aiConfigured } = useAiStatus();
 
     // Load prompts
     const loadPrompts = useCallback(async () => {
@@ -159,7 +162,8 @@ export const PromptStudio: React.FC = () => {
             const response = await testPrompt(selectedId, testInput);
             setTestResponse(response);
         } catch (err) {
-            setTestResponse(`Error: ${err}`);
+            // No provider → "Add an AI key in Settings → AI Engine…", never a raw code
+            setTestResponse(friendlyAiError(err));
         } finally {
             setTesting(false);
         }
@@ -366,6 +370,7 @@ export const PromptStudio: React.FC = () => {
                                     </label>
                                     {showTest && (
                                         <div className="prompt-test-panel">
+                                            {aiConfigured === false && <AiSetupNotice feature="Prompt tests" compact />}
                                             <textarea
                                                 className="prompt-test-input"
                                                 value={testInput}
@@ -376,7 +381,7 @@ export const PromptStudio: React.FC = () => {
                                             <button
                                                 className={`prompt-action-btn save ${testing ? '' : ''}`}
                                                 onClick={handleTest}
-                                                disabled={testing || !testInput.trim()}
+                                                disabled={testing || !testInput.trim() || aiConfigured === false}
                                                 style={{ alignSelf: 'flex-start' }}
                                             >
                                                 {testing ? '⏳ Running...' : '▶ Run Test'}

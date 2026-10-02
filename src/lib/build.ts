@@ -19,6 +19,8 @@ export interface BuildCapabilities {
     apple_intelligence: boolean;
     apple_intelligence_reason: string;
     version: string;
+    /** build number (src-tauri/build_number.txt) */
+    build: string;
 }
 
 /** Used until the backend answers (and if it can't): the full DMG feature set. */
@@ -33,6 +35,7 @@ export const DEFAULT_CAPABILITIES: BuildCapabilities = {
     apple_intelligence: false,
     apple_intelligence_reason: "",
     version: "",
+    build: "",
 };
 
 let cached: Promise<BuildCapabilities> | null = null;
@@ -69,6 +72,9 @@ export function useCapabilities(): BuildCapabilities | null {
 export const TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
 /** Placeholder until the privacy page is published (docs/APP_STORE_RELEASE.md §5.3 step 9). */
 export const PRIVACY_URL = "https://nofriction.ai/privacy";
+/** Placeholder until the support page is published (site/ support page). */
+export const SUPPORT_URL = "https://nofriction.ai/support";
+export const SUPPORT_EMAIL = "support@nofriction.ai";
 
 export interface StoreProduct {
     id: string;

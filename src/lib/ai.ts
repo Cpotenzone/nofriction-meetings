@@ -107,9 +107,10 @@ export function consentProviderFromError(e: unknown): string | null {
 /** Short class for an AI error string (matches the backend prefixes). */
 export function aiErrorClass(e: unknown): string {
     const s = errText(e);
-    if (s.startsWith("CONSENT_REQUIRED:")) return "consent_required";
+    if (s.includes("CONSENT_REQUIRED:")) return "consent_required";
     if (s.includes("PRO_REQUIRED")) return "pro_required";
-    const m = /^(AI_[A-Z_]+|UNKNOWN_PROVIDER):/.exec(s);
+    // Commands often wrap the AI error ("Intel generation failed: AI_…: …")
+    const m = /(?:^|\s)(AI_[A-Z_]+|UNKNOWN_PROVIDER):/.exec(s);
     if (!m) return "other";
     return (
         {
@@ -143,9 +144,26 @@ export function friendlyAiError(e: unknown): string {
         unknown_provider: "Unknown provider",
     };
     const cls = aiErrorClass(s);
-    const detail = s.replace(/^(AI_[A-Z_]+|UNKNOWN_PROVIDER|CONSENT_REQUIRED|PRO_REQUIRED):\s*/, "");
+    if (cls === "no_provider" || cls === "no_key") return NO_AI_MESSAGE;
+    const detail = s.replace(/^.*?(AI_[A-Z_]+|UNKNOWN_PROVIDER|CONSENT_REQUIRED|PRO_REQUIRED):\s*/, "");
     if (cls === "other") return detail;
     return `${labels[cls]}: ${detail}`;
+}
+
+/** Shown wherever an AI feature is used before any provider is set up. */
+export const NO_AI_MESSAGE = "Add an AI key in Settings → AI Engine to use this.";
+
+/** True when the error means "no AI provider / key set up yet". */
+export function isNoProviderError(e: unknown): boolean {
+    const cls = aiErrorClass(e);
+    return cls === "no_provider" || cls === "no_key";
+}
+
+/** Fired after AI settings change so open screens re-check ai.status(). */
+export const AI_STATUS_EVENT = "nf:ai-status-changed";
+
+export function notifyAiStatusChanged(): void {
+    window.dispatchEvent(new Event(AI_STATUS_EVENT));
 }
 
 // ---------------------------------------------------------------------------

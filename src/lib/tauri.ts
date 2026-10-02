@@ -505,7 +505,7 @@ export async function getMeetingState(): Promise<MeetingState> {
 }
 
 export async function generateCatchUp(meetingId: string): Promise<CatchUpCapsule> {
-    return invoke<CatchUpCapsule>("generate_catch_up", { meetingId });
+    return withAiConsent(() => invoke<CatchUpCapsule>("generate_catch_up", { meetingId }));
 }
 
 export async function getLiveInsights(meetingId: string): Promise<LiveInsightEvent[]> {
@@ -574,14 +574,6 @@ export async function setAlwaysOnEnabled(enabled: boolean): Promise<void> {
     return invoke("set_always_on_enabled", { enabled });
 }
 
-
-// ============================================
-// Meeting Intelligence & Window Management
-// ============================================
-
-export async function dismissMeetingDetection(detectionId: string): Promise<void> {
-    return invoke("dismiss_meeting_detection", { detectionId });
-}
 
 // ============================================
 // Meeting-end detection (auto-stop)
@@ -823,7 +815,7 @@ export async function getEnrichedCalendarEvents(): Promise<CalendarEventEnriched
 }
 
 export async function generateMeetingIntel(eventId: string, topicName: string): Promise<MeetingIntelResult> {
-    return invoke<MeetingIntelResult>("generate_meeting_intel", { eventId, topicName });
+    return withAiConsent(() => invoke<MeetingIntelResult>("generate_meeting_intel", { eventId, topicName }));
 }
 
 // Calendar Integration — Meeting Attendees
@@ -888,7 +880,7 @@ export interface MeetingIntelPackage {
 }
 
 export async function lookupAttendees(eventTitle: string, attendeeEmails: string[]): Promise<MeetingIntelPackage> {
-    return invoke<MeetingIntelPackage>("lookup_attendees", { eventTitle, attendeeEmails });
+    return withAiConsent(() => invoke<MeetingIntelPackage>("lookup_attendees", { eventTitle, attendeeEmails }));
 }
 
 // Recording-Calendar Overlap
@@ -1007,7 +999,7 @@ export async function listPromptsByTheme(theme: string): Promise<PromptRecord[]>
 }
 
 export async function testPrompt(promptId: string, testInput: string): Promise<string> {
-    return invoke<string>("test_prompt", { promptId, testInput });
+    return withAiConsent(() => invoke<string>("test_prompt", { promptId, testInput }));
 }
 
 // ── Capture sources: which displays / windows are screenshotted ──────────

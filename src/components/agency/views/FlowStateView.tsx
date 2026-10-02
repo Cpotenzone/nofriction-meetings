@@ -6,6 +6,7 @@ import { useRecording } from '../../../hooks/useRecording';
 import { useTranscripts } from '../../../hooks/useTranscripts';
 import { invoke } from '@tauri-apps/api/core';
 import { LiveInsightEvent } from '../../../lib/tauri';
+import { AiSetupNotice, useAiStatus } from '../../AiSetupNotice';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     CheckSquareIcon,
@@ -33,11 +34,16 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
     const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isPolling, setIsPolling] = useState(false);
     const [sttStatus, setSttStatus] = useState<TranscriptionStatus | null>(null);
-    // No AI endpoint connected yet: say so instead of implying analysis runs
-    const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+    // No AI provider yet: say so (with a way to add one) instead of implying analysis runs
+    const { configured: aiConfigured, refresh: refreshAi } = useAiStatus();
+    // "Live insights during meetings" (Settings → AI Engine → Automatic AI)
+    const [liveInsightsOn, setLiveInsightsOn] = useState(true);
     useEffect(() => {
-        invoke<boolean>('check_vlm').then(setAiAvailable).catch(() => setAiAvailable(false));
-    }, [recording.isRecording]);
+        refreshAi();
+        invoke<{ liveInsights: boolean }>('get_ai_automation')
+            .then((a) => setLiveInsightsOn(a.liveInsights))
+            .catch(() => setLiveInsightsOn(true));
+    }, [recording.isRecording, refreshAi]);
 
     // Surface transcription health — historically failures were silent and
     // users got screenshots with no transcript and no explanation.
@@ -127,12 +133,15 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
                                 >
                                     <span className="icon"><SparkleIcon size={22} strokeWidth={1.5} /></span>
                                     <p>
-                                        {aiAvailable === false
-                                            ? "AI analysis is off until an AI endpoint is connected. Transcripts and screenshots are still captured."
+                                        {!liveInsightsOn
+                                            ? "Live insights are off. Turn them on in Settings → AI Engine → Automatic AI."
                                             : recording.isRecording
-                                                ? "Analyzing conversation…"
-                                                : "Action items, decisions, and risks surface here while you record."}
+                                                ? "Listening for action items, decisions and risks…"
+                                                : "Action items, decisions and risks surface here while you record."}
                                     </p>
+                                    {aiConfigured === false && (
+                                        <AiSetupNotice feature="After-meeting AI notes" compact />
+                                    )}
                                 </motion.div>
                             ) : (
                                 insights.map((insight) => (

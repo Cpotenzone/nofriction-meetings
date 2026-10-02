@@ -103,45 +103,6 @@ pub async fn set_always_on_enabled(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Get all running meeting apps
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_running_meeting_apps() -> Result<Vec<String>, String> {
-    use crate::meeting_trigger::MeetingTriggerEngine;
-
-    let default_apps = vec![
-        "zoom.us".to_string(),
-        "Zoom".to_string(),
-        "Google Meet".to_string(),
-        "Microsoft Teams".to_string(),
-        "Teams".to_string(),
-        "Slack".to_string(),
-        "Discord".to_string(),
-        "FaceTime".to_string(),
-        "Webex".to_string(),
-    ];
-
-    Ok(MeetingTriggerEngine::get_running_meeting_apps(
-        &default_apps,
-    ))
-}
-
-/// Check if audio is being used (microphone active)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn check_audio_usage() -> Result<bool, String> {
-    use crate::meeting_trigger::MeetingTriggerEngine;
-    Ok(MeetingTriggerEngine::check_audio_usage())
-}
-
-/// Dismiss a meeting detection suggestion
-#[tauri::command(rename_all = "camelCase")]
-pub async fn dismiss_meeting_detection(
-    state: State<'_, AppState>,
-    detection_id: String,
-) -> Result<(), String> {
-    state.meeting_trigger.dismiss_detection(&detection_id);
-    Ok(())
-}
-
 /// Transform window between Insight Deck and Genie mode
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_genie_mode(window: Window, is_genie: bool) -> Result<(), String> {

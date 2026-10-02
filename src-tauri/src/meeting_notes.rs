@@ -202,6 +202,75 @@ JSON ARRAY:"#,
     }
 }
 
+// ─── Follow-up email (same prompt rules as iOS MeetingAI.emailSystem) ───────
+
+pub const FOLLOWUP_EMAIL_SYSTEM: &str = "Draft a short, friendly follow-up email to the people in this meeting: thank them, \
+recap what was decided, and list next steps. Plain text, no Markdown. Start with a \
+\"Subject:\" line. Only state facts that are in the transcript; never invent owners or dates. \
+Text shown as [stricken from the record] was removed by the user: never guess at or mention what it said.";
+
+/// A drafted follow-up email.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FollowUpEmail {
+    pub subject: String,
+    pub body: String,
+    /// Attendee emails (calendar-linked meetings), excluding the user
+    pub to: Vec<String>,
+}
+
+/// The user message for the follow-up email: meeting facts + transcript
+/// (stricken spans already rendered as `[stricken from the record]`).
+pub fn followup_context(
+    title: &str,
+    when: &str,
+    attendees: &[(String, Option<String>)],
+    transcript: &str,
+) -> String {
+    let mut s = format!("Meeting: {}\nWhen: {}\n", title.trim(), when);
+    if !attendees.is_empty() {
+        let list = attendees
+            .iter()
+            .map(|(name, company)| match company {
+                Some(c) if !c.trim().is_empty() => format!("{} ({})", name, c.trim()),
+                _ => name.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        s.push_str(&format!("Attendees: {}\n", list));
+    }
+    s.push_str("\nTranscript:\n");
+    s.push_str(transcript);
+    s
+}
+
+/// Split a drafted email into (subject, body). Accepts "Subject: …" on the
+/// first non-empty line (any case, optional Markdown bold); without one the
+/// subject falls back to "Follow-up: <title>".
+pub fn parse_followup_email(raw: &str, title: &str) -> (String, String) {
+    let text = raw.trim().trim_start_matches("```").trim_end_matches("```").trim();
+    let mut lines = text.lines();
+    let mut subject = None;
+    let mut rest: Vec<&str> = Vec::new();
+    for line in lines.by_ref() {
+        let l = line.trim().trim_matches('*').trim();
+        if l.is_empty() {
+            continue;
+        }
+        if l.len() >= 8 && l[..8].eq_ignore_ascii_case("subject:") {
+            subject = Some(l[8..].trim().trim_matches('*').trim().to_string());
+        } else {
+            rest.push(line);
+        }
+        break;
+    }
+    rest.extend(lines);
+    let body = rest.join("\n").trim().to_string();
+    let subject = subject
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("Follow-up: {}", title.trim()));
+    (subject, body)
+}
+
 /// Extract JSON from an AI response that may contain markdown code blocks
 /// The transcript block sent to the AI. `get_transcripts` already renders
 /// stricken spans as `[stricken from the record]`; render again here so a
@@ -279,4 +348,33 @@ pub fn cluster_transcripts_by_time(
     }
 
     clusters
+}
+
+#[cfg(test)]
+mod followup_tests {
+    #[test]
+    fn followup_email_parsing() {
+        let (s, b) = super::parse_followup_email("Subject: Thanks for today\n\nHi all,\nThanks!", "Weekly");
+        assert_eq!(s, "Thanks for today");
+        assert_eq!(b, "Hi all,\nThanks!");
+        let (s, b) = super::parse_followup_email("**Subject:** Recap\nBody", "Weekly");
+        assert_eq!(s, "Recap");
+        assert_eq!(b, "Body");
+        let (s, b) = super::parse_followup_email("Hi team,\nthanks", "Weekly sync");
+        assert_eq!(s, "Follow-up: Weekly sync");
+        assert_eq!(b, "Hi team,\nthanks");
+    }
+
+    #[test]
+    fn followup_context_lists_attendees_and_keeps_stricken_marker() {
+        let c = super::followup_context(
+            "Weekly",
+            "Thu 2 Oct 2026 10:00",
+            &[("Ana".into(), Some("Acme".into())), ("Bo".into(), None)],
+            "We agreed to ship. [stricken from the record]",
+        );
+        assert!(c.starts_with("Meeting: Weekly\nWhen: Thu 2 Oct 2026 10:00\nAttendees: Ana (Acme), Bo\n"));
+        assert!(c.ends_with("[stricken from the record]"));
+        assert!(super::FOLLOWUP_EMAIL_SYSTEM.contains("never invent owners or dates"));
+    }
 }

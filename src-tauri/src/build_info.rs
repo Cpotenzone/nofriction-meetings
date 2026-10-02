@@ -38,6 +38,13 @@ pub struct BuildCapabilities {
     /// Why the Apple model isn't usable (empty when it is)
     pub apple_intelligence_reason: String,
     pub version: &'static str,
+    /// Build number (src-tauri/build_number.txt, bumped by `npm run build`)
+    pub build: String,
+}
+
+/// Build number baked in at compile time.
+pub fn build_number() -> String {
+    include_str!("../build_number.txt").trim().to_string()
 }
 
 pub fn capabilities() -> BuildCapabilities {
@@ -53,6 +60,16 @@ pub fn capabilities() -> BuildCapabilities {
         apple_intelligence: apple_ok,
         apple_intelligence_reason: apple_reason,
         version: env!("CARGO_PKG_VERSION"),
+        build: build_number(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn build_number_is_numeric() {
+        let b = super::build_number();
+        assert!(!b.is_empty() && b.chars().all(|c| c.is_ascii_digit()), "{:?}", b);
     }
 }
 

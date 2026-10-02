@@ -22,7 +22,7 @@ export const PRO_FEATURES = [
     "AI meeting notes, summaries and action items",
     "Follow-up email drafts",
     "Chat with your meetings",
-    "Pre-meeting briefings and live insights",
+    "Pre-meeting attendee briefings",
 ];
 
 export const FREE_FEATURES = "Recording, transcription, calendar & people, screenshots and export stay free.";

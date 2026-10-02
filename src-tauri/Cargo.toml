@@ -69,6 +69,9 @@ dirs = "6.0.0"
 async-trait = "0.1.89"
 tempfile = "3.8"
 jsonwebtoken = "9"
+# Meeting-end countdown notification (sandbox-safe, no entitlement).
+# ~2.3: 2.4+ requires tauri 2.10.
+tauri-plugin-notification = "~2.3"
 
 # macOS native frameworks
 [target.'cfg(target_os = "macos")'.dependencies]

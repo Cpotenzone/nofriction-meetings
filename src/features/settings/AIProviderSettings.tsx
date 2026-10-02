@@ -5,10 +5,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
 import {
     ai,
     aiErrorClass,
     friendlyAiError,
+    notifyAiStatusChanged,
     requestConsent,
     type AiDetection,
     type AiKind,
@@ -32,6 +34,8 @@ export function AIProviderSettings() {
             const [p, s] = await Promise.all([ai.listProviders(), ai.status()]);
             setProviders(p);
             setStatus(s);
+            // Open screens with "Add an AI key" notices re-check
+            notifyAiStatusChanged();
         } catch (e) {
             console.error("AI settings load failed:", e);
         } finally {
@@ -56,6 +60,7 @@ export function AIProviderSettings() {
             <PasteKey providers={providers} onSaved={refresh} />
             <SavedProviders saved={saved} onChange={refresh} />
             <ModelPickers providers={providers} byId={byId} status={status} onChange={refresh} />
+            <AutomaticAi configured={!!status?.text} />
             <LocalEndpoints providers={providers.filter((p) => LOCAL_IDS.includes(p.id))} onChange={refresh} />
             <GetAKey providers={providers} />
             <Advanced />
@@ -479,6 +484,80 @@ function ModelPicker({
                 )}
             </div>
         </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+
+interface AiAutomation {
+    liveInsights: boolean;
+    autoReport: boolean;
+}
+
+/** Off switches for the AI work that happens without a click. */
+function AutomaticAi({ configured }: { configured: boolean }) {
+    const [value, setValue] = useState<AiAutomation | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        invoke<AiAutomation>("get_ai_automation").then(setValue).catch((e) => setError(String(e)));
+    }, []);
+
+    const save = async (patch: Partial<AiAutomation>) => {
+        if (!value) return;
+        const prev = value;
+        setValue({ ...value, ...patch });
+        setError(null);
+        try {
+            setValue(await invoke<AiAutomation>("set_ai_automation", patch));
+        } catch (e) {
+            setValue(prev);
+            setError(String(e));
+        }
+    };
+
+    const row = (label: string, sub: string, on: boolean, patch: (v: boolean) => Partial<AiAutomation>) => (
+        <div className="settings-row">
+            <div className="settings-label">
+                <span className="label-main">{label}</span>
+                <span className="label-sub">{sub}</span>
+            </div>
+            <div
+                className={`toggle-switch ${on ? "active" : ""}`}
+                onClick={() => save(patch(!on))}
+                style={{ cursor: "pointer" }}
+                role="switch"
+                aria-checked={on}
+                aria-label={label}
+            >
+                <div className="toggle-knob"></div>
+            </div>
+        </div>
+    );
+
+    return (
+        <section className="settings-section">
+            <h3>Automatic AI</h3>
+            <p className="section-desc">
+                What happens without you clicking anything.
+                {!configured && " These take effect once an AI provider is connected."}
+            </p>
+            {value &&
+                row(
+                    "Live insights during meetings",
+                    "Spot action items, decisions and risks in the live transcript while you record (runs on this Mac).",
+                    value.liveInsights,
+                    (v) => ({ liveInsights: v }),
+                )}
+            {value &&
+                row(
+                    "Write a report after each meeting",
+                    "When a recording longer than 6 minutes stops, write AI notes with your AI provider. Off: generate notes yourself from Recordings → Notes.",
+                    value.autoReport,
+                    (v) => ({ autoReport: v }),
+                )}
+            {error && <p className="ai-error-text">{error}</p>}
+        </section>
     );
 }
 

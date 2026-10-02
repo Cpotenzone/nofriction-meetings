@@ -28,6 +28,7 @@ pub const PRO_PRODUCT_IDS: &[&str] = &[
 type Callback = extern "C" fn(*mut c_void, *const c_char);
 
 #[cfg(target_os = "macos")]
+#[cfg_attr(test, allow(dead_code))] // tests never call the real bridge
 extern "C" {
     fn nf_free(p: *mut c_char);
     fn nf_apple_model_availability() -> *mut c_char;

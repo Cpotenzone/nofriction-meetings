@@ -7,7 +7,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { debugLog } from "./lib/tauri";
 import "./App.css";
-import { MeetingDetectionBanner } from "./components/MeetingDetectionBanner";
 import { MeetingEndBanner } from "./components/MeetingEndBanner";
 import { SetupWizard, useSetupRequired } from "./features/onboarding/SetupWizard";
 import { isOffline } from "./lib/offline";
@@ -15,6 +14,7 @@ import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 import { GenieView } from "./components/GenieView";
 import { AgencyLayout, AgencyMode } from "./components/agency/AgencyLayout";
+import { openSettings } from "./lib/navigation";
 
 
 function App() {
@@ -25,7 +25,7 @@ function App() {
   const recording = useRecording();
   const transcripts = useTranscripts(recording.meetingId);
   const commandPalette = useCommandPalette();
-  const setupRequired = useSetupRequired();
+  const [setupRequired, setSetupRequired] = useSetupRequired();
   const [isGenieMode, setIsGenieMode] = useState(false);
   const isGenieModeRef = useRef(isGenieMode);
   isGenieModeRef.current = isGenieMode;
@@ -35,6 +35,8 @@ function App() {
   recordingRef.current = recording;
   const transcriptsRef = useRef(transcripts);
   transcriptsRef.current = transcripts;
+  const commandPaletteRef = useRef(commandPalette);
+  commandPaletteRef.current = commandPalette;
 
   // Menu event listeners — registered once. Re-registering on every render
   // raced the async listen() calls against cleanup and leaked handlers, so a
@@ -57,7 +59,29 @@ function App() {
       const transcripts = { clearLiveTranscripts: () => transcriptsRef.current.clearLiveTranscripts() };
       add(await listen("menu:search", () => setActiveMode("deck")));
       add(await listen("menu:insights", () => setActiveMode("deck")));
-      add(await listen("menu:settings", () => setActiveMode("deck")));
+      // Menu bar (menu_builder.rs) and tray: every item does something
+      add(await listen("menu:settings", () => openSettings("general")));
+      add(await listen("menu:view_settings", () => openSettings("general")));
+      add(await listen("menu:view_live", () => setActiveMode("flow")));
+      add(await listen("menu:view_rewind", () => setActiveMode("deck")));
+      add(await listen("menu:view_prompts", () => setActiveMode("prompts")));
+      add(await listen("menu:ask_ai", () => setActiveMode("chat")));
+      add(await listen("menu:help", () => setActiveMode("help")));
+      add(await listen("menu:command_palette", () => commandPaletteRef.current.open()));
+      add(await listen("menu:new_recording", async () => {
+        if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        } else if (recording.isPaused) {
+          await recording.resumeRecording();
+        }
+      }));
+      add(await listen("menu:stop_recording", async () => {
+        if (recording.isRecording) {
+          await recording.stopRecording();
+          setMeetingListRefreshKey((k) => k + 1);
+        }
+      }));
       // Tray menu events
       add(await listen("tray:start_recording", async () => {
         if (!recording.isRecording) {
@@ -219,10 +243,6 @@ function App() {
     );
   }
 
-  if (setupRequired) {
-    return <SetupWizard onComplete={() => window.location.reload()} />;
-  }
-
   const handleToggleRecording = async () => {
     try {
       if (recording.isRecording) {
@@ -265,6 +285,12 @@ function App() {
         )}
       </div>
     );
+  }
+
+  // First run (or re-run from Settings → General). Shown once the backend
+  // is ready: the steps call commands that need the database and models dir.
+  if (setupRequired) {
+    return <SetupWizard onComplete={() => setSetupRequired(false)} />;
   }
 
   // When a meeting is selected
@@ -322,18 +348,6 @@ function App() {
       <AiConsentModal />
       <PaywallModal />
 
-      {/* Meeting Detection Banner - shows when meetings detected */}
-      {!recording.isRecording && activeMode === 'flow' && (
-        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
-          <MeetingDetectionBanner
-            onStartRecording={async () => {
-              transcripts.clearLiveTranscripts();
-              await recording.startRecording();
-            }}
-          />
-        </div>
-      )}
-
       {/* "Meeting seems to have ended — stopping in 30s" */}
       {meetingEndBanner}
 
@@ -342,10 +356,15 @@ function App() {
         isOpen={commandPalette.isOpen}
         onClose={commandPalette.close}
         onNavigate={(tab: string) => {
-          // Map legacy tabs to modes roughly
           if (tab === 'live') setActiveMode('flow');
+          else if (tab === 'chat') setActiveMode('chat');
+          else if (tab === 'prompts') setActiveMode('prompts');
+          else if (tab === 'help') setActiveMode('help');
+          else if (tab === 'settings') openSettings('general');
+          else if (tab === 'settings:ai') openSettings('ai');
           else setActiveMode('deck');
         }}
+        onSelectMeeting={handleMeetingSelect}
         onStartRecording={async () => {
           transcripts.clearLiveTranscripts();
           await recording.startRecording();

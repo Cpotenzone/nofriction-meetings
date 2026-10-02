@@ -496,3 +496,93 @@
     outline: 2px solid var(--hazard-yellow, #facc15);
     outline-offset: 2px;
 }
+
+/* ── Setup assistant v2 ───────────────────────────────────────────────── */
+.setup-skip-all {
+  display: block;
+  margin: 8px auto 0;
+  background: none;
+  border: none;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.45));
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.setup-skip-all:hover {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+}
+.setup-ready {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #86efac;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.setup-ok {
+  color: #86efac;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+.setup-footnote {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.5));
+}
+.setup-download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+}
+.setup-download-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.setup-download-bar > div {
+  height: 100%;
+  background: var(--hazard-yellow, #facc15);
+  transition: width 0.25s ease;
+}
+.setup-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(250, 204, 21, 0.08);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  font-size: 13px;
+}
+.setup-consent p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.75));
+}
+.warning-box.consent {
+  margin-top: 16px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.get-key-link.as-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.mode-card .setup-btn {
+  align-self: center;
+}

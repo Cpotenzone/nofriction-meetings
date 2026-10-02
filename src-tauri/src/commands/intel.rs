@@ -470,3 +470,126 @@ pub async fn generate_meeting_report(
         "participants": notes.participants,
     }))
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Automatic AI use (Settings → AI Engine toggles)
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiAutomationSettings {
+    /// Action items / decisions / risks spotted while recording
+    pub live_insights: bool,
+    /// Write AI notes when a recording (> 6 min) stops
+    pub auto_report: bool,
+}
+
+async fn read_ai_automation(state: &AppState) -> AiAutomationSettings {
+    let live = state.settings.get(crate::live_intel_agent::SETTING_ENABLED).await.ok().flatten();
+    let report = state.settings.get("auto_generate_report").await.ok().flatten();
+    AiAutomationSettings {
+        live_insights: crate::live_intel_agent::parse_enabled(live.as_deref()),
+        // Same rule as SettingsManager::get_all (default on)
+        auto_report: report.map(|v| v == "true").unwrap_or(true),
+    }
+}
+
+/// Load the live-insights switch into the agent (startup).
+pub async fn load_ai_automation(state: &AppState) {
+    let s = read_ai_automation(state).await;
+    crate::live_intel_agent::set_enabled(s.live_insights);
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_ai_automation(state: State<'_, AppState>) -> Result<AiAutomationSettings, String> {
+    Ok(read_ai_automation(&state).await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn set_ai_automation(
+    state: State<'_, AppState>,
+    live_insights: Option<bool>,
+    auto_report: Option<bool>,
+) -> Result<AiAutomationSettings, String> {
+    if let Some(v) = live_insights {
+        state
+            .settings
+            .set(crate::live_intel_agent::SETTING_ENABLED, if v { "true" } else { "false" })
+            .await
+            .map_err(|e| format!("Failed to save setting: {}", e))?;
+        crate::live_intel_agent::set_enabled(v);
+    }
+    if let Some(v) = auto_report {
+        state
+            .settings
+            .set("auto_generate_report", if v { "true" } else { "false" })
+            .await
+            .map_err(|e| format!("Failed to save setting: {}", e))?;
+    }
+    Ok(read_ai_automation(&state).await)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Follow-up email (Recordings → Notes → Follow-up email)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Draft a follow-up email for a meeting with the active AI provider.
+/// Pro-gated and consent-gated like every AI call (ai::complete_text).
+#[tauri::command(rename_all = "camelCase")]
+pub async fn draft_followup_email(
+    state: State<'_, AppState>,
+    meeting_id: String,
+) -> Result<crate::meeting_notes::FollowUpEmail, String> {
+    use crate::meeting_notes::{followup_context, parse_followup_email, transcript_for_prompt, FOLLOWUP_EMAIL_SYSTEM};
+
+    let meeting = state
+        .database
+        .get_meeting(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to load meeting: {}", e))?
+        .ok_or("Meeting not found")?;
+    let transcripts = state
+        .database
+        .get_transcripts(&meeting_id)
+        .await
+        .map_err(|e| format!("Failed to load transcript: {}", e))?;
+    if transcripts.is_empty() {
+        return Err("This meeting has no transcript yet, so there is nothing to summarize.".into());
+    }
+    let people = crate::people::meeting_people(&state.database.get_pool(), &meeting_id)
+        .await
+        .map(|p| p.people)
+        .unwrap_or_default();
+    let others: Vec<&crate::people::Person> = people.iter().filter(|p| !p.is_self).collect();
+    let attendees: Vec<(String, Option<String>)> = others
+        .iter()
+        .map(|p| {
+            let name = p
+                .name
+                .clone()
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| crate::attendee_intel::extract_name_from_email(&p.email));
+            (name, p.company.clone())
+        })
+        .collect();
+    let when = meeting
+        .started_at
+        .with_timezone(&chrono::Local)
+        .format("%A %-d %B %Y, %H:%M")
+        .to_string();
+    let context = followup_context(&meeting.title, &when, &attendees, &transcript_for_prompt(&transcripts));
+
+    let raw = crate::ai_client::AIClient::new()
+        .complete_with(Some(FOLLOWUP_EMAIL_SYSTEM), &context, 700, 0.5)
+        .await?;
+    let (subject, body) = parse_followup_email(&raw, &meeting.title);
+    if body.trim().is_empty() {
+        return Err("The AI provider returned an empty email. Try again.".into());
+    }
+    let to = others
+        .iter()
+        .map(|p| p.email.trim().to_string())
+        .filter(|e| e.contains('@'))
+        .collect();
+    Ok(crate::meeting_notes::FollowUpEmail { subject, body, to })
+}

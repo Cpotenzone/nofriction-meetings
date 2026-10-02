@@ -18,8 +18,8 @@ interface Command {
 interface Meeting {
     id: string;
     title: string;
-    start_time: string;
-    duration_seconds: number;
+    started_at: string;
+    duration_seconds: number | null;
 }
 
 interface CommandPaletteProps {
@@ -28,6 +28,8 @@ interface CommandPaletteProps {
     onNavigate?: (tab: string) => void;
     onStartRecording?: () => void;
     onStopRecording?: () => void;
+    /** Open a recording in Recordings */
+    onSelectMeeting?: (meetingId: string) => void;
     isRecording?: boolean;
     currentMeetingId?: string | null;
 }
@@ -38,6 +40,7 @@ export function CommandPalette({
     onNavigate,
     onStartRecording,
     onStopRecording,
+    onSelectMeeting,
     isRecording,
     currentMeetingId,
 }: CommandPaletteProps) {
@@ -59,7 +62,7 @@ export function CommandPalette({
 
     const loadRecentMeetings = async () => {
         try {
-            const meetings = await invoke<Meeting[]>("list_meetings", { limit: 5 });
+            const meetings = await invoke<Meeting[]>("get_meetings", { limit: 5 });
             setRecentMeetings(meetings);
         } catch (err) {
             console.error("Failed to load meetings:", err);
@@ -68,12 +71,16 @@ export function CommandPalette({
 
     // Define all commands
     const commands = useMemo<Command[]>(() => {
+        const go = (tab: string) => () => {
+            onNavigate?.(tab);
+            onClose();
+        };
         const baseCommands: Command[] = [
             // Actions
             {
                 id: "record",
                 label: isRecording ? "Stop Recording" : "Start Recording",
-                shortcut: "⌘R",
+                shortcut: isRecording ? "⌘." : "⌘N",
                 category: "action",
                 icon: isRecording ? "⏹" : "⏺",
                 action: () => {
@@ -86,159 +93,28 @@ export function CommandPalette({
                 },
                 keywords: ["record", "start", "stop", "capture", "mic"],
             },
-            {
-                id: "summarize",
-                label: "Summarize Meeting",
-                shortcut: "⌘⇧S",
-                category: "ai",
-                icon: "📝",
-                action: async () => {
-                    if (currentMeetingId) {
-                        // Trigger AI summary
-                        onNavigate?.("ai");
-                    }
-                    onClose();
-                },
-                keywords: ["summary", "ai", "analyze", "overview"],
-            },
-            {
-                id: "action-items",
-                label: "Extract Action Items",
-                shortcut: "⌘⇧A",
-                category: "ai",
-                icon: "✅",
-                action: () => {
-                    onNavigate?.("ai");
-                    onClose();
-                },
-                keywords: ["action", "items", "tasks", "todo", "extract"],
-            },
-            {
-                id: "export",
-                label: "Export Meeting",
-                shortcut: "⌘⇧E",
-                category: "action",
-                icon: "📤",
-                action: async () => {
-                    try {
-                        await invoke("export_data");
+            ...(currentMeetingId
+                ? [{
+                    id: "notes-current",
+                    label: "Open Notes for This Meeting",
+                    category: "ai" as const,
+                    icon: "📝",
+                    action: () => {
+                        onSelectMeeting?.(currentMeetingId);
                         onClose();
-                    } catch (err) {
-                        console.error("Export failed:", err);
-                    }
-                },
-                keywords: ["export", "save", "download", "share"],
-            },
+                    },
+                    keywords: ["notes", "summary", "action", "items", "decisions", "email", "follow-up"],
+                }]
+                : []),
 
             // Navigation
-            {
-                id: "nav-live",
-                label: "Go to Live View",
-                shortcut: "⌘1",
-                category: "navigation",
-                icon: "📝",
-                action: () => {
-                    onNavigate?.("live");
-                    onClose();
-                },
-                keywords: ["live", "transcript", "current"],
-            },
-            {
-                id: "nav-rewind",
-                label: "Go to Rewind",
-                shortcut: "⌘2",
-                category: "navigation",
-                icon: "🎬",
-                action: () => {
-                    onNavigate?.("rewind");
-                    onClose();
-                },
-                keywords: ["rewind", "timeline", "playback", "history"],
-            },
-            {
-                id: "nav-settings",
-                label: "Open Settings",
-                shortcut: "⌘,",
-                category: "navigation",
-                icon: "⚙️",
-                action: () => {
-                    onNavigate?.("settings");
-                    onClose();
-                },
-                keywords: ["settings", "preferences", "config", "options"],
-            },
-            {
-                id: "nav-prompts",
-                label: "Open Prompt Library",
-                shortcut: "⌘⇧P",
-                category: "navigation",
-                icon: "🎯",
-                action: () => {
-                    onNavigate?.("prompts");
-                    onClose();
-                },
-                keywords: ["prompts", "ai", "library", "templates"],
-            },
-
-            // AI Actions
-            {
-                id: "ask-ai",
-                label: "Ask AI a Question",
-                category: "ai",
-                icon: "🤖",
-                action: () => {
-                    onNavigate?.("ai");
-                    onClose();
-                },
-                keywords: ["ask", "question", "ai", "chat", "query"],
-            },
-            {
-                id: "analyze-frames",
-                label: "Analyze Screen Captures",
-                category: "ai",
-                icon: "🖼️",
-                action: async () => {
-                    try {
-                        await invoke("analyze_pending_frames", { limit: 10 });
-                        onClose();
-                    } catch (err) {
-                        console.error("Analysis failed:", err);
-                    }
-                },
-                keywords: ["analyze", "frames", "screenshots", "vlm", "vision"],
-            },
-
-            // Utility
-            {
-                id: "clear-cache",
-                label: "Clear Cache",
-                category: "action",
-                icon: "🗑️",
-                action: async () => {
-                    try {
-                        await invoke("clear_cache");
-                        onClose();
-                    } catch (err) {
-                        console.error("Clear failed:", err);
-                    }
-                },
-                keywords: ["clear", "cache", "clean", "reset"],
-            },
-            {
-                id: "refresh-models",
-                label: "Refresh AI Models",
-                category: "action",
-                icon: "🔄",
-                action: async () => {
-                    try {
-                        await invoke("refresh_model_availability");
-                        onClose();
-                    } catch (err) {
-                        console.error("Refresh failed:", err);
-                    }
-                },
-                keywords: ["refresh", "models", "ollama", "ai"],
-            },
+            { id: "nav-live", label: "Go to Live", shortcut: "⌘1", category: "navigation", icon: "🎙️", action: go("live"), keywords: ["live", "transcript", "current"] },
+            { id: "nav-rewind", label: "Go to Recordings", shortcut: "⌘2", category: "navigation", icon: "🎬", action: go("rewind"), keywords: ["rewind", "recordings", "timeline", "history", "notes"] },
+            { id: "nav-chat", label: "Chat with Your Meetings", shortcut: "⇧⌘I", category: "ai", icon: "💬", action: go("chat"), keywords: ["ask", "question", "ai", "chat", "search"] },
+            { id: "nav-prompts", label: "Open Prompts", shortcut: "⇧⌘P", category: "navigation", icon: "🎯", action: go("prompts"), keywords: ["prompts", "ai", "library", "templates"] },
+            { id: "nav-settings", label: "Open Settings", shortcut: "⌘,", category: "navigation", icon: "⚙️", action: go("settings"), keywords: ["settings", "preferences", "config", "options"] },
+            { id: "nav-ai", label: "Set Up AI (Settings → AI Engine)", category: "ai", icon: "✨", action: go("settings:ai"), keywords: ["ai", "key", "openai", "provider", "engine"] },
+            { id: "nav-help", label: "Help", category: "navigation", icon: "❓", action: go("help"), keywords: ["help", "docs", "support", "guide"] },
         ];
 
         // Add meeting commands
@@ -248,15 +124,15 @@ export function CommandPalette({
             category: "meeting" as const,
             icon: "📅",
             action: () => {
-                // Navigate to meeting
-                onNavigate?.("rewind");
+                if (onSelectMeeting) onSelectMeeting(meeting.id);
+                else onNavigate?.("rewind");
                 onClose();
             },
-            keywords: [meeting.title?.toLowerCase() || "", formatTimeAgo(meeting.start_time)],
+            keywords: [meeting.title?.toLowerCase() || "", formatTimeAgo(meeting.started_at)],
         }));
 
         return [...baseCommands, ...meetingCommands];
-    }, [isRecording, currentMeetingId, recentMeetings, onNavigate, onStartRecording, onStopRecording, onClose]);
+    }, [isRecording, currentMeetingId, recentMeetings, onNavigate, onStartRecording, onStopRecording, onSelectMeeting, onClose]);
 
     // Fuzzy search filter
     const filteredCommands = useMemo(() => {

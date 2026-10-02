@@ -340,8 +340,7 @@ impl Detector {
     pub fn reset(&mut self, now: DateTime<Utc>) {
         self.pending = None;
         self.forget_mic_evidence();
-        self.seen_windows.clear();
-        self.windows_absent_since = None;
+        self.forget_window_evidence();
         self.quiet_baseline = now;
     }
 
@@ -363,6 +362,13 @@ impl Detector {
         self.seen_apps.clear();
         self.mic_held_since.clear();
         self.apps_absent_since = None;
+    }
+
+    /// A meeting window must be seen again (and then close) before its
+    /// absence counts.
+    fn forget_window_evidence(&mut self) {
+        self.seen_windows.clear();
+        self.windows_absent_since = None;
     }
 
     fn fire(&mut self, now: DateTime<Utc>, kind: SignalKind, reason: String, end_at: DateTime<Utc>) -> Action {
@@ -423,10 +429,13 @@ impl Detector {
         if let Some(p) = self.pending.clone() {
             if speech.map(|t| t > p.detected_at).unwrap_or(false) {
                 self.pending = None;
-                if p.kind == SignalKind::MicReleased {
-                    // The release was wrong (people are still talking). Without
-                    // this it would re-fire on the very next quiet stretch.
-                    self.forget_mic_evidence();
+                // The signal was wrong (people are still talking, e.g. an
+                // in-room conversation after the call). Without this it would
+                // re-fire on the very next quiet stretch.
+                match p.kind {
+                    SignalKind::MicReleased => self.forget_mic_evidence(),
+                    SignalKind::WindowClosed => self.forget_window_evidence(),
+                    _ => {}
                 }
                 return Action::Cancelled("speech resumed");
             }
@@ -569,6 +578,9 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
     });
     *CURRENT.lock() = Some(monitor.clone());
     crate::tray_builder::set_auto_stop_status(&app, "Auto-stop: watching for meeting end", false);
+    // The countdown notification needs permission: ask at the first
+    // recording (macOS prompts only once), never at launch.
+    crate::notifications::request_permission_once();
 
     tauri::async_runtime::spawn(async move {
         log::info!("🛑 Meeting-end monitor started for {}", meeting_id);
@@ -655,7 +667,7 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
                         &format!("Meeting ended? Stopping in {}s…", (p.deadline - now).num_seconds()),
                         true,
                     );
-                    request_attention(&app);
+                    request_attention(&app, &p.reason, (p.deadline - now).num_seconds());
                 }
                 Action::Cancelled(why) => {
                     log::info!("🛑 Meeting-end countdown cancelled: {}", why);
@@ -708,14 +720,21 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
     });
 }
 
-/// Bounce the Dock icon when the window isn't focused (no notification
-/// plugin in this app; adding one would need new capabilities).
-fn request_attention(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        if !w.is_focused().unwrap_or(false) {
-            let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
-        }
+/// When the window isn't focused (hidden, minimized or another app in
+/// front), bounce the Dock icon and post a notification with the reason;
+/// clicking it brings the window (and the countdown banner) forward.
+fn request_attention(app: &AppHandle, reason: &str, countdown_secs: i64) {
+    let focused = app
+        .get_webview_window("main")
+        .map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
+        .unwrap_or(false);
+    if focused {
+        return;
     }
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
+    }
+    crate::notifications::notify_meeting_end(app, reason, countdown_secs);
 }
 
 /// Called by the stop path. Ends the monitor and returns the end point to
@@ -1073,6 +1092,32 @@ mod tests {
         assert!(matches!(a, Action::Detected(Pending { kind: SignalKind::WindowClosed, .. })), "{:?}", a);
         // Window back → cancel
         assert_eq!(d.tick(&win(105, &["Zoom meeting"], 39)), Action::Cancelled("meeting window is back"));
+    }
+
+    #[test]
+    fn speech_cancel_clears_window_evidence_so_it_does_not_refire() {
+        let mut d = Detector::new(DetectorConfig::with_silence_minutes(30), t0(), None);
+        let win = |secs, w: &[&str], speech| Observation {
+            meeting_windows: apps(w),
+            ..obs(secs, None, Some(speech))
+        };
+        d.tick(&win(0, &["Zoom meeting"], 0));
+        d.tick(&win(10, &[], 0)); // window closed at 10
+        let a = d.tick(&win(70, &[], 0));
+        assert!(matches!(a, Action::Detected(Pending { kind: SignalKind::WindowClosed, .. })), "{:?}", a);
+        // People keep talking in the room after the call
+        assert_eq!(d.tick(&win(80, &[], 78)), Action::Cancelled("speech resumed"));
+        // Quiet again for a long while, window still gone: no repeated banners
+        for s in (82..1200).step_by(2) {
+            assert_eq!(d.tick(&win(s, &[], 78)), Action::None, "at {}", s);
+        }
+        // A meeting window genuinely opens again, then closes → fires again
+        d.tick(&win(1200, &["Google Meet"], 78));
+        d.tick(&win(1210, &[], 78));
+        assert!(matches!(
+            d.tick(&win(1240, &[], 78)),
+            Action::Detected(Pending { kind: SignalKind::WindowClosed, .. })
+        ));
     }
 
     #[test]

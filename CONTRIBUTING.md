@@ -19,23 +19,39 @@ cd nofriction-meetings
 # 2. Install Node dependencies
 npm install
 
-# 3. Copy environment config
-cp .env.example .env
-# Edit .env with your API keys (at minimum, DEEPGRAM_API_KEY)
-
-# 4. Run in development mode
+# 3. Run in development mode
 npm run tauri dev
 ```
+
+No `.env` file and no API keys are needed to build or run. Transcription runs
+on-device (Whisper; the setup assistant downloads the model on first run). AI
+features are bring-your-own-key: paste a key in **Settings → AI Engine** (or
+use a local Ollama / LM Studio server, or Apple's on-device model on macOS 26).
+Keys are stored in the macOS Keychain, never in SQLite, files or the repo.
+See `docs/AI_PROVIDERS.md`.
 
 > **Note:** First build will take 5-10 minutes for Rust compilation. Subsequent builds are fast (incremental).
 
 ## macOS Permissions
 
-When running for the first time, macOS will prompt for:
-- **Microphone** — Required for audio recording
-- **Screen Recording** — Required for screen capture
-- **Accessibility** — Required for text extraction
-- **Calendar** — Optional, enables meeting detection
+When running for the first time, the setup assistant walks through:
+- **Microphone** — required to transcribe what you say
+- **Screen & System Audio Recording** — call audio and screenshots
+- **Calendar** — optional; names recordings after calendar events
+- **Notifications** — asked at the first recording (meeting-end countdown)
+- **Accessibility** — optional, Developer ID build only (text capture)
+
+Re-run it any time from Settings → General → Run Setup Assistant.
+
+## Build flavors
+
+- Default (Developer ID DMG): `npm run tauri build`
+- Mac App Store (sandboxed, StoreKit): `cargo build --features mas` /
+  see `docs/MAC_APP_STORE_BUILD.md`
+
+Both must compile with zero warnings: `cargo check` and
+`cargo check --features mas` in `src-tauri/`. Run the tests with
+`cargo test --lib` (both flavors).
 
 ## Project Structure
 
@@ -50,11 +66,13 @@ nofriction-meetings/
 │   └── lib/                  # Utilities (tauri.ts)
 ├── src-tauri/                # Backend (Rust + Tauri)
 │   └── src/
-│       ├── lib.rs            # App initialization & state
-│       ├── commands.rs       # Tauri command handlers
-│       ├── database.rs       # SQLite operations
-│       ├── transcription/    # Multi-provider transcription
-│       └── ...               # 50+ domain modules
+│       ├── lib.rs            # App initialization, state, command registry
+│       ├── commands/         # Tauri command handlers (by domain)
+│       ├── ai/               # Bring-your-own-key AI providers (Keychain)
+│       ├── database.rs       # SQLite operations + migrations
+│       ├── transcription/    # Local Whisper + optional cloud providers
+│       ├── redaction.rs      # Delete / "Strike from the record"
+│       └── ...               # Domain modules
 ├── docs/                     # Documentation
 ├── DESIGN.md                 # Design system & tokens
 └── CLAUDE.md                 # AI assistant guidelines
@@ -82,7 +100,8 @@ All new CSS should use design system tokens prefixed with `--ds-`. See `DESIGN.m
 ### Rust
 - Use `cargo fmt` before committing
 - Use `cargo clippy` to check for warnings
-- All new Tauri commands go in domain-specific files (e.g., `commands_vault.rs`), not in the main `commands.rs`
+- New Tauri commands go in a domain file under `src-tauri/src/commands/` (e.g. `commands/vault.rs`) and must be registered in `lib.rs`; every frontend `invoke()` must name a registered command
+- Database migrations stay on the single connection inside `run_migrations`
 
 ### TypeScript/React
 - Use TypeScript strict mode
@@ -92,9 +111,10 @@ All new CSS should use design system tokens prefixed with `--ds-`. See `DESIGN.m
 
 ## Security Rules
 
-1. **Never commit `.env` files** — They contain API keys
-2. **Never hardcode API keys** — Use environment variables or the settings system
-3. **All user input must be validated** before passing to SQL or external APIs
+1. **Never hardcode API keys** and never add a key as a fallback — keys live in the macOS Keychain (`src-tauri/src/secrets.rs`)
+2. **Never log transcript text or keys**
+3. **Never commit `.env` files or secrets** — the app reads no `.env`; a legacy `~/.nofriction-meetings/.env` is migrated into the Keychain and deleted on startup
+4. **All user input must be validated** before passing to SQL or external APIs
 
 ## Building for Release
 

@@ -111,6 +111,9 @@ fn build_swift_bridge() {
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=NoFrictionBridge");
     println!("cargo:rustc-link-lib=framework=Foundation");
+    // Notifications.swift: permission request + app-activation observer
+    println!("cargo:rustc-link-lib=framework=UserNotifications");
+    println!("cargo:rustc-link-lib=framework=AppKit");
     if mas {
         println!("cargo:rustc-link-lib=framework=StoreKit");
     }

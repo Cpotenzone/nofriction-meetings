@@ -6162,3 +6162,54 @@ img.logo-icon {
   height: 100%;
   padding: 32px;
 }
+/* ── "Add an AI key" notice (AiSetupNotice) ───────────────────────────── */
+.nf-ai-setup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md, 10px);
+  background: rgba(250, 204, 21, 0.06);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  color: var(--text-primary, #fff);
+  text-align: left;
+}
+.nf-ai-setup.compact {
+  padding: 10px 12px;
+  gap: 10px;
+}
+.nf-ai-setup__icon {
+  flex: none;
+  color: var(--accent-primary, #facc15);
+  display: flex;
+}
+.nf-ai-setup__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.nf-ai-setup__text strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nf-ai-setup__text span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+}
+.nf-ai-setup__btn {
+  flex: none;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-primary, #facc15);
+  background: var(--accent-primary, #facc15);
+  color: #0a0a0a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nf-ai-setup__btn:hover {
+  filter: brightness(1.1);
+}

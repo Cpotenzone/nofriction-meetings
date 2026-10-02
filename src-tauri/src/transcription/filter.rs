@@ -253,6 +253,8 @@ pub fn collapse_loops_in_text(text: &str) -> String {
     let words: Vec<&str> = text.split_whitespace().collect();
     let keys: Vec<String> = words.iter().map(|w| tokens(w).join(" ")).collect();
     let mut keep = vec![true; words.len()];
+    // Kept word index → replacement text (carries the run's final punctuation)
+    let mut rewrite: Vec<(usize, String)> = Vec::new();
     let mut changed = false;
 
     let mut i = 0;
@@ -271,6 +273,14 @@ pub fn collapse_loops_in_text(text: &str) -> String {
                 let end = i + reps * n;
                 for k in keep.iter_mut().take(end).skip(i + n) {
                     *k = false;
+                }
+                // "no no no no, that's wrong" → "no, that's wrong": the kept
+                // copy ends with the punctuation that closed the run.
+                let last_kept = i + n - 1;
+                let (_, run_punct) = split_trailing_punct(words[end - 1]);
+                if !run_punct.is_empty() {
+                    let (core, _) = split_trailing_punct(words[last_kept]);
+                    rewrite.push((last_kept, format!("{}{}", core, run_punct)));
                 }
                 // A cut-off copy right after the loop, at the end of the text
                 if end + 1 == words.len() && !keys[end].is_empty() {
@@ -294,12 +304,27 @@ pub fn collapse_loops_in_text(text: &str) -> String {
     if !changed {
         return text.to_string();
     }
-    words
-        .iter()
+    let mut out: Vec<String> = words.iter().map(|w| w.to_string()).collect();
+    for (idx, w) in rewrite {
+        out[idx] = w;
+    }
+    out.into_iter()
         .zip(keep)
-        .filter_map(|(w, k)| k.then_some(*w))
+        .filter_map(|(w, k)| k.then_some(w))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Split a whitespace word into (text, trailing punctuation):
+/// "no," → ("no", ","), "Bye-bye." → ("Bye-bye", "."), "ok" → ("ok", "").
+fn split_trailing_punct(word: &str) -> (&str, &str) {
+    let core_len = word
+        .char_indices()
+        .rev()
+        .find(|(_, c)| c.is_alphanumeric())
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    word.split_at(core_len)
 }
 
 #[cfg(test)]
@@ -423,6 +448,25 @@ mod tests {
         assert_eq!(kept("very very very good"), "very very very good");
         assert!(is_repetitive("ok so we ship bye bye bye bye bye"));
         assert!(!is_repetitive("ok so we ship on Friday"));
+    }
+
+    #[test]
+    fn collapse_keeps_the_runs_trailing_punctuation() {
+        assert_eq!(collapse_loops_in_text("no no no no, that's wrong"), "no, that's wrong");
+        assert_eq!(kept("no no no no, that's wrong"), "no, that's wrong");
+        assert_eq!(collapse_loops_in_text("we agreed yes yes yes yes. Next"), "we agreed yes. Next");
+        assert_eq!(collapse_loops_in_text("Wait? Wait? Wait? Wait? Okay"), "Wait? Okay");
+        // Kept copy's own punctuation survives when the run ends bare
+        assert_eq!(collapse_loops_in_text("so, so, so, so we ship"), "so, we ship");
+        assert_eq!(collapse_loops_in_text("right, right right right then"), "right, then");
+        // Multi-word unit
+        assert_eq!(
+            collapse_loops_in_text("ok thank you thank you thank you thank you! Bye"),
+            "ok thank you! Bye"
+        );
+        assert_eq!(split_trailing_punct("no,"), ("no", ","));
+        assert_eq!(split_trailing_punct("Bye-bye…"), ("Bye-bye", "…"));
+        assert_eq!(split_trailing_punct("ok"), ("ok", ""));
     }
 
     #[test]

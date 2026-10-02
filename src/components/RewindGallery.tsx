@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import * as tauri from "../lib/tauri";
-import { withAiConsent, friendlyAiError } from "../lib/ai";
+import { friendlyAiError, isNoProviderError } from "../lib/ai";
+import { AiSetupNotice } from "./AiSetupNotice";
 import { applyLocalDelete, lineWords, redactionApi, renderPlain, type RedactionRecord } from "../lib/redaction";
 import {
     RedactableLine,
@@ -35,6 +35,8 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
     const [selectMode, setSelectMode] = useState(false);
     const [notesStale, setNotesStale] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
+    const [regenError, setRegenError] = useState<string | null>(null);
+    const [needsAi, setNeedsAi] = useState(false);
 
     const galleryRef = useRef<HTMLDivElement>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
@@ -244,11 +246,15 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
     const regenerateNotes = async () => {
         if (!meetingId) return;
         setRegenerating(true);
+        setRegenError(null);
+        setNeedsAi(false);
         try {
-            await withAiConsent(() => invoke("generate_meeting_notes", { meetingId }));
+            // Same prompt as Recordings → Notes (persona's meeting_report)
+            await tauri.generateMeetingReport(meetingId);
             setNotesStale(false);
         } catch (e) {
-            console.error("Failed to regenerate notes:", friendlyAiError(e));
+            if (isNoProviderError(e)) setNeedsAi(true);
+            else setRegenError(friendlyAiError(e));
         } finally {
             setRegenerating(false);
         }
@@ -331,6 +337,8 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                             </button>
                         </div>
                     )}
+                    {needsAi && <AiSetupNotice feature="AI notes" compact />}
+                    {regenError && <p className="rd-tip" role="alert">Couldn't regenerate the notes: {regenError}</p>}
                     {editable && (timeline?.transcripts.length ?? 0) > 0 && !words.range && (
                         <p className="rd-tip">Click a word to edit. Shift-click or drag to select more.</p>
                     )}

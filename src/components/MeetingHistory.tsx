@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
 import type { Meeting, CalendarMatchEvent } from "../lib/tauri";
 import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
 import { CalendarIcon, TrashIcon } from "./icons";
 import { withFallback, mockMeetings } from "../lib/offline";
 
@@ -18,6 +19,7 @@ interface MeetingHistoryProps {
 export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = false, refreshKey = 0 }: MeetingHistoryProps) {
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [calendarMatches, setCalendarMatches] = useState<Record<string, CalendarMatchEvent>>({});
     const [dismissedMatches, setDismissedMatches] = useState<Set<string>>(new Set());
     const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -28,6 +30,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
 
     const loadMeetings = async () => {
         setIsLoading(true);
+        setLoadError(null);
         try {
             const data = await withFallback(() => tauri.getMeetings(50), mockMeetings);
             setMeetings(data);
@@ -35,6 +38,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
             checkCalendarOverlaps(data.slice(0, 5));
         } catch (err) {
             console.error("Failed to load meetings:", err);
+            setLoadError(err instanceof Error ? err.message : String(err));
         } finally {
             setIsLoading(false);
         }
@@ -111,7 +115,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
 
     const handleDelete = async (e: React.MouseEvent, meetingId: string) => {
         e.stopPropagation();
-        if (confirm("Delete this meeting and all its transcripts?")) {
+        if (confirm("Delete this recording? Its transcript, screenshots and AI notes are removed from this Mac. This can't be undone.")) {
             try {
                 await tauri.deleteMeeting(meetingId);
                 setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
@@ -135,6 +139,19 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         );
     }
 
+    if (loadError && meetings.length === 0) {
+        return (
+            <div className="meeting-history">
+                {!compact && <h3>Past Meetings</h3>}
+                <ErrorState
+                    title="Couldn't load your recordings"
+                    message="Your recordings are safe on this Mac. Try again; if it keeps happening, quit and reopen the app."
+                    onRetry={loadMeetings}
+                />
+            </div>
+        );
+    }
+
     if (meetings.length === 0) {
         if (compact) {
             return <div className="compact-empty">No meetings yet</div>;
@@ -145,7 +162,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                 <EmptyState
                     icon={<CalendarIcon size={44} strokeWidth={1.5} />}
                     title="No recordings yet"
-                    message="Hit START CAPTURE in the top bar during your next meeting. Every screen frame and every word lands here, ready to rewind."
+                    message="Click START CAPTURE in the top bar (or press ⌘N) when your next meeting begins. The transcript and screenshots land here, ready to rewind, edit and summarize. Recording stops by itself when the meeting ends."
                 />
             </div>
         );

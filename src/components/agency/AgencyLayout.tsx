@@ -14,6 +14,7 @@ import { PromptStudio } from './views/PromptStudio';
 import { useRecording } from '../../hooks/useRecording';
 import { useTranscripts } from '../../hooks/useTranscripts';
 import { AgencySettingsModal } from './AgencySettingsModal';
+import { onOpenSettings, type SettingsCategory } from '../../lib/navigation';
 
 export type AgencyMode = 'flow' | 'deck' | 'zen' | 'vault' | 'intel' | 'chat' | 'help' | 'prompts';
 
@@ -42,6 +43,13 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
     onOpenCommandPalette
 }) => {
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+    const [settingsCategory, setSettingsCategory] = React.useState<SettingsCategory>('general');
+
+    // "Open AI Engine" buttons, menu ⌘, and the command palette open Settings here
+    useEffect(() => onOpenSettings((category) => {
+        setSettingsCategory(category);
+        setIsSettingsOpen(true);
+    }), []);
     // const [segmentPrompt, setSegmentPrompt] = useState(false); // Removed for native dialog
 
     // Listen for recording segmentation prompt (75+ minutes)
@@ -81,7 +89,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                 onModeChange={onModeChange}
                 isRecording={recording.isRecording}
                 onToggleRecording={onToggleRecording}
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSettings={() => { setSettingsCategory('general'); setIsSettingsOpen(true); }}
                 onOpenCommandPalette={onOpenCommandPalette}
             />
 
@@ -139,7 +147,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ duration: 0.3 }}
                         >
-                            <VaultView onSelectMeeting={onSelectMeeting} onOpenSettings={() => setIsSettingsOpen(true)} />
+                            <VaultView onSelectMeeting={onSelectMeeting} onOpenSettings={() => { setSettingsCategory('obsidian'); setIsSettingsOpen(true); }} />
                         </motion.div>
                     )}
 
@@ -200,6 +208,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
             <AgencySettingsModal
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
+                initialCategory={settingsCategory}
             />
         </div>
     );
