@@ -1,73 +1,74 @@
-# noFriction Meetings
+# noFriction
 
-**Version 1.0.0 RC 1** — Your AI-powered meeting companion for macOS
+Meeting recorder for **iPhone, iPad and Mac**. It records and transcribes on
+the device, matches each meeting to your calendar and its attendees, keeps
+photos (iOS) or screenshots (Mac) next to the transcript, and writes notes
+with **the AI you choose, using your own key**. No accounts, no noFriction
+servers, no analytics.
 
----
+| | iPhone / iPad | Mac |
+|---|---|---|
+| App | SwiftUI, iOS/iPadOS 18+ (`ios/`) | Tauri 2: Rust + React (`src-tauri/`, `src/`), macOS 12.3+ |
+| Version | 1.0.0 | 3.6.0 |
+| Transcription | Apple on-device speech | Local Whisper (default); optional cloud with your own key (Deepgram, Gladia, Google, Gemini) |
+| Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |
+| AI (noFriction Pro) | Notes (summary, decisions, action items), follow-up email | Chat across meetings, live insights, after-meeting report, meeting prep brief, screenshot analysis |
+| Also | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Markdown share | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Obsidian export, JSON export |
 
-## ✨ What's New in 1.0
+**AI providers** (paste a key; the provider is detected and checked): OpenAI
+(default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral,
+DeepSeek, Perplexity, Together; local Ollama, LM Studio or any
+OpenAI-compatible server; Apple's on-device model with no key (iOS/macOS 26+
+with Apple Intelligence). Keys live in the Keychain. The app asks before
+sending meeting content to a cloud provider for the first time.
 
-- **Synced Rewind View** — Visual timeline with synchronized audio + screen
-- **Screenshot Integration** — Thumbnails with expand-to-view modal
-- **Keyboard Navigation** — Use ↑↓ or j/k to navigate, / to search
-- **Search Everything** — Full-text search across transcripts and screen text
-- **AI Intelligence** — Summaries, action items, and key insights
+**Business model:** free download. Recording, transcription, calendar and
+people, photos/screens, search and export are free. AI features need the
+**noFriction Pro** subscription (monthly or yearly, StoreKit 2, verified on
+the device). Bundle id `com.nofriction.meetings` on both platforms, so one
+subscription covers both (Universal Purchase). The Developer ID (DMG) Mac
+build has no StoreKit and no gating.
 
----
+## Documentation
 
-## Features
+For customers:
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): how to use the apps
+- [site/](site/): website (landing, support, privacy policy, terms); deploy steps in [site/README.md](site/README.md)
 
-| Feature | Description |
-|---------|-------------|
-| 🎤 **Live Transcription** | Real-time speech-to-text for all your meetings |
-| ⏪ **Rewind** | Visual playback with synchronized screenshots and audio |
-| 🧠 **Deep Intel** | AI-generated summaries, action items, and insights |
-| 🔍 **Knowledge Base** | Search across all your past meetings instantly |
-| 🔒 **Privacy First** | All processing happens locally on your Mac |
+For launch:
+- [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md): the end-to-end commercial launch checklist
+- [docs/APP_STORE_LISTING.md](docs/APP_STORE_LISTING.md): App Store metadata, privacy label, age rating, review notes, screenshot plan
+- [docs/APP_STORE_RELEASE.md](docs/APP_STORE_RELEASE.md): App Store plan and portal steps
+- [docs/MAC_APP_STORE_BUILD.md](docs/MAC_APP_STORE_BUILD.md): sandboxed Mac App Store build
+- [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md): Developer ID DMG build and notarization
 
----
+For developers:
+- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md): build, run, test
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the apps fit together
+- [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md): AI provider, key, consent and licensing spec (shared by both apps)
+- [docs/REDACTION.md](docs/REDACTION.md): Delete and "Strike from the record" spec
+- [ios/README.md](ios/README.md): iOS app file map and tests
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): release history
+- [DESIGN.md](DESIGN.md): design system (hazard yellow on matte black)
 
-## Getting Started
+## Quick start (developers)
 
-1. **Install:** Download the `.dmg` and drag `noFriction Meetings` to Applications
-2. **Permissions:** Grant Microphone, Screen Recording, and Accessibility
-3. **Record:** Click "Record" in the sidebar to start capturing
-4. **Review:** Use the **⏪ Rewind** tab to review with visual context
-
----
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Navigate timeline | ↑↓ or J/K |
-| Open search | / |
-| Clear | Esc |
-| Sync scrolling | 🔗 button |
-
----
-
-## Troubleshooting
-
-- **No Audio:** System Settings → Privacy → Microphone
-- **No Screenshots:** System Settings → Privacy → Screen Recording
-- **Support:** support@nofriction.ai
-
----
-
-## Development
-
-### Prerequisites
-- Rust (latest stable)
-- Node.js (v18+)
-- Xcode (for macOS build tools)
-
-### Build
 ```bash
+# Mac app
 npm install
-npm run tauri dev    # Run locally
-npm run tauri build  # Build release DMG
+npm run tauri dev
+(cd src-tauri && cargo test)
+
+# iPhone/iPad app
+cd ios && xcodegen generate && open NoFriction.xcodeproj
 ```
 
----
+Requirements: macOS with Xcode, Rust (stable), Node.js 18+, XcodeGen. No API
+keys are needed to build; paste keys in the running app (never commit them).
+Details: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
 
-© 2026 noFriction AI. All rights reserved.
+## Support
+
+support@nofriction.ai
+
+© 2026 noFriction. All rights reserved.

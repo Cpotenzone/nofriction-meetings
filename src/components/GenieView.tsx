@@ -15,9 +15,17 @@ export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts
     const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const lastFetchRef = useRef<number>(0);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Get the last 2 transcripts for display
-    const recentTranscripts = liveTranscripts.slice(-2);
+    // Get the last 8 transcripts for display
+    const recentTranscripts = liveTranscripts.slice(-8);
+
+    // Auto-scroll to bottom when new transcripts arrive
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+        }
+    }, [liveTranscripts.length]);
 
     // Fetch real AI insights periodically
     useEffect(() => {
@@ -101,7 +109,7 @@ export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts
                             <span>Listening for intelligence...</span>
                         </div>
                     ) : (
-                        <div className="genie-transcript-display">
+                        <div className="genie-transcript-display" ref={scrollRef}>
                             <AnimatePresence mode="popLayout">
                                 {recentTranscripts.map((text, index) => (
                                     <motion.div
@@ -187,6 +195,15 @@ export const GenieView: React.FC<GenieViewProps> = ({ onRestore, liveTranscripts
                             <span>Expand</span>
                         </motion.div>
                     </div>
+                </div>
+
+                {/* Resize Grip Indicator */}
+                <div className="genie-resize-grip" title="Drag to resize">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="18" y1="12" x2="12" y2="18" />
+                        <line x1="18" y1="18" x2="18" y2="18" />
+                    </svg>
                 </div>
             </div>
         </motion.div>

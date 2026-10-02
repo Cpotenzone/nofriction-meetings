@@ -1,5 +1,5 @@
 // noFriction Meetings - Knowledge Base Search Component
-// Search across local SQLite, Pinecone, and Supabase
+// Search the local SQLite knowledge base (meeting transcripts + activity log)
 
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -20,14 +20,12 @@ interface SearchOptions {
     end_date?: string;
     category?: string;
     limit?: number;
-    sources?: string[];
 }
 
 export function KBSearch() {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<KBSearchResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [searchSources, setSearchSources] = useState<string[]>(["local", "pinecone"]);
     const [error, setError] = useState<string | null>(null);
 
     const handleSearch = async () => {
@@ -40,7 +38,6 @@ export function KBSearch() {
             const options: SearchOptions = {
                 query: query.trim(),
                 limit: 20,
-                sources: searchSources,
             };
 
             const searchResults = await invoke<KBSearchResult[]>("search_knowledge_base", { options });
@@ -60,14 +57,6 @@ export function KBSearch() {
         }
     };
 
-    const toggleSource = (source: string) => {
-        setSearchSources((prev) =>
-            prev.includes(source)
-                ? prev.filter((s) => s !== source)
-                : [...prev, source]
-        );
-    };
-
     const formatTimestamp = (ts: string | null) => {
         if (!ts) return "";
         try {
@@ -80,8 +69,6 @@ export function KBSearch() {
     const getSourceIcon = (source: string) => {
         switch (source) {
             case "local": return "💾";
-            case "pinecone": return "🌲";
-            case "supabase": return "🐘";
             default: return "📄";
         }
     };
@@ -114,29 +101,6 @@ export function KBSearch() {
                 >
                     {isSearching ? "Searching..." : "Search"}
                 </button>
-            </div>
-
-            {/* Source Filters */}
-            <div className="search-filters" style={{ display: "flex", gap: "var(--spacing-sm)", marginBottom: "var(--spacing-md)" }}>
-                <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>Sources:</span>
-                {["local", "pinecone", "supabase"].map((source) => (
-                    <button
-                        key={source}
-                        className={`filter-chip ${searchSources.includes(source) ? "active" : ""}`}
-                        onClick={() => toggleSource(source)}
-                        style={{
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            border: "1px solid var(--border)",
-                            background: searchSources.includes(source) ? "var(--primary)" : "transparent",
-                            color: searchSources.includes(source) ? "white" : "var(--text-secondary)",
-                            cursor: "pointer",
-                            fontSize: "0.75rem",
-                        }}
-                    >
-                        {getSourceIcon(source)} {source}
-                    </button>
-                ))}
             </div>
 
             {/* Error Message */}

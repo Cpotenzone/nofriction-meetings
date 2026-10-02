@@ -20,20 +20,10 @@ interface ServiceHealth {
     last_check: string;
 }
 
-interface QueueStats {
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-    total_bytes: number;
-    total_bytes_formatted: string;
-}
-
 interface FeatureFlags {
     admin_console_enabled: boolean;
     dedup_enabled: boolean;
     vlm_auto_process: boolean;
-    enable_ingest: boolean;
     queue_frames_for_vlm: boolean;
 }
 
@@ -51,7 +41,7 @@ function AboutPanel() {
                 <h2 style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>
                     noFriction Meetings
                 </h2>
-                <p style={{ color: '#a78bfa', fontSize: '16px', fontWeight: 600, marginBottom: '24px' }}>
+                <p style={{ color: 'var(--accent-primary-hover, #818cf8)', fontSize: '16px', fontWeight: 600, marginBottom: '24px' }}>
                     Version 1.0.0 RC 1
                 </p>
                 <p style={{ color: '#9ca3af', fontSize: '14px', maxWidth: '500px', margin: '0 auto 32px', lineHeight: 1.7 }}>
@@ -80,9 +70,9 @@ function AboutPanel() {
             </div>
 
             {/* Core Features */}
-            <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '700px', margin: '0 auto 32px' }}>
-                <h3 style={{ color: '#c4b5fd', fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>✨ What's New in 1.0</h3>
-                <ul style={{ color: '#e9d5ff', fontSize: '13px', lineHeight: 1.8, paddingLeft: '20px', margin: 0 }}>
+            <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '700px', margin: '0 auto 32px' }}>
+                <h3 style={{ color: 'var(--accent-primary-hover, #818cf8)', fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>✨ What's New in 1.0</h3>
+                <ul style={{ color: 'var(--text-secondary, #b0b5c9)', fontSize: '13px', lineHeight: 1.8, paddingLeft: '20px', margin: 0 }}>
                     <li><strong>Synced Rewind View</strong> — Visual timeline with synchronized audio + screen</li>
                     <li><strong>Screenshot Integration</strong> — Thumbnails with expand-to-view modal</li>
                     <li><strong>Keyboard Navigation</strong> — Use ↑↓ or j/k to navigate, / to search</li>
@@ -94,9 +84,9 @@ function AboutPanel() {
             {/* Links */}
             <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '12px' }}>
                 <p style={{ marginBottom: '8px' }}>
-                    <a href="mailto:support@nofriction.ai" style={{ color: '#7c3aed', textDecoration: 'none' }}>support@nofriction.ai</a>
+                    <a href="mailto:support@nofriction.ai" style={{ color: 'var(--accent-primary, #6366f1)', textDecoration: 'none' }}>support@nofriction.ai</a>
                     {' • '}
-                    <a href="https://nofriction.ai" style={{ color: '#7c3aed', textDecoration: 'none' }}>nofriction.ai</a>
+                    <a href="https://nofriction.ai" style={{ color: 'var(--accent-primary, #6366f1)', textDecoration: 'none' }}>nofriction.ai</a>
                 </p>
                 <p style={{ margin: 0 }}>© 2026 noFriction AI. All rights reserved.</p>
             </div>
@@ -110,19 +100,14 @@ function AboutPanel() {
 
 function SystemHealth() {
     const [services, setServices] = useState<ServiceHealth[]>([]);
-    const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const loadHealth = async () => {
         setIsLoading(true);
         try {
-            const [health, queue] = await Promise.all([
-                invoke<ServiceHealth[]>('get_system_health'),
-                invoke<QueueStats>('get_admin_queue_stats')
-            ]);
+            const health = await invoke<ServiceHealth[]>('get_system_health');
             setServices(health);
-            setQueueStats(queue);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -193,30 +178,6 @@ function SystemHealth() {
                     </div>
                 ))}
             </div>
-
-            {queueStats && (
-                <div className="queue-stats">
-                    <h4>📊 Ingest Queue</h4>
-                    <div className="queue-stats-grid">
-                        <div className="queue-stat">
-                            <div className="stat-value">{queueStats.pending}</div>
-                            <div className="stat-label">Pending</div>
-                        </div>
-                        <div className="queue-stat">
-                            <div className="stat-value">{queueStats.processing}</div>
-                            <div className="stat-label">Processing</div>
-                        </div>
-                        <div className="queue-stat">
-                            <div className="stat-value">{queueStats.completed}</div>
-                            <div className="stat-label">Completed</div>
-                        </div>
-                        <div className="queue-stat warning">
-                            <div className="stat-value">{queueStats.failed}</div>
-                            <div className="stat-label">Failed</div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
@@ -276,7 +237,6 @@ function FeatureFlagsPanel() {
     const flagConfigs = [
         { key: 'dedup_enabled', label: 'Frame Deduplication', description: 'Reduce storage by skipping duplicate frames', icon: '🔄' },
         { key: 'vlm_auto_process', label: 'VLM Auto Process', description: 'Automatically process frames with Vision LLM', icon: '🧠' },
-        { key: 'enable_ingest', label: 'Intelligence Ingest', description: 'Send data to intelligence pipeline', icon: '📡' },
         { key: 'queue_frames_for_vlm', label: 'Queue VLM Frames', description: 'Queue captured frames for VLM analysis', icon: '📸' },
     ];
 

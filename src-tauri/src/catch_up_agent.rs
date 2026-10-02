@@ -1,8 +1,8 @@
 // Catch-Up Agent
 // Generates catch-up capsules for users joining meetings late
 
-use serde::{Deserialize, Serialize};
 use crate::ai_client::AIClient;
+use serde::{Deserialize, Serialize};
 
 /// A citation pointing to a specific transcript moment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub struct TranscriptCitation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsightItem {
     pub text: String,
-    pub importance: f32,  // 0.0-1.0
+    pub importance: f32, // 0.0-1.0
     pub citation: Option<TranscriptCitation>,
 }
 
@@ -33,7 +33,7 @@ pub struct Decision {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskSignal {
     pub text: String,
-    pub severity: f32,  // 0.0-1.0
+    pub severity: f32, // 0.0-1.0
     pub signal_type: RiskType,
     pub citation: Option<TranscriptCitation>,
 }
@@ -77,7 +77,8 @@ impl Default for CatchUpCapsule {
             risks: Vec::new(),
             questions_to_ask: Vec::new(),
             ten_second_version: "Meeting in progress. No summary available yet.".to_string(),
-            sixty_second_version: "Meeting in progress. Transcript data insufficient for summary.".to_string(),
+            sixty_second_version: "Meeting in progress. Transcript data insufficient for summary."
+                .to_string(),
             confidence: 0.0,
             citations: Vec::new(),
             generated_at_minute: 0,
@@ -128,10 +129,11 @@ impl CatchUpAgent {
         meeting_metadata: &MeetingMetadata,
         minutes_since_start: i32,
         _prior_history: Option<&[HistorySnippet]>,
+        custom_system_prompt: Option<&str>,
     ) -> Result<CatchUpCapsule, String> {
         // Build transcript text
         let transcript_text = self.build_transcript_text(transcript_segments);
-        
+
         if transcript_text.is_empty() {
             return Ok(CatchUpCapsule {
                 ten_second_version: "No transcript data available yet.".to_string(),
@@ -140,18 +142,31 @@ impl CatchUpAgent {
             });
         }
 
-        // Build the prompt
-        let prompt = self.build_catch_up_prompt(
-            &transcript_text,
-            meeting_metadata,
-            minutes_since_start,
-        );
+        // Build the prompt — use custom system prompt if provided, otherwise default
+        let prompt = if let Some(sys_prompt) = custom_system_prompt {
+            let attendees = if meeting_metadata.attendees.is_empty() {
+                "Unknown".to_string()
+            } else {
+                meeting_metadata.attendees.join(", ")
+            };
+            format!(
+                "{}\n\nMEETING: {}\nATTENDEES: {}\nMINUTES SINCE START: {}\n\nTRANSCRIPT:\n{}",
+                sys_prompt,
+                meeting_metadata.title,
+                attendees,
+                minutes_since_start,
+                &transcript_text,
+            )
+        } else {
+            self.build_catch_up_prompt(&transcript_text, meeting_metadata, minutes_since_start)
+        };
 
         // Call AI
         let response = self.ai_client.complete(&prompt).await?;
 
         // Parse response into capsule
-        let capsule = self.parse_catch_up_response(&response, minutes_since_start, transcript_segments)?;
+        let capsule =
+            self.parse_catch_up_response(&response, minutes_since_start, transcript_segments)?;
 
         Ok(capsule)
     }
@@ -161,7 +176,12 @@ impl CatchUpAgent {
             .iter()
             .map(|s| {
                 if let Some(ref speaker) = s.speaker {
-                    format!("[{}] {}: {}", Self::format_timestamp(s.timestamp_ms), speaker, s.text)
+                    format!(
+                        "[{}] {}: {}",
+                        Self::format_timestamp(s.timestamp_ms),
+                        speaker,
+                        s.text
+                    )
                 } else {
                     format!("[{}] {}", Self::format_timestamp(s.timestamp_ms), s.text)
                 }
@@ -188,7 +208,8 @@ impl CatchUpAgent {
             metadata.attendees.join(", ")
         };
 
-        format!(r#"You are analyzing a meeting transcript. The user just joined {minutes_since_start} minutes late and needs to quickly understand what happened.
+        format!(
+            r#"You are analyzing a meeting transcript. The user just joined {minutes_since_start} minutes late and needs to quickly understand what happened.
 
 MEETING: {title}
 ATTENDEES: {attendees}
@@ -232,7 +253,7 @@ Return ONLY valid JSON, no other text."#,
     ) -> Result<CatchUpCapsule, String> {
         // Try to parse JSON from response
         let json_str = self.extract_json(response)?;
-        
+
         #[derive(Deserialize)]
         struct RawCapsule {
             what_missed: Option<Vec<String>>,
@@ -251,18 +272,32 @@ Return ONLY valid JSON, no other text."#,
             .map_err(|e| format!("Failed to parse AI response: {}", e))?;
 
         Ok(CatchUpCapsule {
-            what_missed: raw.what_missed.unwrap_or_default()
+            what_missed: raw
+                .what_missed
+                .unwrap_or_default()
                 .into_iter()
-                .map(|text| InsightItem { text, importance: 0.8, citation: None })
+                .map(|text| InsightItem {
+                    text,
+                    importance: 0.8,
+                    citation: None,
+                })
                 .collect(),
             current_topic: raw.current_topic.unwrap_or_else(|| "Unknown".to_string()),
-            decisions: raw.decisions.unwrap_or_default()
+            decisions: raw
+                .decisions
+                .unwrap_or_default()
                 .into_iter()
-                .map(|text| Decision { text, made_by: None, citation: None })
+                .map(|text| Decision {
+                    text,
+                    made_by: None,
+                    citation: None,
+                })
                 .collect(),
             open_threads: raw.open_threads.unwrap_or_default(),
             next_moves: raw.next_moves.unwrap_or_default(),
-            risks: raw.risks.unwrap_or_default()
+            risks: raw
+                .risks
+                .unwrap_or_default()
                 .into_iter()
                 .map(|text| RiskSignal {
                     text,
@@ -272,9 +307,11 @@ Return ONLY valid JSON, no other text."#,
                 })
                 .collect(),
             questions_to_ask: raw.questions_to_ask.unwrap_or_default(),
-            ten_second_version: raw.ten_second_version
+            ten_second_version: raw
+                .ten_second_version
                 .unwrap_or_else(|| "Summary not available".to_string()),
-            sixty_second_version: raw.sixty_second_version
+            sixty_second_version: raw
+                .sixty_second_version
                 .unwrap_or_else(|| "Summary not available".to_string()),
             confidence: raw.confidence.unwrap_or(0.5),
             citations: Vec::new(),
@@ -285,17 +322,23 @@ Return ONLY valid JSON, no other text."#,
     fn extract_json(&self, response: &str) -> Result<String, String> {
         // Find JSON in response (may be wrapped in markdown code blocks)
         let trimmed = response.trim();
-        
+
         // Check for code block
         if trimmed.contains("```json") {
             let start = trimmed.find("```json").unwrap() + 7;
-            let end = trimmed[start..].find("```").map(|i| start + i).unwrap_or(trimmed.len());
+            let end = trimmed[start..]
+                .find("```")
+                .map(|i| start + i)
+                .unwrap_or(trimmed.len());
             return Ok(trimmed[start..end].trim().to_string());
         }
-        
+
         if trimmed.contains("```") {
             let start = trimmed.find("```").unwrap() + 3;
-            let end = trimmed[start..].find("```").map(|i| start + i).unwrap_or(trimmed.len());
+            let end = trimmed[start..]
+                .find("```")
+                .map(|i| start + i)
+                .unwrap_or(trimmed.len());
             return Ok(trimmed[start..end].trim().to_string());
         }
 

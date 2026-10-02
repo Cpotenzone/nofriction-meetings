@@ -197,6 +197,11 @@ impl VideoRecorder {
     /// Start recording a new chunk
     fn start_chunk(&self, chunk_num: u32, video_dir: &PathBuf) -> Result<(), String> {
         let chunk_path = video_dir.join(format!("chunk_{:03}.mov", chunk_num));
+        // Persist the wall-clock start so a later screen delete/strike can
+        // find (and blank) the right moment in this chunk.
+        if let Err(e) = crate::redaction::video_blank::set_chunk_start(video_dir, &chunk_path, Utc::now()) {
+            log::warn!("{}", e);
+        }
 
         // Use screencapture for macOS native recording
         // Falls back to ffmpeg if screencapture isn't suitable
@@ -226,22 +231,26 @@ impl VideoRecorder {
         // -capture_cursor 1 includes mouse cursor
         // -framerate 30 for smooth video
         // -c:v h264_videotoolbox uses hardware encoder
-        let child = Command::new("ffmpeg")
+        let ffmpeg = find_tool("ffmpeg").ok_or(
+            "ffmpeg not found — install with `brew install ffmpeg` to enable screen video",
+        )?;
+        // AVFoundation numbers cameras before screens, so a fixed index like
+        // "1" can open a webcam. Address the main display by name instead.
+        let screen = "Capture screen 0:none";
+        let child = Command::new(ffmpeg)
             .args([
                 "-f",
                 "avfoundation",
                 "-capture_cursor",
                 "1",
                 "-framerate",
-                "30",
+                "15",
                 "-i",
-                "1:none", // Screen 1, no audio (audio handled separately)
+                screen, // main display, no audio (audio handled separately)
                 "-c:v",
                 "h264_videotoolbox", // Hardware H.264 encoder
-                "-preset",
-                "fast",
-                "-crf",
-                "28", // Good quality, reasonable size
+                "-b:v",
+                "3M",
                 "-pix_fmt",
                 "yuv420p",
                 "-movflags",
@@ -321,9 +330,7 @@ impl VideoRecorder {
 
 impl Default for VideoRecorder {
     fn default() -> Self {
-        let output_dir = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("com.nofriction.meetings");
+        let output_dir = crate::paths::app_data_dir();
         Self::new(output_dir)
     }
 }
@@ -344,4 +351,20 @@ mod tests {
         };
         assert_eq!(chunk.chunk_number, 1);
     }
+}
+
+/// Locate a Homebrew/system CLI tool. Apps launched from Finder don't get the
+/// shell PATH, so a bare `Command::new("ffmpeg")` fails there.
+pub fn find_tool(name: &str) -> Option<std::path::PathBuf> {
+    ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+        .iter()
+        .map(|dir| std::path::Path::new(dir).join(name))
+        .find(|p| p.exists())
+        .or_else(|| {
+            std::env::var_os("PATH").and_then(|paths| {
+                std::env::split_paths(&paths)
+                    .map(|d| d.join(name))
+                    .find(|p| p.exists())
+            })
+        })
 }

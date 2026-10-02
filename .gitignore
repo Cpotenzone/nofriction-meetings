@@ -23,3 +23,28 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Large source/personal images
+src-tauri/icons/IMG_*
+src-tauri/icons/source_*.png
+
+# Build artifacts
+*.tar.gz
+*.tgz
+*.dmg
+
+# Sensitive files
+*.pem
+*.key
+secrets.json
+.gstack/
+
+# Mac App Store build (scripts/release-mas.sh)
+*.provisionprofile
+*.pkg
+src-tauri/swift/NoFrictionBridge/.build/
+src-tauri/swift/NoFrictionBridge/.swiftpm/
+
+# tauri icon also emits mobile icon sets; the iPhone app lives in ios/
+src-tauri/icons/android/
+src-tauri/icons/ios/

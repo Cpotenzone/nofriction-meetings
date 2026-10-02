@@ -1,0 +1,97 @@
+# XcodeGen definition — run `xcodegen generate` in ios/ to produce
+# NoFriction.xcodeproj. The .xcodeproj is generated, not checked in.
+name: NoFriction
+options:
+  bundleIdPrefix: com.nofriction
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: C7GCEESE2V
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "2"
+
+targets:
+  NoFriction:
+    type: application
+    platform: iOS
+    sources:
+      - NoFriction
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nofriction.meetings   # same ID as the Mac app (Universal Purchase)
+        PRODUCT_NAME: noFriction
+        INFOPLIST_KEY_CFBundleDisplayName: noFriction
+        TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark   # dark-only app; system UI (alerts, launch) matches
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # Usage strings: audio, photos and transcripts stay on the device; meeting
+        # text goes only to the AI provider the user picks, when they use an AI feature.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "noFriction records your meetings so it can transcribe them. The audio is stored and transcribed on this device and never uploaded."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "noFriction turns your recordings into text with speech recognition on this device. Audio never leaves it; transcript text goes only to the AI provider you choose, when you use an AI feature."
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "noFriction reads your calendar to name each recording and list who attended. It never changes your calendar."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of slides, whiteboards or screens during a meeting. Photos stay on this device."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Add screenshots or photos from your library to a meeting. They stay on this device."
+    info:
+      path: NoFriction/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UIBackgroundModes: [audio]
+        ITSAppUsesNonExemptEncryption: false
+        # Dark launch screen (no white flash before the first frame)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        # Optional: AI on the user's own Ollama / LM Studio server on the LAN
+        NSLocalNetworkUsageDescription: "noFriction connects to an AI server on your network (such as Ollama or LM Studio) only if you add one in Settings."
+        NSAppTransportSecurity:
+          # http:// only to local hosts (IPs, .local, unqualified names). Never NSAllowsArbitraryLoads.
+          NSAllowsLocalNetworking: true
+  NoFrictionTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [NoFrictionTests]
+    dependencies:
+      - target: NoFriction
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/noFriction.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/noFriction"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  NoFrictionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [NoFrictionUITests]
+    dependencies:
+      - target: NoFriction
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: NoFriction
+
+schemes:
+  NoFriction:
+    build:
+      targets:
+        NoFriction: all
+        NoFrictionTests: [test]
+        NoFrictionUITests: [test]
+    run:
+      config: Debug
+      # Local StoreKit testing for Debug runs only; Release/TestFlight use the App Store
+      storeKitConfiguration: NoFriction.storekit
+    test:
+      config: Debug
+      targets: [NoFrictionTests, NoFrictionUITests]
+    archive:
+      config: Release

@@ -3,11 +3,13 @@
 
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCapabilities } from "../../lib/build";
 
 interface PermissionStatus {
     screen_recording: boolean;
     microphone: boolean;
     accessibility: boolean;
+    calendar: boolean;
 }
 
 interface ScreenTestResult {
@@ -35,6 +37,8 @@ interface AccessibilityTestResult {
 }
 
 export function PermissionsStatus() {
+    // m2: Accessibility text capture is compiled out of the App Store build
+    const showAccessibility = useCapabilities()?.accessibility_capture ?? false;
     const [permissions, setPermissions] = useState<PermissionStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [testResults, setTestResults] = useState<{
@@ -46,7 +50,8 @@ export function PermissionsStatus() {
         screen: boolean;
         mic: boolean;
         accessibility: boolean;
-    }>({ screen: false, mic: false, accessibility: false });
+        calendar: boolean;
+    }>({ screen: false, mic: false, accessibility: false, calendar: false });
 
     useEffect(() => {
         checkPermissions();
@@ -63,6 +68,7 @@ export function PermissionsStatus() {
                 screen_recording: false,
                 microphone: false,
                 accessibility: false,
+                calendar: false,
             });
         } finally {
             setIsLoading(false);
@@ -115,6 +121,24 @@ export function PermissionsStatus() {
             }));
         } finally {
             setTesting(prev => ({ ...prev, accessibility: false }));
+        }
+    };
+
+    const testCalendar = async () => {
+        setTesting(prev => ({ ...prev, calendar: true }));
+        try {
+            const granted = await invoke<boolean>("check_calendar_access");
+            if (!granted) {
+                // Try requesting access
+                const result = await invoke<boolean>("request_calendar_access");
+                setPermissions(prev => prev ? { ...prev, calendar: result } : prev);
+            } else {
+                setPermissions(prev => prev ? { ...prev, calendar: true } : prev);
+            }
+        } catch (err) {
+            console.error("Calendar access check failed:", err);
+        } finally {
+            setTesting(prev => ({ ...prev, calendar: false }));
         }
     };
 
@@ -265,7 +289,7 @@ export function PermissionsStatus() {
             </div>
 
             {/* Accessibility */}
-            <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
+            {showAccessibility && <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div className="settings-label">
                         <span className="label-main">
@@ -332,6 +356,47 @@ export function PermissionsStatus() {
                         )}
                     </div>
                 )}
+            </div>}
+
+            {/* Calendar */}
+            <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div className="settings-label">
+                        <span className="label-main">
+                            <StatusIcon granted={permissions?.calendar ?? false} />
+                            Calendar
+                        </span>
+                        <span className="label-sub">Required for meeting detection and attendee lookup</span>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={testCalendar}
+                            disabled={testing.calendar}
+                            style={{ fontSize: "0.75rem", minWidth: "60px" }}
+                        >
+                            {testing.calendar ? "..." : "Request"}
+                        </button>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={() => openSystemSettings("Calendars")}
+                            style={{ fontSize: "0.75rem" }}
+                        >
+                            Settings
+                        </button>
+                    </div>
+                </div>
+                {permissions?.calendar && (
+                    <div style={{
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        backgroundColor: "rgba(16, 185, 129, 0.1)",
+                        fontSize: "0.75rem",
+                        color: "#10b981"
+                    }}>
+                        ✓ Calendar access granted — meetings and attendees available
+                    </div>
+                )}
             </div>
 
             <div style={{ marginTop: "var(--spacing-md)", display: "flex", gap: "8px" }}>
@@ -343,7 +408,7 @@ export function PermissionsStatus() {
                     onClick={async () => {
                         await testScreen();
                         await testMic();
-                        await testAccessibility();
+                        if (showAccessibility) await testAccessibility();
                     }}
                 >
                     🧪 Test All

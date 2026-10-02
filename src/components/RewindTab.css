@@ -20,7 +20,7 @@
 
 .rewind-progress-bar {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent-blue, #4f46e5), var(--accent-purple, #8b5cf6));
+    background: linear-gradient(90deg, var(--accent-blue, #4f46e5), var(--accent-purple, #818cf8));
     transition: width 0.1s ease-out;
 }
 
@@ -225,7 +225,7 @@
 }
 
 .app-name {
-    background: var(--accent-purple, #8b5cf6);
+    background: var(--accent-purple, #818cf8);
     color: #fff;
     padding: 2px 8px;
     border-radius: 4px;
@@ -248,7 +248,7 @@
 
 /* Accessibility specific */
 .accessibility-entry .entry-time {
-    color: var(--accent-purple, #8b5cf6);
+    color: var(--accent-purple, #818cf8);
 }
 
 /* Loading State */

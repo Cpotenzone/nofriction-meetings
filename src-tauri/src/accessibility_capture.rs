@@ -6,7 +6,6 @@
 
 use crate::accessibility_extractor::AccessibilityExtractor;
 use crate::database::DatabaseManager;
-use crate::pinecone_client::PineconeClient;
 use crate::settings::SettingsManager;
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -125,7 +124,6 @@ impl AccessibilityCaptureService {
         &self,
         database: Arc<DatabaseManager>,
         settings: Arc<SettingsManager>,
-        pinecone: Arc<RwLock<PineconeClient>>,
     ) -> Result<(), String> {
         if self.running.load(Ordering::SeqCst) {
             return Err("Accessibility capture already running".to_string());
@@ -151,7 +149,6 @@ impl AccessibilityCaptureService {
         let last_capture = self.last_capture.clone();
         let last_app = self.last_app.clone();
         let config = self.config.clone();
-        let pinecone = pinecone.clone();
         let current_meeting_id = self.current_meeting_id.clone();
 
         // Spawn background task
@@ -203,13 +200,6 @@ impl AccessibilityCaptureService {
                             result.text.hash(&mut hasher);
                             let new_hash = hasher.finish();
 
-                            // Format text with context for vector DB and FTS
-                            let context_text = format!(
-                                "[App: {}] {}\n{}",
-                                result.app_name.as_deref().unwrap_or("Unknown"),
-                                result.window_title.as_deref().unwrap_or(""),
-                                result.text
-                            );
 
                             let prev_hash = *last_text_hash.read();
                             if new_hash == prev_hash {
@@ -255,33 +245,6 @@ impl AccessibilityCaptureService {
                                         result.app_name.as_deref().unwrap_or("unknown"),
                                         meeting_id_opt
                                     );
-
-                                    // Trigger Pinecone embedding
-                                    let pinecone_config_opt = { pinecone.read().get_config() };
-
-                                    if let Some(pinecone_config) = pinecone_config_opt {
-                                        let id = format!("acc_{}", Uuid::new_v4());
-                                        let metadata = serde_json::json!({
-                                            "type": "accessibility",
-                                            "source": "accessibility",
-                                            "meeting_id": meeting_id_opt,
-                                            "app_name": result.app_name,
-                                            "window_title": result.window_title,
-                                            "timestamp": Utc::now().to_rfc3339(),
-                                            "text": result.text.chars().take(1000).collect::<String>(), // Truncate for metadata
-                                        });
-
-                                        let _ = crate::pinecone_client::pinecone_upsert_generic(
-                                            &pinecone_config,
-                                            &id,
-                                            &context_text,
-                                            &metadata,
-                                        )
-                                        .await
-                                        .map_err(|e| {
-                                            log::warn!("📝 Pinecone upsert failed: {}", e)
-                                        });
-                                    }
                                 }
                             }
                         } else {
@@ -290,13 +253,6 @@ impl AccessibilityCaptureService {
                             result.text.hash(&mut hasher);
                             let hash = hasher.finish();
 
-                            // Format text with context for vector DB and FTS
-                            let context_text = format!(
-                                "[App: {}] {}\n{}",
-                                result.app_name.as_deref().unwrap_or("Unknown"),
-                                result.window_title.as_deref().unwrap_or(""),
-                                result.text
-                            );
 
                             // Calculate quality score
                             let quality_score = if result.is_accessible && word_count > 20 {
@@ -329,31 +285,6 @@ impl AccessibilityCaptureService {
                                 log::warn!("📝 Failed to save text snapshot: {}", e);
                             } else {
                                 saved_count.fetch_add(1, Ordering::SeqCst);
-
-                                // Trigger Pinecone embedding
-                                let pinecone_config_opt = { pinecone.read().get_config() };
-
-                                if let Some(pinecone_config) = pinecone_config_opt {
-                                    let id = format!("acc_{}", Uuid::new_v4());
-                                    let metadata = serde_json::json!({
-                                        "type": "accessibility",
-                                        "source": "accessibility",
-                                        "meeting_id": meeting_id_opt,
-                                        "app_name": result.app_name,
-                                        "window_title": result.window_title,
-                                        "timestamp": Utc::now().to_rfc3339(),
-                                        "text": result.text.chars().take(1000).collect::<String>(),
-                                    });
-
-                                    let _ = crate::pinecone_client::pinecone_upsert_generic(
-                                        &pinecone_config,
-                                        &id,
-                                        &context_text,
-                                        &metadata,
-                                    )
-                                    .await
-                                    .map_err(|e| log::warn!("📝 Pinecone upsert failed: {}", e));
-                                }
                             }
                         }
                     }

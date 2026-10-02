@@ -12,11 +12,10 @@
     <key>CFBundleIdentifier</key>
     <string>com.nofriction.meetings</string>
     
-    <key>CFBundleVersion</key>
-    <string>2.4.0</string>
-    
-    <key>CFBundleShortVersionString</key>
-    <string>2.4.0</string>
+    <!-- CFBundleShortVersionString comes from tauri.conf.json "version";
+         CFBundleVersion from bundle.macOS.bundleVersion (scripts/release-mas.sh
+         sets a unique build number per App Store upload). Don't hardcode them
+         here: this file overrides the generated values. -->
     
     <key>CFBundlePackageType</key>
     <string>APPL</string>
@@ -55,6 +54,18 @@
     <key>NSCalendarsUsageDescription</key>
     <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
     
+    <!-- Calendar Full Access (macOS 14+) -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
+    
+    <!-- App Store (m10): no non-exempt encryption (only HTTPS/TLS from the
+         OS), so export compliance is answered automatically. -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+
     <!-- URL Schemes (optional) -->
     <key>CFBundleURLTypes</key>
     <array>

@@ -1,0 +1,252 @@
+import Foundation
+import SwiftData
+
+/// One recording. Calendar fields are filled when the recording overlaps an
+/// event on the user's calendar.
+@Model
+final class Meeting {
+    @Attribute(.unique) var id: UUID
+    var title: String
+    var startedAt: Date
+    var endedAt: Date?
+
+    // From the calendar invite
+    var calendarEventID: String?
+    var scheduledStart: Date?
+    var scheduledEnd: Date?
+    var location: String?
+    var meetingURL: String?
+    var inviteNotes: String?
+
+    /// File name of the recorded audio (in Documents/Audio)
+    var audioFileName: String?
+
+    /// Summary / decisions / action items from the user's AI provider (Markdown)
+    var aiNotes: String?
+    var aiNotesAt: Date?
+    /// The transcript was edited (Delete / Strike) after the notes were made:
+    /// the Notes section offers to regenerate. See docs/REDACTION.md.
+    var aiNotesStale: Bool = false
+
+    @Relationship(deleteRule: .cascade, inverse: \Segment.meeting) var segments: [Segment] = []
+    @Relationship(deleteRule: .cascade, inverse: \Snapshot.meeting) var snapshots: [Snapshot] = []
+    @Relationship(deleteRule: .cascade, inverse: \Attendance.meeting) var attendances: [Attendance] = []
+    /// "Stricken from the record" markers (and Delete records during their undo window)
+    @Relationship(deleteRule: .cascade, inverse: \Redaction.meeting) var redactions: [Redaction] = []
+
+    init(title: String, startedAt: Date = .now) {
+        self.id = UUID()
+        self.title = title
+        self.startedAt = startedAt
+    }
+
+    var duration: TimeInterval? { endedAt.map { $0.timeIntervalSince(startedAt) } }
+
+    var orderedSegments: [Segment] { segments.sorted { $0.start < $1.start } }
+    var orderedSnapshots: [Snapshot] { snapshots.sorted { $0.takenAt < $1.takenAt } }
+
+    /// Everyone on the invite except you, organizer first.
+    var people: [(person: Person, role: String)] {
+        attendances
+            .compactMap { a in a.person.map { ($0, a.role) } }
+            .filter { !$0.0.isSelf }
+            .sorted { ($0.1 == "organizer" ? 0 : 1, $0.0.displayName) < ($1.1 == "organizer" ? 0 : 1, $1.0.displayName) }
+    }
+
+    /// Plain-text transcript, for sharing, search and AI prompts. Stricken
+    /// spans read `[stricken from the record]`; struck screens appear at their
+    /// capture time as `[screen stricken from the record]`.
+    var transcriptText: String { RedactionText.plainTranscript(self) }
+
+    /// Strike markers for screens, oldest first.
+    var screenStrikes: [Redaction] {
+        redactions.filter { $0.isStrike && $0.kind == Redaction.Kind.screen.rawValue }
+            .sorted { ($0.coveredFrom ?? $0.createdAt) < ($1.coveredFrom ?? $1.createdAt) }
+    }
+
+    func redaction(id: UUID) -> Redaction? { redactions.first { $0.id == id } }
+}
+
+/// A finalized stretch of transcript.
+@Model
+final class Segment {
+    /// May contain strike marker tokens (`RedactionText.markerToken`), never the stricken words.
+    var text: String
+    var start: Date
+    var duration: TimeInterval
+    var meeting: Meeting?
+    /// Where this line starts in the meeting's audio file, in seconds. nil for
+    /// lines recorded before word timings were stored.
+    var audioOffset: Double?
+    /// JSON `[WordTiming]`: per-word audio times, so Delete / Strike can
+    /// silence exactly those words. nil when the engine gave none.
+    var wordTimingsJSON: String?
+
+    init(text: String, start: Date, duration: TimeInterval, audioOffset: Double? = nil, wordTimings: [WordTiming] = []) {
+        self.text = text
+        self.start = start
+        self.duration = duration
+        self.audioOffset = audioOffset
+        self.wordTimings = wordTimings
+    }
+
+    var wordTimings: [WordTiming] {
+        get {
+            guard let json = wordTimingsJSON, let data = json.data(using: .utf8) else { return [] }
+            return (try? JSONDecoder().decode([WordTiming].self, from: data)) ?? []
+        }
+        set {
+            wordTimingsJSON = newValue.isEmpty ? nil : (try? JSONEncoder().encode(newValue)).flatMap { String(data: $0, encoding: .utf8) }
+        }
+    }
+}
+
+/// One word's place in the segment text (UTF-16 offsets) and in the audio file (seconds).
+struct WordTiming: Codable, Equatable, Sendable {
+    var location: Int
+    var length: Int
+    var start: Double
+    var end: Double
+
+    var range: NSRange { NSRange(location: location, length: length) }
+}
+
+/// One Delete or Strike action (docs/REDACTION.md "Data model"). Records
+/// that something was removed, where and when — never what. Strike records
+/// are permanent markers; Delete records exist only during the 5-second undo
+/// window (so a crash in that window still finishes the purge at next launch).
+@Model
+final class Redaction {
+    enum Kind: String { case words, line, screen }
+    enum Action: String { case delete, strike }
+
+    @Attribute(.unique) var id: UUID
+    /// words | line | screen
+    var kind: String
+    /// delete | strike
+    var action: String
+    /// Seconds into the meeting's audio covered by the removal
+    var mediaStart: Double
+    var mediaEnd: Double
+    /// Wall-clock meeting time covered (for the marker caption)
+    var coveredFrom: Date?
+    var coveredTo: Date?
+    var createdAt: Date
+    var reason: String?
+    var meeting: Meeting?
+    /// Delete records only, while pending: JSON `[[start, end]]` audio ranges
+    /// and `[fileName]` photo files still to purge. Positions and file names, never content.
+    var pendingAudioJSON: String?
+    var pendingFilesJSON: String?
+
+    init(id: UUID = UUID(), kind: Kind, action: Action, mediaStart: Double, mediaEnd: Double,
+         coveredFrom: Date?, coveredTo: Date?, reason: String? = nil, createdAt: Date = .now) {
+        self.id = id
+        self.kind = kind.rawValue
+        self.action = action.rawValue
+        self.mediaStart = mediaStart
+        self.mediaEnd = mediaEnd
+        self.coveredFrom = coveredFrom
+        self.coveredTo = coveredTo
+        self.reason = reason
+        self.createdAt = createdAt
+    }
+
+    var isStrike: Bool { action == Action.strike.rawValue }
+}
+
+/// A photo of a slide, whiteboard or screen taken during a meeting.
+@Model
+final class Snapshot {
+    var fileName: String
+    var takenAt: Date
+    var meeting: Meeting?
+
+    init(fileName: String, takenAt: Date = .now) {
+        self.fileName = fileName
+        self.takenAt = takenAt
+    }
+
+    var fileURL: URL { Storage.snapshots.appending(path: fileName) }
+}
+
+/// Someone from a calendar invite. One per email, shared across meetings.
+@Model
+final class Person {
+    @Attribute(.unique) var email: String
+    var name: String?
+    var company: String?
+    var linkedinURL: String?
+    var isSelf: Bool = false
+    @Relationship(deleteRule: .cascade, inverse: \Attendance.person) var attendances: [Attendance] = []
+
+    init(email: String, name: String? = nil, company: String? = nil) {
+        self.email = email.lowercased()
+        self.name = name
+        self.company = company
+    }
+
+    var displayName: String { name ?? PersonNames.guess(fromEmail: email) }
+
+    var initials: String {
+        let parts = displayName.split(whereSeparator: { $0 == " " || $0 == "." || $0 == "-" })
+        let letters = parts.prefix(2).compactMap(\.first).map(String.init).joined()
+        return letters.isEmpty ? "?" : letters.uppercased()
+    }
+
+    var meetings: [Meeting] {
+        attendances.compactMap(\.meeting).sorted { $0.startedAt > $1.startedAt }
+    }
+}
+
+@Model
+final class Attendance {
+    /// "organizer" or "attendee"
+    var role: String
+    var meeting: Meeting?
+    var person: Person?
+
+    init(role: String) { self.role = role }
+}
+
+enum Storage {
+    static let documents = URL.documentsDirectory
+    static let audio = documents.appending(path: "Audio", directoryHint: .isDirectory)
+    static let snapshots = documents.appending(path: "Snapshots", directoryHint: .isDirectory)
+
+    static let modelTypes: [any PersistentModel.Type] = [
+        Meeting.self, Segment.self, Snapshot.self, Person.self, Attendance.self, Redaction.self,
+    ]
+
+    static func prepare() {
+        for dir in [audio, snapshots] {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+    }
+}
+
+enum PersonNames {
+    /// "jane.doe@acme.com" → "Jane Doe"
+    static func guess(fromEmail email: String) -> String {
+        let local = email.split(separator: "@").first.map(String.init) ?? email
+        return local
+            .split(whereSeparator: { ".-_+".contains($0) })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    private static let personalDomains: Set<String> = [
+        "gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "outlook.com",
+        "hotmail.com", "live.com", "yahoo.com", "aol.com", "proton.me", "protonmail.com",
+    ]
+
+    /// "jane@acme-corp.com" → "Acme Corp"; nil for personal mail.
+    static func company(fromEmail email: String) -> String? {
+        guard let domain = email.split(separator: "@").last.map({ String($0).lowercased() }),
+              !personalDomains.contains(domain) else { return nil }
+        let labels = domain.split(separator: ".")
+        guard labels.count >= 2 else { return nil }
+        let name = labels[labels.count - 2]
+        return name.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+}

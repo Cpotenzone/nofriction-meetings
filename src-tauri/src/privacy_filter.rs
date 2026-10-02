@@ -97,40 +97,129 @@ pub fn is_private_window() -> bool {
     false
 }
 
-/// Get the title of the frontmost window using AppleScript (simple, reliable)
+/// Title of the frontmost window of the frontmost app, via
+/// `CGWindowListCopyWindowInfo` (m3: no AppleScript / System Events, so no
+/// Apple Events entitlement and it works in the App Sandbox). The window list
+/// is ordered front to back, so the first normal-layer window owned by the
+/// frontmost app's pid is its front window. Window names are only reported
+/// with Screen Recording permission, which the capture features need anyway.
 #[cfg(target_os = "macos")]
 fn get_frontmost_window_title() -> Option<String> {
-    use std::process::Command;
-
-    // Use AppleScript to get the frontmost window title
-    let output = Command::new("osascript")
-        .args([
-            "-e",
-            r#"tell application "System Events"
-                set frontApp to first application process whose frontmost is true
-                tell frontApp
-                    try
-                        return name of window 1
-                    on error
-                        return ""
-                    end try
-                end tell
-            end tell"#,
-        ])
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !title.is_empty() {
-            return Some(title);
+    let pid: i32 = unsafe {
+        let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let front_app: *mut Object = msg_send![workspace, frontmostApplication];
+        if front_app.is_null() {
+            return None;
         }
+        msg_send![front_app, processIdentifier]
+    };
+    front_window_title_for_pid(pid)
+}
+
+#[cfg(target_os = "macos")]
+pub fn front_window_title_for_pid(pid: i32) -> Option<String> {
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::CFString;
+    use core_graphics::window::{
+        copy_window_info, kCGNullWindowID, kCGWindowLayer, kCGWindowListExcludeDesktopElements,
+        kCGWindowListOptionOnScreenOnly, kCGWindowName, kCGWindowOwnerPID,
+    };
+
+    let windows = copy_window_info(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID,
+    )?;
+    let (k_pid, k_layer, k_name) = unsafe {
+        (
+            CFString::wrap_under_get_rule(kCGWindowOwnerPID),
+            CFString::wrap_under_get_rule(kCGWindowLayer),
+            CFString::wrap_under_get_rule(kCGWindowName),
+        )
+    };
+    for raw in windows.get_all_values() {
+        if raw.is_null() {
+            continue;
+        }
+        let dict: CFDictionary<CFString, CFType> =
+            unsafe { CFDictionary::wrap_under_get_rule(raw as CFDictionaryRef) };
+        let num = |k: &CFString| {
+            dict.find(k)
+                .and_then(|v| v.downcast::<CFNumber>())
+                .and_then(|n| n.to_i64())
+        };
+        if num(&k_pid) != Some(pid as i64) || num(&k_layer) != Some(0) {
+            continue;
+        }
+        let title = dict
+            .find(&k_name)
+            .and_then(|v| v.downcast::<CFString>())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        return if title.is_empty() { None } else { Some(title) };
     }
     None
 }
 
 #[cfg(not(target_os = "macos"))]
 fn get_frontmost_window_title() -> Option<String> {
+    None
+}
+
+/// (owner app name, window title) for every normal on-screen window, front
+/// to back. Titles are empty without Screen Recording permission, so callers
+/// must treat "no titled windows" as "signal unavailable". None if the
+/// window server can't be queried.
+#[cfg(target_os = "macos")]
+pub fn on_screen_windows() -> Option<Vec<(String, String)>> {
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::CFString;
+    use core_graphics::window::{
+        copy_window_info, kCGNullWindowID, kCGWindowLayer, kCGWindowListExcludeDesktopElements,
+        kCGWindowListOptionOnScreenOnly, kCGWindowName, kCGWindowOwnerName,
+    };
+
+    let windows = copy_window_info(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID,
+    )?;
+    let (k_layer, k_name, k_owner) = unsafe {
+        (
+            CFString::wrap_under_get_rule(kCGWindowLayer),
+            CFString::wrap_under_get_rule(kCGWindowName),
+            CFString::wrap_under_get_rule(kCGWindowOwnerName),
+        )
+    };
+    let mut out = Vec::new();
+    for raw in windows.get_all_values() {
+        if raw.is_null() {
+            continue;
+        }
+        let dict: CFDictionary<CFString, CFType> =
+            unsafe { CFDictionary::wrap_under_get_rule(raw as CFDictionaryRef) };
+        let layer = dict
+            .find(&k_layer)
+            .and_then(|v| v.downcast::<CFNumber>())
+            .and_then(|n| n.to_i64());
+        if layer != Some(0) {
+            continue;
+        }
+        let text = |k: &CFString| {
+            dict.find(k)
+                .and_then(|v| v.downcast::<CFString>())
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        };
+        out.push((text(&k_owner), text(&k_name)));
+    }
+    Some(out)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn on_screen_windows() -> Option<Vec<(String, String)>> {
     None
 }
 

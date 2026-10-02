@@ -321,49 +321,7 @@ pub async fn get_system_health(state: State<'_, AppState>) -> Result<Vec<Service
         });
     }
 
-    // Ingest queue
-    let queue_result = state.ingest_queue.lock().get_stats();
-    match queue_result {
-        Ok((pending, processing)) => {
-            services.push(ServiceHealth {
-                name: "Ingest Queue".to_string(),
-                status: "healthy".to_string(),
-                message: Some(format!("{} pending, {} processing", pending, processing)),
-                last_check: now.clone(),
-            });
-        }
-        Err(e) => {
-            services.push(ServiceHealth {
-                name: "Ingest Queue".to_string(),
-                status: "error".to_string(),
-                message: Some(format!("Failed to get stats: {}", e)),
-                last_check: now.clone(),
-            });
-        }
-    }
-
     Ok(services)
-}
-
-/// Get ingest queue statistics
-#[tauri::command]
-pub async fn get_admin_queue_stats(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    let (pending, processing) = state
-        .ingest_queue
-        .lock()
-        .get_stats()
-        .map_err(|e| format!("Failed to get queue stats: {}", e))?;
-
-    Ok(serde_json::json!({
-        "pending": pending,
-        "processing": processing,
-        "completed": 0,  // Not tracked by current API
-        "failed": 0,     // Not tracked by current API
-        "total_bytes": 0,
-        "total_bytes_formatted": "0 B",
-    }))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -383,7 +341,6 @@ pub async fn get_feature_flags(state: State<'_, AppState>) -> Result<serde_json:
         "admin_console_enabled": true,  // Always true if we got here
         "dedup_enabled": settings.dedup_enabled.unwrap_or(true),
         "vlm_auto_process": settings.vlm_auto_process,
-        "enable_ingest": settings.enable_ingest.unwrap_or(false),
         "queue_frames_for_vlm": settings.queue_frames_for_vlm,
     }))
 }
@@ -410,13 +367,6 @@ pub async fn set_feature_flag(
                 .set("vlm_auto_process", &value.to_string())
                 .await
                 .map_err(|e| format!("Failed to set vlm_auto_process: {}", e))?;
-        }
-        "enable_ingest" => {
-            state
-                .settings
-                .set("enable_ingest", &value.to_string())
-                .await
-                .map_err(|e| format!("Failed to set enable_ingest: {}", e))?;
         }
         "queue_frames_for_vlm" => {
             state
@@ -640,36 +590,6 @@ pub async fn get_job_history(
         .collect())
 }
 
-/// Pause or resume the ingest queue
-#[tauri::command]
-pub async fn pause_ingest_queue(state: State<'_, AppState>, paused: bool) -> Result<bool, String> {
-    // Toggle the enable_ingest setting
-    state
-        .settings
-        .set("enable_ingest", &(!paused).to_string())
-        .await
-        .map_err(|e| format!("Failed to set enable_ingest: {}", e))?;
-
-    // Audit log
-    let audit = AuditLog::new(state.database.get_pool().as_ref().clone());
-    let _ = audit
-        .log_action(crate::audit_log::AuditAction {
-            action: if paused {
-                "pause_queue".to_string()
-            } else {
-                "resume_queue".to_string()
-            },
-            target_type: "ingest_queue".to_string(),
-            target_id: "main".to_string(),
-            details: None,
-            bytes_affected: 0,
-        })
-        .await;
-
-    log::info!("Ingest queue {}", if paused { "paused" } else { "resumed" });
-    Ok(!paused) // Return the new enabled state
-}
-
 /// Get database statistics
 #[tauri::command]
 pub async fn get_database_stats(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
@@ -683,6 +603,12 @@ pub async fn get_database_stats(state: State<'_, AppState>) -> Result<serde_json
         .unwrap_or(0);
 
     let frames_count: i64 = sqlx::query("SELECT COUNT(*) as count FROM frames")
+        .fetch_one(state.database.get_pool().as_ref())
+        .await
+        .map(|r| r.get("count"))
+        .unwrap_or(0);
+
+    let text_snapshots_count: i64 = sqlx::query("SELECT COUNT(*) as count FROM text_snapshots")
         .fetch_one(state.database.get_pool().as_ref())
         .await
         .map(|r| r.get("count"))
@@ -714,7 +640,7 @@ pub async fn get_database_stats(state: State<'_, AppState>) -> Result<serde_json
 
     Ok(serde_json::json!({
         "meetings": meetings_count,
-        "frames": frames_count,
+        "frames": frames_count + text_snapshots_count,
         "transcripts": transcripts_count,
         "entities": entities_count,
         "frame_queue": frame_queue_count,

@@ -7,6 +7,134 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.6.0] - 2026-10-01
+
+Ready for TestFlight on iPhone, iPad and Mac. Users bring their own AI key,
+and nothing goes through a noFriction server.
+
+### Added
+- **Use any AI with your own key.** Paste a key in Settings → AI Engine and the
+  app recognizes the provider and checks that the key works. Supported:
+  OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter,
+  Mistral, DeepSeek, Perplexity and Together. Local models work too (Ollama,
+  LM Studio, any OpenAI-compatible URL), and Apple's on-device model needs no
+  key. Keys live in the Keychain. The app asks before sending meeting content
+  to a provider for the first time.
+- **Delete and "Strike from the record."** Remove words, whole lines or
+  screens from a meeting:
+  - **Delete** leaves no trace and has 5 seconds of undo.
+  - **Strike** destroys the content permanently and leaves a marker with the
+    time, the date and an optional reason.
+  - Removed content is purged from the transcript, search, recorded audio
+    (iPhone), screenshots and screen video, AI notes, exports, app backups and
+    database free space.
+- **Recordings stop when the meeting ends.** The app notices when Zoom, Teams,
+  Meet or FaceTime lets go of the mic, the call window closes, the calendar
+  event is over, or nobody has spoken for a few minutes. A 30-second banner
+  lets you keep recording.
+- **iPhone and iPad app.**
+  - Settings tab.
+  - Subscription (noFriction Pro, monthly or yearly) through the App Store.
+  - Recording-consent notice.
+  - Privacy manifest.
+- **Mac App Store build** (sandboxed): `scripts/release-mas.sh`, with StoreKit
+  and Apple on-device AI through a small Swift bridge.
+- **Privacy policy and support pages** in `site/`.
+- **New app icon.**
+
+### Changed
+- **Client-only.** Supabase, Pinecone and the ingest server were removed.
+  Search and "chat with your meetings" now run on the local full-text index.
+- Local Whisper is the default transcription. Cloud transcription is optional,
+  with your own key.
+- The app's identifier is now `com.nofriction.meetings` on every platform. The
+  Mac data folder moves on first launch, and nothing is deleted.
+
+### Fixed
+- **No more "bye bye bye" loops.** Whisper's invented filler on silence or
+  noise is filtered out.
+- **Meetings are marked as ended when you stop recording.** Before, they never
+  were, so automatic reports never ran. Meetings left open by earlier versions
+  are closed on launch.
+- Fresh installs could randomly hit "no such table" right after setting up the
+  database.
+- Screen-recording permission prompts no longer repeat.
+- Release builds refuse to ship a broken code signature, the cause of the
+  repeated mic and screen permission prompts.
+- Transcripts are no longer written to the log file.
+
+---
+
+## [2.7.0] - 2026-02-13
+
+### Added
+
+#### LiveIntelAgent v2 — Smart Real-Time Meeting Intelligence
+- **8 event types** (was 6): ActionItem, Decision, RiskSignal, Commitment, QuestionSuggestion, TopicShift, **KeyInsight**, **Deadline**
+- **Smart pattern matching**: Strong vs weak patterns — weak signals require 2+ co-occurring matches to fire
+- **30-second cooldown** per event type to prevent insight spam
+- **4-word minimum** segment guard — skips filler ("yeah", "uh huh") fragments
+- **Hash-based deduplication** across rule-based and AI extraction paths
+- **Deadline extraction**: 28 temporal patterns ("by Friday", "end of quarter", "ship by", etc.)
+- **Sentiment tracking**: Exponential weighted average from 40+ signal words (-1.0 to 1.0)
+- **Meeting energy score**: WPM rate + speaker diversity → 0-100 composite score
+
+#### AI Integration Improvements
+- AI prompt now includes live conversation state (current topic, sentiment, energy, speakers)
+- AI response parsing for `key_insights` → proper `KeyInsight` event type
+- AI response parsing for `deadlines` → `Deadline` events with owner and reference
+- `MeetingStats` struct tracks aggregate counts of segments, words, speakers, and event types
+
+### Changed
+- Default AI model upgraded from `qwen2.5-coder:7b` to `qwen3:8b` (Sage — deep reasoning model)
+- Serendipity API key updated
+- `MeetingIntelPanel.tsx` icons: 💡 for key_insight, 📅 for deadline, ❓ for question_suggestion
+- Meeting export (stop_recording) now includes Key Insights and Deadlines markdown sections
+
+### Fixed
+- `KeyInsight` events were incorrectly mapped to `QuestionSuggestion` — now use dedicated type
+- Dead code warning on `AiRisk.type` field suppressed with `#[allow(dead_code)]`
+
+---
+
+## [2.6.0] - 2026-02-11
+
+### Added
+
+#### Prompt Studio — Master Prompt Management UI
+- **🧠 PROMPTS tab** in Agency view with split-pane editor
+- **Category filtering**: All, Intelligence, Meeting, VLM
+- **Persona filtering**: Prospecting, Fundraising, Product Dev, Admin, Personal
+- **Inline editor**: Edit name, description, system prompt, temperature, active toggle
+- **Test Panel**: Collapsible input/response box — test prompts against AI inline
+- **Duplicate & Delete**: Clone prompts for variants, delete custom prompts
+
+#### Persona-Aware AI Pipeline
+- **20 built-in prompts** seeded across 4 features × 5 personas
+- **Prompt resolution**: All AI surfaces now resolve persona-specific prompts from PromptManager
+- **Prompt fallbacks**: Graceful degradation when persona-specific prompt not found
+
+#### LiveIntelAgent Hybrid AI Upgrade
+- **Rule-based + AI-powered** dual-phase extraction for live meeting insights
+- **`ai_analyze` method**: Sends transcript segments to AI with persona-specific system prompt
+- **Structured parsing**: AI response parsed into ActionItems, Decisions, Risks, and KeyInsights
+- **Graceful degradation**: Falls back to rule-based only if AI fails
+
+#### New/Updated Tauri Commands
+- `test_prompt` — Test any prompt with sample input from the UI
+- `get_live_insights` — Now includes AI-powered phase for deeper insights
+- `generate_catch_up`, `chat_with_data`, `generate_meeting_report` — All wired to PromptManager
+
+### Changed
+- HelpView updated with Prompt Studio documentation (navigation, how-to, tech spec)
+- Meeting report prompt management moved from Settings to Prompt Studio
+- CHANGELOG updated with full v2.6.0 entry
+
+### Fixed
+- CSS `background-clip` and `line-clamp` lint warnings in PromptStudio.css
+
+---
+
 ## [2.5.0] - 2026-02-03
 
 ### Added
@@ -228,6 +356,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Theme |
 |---------|------|-------|
+| 2.7.0 | 2026-02-13 | Smart Live Intel v2 + Qwen3 |
+| 2.6.0 | 2026-02-11 | Prompt Studio + AI Intelligence |
 | 2.5.0 | 2026-02-03 | RAG Pipeline + Always-On |
 | 2.1.0 | 2026-01-20 | Admin Console + Calendar |
 | 2.0.0 | 2026-01-10 | Video Recording + VLM |
@@ -290,6 +420,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.7.0]: https://github.com/nofriction/meetings/compare/v2.6.0...v2.7.0
+[2.6.0]: https://github.com/nofriction/meetings/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/nofriction/meetings/compare/v2.1.0...v2.5.0
 [2.1.0]: https://github.com/nofriction/meetings/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/nofriction/meetings/compare/v1.5.0...v2.0.0

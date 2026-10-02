@@ -1,418 +1,242 @@
-# noFriction Meetings - User Guide
+# noFriction user guide
 
-## Welcome to noFriction Meetings
+noFriction records your meetings, transcribes them on your device, matches
+them to your calendar and, with the AI you choose, writes notes. It works on
+iPhone, iPad and Mac. There's no account to create.
 
-noFriction Meetings is your AI-powered meeting companion for macOS. It automatically captures, transcribes, and analyzes your meetings, giving you instant access to searchable transcripts, visual timelines, and intelligent insights.
-
----
-
-## Table of Contents
-
-1. [Getting Started](#getting-started)
-2. [Recording Meetings](#recording-meetings)
-3. [Reviewing with Rewind](#reviewing-with-rewind)
-4. [AI Chat & Intelligence](#ai-chat--intelligence)
-5. [Knowledge Base Search](#knowledge-base-search)
-6. [Settings & Configuration](#settings--configuration)
-7. [Troubleshooting](#troubleshooting)
-8. [Keyboard Shortcuts](#keyboard-shortcuts)
-9. [Privacy & Security](#privacy--security)
+- [Get started](#get-started)
+- [Record a meeting](#record-a-meeting)
+- [Add slides and screens](#add-slides-and-screens)
+- [Find and review meetings](#find-and-review-meetings)
+- [Connect your AI](#connect-your-ai)
+- [Use the AI features](#use-the-ai-features)
+- [Delete or strike something](#delete-or-strike-something)
+- [Export your meetings](#export-your-meetings)
+- [Subscription](#subscription)
+- [Privacy](#privacy)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## Getting Started
+## Get started
 
-### Installation
+### iPhone and iPad (iOS/iPadOS 18 or later)
 
-1. **Download** the latest `.dmg` from [releases](https://github.com/nofriction/meetings/releases)
-2. **Open** the DMG and drag `noFriction Meetings` to your Applications folder
-3. **Launch** from Applications or Spotlight (`⌘ + Space`, type "noFriction")
+1. Install noFriction from the App Store and open it.
+2. The first time you record, allow **Microphone**, **Speech Recognition**
+   and **Calendars**. Calendar access is read-only; it's used to name
+   meetings and list who attended.
 
-### First Launch Setup
+### Mac (macOS 12.3 or later)
 
-When you first launch noFriction Meetings, a setup wizard guides you through:
-
-#### Step 1: Grant Permissions
-
-macOS requires explicit permission for sensitive features:
-
-| Permission | What It Enables | How to Grant |
-|------------|-----------------|--------------|
-| **Microphone** | Audio capture | Click "Allow" when prompted |
-| **Screen Recording** | Visual capture | System Settings → Privacy → Screen Recording |
-| **Accessibility** | Text extraction | System Settings → Privacy → Accessibility |
-| **Calendar** | Meeting detection | System Settings → Privacy → Calendar |
-
-> **Tip:** If a permission prompt doesn't appear, open System Settings → Privacy & Security and manually add noFriction Meetings.
-
-#### Step 2: Configure Transcription
-
-Choose your transcription provider:
-
-| Provider | Quality | Speed | Cost |
-|----------|---------|-------|------|
-| **Deepgram** (Recommended) | Excellent | Real-time | Pay-per-use |
-| **Gladia** | Very Good | Real-time | Pay-per-use |
-| **Google STT** | Good | Real-time | Pay-per-use |
-
-**To set up Deepgram:**
-1. Go to [console.deepgram.com](https://console.deepgram.com)
-2. Create an API key
-3. Paste in Settings → Transcription → Deepgram API Key
-
-#### Step 3: Configure AI (Optional)
-
-For AI features like summaries, action items, and chat:
-
-| Provider | Setup |
-|----------|-------|
-| **TheBrain Cloud** | Settings → AI → Login with credentials |
-| **Local Ollama** | Install [Ollama](https://ollama.ai), models auto-detected |
+1. Install noFriction from the Mac App Store and open it.
+2. The setup wizard asks how to transcribe. Choose **Private & Offline**: the
+   app downloads a 547 MB speech model once and then transcribes on your Mac,
+   even offline.
+3. Allow **Microphone**, **Screen & System Audio Recording** (so the other
+   people on a call are captured, and screens can be saved) and **Calendars**.
+   If you miss a prompt, open System Settings → Privacy & Security.
 
 ---
 
-## Recording Meetings
+## Record a meeting
 
-### Starting a Recording
+**iPhone/iPad:** open the **Record** tab and tap **Record**. The first time,
+a notice reminds you that recording laws vary; tap **I understand**. The
+transcript appears as people talk. Recording continues with the screen
+locked. Tap **Stop** when you're done.
 
-**Method 1: Sidebar Button**
-- Click the red **Record** button in the sidebar
+**Mac:** open **LIVE** and start recording. The bar shows the matched calendar
+event and how many people are invited. Stop when you're done.
 
-**Method 2: Tray Menu**
-- Click the tray icon → "Start Recording"
+> Tell people you're recording. In many places everyone must agree to be
+> recorded.
 
-**Method 3: Keyboard Shortcut**
-- Press `⌘ + Shift + R` (global)
+### Automatic stop
 
-**Method 4: Automatic Detection** (if enabled)
-- noFriction detects when you open Zoom, Google Meet, or Teams
-- A banner appears: "Meeting detected. Start recording?"
+When the calendar event is over and the room goes quiet, or nobody has spoken
+for a few minutes, noFriction shows a banner and stops after 30 seconds.
+Choose **Keep recording** to carry on (it won't ask again for 10 minutes on
+iPhone/iPad), or **Stop now**. Nothing said before the stop is lost. On the Mac
+it also notices when the call app releases the microphone (macOS 14.2 or later)
+or the meeting window closes.
 
-### During Recording
-
-While recording, you'll see:
-- **Red indicator** in the tray icon
-- **Live transcript** scrolling in real-time
-- **Timer** showing recording duration
-
-**Available Actions:**
-| Action | How |
-|--------|-----|
-| Pin a moment | Click "📌 Pin" to bookmark important points |
-| View live transcript | Open Live Transcript panel |
-| Pause (Always-On only) | Tray → Pause Capture |
-
-### Stopping a Recording
-
-- Click **Stop Recording** in sidebar
-- Or tray icon → "Stop Recording"
-- Or `⌘ + Shift + R` again
-
-The recording is automatically:
-1. Saved to your local database
-2. Transcribed (if Deepgram configured)
-3. Analyzed by VLM (if enabled)
-4. Indexed for search
+Turn it off or change the silence time:
+- iPhone/iPad: **Settings tab → Recording**.
+- Mac: **Settings → General → Recording** ("Stop automatically when the
+  meeting ends", "Silence before stopping").
 
 ---
 
-## Reviewing with Rewind
+## Add slides and screens
 
-The **Rewind** feature lets you visually browse past meetings with synchronized screenshots and transcripts.
+**iPhone/iPad:** while recording, tap **Take Photo** for a slide or whiteboard,
+or **Choose from Photos** to add screenshots. They appear in the meeting.
 
-### Opening Rewind
-
-1. Click **Rewind** in the sidebar
-2. Select a meeting from the list
-
-### Rewind Interface
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Visual Timeline (screenshots over time)                    │
-│  ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐          │
-│  │ 📷 │ │ 📷 │ │ 📷 │ │ 📷 │ │ 📷 │ │ 📷 │ │ 📷 │          │
-│  └────┘ └────┘ └────┘ └────┘ └────┘ └────┘ └────┘          │
-├─────────────────────────────────────────────────────────────┤
-│  ▶️ [══════════════●══════════] 12:34 / 45:00              │
-├─────────────────────────────────────────────────────────────┤
-│  Transcript (synced to current frame)                       │
-│  [John]: "Let's discuss the Q1 numbers..."                  │
-│  [Sarah]: "The revenue is up 15%."                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Rewind Controls
-
-| Control | Action |
-|---------|--------|
-| Click thumbnail | Jump to that point |
-| Drag slider | Scrub through timeline |
-| ← / → arrows | Move to previous/next frame |
-| Click transcript line | Jump to when it was spoken |
-
-### Exporting
-
-- **Export Transcript**: Downloads as .txt or .srt
-- **Export Video Clip**: Saves selected portion as video
+**Mac:** noFriction saves a screenshot of the chosen screens when they change
+(about once a second at most) while you record.
+- Choose what's captured: **LIVE → Change**, then pick any screens or
+  windows. If nothing is selected, the main display is captured.
+- Save one right now: **Snap**.
 
 ---
 
-## AI Chat & Intelligence
+## Find and review meetings
 
-### Using AI Chat
+**iPhone/iPad:** the **Meetings** tab lists every recording, named from your
+calendar. Search by title, person or anything said. Open a meeting to read
+the transcript, play the audio and see photos. The **People** tab lists
+everyone you've met with; tap **LinkedIn** to search for someone and paste
+their profile link.
 
-Access the AI assistant:
-1. Click **Chat** in the sidebar, OR
-2. Click the brain icon (🧠) to open CopilotPanel
-
-### RAG (Retrieval Augmented Generation)
-
-When **"Use History"** is enabled (default):
-- The AI searches your meeting history for relevant context
-- Shows **context cards** with sources used
-- Provides grounded answers based on your actual data
-
-**Example:**
-```
-You: "What did we decide about the marketing budget?"
-
-AI: Based on your January 15th meeting with Sarah, you decided 
-    to allocate $500K to marketing for Q1, with a focus on 
-    digital campaigns.
-    
-    📚 Sources:
-    • Meeting 2026-01-15 (87% match)
-    • Conversation 2026-01-10 (72% match)
-```
-
-### Quick Actions
-
-| Button | What It Does |
-|--------|--------------|
-| **Summary** | Generates meeting summary |
-| **Tasks** | Extracts action items |
-| **History** | Searches past conversations |
-
-### Model Selection
-
-Choose from available models:
-- **Qwen3 8B** - Fast, general purpose
-- **Qwen3 14B** - Higher quality
-- **Qwen3 VL** - Vision + language
-- **Coder 7B** - Code-focused
+**Mac:** **REWIND** has:
+- **Recordings**: each meeting with its attendees, the transcript and the
+  screenshot timeline.
+- **People**: everyone from your meetings, with invite notes, join links and
+  LinkedIn links.
+- **Search**: full-text search across your transcripts.
 
 ---
 
-## Knowledge Base Search
+## Connect your AI
 
-### Semantic Search
+AI features use **your own** AI account, so your provider bills you directly
+and noFriction never sees your data.
 
-Search across all your meetings using natural language:
+1. Get an API key from a provider, for example
+   [OpenAI](https://platform.openai.com/api-keys) (the default),
+   [Anthropic](https://console.anthropic.com/settings/keys) or
+   [Google Gemini](https://aistudio.google.com/apikey). Also supported:
+   xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity and Together.
+2. Paste it:
+   - iPhone/iPad: **Settings tab → Connect AI → Paste your API key → Connect**.
+   - Mac: **Settings → AI Engine → Paste your API key**.
+3. noFriction recognizes the provider, checks the key and picks a model. You
+   can change the model in the same screen.
+4. The first time an AI feature sends a meeting to a cloud provider, the app
+   asks you and says what will be sent. You can revoke this later in Settings.
 
-1. Open **Search** (🔍) or press `⌘ + K`
-2. Type your query: "discussions about pricing strategy"
-3. View ranked results with relevance scores
+**No key needed:**
+- **Apple on-device model**: on iOS 26 or macOS 26 or later with Apple
+  Intelligence on. On iPhone/iPad, tap **Use Apple on-device (no key)**; on
+  the Mac it's used automatically when no other provider is set up. Nothing
+  leaves the device. (On the Mac, it doesn't analyze screenshots.)
+- **Your own server**: Ollama, LM Studio or any OpenAI-compatible endpoint.
+  iPhone/iPad: **Settings tab → Your own server**. Mac: **Settings → AI
+  Engine** (local endpoints).
 
-### Search Types
-
-| Type | Example Query | Searches |
-|------|---------------|----------|
-| Keyword | "Q1 budget" | Exact phrase matches |
-| Semantic | "money discussions" | Meaning-based |
-| Entity | "@John" | Specific speakers |
-| Date | "last week" | Time-based |
-
-### Filtering Results
-
-Filter by:
-- Date range
-- Meeting participants
-- Topic/theme
-- Content type (transcript, screenshot, insight)
+Keys are stored in the system Keychain. To remove one: iPhone/iPad, swipe
+left on it under **Saved providers**; Mac, **Settings → AI Engine → Saved
+providers**.
 
 ---
 
-## Settings & Configuration
+## Use the AI features
 
-Access Settings via sidebar or `⌘ + ,`
+AI features need **noFriction Pro** (see [Subscription](#subscription)) and a
+connected AI.
 
-### Transcription Settings
+**iPhone/iPad**, in a meeting:
+- **Summarize**: notes with a summary, decisions and action items. Owners
+  and due dates appear only if someone said them.
+- **Follow-up email**: a draft to the attendees, recapping decisions and next
+  steps.
 
-| Setting | Description |
-|---------|-------------|
-| **Provider** | Deepgram, Gladia, or Google STT |
-| **API Key** | Your provider's API key |
-| **Language** | Primary language for transcription |
-| **Speaker Diarization** | Identify who said what |
+**Mac:**
+- **CHAT**: ask a question about your meetings ("What did we decide about
+  the launch date?"). The answer is drawn from your transcripts.
+- **Live insights**: during a recording, LIVE shows action items, decisions,
+  risks and deadlines as they come up.
+- **Meeting report**: after a recording longer than six minutes, noFriction
+  writes a summary, decisions and action items with your connected AI. Export
+  it to Obsidian to read it (see [Export](#export-your-meetings)).
+- **Meeting prep**: in **INTEL**, **Lookup** on an upcoming meeting gives a
+  prep brief on the attendees (uses notes in your Obsidian vault).
 
-### Capture Settings
+AI can be wrong. Check names, numbers and dates before you send anything.
 
-| Setting | Description |
-|---------|-------------|
-| **Capture Microphone** | Record mic audio |
-| **Capture System Audio** | Record computer audio |
-| **Capture Screen** | Take periodic screenshots |
-| **Frame Interval** | Seconds between screenshots |
-| **Always-On Mode** | Background ambient capture |
+---
 
-### AI Settings
+## Delete or strike something
 
-| Setting | Description |
-|---------|-------------|
-| **TheBrain Login** | Cloud AI authentication |
-| **Ollama Models** | Local model selection |
-| **Auto-Analyze** | VLM processing on/off |
-| **VLM Interval** | Processing frequency |
+Select words, whole lines, or a photo/screenshot, then choose:
 
-### Knowledge Base Settings
+| | **Delete** | **Strike from the record** |
+|---|---|---|
+| Use for | Mistakes, junk, false starts | Content that must not exist anywhere |
+| What's left | Nothing; the transcript closes up | A marker: "Stricken from the record", the time it covered, when, and an optional reason |
+| Undo | 5 seconds | None |
 
-| Setting | Description |
-|---------|-------------|
-| **Pinecone** | Vector database for semantic search |
-| **Supabase** | Cloud PostgreSQL for structured data |
-| **Local Only** | Disable cloud sync |
+Both remove the content from the transcript, search, the saved audio
+(iPhone/iPad, replaced with silence), screenshots, the app's backups (Mac)
+and future exports. AI notes made before the edit are marked so you can
+regenerate them. Copies you already shared, exported or sent to an AI
+provider can't be recalled. On the Mac, you can't edit the screens of a
+meeting that is still recording.
 
-### Privacy Settings
+To delete a whole meeting: iPhone/iPad, open it → **⋯ → Delete Meeting**; Mac,
+from the meeting list in **REWIND → Recordings**.
 
-| Setting | Description |
-|---------|-------------|
-| **Privacy Filter** | Blur sensitive content |
-| **Excluded Apps** | Apps not to capture |
-| **Data Retention** | How long to keep recordings |
+---
+
+## Export your meetings
+
+- **iPhone/iPad:** in a meeting, tap the **Share** button to send the meeting
+  as text (Markdown) to Notes, Mail, Files or any app.
+- **Mac:** **Settings → Obsidian** to pick your vault folder and, if you like,
+  turn on **Auto-Export Meetings**. Export by hand from **VAULT**. To export
+  everything as JSON: **Settings → Data → Export Data to JSON**.
+
+Meetings don't sync between devices. Each device keeps what it recorded.
+
+---
+
+## Subscription
+
+| Free | noFriction Pro |
+|---|---|
+| Recording, on-device transcription, calendar and people, photos and screenshots, search, Delete and Strike, export | The AI features above |
+
+- Pro is a monthly or yearly subscription. Prices (and any free trial) are
+  shown before you buy.
+- One subscription covers iPhone, iPad and Mac on the same Apple Account.
+- **Restore Purchases**: iPhone/iPad, **Settings tab → Subscription**; Mac,
+  **Settings → Subscription**.
+- **Cancel**: **Manage Subscription** in the same place, or your device's
+  Settings → your name → Subscriptions. You keep Pro until the end of the
+  period.
+- Your AI provider's usage is billed by that provider, not included in Pro.
+
+---
+
+## Privacy
+
+- Audio, transcripts, photos and screenshots are stored only on your device.
+- Transcription runs on the device (on the Mac, unless you choose a cloud
+  transcription service in **Settings → Transcription**, with your own key).
+- AI features send meeting text (and, on the Mac, screenshots for screen
+  features) straight to the provider you chose. On the Mac, once a provider is
+  connected and approved, live insights and the after-meeting report use it
+  automatically. Turn either off in **Settings → AI Engine → Automatic AI**.
+- No accounts, no analytics, no tracking, no noFriction servers.
+
+Full policy: [nofriction.ai/privacy](https://nofriction.ai/privacy).
 
 ---
 
 ## Troubleshooting
 
-### No Audio Captured
+| Problem | Fix |
+|---|---|
+| No transcript | Allow Microphone and Speech Recognition (iPhone/iPad), or Microphone (Mac), in System Settings → Privacy & Security. On a Mac, make sure the speech model finished downloading (Settings → Transcription). |
+| Other people on the call aren't transcribed (Mac) | Allow **Screen & System Audio Recording**, then restart the recording. |
+| No screenshots (Mac) | Allow Screen & System Audio Recording; check **LIVE → Change** has a screen or window selected. |
+| Meeting not named from the calendar | Allow Calendars. The recording must overlap a calendar event. |
+| "Wrong key" | Copy the whole key again; check it hasn't been revoked. |
+| "No credit" or rate-limited | Add billing or credit at your provider. |
+| Can't reach a local server | Check the address. Plain `http://` only works for this device, your local network or Tailscale. On iPhone/iPad, allow Local Network access. |
+| Recording stopped by itself | That's automatic stop; see [Automatic stop](#automatic-stop). |
+| Subscription not recognized | **Restore Purchases**, signed in with the Apple Account you subscribed with. |
 
-**Symptom:** Recording runs but no transcript appears
-
-**Solutions:**
-1. Check System Settings → Privacy & Security → Microphone
-2. Verify audio device in Settings → Capture Settings
-3. Test microphone with QuickTime Player
-
-### No Screenshots
-
-**Symptom:** Rewind shows no visual frames
-
-**Solutions:**
-1. Grant Screen Recording permission
-2. Restart app after granting permission
-3. Check "Capture Screen" is enabled in settings
-
-### Transcription Not Working
-
-**Symptom:** Audio captured but no text
-
-**Solutions:**
-1. Verify API key in Settings → Transcription
-2. Check internet connection
-3. View logs: Help → Diagnostic Logs
-
-### AI Not Responding
-
-**Symptom:** Chat shows no response or errors
-
-**Solutions:**
-1. Check TheBrain connection status (green dot)
-2. Re-authenticate in Settings → AI
-3. Try a different model
-
-### Search Returns Nothing
-
-**Symptom:** Semantic search finds no results
-
-**Solutions:**
-1. Verify Pinecone configured in Settings → Knowledge Base
-2. Wait for initial indexing to complete
-3. Check that meetings have been processed
-
-### App Won't Launch
-
-**Symptom:** App crashes or shows error on startup
-
-**Solutions:**
-1. Try launching from Terminal:
-   ```bash
-   /Applications/noFriction\ Meetings.app/Contents/MacOS/noFriction\ Meetings
-   ```
-2. Reset app: `rm -rf ~/Library/Application\ Support/com.nofriction.meetings`
-3. Check macOS version (requires 12.0+)
-
----
-
-## Keyboard Shortcuts
-
-### Global (work anywhere)
-
-| Shortcut | Action |
-|----------|--------|
-| `⌘ + Shift + R` | Start/stop recording |
-| `⌘ + Shift + P` | Pin current moment |
-
-### In-App
-
-| Shortcut | Action |
-|----------|--------|
-| `⌘ + K` | Open command palette / search |
-| `⌘ + ,` | Open settings |
-| `⌘ + 1-9` | Switch sidebar tabs |
-| `⌘ + N` | New prompt |
-| `⌘ + Enter` | Send chat message |
-| `Escape` | Close panel / cancel |
-
-### Rewind
-
-| Shortcut | Action |
-|----------|--------|
-| `Space` | Play / pause |
-| `←` / `→` | Previous / next frame |
-| `⌘ + ←` / `⌘ + →` | Jump 10 seconds |
-
----
-
-## Privacy & Security
-
-### Data Storage
-
-| Data | Location | Encrypted |
-|------|----------|-----------|
-| Recordings | `~/Library/Application Support/com.nofriction.meetings/` | Yes (at rest) |
-| Transcripts | Local SQLite | Yes |
-| Settings | Local preferences | No |
-
-### Cloud Sync (Optional)
-
-If you enable cloud features:
-- **Supabase**: PostgreSQL database (your instance)
-- **Pinecone**: Vector embeddings only (no raw audio)
-- **TheBrain**: API calls only, no data stored
-
-### Data Deletion
-
-To delete all data:
-1. Settings → Storage → Clear All Data
-2. Or manually: `rm -rf ~/Library/Application\ Support/com.nofriction.meetings`
-
-### What We Don't Do
-
-- ❌ We don't sell your data
-- ❌ We don't train AI on your meetings
-- ❌ We don't share with third parties
-- ❌ Raw audio never leaves your device (except for transcription API)
-
----
-
-## Getting Help
-
-- **In-App Help**: Click Help in sidebar
-- **Logs**: Help → Diagnostic Logs
-- **Support**: support@nofriction.ai
-- **Documentation**: docs.nofriction.ai
-
----
-
-© 2026 noFriction AI. All rights reserved.
+Still stuck? Email [support@nofriction.ai](mailto:support@nofriction.ai)
+with your device, OS version and app version.

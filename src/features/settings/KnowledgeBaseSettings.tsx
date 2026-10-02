@@ -1,37 +1,20 @@
-// noFriction Meetings - Knowledge Base Settings Component
-// Configuration for Supabase, Pinecone, and VLM integration
+// noFriction Meetings - Knowledge Base Settings Component (Advanced)
+// Screenshot processing (vision model). Everything stays on this Mac except
+// calls to the AI provider you chose.
+// AI providers are configured in AIProviderSettings (Settings → AI Engine).
 
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ai } from "../../lib/ai";
 
 interface HealthStatus {
-    supabase: boolean | null;
-    pinecone: boolean | null;
     vlm: boolean | null;
-    vlmVision: boolean | null;
-    thebrain: boolean | null;
 }
 
 export function KnowledgeBaseSettings() {
-    // Connection settings
-    const [supabaseConnString, setSupabaseConnString] = useState("");
-    const [pineconeApiKey, setPineconeApiKey] = useState("");
-    const [pineconeHost, setPineconeHost] = useState("");
-    const [pineconeNamespace, setPineconeNamespace] = useState("");
-
-    // TheBrain credentials
-    const [thebrainEmail, setThebrainEmail] = useState("");
-    const [thebrainPassword, setThebrainPassword] = useState("");
-    const [thebrainApiUrl, setThebrainApiUrl] = useState("https://7wk6vrq9achr2djw.caas.targon.com");
-    const [thebrainError, setThebrainError] = useState<string | null>(null);
-
     // Status
     const [health, setHealth] = useState<HealthStatus>({
-        supabase: null,
-        pinecone: null,
         vlm: null,
-        vlmVision: null,
-        thebrain: null,
     });
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -40,59 +23,17 @@ export function KnowledgeBaseSettings() {
     useEffect(() => {
         checkHealth();
         loadPendingCount();
-        loadSavedCredentials();
     }, []);
-
-    const loadSavedCredentials = async () => {
-        try {
-            const [savedUsername, savedUrl] = await Promise.all([
-                invoke<string | null>("get_setting", { key: "thebrain_username" }),
-                invoke<string | null>("get_setting", { key: "vlm_base_url" }),
-            ]);
-            if (savedUsername) setThebrainEmail(savedUsername);
-            if (savedUrl) setThebrainApiUrl(savedUrl);
-        } catch (err) {
-            console.error("Failed to load saved TheBrain credentials:", err);
-        }
-    };
 
     const checkHealth = async () => {
         setIsLoading(true);
         try {
-            const [supabase, pinecone, vlm, vlmVision, thebrain] = await Promise.all([
-                invoke<boolean>("check_supabase").catch(() => false),
-                invoke<boolean>("check_pinecone").catch(() => false),
-                invoke<boolean>("check_vlm").catch(() => false),
-                invoke<boolean>("check_vlm_vision").catch(() => false),
-                invoke<boolean>("check_thebrain").catch(() => false),
-            ]);
-            setHealth({ supabase, pinecone, vlm, vlmVision, thebrain });
+            const vlm = await ai.status().then((s) => s.vision_ready).catch(() => false);
+            setHealth({ vlm });
         } catch (err) {
             console.error("Health check failed:", err);
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const handleThebrainLogin = async () => {
-        if (!thebrainEmail.trim() || !thebrainPassword.trim()) return;
-        setIsSaving(true);
-        setThebrainError(null);
-        try {
-            // First, save the API URL to settings and configure VLM client
-            await invoke("set_vlm_api_url", { url: thebrainApiUrl });
-            // Then authenticate
-            await invoke("thebrain_authenticate", {
-                username: thebrainEmail,
-                password: thebrainPassword
-            });
-            await checkHealth();
-            setThebrainPassword(""); // Clear password after success
-        } catch (err) {
-            console.error("TheBrain login failed:", err);
-            setThebrainError(String(err));
-        } finally {
-            setIsSaving(false);
         }
     };
 
@@ -105,36 +46,6 @@ export function KnowledgeBaseSettings() {
         }
     };
 
-    const handleSaveSupabase = async () => {
-        if (!supabaseConnString.trim()) return;
-        setIsSaving(true);
-        try {
-            await invoke("configure_supabase", { connectionString: supabaseConnString });
-            await checkHealth();
-        } catch (err) {
-            console.error("Failed to configure Supabase:", err);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleSavePinecone = async () => {
-        if (!pineconeApiKey.trim() || !pineconeHost.trim()) return;
-        setIsSaving(true);
-        try {
-            await invoke("configure_pinecone", {
-                apiKey: pineconeApiKey,
-                indexHost: pineconeHost,
-                namespace: pineconeNamespace || null,
-            });
-            await checkHealth();
-        } catch (err) {
-            console.error("Failed to configure Pinecone:", err);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
     const handleAnalyze = async () => {
         setIsSaving(true);
         try {
@@ -143,18 +54,6 @@ export function KnowledgeBaseSettings() {
             await loadPendingCount();
         } catch (err) {
             console.error("Analysis failed:", err);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleSync = async () => {
-        setIsSaving(true);
-        try {
-            const result = await invoke<{ activities_synced: number }>("sync_to_cloud", { limit: 50 });
-            void result;  // Used for side effects
-        } catch (err) {
-            console.error("Sync failed:", err);
         } finally {
             setIsSaving(false);
         }
@@ -173,25 +72,13 @@ export function KnowledgeBaseSettings() {
             <section className="settings-section">
                 <h3>
                     <span className="icon">🔗</span>
-                    Knowledge Base Status
+                    Status
                 </h3>
 
                 <div className="health-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--spacing-md)" }}>
                     <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
-                        <span>🧠 TheBrain Cloud</span>
-                        <StatusBadge status={health.thebrain} />
-                    </div>
-                    <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
-                        <span>Vision Model</span>
-                        <StatusBadge status={health.vlmVision} />
-                    </div>
-                    <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
-                        <span>Supabase</span>
-                        <StatusBadge status={health.supabase} />
-                    </div>
-                    <div className="health-item" style={{ display: "flex", justifyContent: "space-between", padding: "var(--spacing-sm)" }}>
-                        <span>Pinecone</span>
-                        <StatusBadge status={health.pinecone} />
+                        <span>Vision model</span>
+                        <StatusBadge status={health.vlm} />
                     </div>
                 </div>
 
@@ -202,177 +89,6 @@ export function KnowledgeBaseSettings() {
                     <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
                         Pending frames: {pendingFrames}
                     </span>
-                </div>
-            </section>
-
-            {/* TheBrain Cloud VLM */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🧠</span>
-                    TheBrain Cloud AI
-                </h3>
-                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "var(--spacing-md)" }}>
-                    Connect to TheBrain Cloud for AI-powered screen analysis and knowledge extraction.
-                </p>
-
-                {health.thebrain ? (
-                    <div className="success-box" style={{
-                        padding: "var(--spacing-md)",
-                        background: "rgba(16, 185, 129, 0.1)",
-                        borderRadius: "8px",
-                        border: "1px solid rgba(16, 185, 129, 0.3)"
-                    }}>
-                        ✅ Connected to TheBrain Cloud
-                    </div>
-                ) : (
-                    <>
-                        <div className="settings-row">
-                            <div className="settings-label">
-                                <span className="label-main">API URL</span>
-                                <span className="label-hint">VLM endpoint URL</span>
-                            </div>
-                            <div className="settings-control">
-                                <input
-                                    type="url"
-                                    className="settings-input"
-                                    placeholder="https://your-api-endpoint.com"
-                                    value={thebrainApiUrl}
-                                    onChange={(e) => setThebrainApiUrl(e.target.value)}
-                                    style={{ fontSize: "0.8rem" }}
-                                />
-                            </div>
-                        </div>
-                        <div className="settings-row">
-                            <div className="settings-label">
-                                <span className="label-main">Email</span>
-                            </div>
-                            <div className="settings-control">
-                                <input
-                                    type="email"
-                                    className="settings-input"
-                                    placeholder="your@email.com"
-                                    value={thebrainEmail}
-                                    onChange={(e) => setThebrainEmail(e.target.value)}
-                                />
-                            </div>
-                        </div>
-                        <div className="settings-row">
-                            <div className="settings-label">
-                                <span className="label-main">Password</span>
-                            </div>
-                            <div className="settings-control" style={{ display: "flex", gap: "var(--spacing-sm)" }}>
-                                <input
-                                    type="password"
-                                    className="settings-input"
-                                    placeholder="••••••••"
-                                    value={thebrainPassword}
-                                    onChange={(e) => setThebrainPassword(e.target.value)}
-                                />
-                                <button
-                                    className="settings-button"
-                                    onClick={handleThebrainLogin}
-                                    disabled={isSaving || !thebrainEmail.trim() || !thebrainPassword.trim()}
-                                >
-                                    {isSaving ? "Connecting..." : "Connect"}
-                                </button>
-                            </div>
-                        </div>
-                        {thebrainError && (
-                            <p style={{ color: "var(--error)", fontSize: "0.875rem", marginTop: "var(--spacing-sm)" }}>
-                                ⚠️ {thebrainError}
-                            </p>
-                        )}
-                    </>
-                )}
-            </section>
-
-            {/* Supabase Configuration */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🐘</span>
-                    Supabase (Cloud Database)
-                </h3>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Connection String</span>
-                        <span className="label-sub">PostgreSQL connection URL from Supabase dashboard</span>
-                    </div>
-                    <div className="settings-control" style={{ display: "flex", gap: "var(--spacing-sm)" }}>
-                        <input
-                            type="password"
-                            className="settings-input"
-                            placeholder="postgresql://user:pass@host:5432/postgres"
-                            value={supabaseConnString}
-                            onChange={(e) => setSupabaseConnString(e.target.value)}
-                        />
-                        <button
-                            className="settings-button"
-                            onClick={handleSaveSupabase}
-                            disabled={isSaving || !supabaseConnString.trim()}
-                        >
-                            {isSaving ? "Saving..." : "Connect"}
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            {/* Pinecone Configuration */}
-            <section className="settings-section">
-                <h3>
-                    <span className="icon">🌲</span>
-                    Pinecone (Vector Search)
-                </h3>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">API Key</span>
-                        <span className="label-sub">From Pinecone dashboard</span>
-                    </div>
-                    <div className="settings-control">
-                        <input
-                            type="password"
-                            className="settings-input"
-                            placeholder="pc-..."
-                            value={pineconeApiKey}
-                            onChange={(e) => setPineconeApiKey(e.target.value)}
-                        />
-                    </div>
-                </div>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Index Host</span>
-                        <span className="label-sub">e.g., index-name-abc123.svc.pinecone.io</span>
-                    </div>
-                    <div className="settings-control">
-                        <input
-                            type="text"
-                            className="settings-input"
-                            placeholder="your-index.svc.pinecone.io"
-                            value={pineconeHost}
-                            onChange={(e) => setPineconeHost(e.target.value)}
-                        />
-                    </div>
-                </div>
-                <div className="settings-row">
-                    <div className="settings-label">
-                        <span className="label-main">Namespace (optional)</span>
-                        <span className="label-sub">Partition for your data</span>
-                    </div>
-                    <div className="settings-control" style={{ display: "flex", gap: "var(--spacing-sm)" }}>
-                        <input
-                            type="text"
-                            className="settings-input"
-                            placeholder="default"
-                            value={pineconeNamespace}
-                            onChange={(e) => setPineconeNamespace(e.target.value)}
-                        />
-                        <button
-                            className="settings-button"
-                            onClick={handleSavePinecone}
-                            disabled={isSaving || !pineconeApiKey.trim() || !pineconeHost.trim()}
-                        >
-                            {isSaving ? "Saving..." : "Connect"}
-                        </button>
-                    </div>
                 </div>
             </section>
 
@@ -393,16 +109,9 @@ export function KnowledgeBaseSettings() {
                     >
                         🔍 Analyze Pending Frames
                     </button>
-                    <button
-                        className="btn btn-secondary"
-                        onClick={handleSync}
-                        disabled={isSaving || (!health.supabase && !health.pinecone)}
-                    >
-                        ☁️ Sync to Cloud
-                    </button>
                 </div>
                 <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: "var(--spacing-sm)" }}>
-                    Manual analysis using local VLM. Results sync to cloud if configured.
+                    Analysis uses the vision model chosen above. Results are stored locally on this Mac.
                 </p>
             </section>
         </div>

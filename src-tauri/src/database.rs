@@ -3,7 +3,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Row, Sqlite};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::{Pool, Row, Sqlite};
 use std::path::Path;
 
 /// Meeting record
@@ -14,6 +15,18 @@ pub struct Meeting {
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
     pub duration_seconds: Option<i64>,
+    pub calendar_event_id: Option<String>,
+}
+
+/// Meeting attendee record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeetingAttendee {
+    pub id: i64,
+    pub meeting_id: String,
+    pub name: String,
+    pub email: String,
+    pub company: Option<String>,
+    pub role: String,
 }
 
 /// Transcript record
@@ -38,6 +51,62 @@ pub struct SearchResult {
     pub relevance: f64,
 }
 
+/// A ranked transcript match used as chat ("ask your meetings") context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptContextHit {
+    pub transcript_id: i64,
+    pub meeting_id: String,
+    pub meeting_title: String,
+    pub meeting_started_at: String,
+    pub timestamp: String,
+    pub speaker: Option<String>,
+    pub snippet: String,
+    /// bm25 score: lower (more negative) is more relevant
+    pub relevance: f64,
+}
+
+/// Words too common to be useful search terms.
+const SEARCH_STOPWORDS: &[&str] = &[
+    "the", "and", "for", "are", "but", "not", "you", "all", "any", "can", "had", "her", "was",
+    "one", "our", "out", "has", "have", "him", "his", "how", "its", "may", "who", "did", "get",
+    "what", "when", "where", "which", "why", "with", "this", "that", "they", "them", "then",
+    "there", "their", "from", "about", "into", "would", "could", "should", "been", "were",
+    "will", "your", "does", "tell", "said", "say",
+];
+
+/// Meaningful lowercase search terms from free text (max 8, deduplicated).
+pub fn search_terms(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for w in text.split(|c: char| !c.is_alphanumeric()) {
+        let w = w.to_lowercase();
+        if w.chars().count() > 2 && !SEARCH_STOPWORDS.contains(&w.as_str()) && !out.contains(&w) {
+            out.push(w);
+            if out.len() == 8 {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// A safe FTS5 query (quoted terms OR-ed together) from free text, or None
+/// if the text has no usable terms. Raw user text can't go to MATCH: FTS5
+/// treats punctuation and words like AND/NEAR as syntax.
+pub fn fts_or_query(text: &str) -> Option<String> {
+    let terms = search_terms(text);
+    if terms.is_empty() {
+        None
+    } else {
+        Some(
+            terms
+                .iter()
+                .map(|w| format!("\"{}\"", w))
+                .collect::<Vec<_>>()
+                .join(" OR "),
+        )
+    }
+}
+
 /// AI-generated meeting notes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeetingNotes {
@@ -50,6 +119,9 @@ pub struct MeetingNotes {
     pub participants: Option<String>,
     pub generated_at: DateTime<Utc>,
     pub model_used: Option<String>,
+    /// Generated before the transcript/screens were edited: offer "regenerate?"
+    #[serde(default)]
+    pub stale_after_edit: bool,
 }
 
 /// User comment on a meeting
@@ -79,6 +151,17 @@ pub struct StudyMaterialsRecord {
     pub model_used: Option<String>,
 }
 
+/// Normalized-text fingerprint used by the 30s echo dedupe. Recomputed
+/// whenever a line is edited so it never fingerprints removed words.
+pub fn transcript_text_hash(text: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let normalized_text = text.trim().to_lowercase();
+    let mut hasher = DefaultHasher::new();
+    normalized_text.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
 /// Database manager
 pub struct DatabaseManager {
     pool: Pool<Sqlite>,
@@ -90,13 +173,30 @@ impl DatabaseManager {
         std::sync::Arc::new(self.pool.clone())
     }
 
+    /// Borrow the pool (redaction runs its own transactions on it)
+    pub fn pool(&self) -> &Pool<Sqlite> {
+        &self.pool
+    }
+
     /// Create a new database manager
     pub async fn new(db_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+        // WAL lets the UI read while transcripts and screenshots are being
+        // written (the old rollback journal made readers wait on writers);
+        // busy_timeout rides out brief write contention instead of erroring.
+        let options = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(std::time::Duration::from_secs(10))
+            // Overwrite deleted content instead of leaving it in free pages
+            // (docs/REDACTION.md, purge step 8). Applies to every pooled
+            // connection; costs extra writes only when rows are deleted.
+            .pragma("secure_delete", "ON");
 
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
-            .connect(&db_url)
+            .connect_with(options)
             .await?;
 
         Ok(Self { pool })
@@ -104,6 +204,13 @@ impl DatabaseManager {
 
     /// Run database migrations
     pub async fn run_migrations(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // Every migration runs on ONE connection. The pool releases
+        // connections asynchronously, so back-to-back statements on
+        // `&self.pool` open extra connections mid-migration, and one of those
+        // can keep a stale schema afterwards ("no such table: transcripts" on
+        // a fresh install). Pool connections opened after this see the full
+        // schema. Reproduced ~30% under parallel tests; 0% with this.
+        let mut conn = self.pool.acquire().await?;
         // Create tables
         sqlx::query(
             r#"
@@ -116,7 +223,7 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         sqlx::query(
@@ -132,7 +239,7 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         sqlx::query(
@@ -147,26 +254,33 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         // Add columns if they don't exist (for migration from old schema)
         let _ = sqlx::query("ALTER TABLE transcripts ADD COLUMN text_hash TEXT")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await;
         let _ = sqlx::query("ALTER TABLE frames ADD COLUMN frame_number INTEGER DEFAULT 0")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await;
         let _ = sqlx::query("ALTER TABLE frames ADD COLUMN file_path TEXT")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await;
 
-        // Create unique index on text_hash for deduplication
-        let _ = sqlx::query(r#"
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_hash ON transcripts(meeting_id, text_hash)
-        "#)
-        .execute(&self.pool)
+        // Lookup index for the 30s echo-dedupe window in add_transcript_at.
+        // Deliberately NOT unique: people legitimately repeat short phrases
+        // ("Yeah.", "Okay.") across a meeting, and a unique index made every
+        // later repeat fail to persist.
+        let _ = sqlx::query("DROP INDEX IF EXISTS idx_transcripts_hash")
+            .execute(&mut *conn)
+            .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_transcripts_meeting_hash ON transcripts(meeting_id, text_hash)",
+        )
+        .execute(&mut *conn)
         .await;
+
 
         // Create full-text search virtual tables
         sqlx::query(
@@ -175,7 +289,7 @@ impl DatabaseManager {
             USING fts5(text, meeting_id, content='transcripts', content_rowid='id')
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         // Create triggers to keep FTS in sync
@@ -187,7 +301,7 @@ impl DatabaseManager {
             END
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         sqlx::query(
@@ -198,8 +312,29 @@ impl DatabaseManager {
             END
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
+
+        // Keep FTS in sync when a line is edited (word delete / strike).
+        // Every UPDATE of transcripts.text must go through this trigger.
+        sqlx::query(
+            r#"
+            CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE OF text, meeting_id ON transcripts BEGIN
+                INSERT INTO transcripts_fts(transcripts_fts, rowid, text, meeting_id)
+                VALUES ('delete', old.id, old.text, old.meeting_id);
+                INSERT INTO transcripts_fts(rowid, text, meeting_id)
+                VALUES (new.id, new.text, new.meeting_id);
+            END
+        "#,
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        // Word timings (JSON, nullable): [{"s":utf16_start,"e":utf16_end,"t0":ms,"t1":ms}]
+        // relative to the line's text and timestamp. Offsets only, never words.
+        let _ = sqlx::query("ALTER TABLE transcripts ADD COLUMN word_timings TEXT")
+            .execute(&mut *conn)
+            .await;
 
         // Create indexes
         sqlx::query(
@@ -207,7 +342,7 @@ impl DatabaseManager {
             CREATE INDEX IF NOT EXISTS idx_transcripts_meeting ON transcripts(meeting_id)
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         sqlx::query(
@@ -215,7 +350,7 @@ impl DatabaseManager {
             CREATE INDEX IF NOT EXISTS idx_meetings_started ON meetings(started_at)
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         // Knowledge Base tables - frame_queue for VLM analysis
@@ -232,7 +367,7 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         // Knowledge Base tables - activity_log for analyzed activities
@@ -251,35 +386,32 @@ impl DatabaseManager {
                 visible_files TEXT,
                 confidence REAL DEFAULT 0.0,
                 frame_ids TEXT,
-                pinecone_id TEXT,
-                supabase_id TEXT,
-                synced_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         // Indexes for new tables
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_frame_queue_analyzed ON frame_queue(analyzed)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ =
             sqlx::query("CREATE INDEX IF NOT EXISTS idx_frame_queue_synced ON frame_queue(synced)")
-                .execute(&self.pool)
+                .execute(&mut *conn)
                 .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_activity_log_start ON activity_log(start_time)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_activity_log_category ON activity_log(category)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // Theme activity tracking table
@@ -295,18 +427,18 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_theme_sessions_theme ON theme_sessions(theme)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_theme_sessions_started ON theme_sessions(started_at)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // Phase 3: Entities table for structured entity extraction
@@ -325,20 +457,20 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ =
             sqlx::query("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")
-                .execute(&self.pool)
+                .execute(&mut *conn)
                 .await;
         let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_entities_theme ON entities(theme)")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_entities_activity ON entities(activity_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -363,19 +495,23 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_screen_states_meeting ON screen_states(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_screen_states_start ON screen_states(start_ts)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
+        // Which display/window a state came from (multi-source capture)
+        let _ = sqlx::query("ALTER TABLE screen_states ADD COLUMN source_key TEXT")
+            .execute(&mut *conn)
+            .await;
 
         // ═══════════════════════════════════════════════════════════════════════
         // Phase 2: Stateful Screen Ingest - Episodes & Text Snapshots
@@ -399,18 +535,18 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_episodes_meeting ON document_episodes(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_episodes_app ON document_episodes(app_name)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // Episode-State junction table
@@ -426,7 +562,7 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         // TextSnapshot: Text at meaningful boundaries
@@ -452,26 +588,26 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_snapshots_episode ON text_snapshots(episode_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_snapshots_hash ON text_snapshots(text_hash)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_snapshots_meeting ON text_snapshots(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON text_snapshots(ts)")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await;
 
         // TextPatch: Diff between snapshots
@@ -495,13 +631,13 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_patches_episode ON text_patches(episode_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -531,23 +667,23 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_timeline_meeting ON meeting_timeline_events(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_timeline_ts ON meeting_timeline_events(ts)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_timeline_topic ON meeting_timeline_events(topic)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // TopicCluster: Topic groupings for meetings
@@ -567,13 +703,13 @@ impl DatabaseManager {
             )
         "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_topics_meeting ON topic_clusters(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -594,15 +730,15 @@ impl DatabaseManager {
             )
             "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await;
         let _ =
             sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
-                .execute(&self.pool)
+                .execute(&mut *conn)
                 .await;
 
         // Versioned edits for learned data
@@ -620,13 +756,13 @@ impl DatabaseManager {
             )
             "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_versions_entity ON data_versions(entity_type, entity_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -650,13 +786,13 @@ impl DatabaseManager {
             )
             "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_meeting_notes_meeting ON meeting_notes(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // User comments and annotations on meetings
@@ -677,13 +813,13 @@ impl DatabaseManager {
             )
             "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_meeting_comments_meeting ON meeting_comments(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // Study materials (Dork Mode output)
@@ -702,13 +838,13 @@ impl DatabaseManager {
             )
             "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_study_materials_meeting ON study_materials(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
         // Transcript clusters for grouping segments into logical meetings
@@ -728,16 +864,81 @@ impl DatabaseManager {
             )
             "#,
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await?;
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_transcript_clusters_meeting ON transcript_clusters(meeting_id)",
         )
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await;
 
-        log::info!("Database migrations completed (v2.2 - Meeting Intelligence)");
+        // ═══════════════════════════════════════════════════════════════════════
+        // v3.0.0: Calendar Integration — Meeting Attendees
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Add calendar_event_id to meetings table
+        let _ = sqlx::query("ALTER TABLE meetings ADD COLUMN calendar_event_id TEXT")
+            .execute(&mut *conn)
+            .await;
+
+        // Meeting attendees table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS meeting_attendees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                meeting_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                company TEXT,
+                role TEXT NOT NULL DEFAULT 'attendee',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_attendees_meeting ON meeting_attendees(meeting_id)",
+        )
+        .execute(&mut *conn)
+        .await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_attendees_email ON meeting_attendees(email)",
+        )
+        .execute(&mut *conn)
+        .await;
+
+        // Assistant chat history (local; replaces the old Supabase table)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS assistant_conversations (
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                user_query TEXT NOT NULL,
+                assistant_response TEXT NOT NULL,
+                model_used TEXT NOT NULL DEFAULT '',
+                context_refs TEXT NOT NULL DEFAULT '[]'
+            )
+            "#,
+        )
+        .execute(&mut *conn)
+        .await?;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_assistant_conversations_ts ON assistant_conversations(timestamp)",
+        )
+        .execute(&mut *conn)
+        .await;
+
+        // People + calendar meeting details (owned by people.rs)
+        crate::people::ensure_schema(&mut conn).await?;
+
+        // Editing + "Strike from the record" (docs/REDACTION.md)
+        crate::redaction::ensure_schema(&mut conn).await?;
+
+        log::info!("Database migrations completed (v3.0 - Calendar Integration)");
         Ok(())
     }
 
@@ -759,7 +960,79 @@ impl DatabaseManager {
             started_at: now,
             ended_at: None,
             duration_seconds: None,
+            calendar_event_id: None,
         })
+    }
+
+    /// Update a meeting's title
+    pub async fn update_meeting_title(&self, id: &str, title: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE meetings SET title = ? WHERE id = ?")
+            .bind(title)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Set calendar event ID on a meeting
+    pub async fn set_meeting_calendar_event(
+        &self,
+        id: &str,
+        calendar_event_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE meetings SET calendar_event_id = ? WHERE id = ?")
+            .bind(calendar_event_id)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Add an attendee to a meeting
+    pub async fn add_meeting_attendee(
+        &self,
+        meeting_id: &str,
+        name: &str,
+        email: &str,
+        company: Option<&str>,
+        role: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO meeting_attendees (meeting_id, name, email, company, role) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(meeting_id)
+        .bind(name)
+        .bind(email)
+        .bind(company)
+        .bind(role)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get all attendees for a meeting
+    pub async fn get_meeting_attendees(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<MeetingAttendee>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT id, meeting_id, name, email, company, role FROM meeting_attendees WHERE meeting_id = ? ORDER BY role, name"
+        )
+        .bind(meeting_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .iter()
+            .map(|row| MeetingAttendee {
+                id: row.get("id"),
+                meeting_id: row.get("meeting_id"),
+                name: row.get("name"),
+                email: row.get("email"),
+                company: row.get("company"),
+                role: row.get("role"),
+            })
+            .collect())
     }
 
     /// End a meeting
@@ -789,6 +1062,91 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// Close meetings left open by a previous run (app quit or crashed
+    /// mid-recording, or recorded before stop marked meetings ended).
+    /// `ended_at` becomes the last captured moment — latest transcript,
+    /// screen state or frame — falling back to `started_at`. Only rows with
+    /// `ended_at IS NULL` are touched; no content is deleted. Call at startup
+    /// before any recording can begin. Returns how many were closed.
+    pub async fn close_stale_meetings(&self) -> Result<usize, sqlx::Error> {
+        let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>)> = match sqlx::query_as(
+            "SELECT m.id, m.started_at,
+                    (SELECT MAX(timestamp) FROM transcripts t WHERE t.meeting_id = m.id),
+                    (SELECT MAX(COALESCE(end_ts, start_ts)) FROM screen_states s WHERE s.meeting_id = m.id),
+                    (SELECT MAX(timestamp) FROM frames f WHERE f.meeting_id = m.id)
+             FROM meetings m WHERE m.ended_at IS NULL",
+        )
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(r) => r,
+            // Older schema without screen_states: transcripts + frames only
+            Err(_) => sqlx::query_as(
+                "SELECT m.id, m.started_at,
+                        (SELECT MAX(timestamp) FROM transcripts t WHERE t.meeting_id = m.id),
+                        NULL,
+                        (SELECT MAX(timestamp) FROM frames f WHERE f.meeting_id = m.id)
+                 FROM meetings m WHERE m.ended_at IS NULL",
+            )
+            .fetch_all(&self.pool)
+            .await?,
+        };
+
+        let parse = |s: &Option<String>| {
+            s.as_deref()
+                .and_then(|v| DateTime::parse_from_rfc3339(v).ok())
+                .map(|d| d.with_timezone(&Utc))
+        };
+        let mut closed = 0;
+        for (id, started, t, ss, f) in &rows {
+            let Some(started_at) = parse(&Some(started.clone())) else { continue };
+            let ended_at = [parse(t), parse(ss), parse(f)]
+                .into_iter()
+                .flatten()
+                .fold(started_at, |a, b| a.max(b));
+            let duration = (ended_at - started_at).num_seconds().max(0);
+            let res = sqlx::query(
+                "UPDATE meetings SET ended_at = ?, duration_seconds = ? WHERE id = ? AND ended_at IS NULL",
+            )
+            .bind(ended_at.to_rfc3339())
+            .bind(duration)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+            closed += res.rows_affected() as usize;
+        }
+        Ok(closed)
+    }
+
+    /// Delete transcript lines of `meeting_id` timestamped after `after`
+    /// whose text matches `is_junk`. Used to drop hallucinated filler
+    /// recorded after a detected meeting end. Returns how many were deleted.
+    pub async fn delete_transcripts_after_matching(
+        &self,
+        meeting_id: &str,
+        after: DateTime<Utc>,
+        is_junk: impl Fn(&str) -> bool,
+    ) -> Result<usize, sqlx::Error> {
+        let rows: Vec<(i64, String, String)> =
+            sqlx::query_as("SELECT id, text, timestamp FROM transcripts WHERE meeting_id = ?")
+                .bind(meeting_id)
+                .fetch_all(&self.pool)
+                .await?;
+        let mut deleted = 0;
+        for (id, text, ts) in rows {
+            let Ok(ts) = DateTime::parse_from_rfc3339(&ts) else { continue };
+            if ts.with_timezone(&Utc) <= after || !is_junk(&text) {
+                continue;
+            }
+            deleted += sqlx::query("DELETE FROM transcripts WHERE id = ?")
+                .bind(id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected() as usize;
+        }
+        Ok(deleted)
+    }
+
     /// Get a meeting by ID
     pub async fn get_meeting(&self, id: &str) -> Result<Option<Meeting>, sqlx::Error> {
         let row = sqlx::query(
@@ -809,6 +1167,7 @@ impl DatabaseManager {
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
             duration_seconds: r.get("duration_seconds"),
+            calendar_event_id: None,
         }))
     }
 
@@ -835,6 +1194,7 @@ impl DatabaseManager {
                     .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                     .map(|dt| dt.with_timezone(&Utc)),
                 duration_seconds: r.get("duration_seconds"),
+                calendar_event_id: None,
             })
             .collect())
     }
@@ -863,19 +1223,44 @@ impl DatabaseManager {
         is_final: bool,
         confidence: f32,
     ) -> Result<i64, sqlx::Error> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        self.add_transcript_at(meeting_id, text, speaker, is_final, confidence, Utc::now())
+            .await
+    }
 
-        let now = Utc::now();
+    /// Add a transcript stamped with the actual speech time (not insert time),
+    /// so rewind alignment against frames is exact.
+    pub async fn add_transcript_at(
+        &self,
+        meeting_id: &str,
+        text: &str,
+        speaker: Option<&str>,
+        is_final: bool,
+        confidence: f32,
+        timestamp: DateTime<Utc>,
+    ) -> Result<i64, sqlx::Error> {
+        self.add_transcript_full(meeting_id, text, speaker, is_final, confidence, timestamp, None)
+            .await
+    }
+
+    /// Like [`add_transcript_at`], plus optional word timings JSON
+    /// (see `redaction::WordTiming`: UTF-16 offsets + ms, never the words).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn add_transcript_full(
+        &self,
+        meeting_id: &str,
+        text: &str,
+        speaker: Option<&str>,
+        is_final: bool,
+        confidence: f32,
+        timestamp: DateTime<Utc>,
+        word_timings: Option<&str>,
+    ) -> Result<i64, sqlx::Error> {
+        let now = timestamp;
         let now_str = now.to_rfc3339();
 
         // Only deduplicate final transcripts
         if is_final && !text.trim().is_empty() {
-            // Create hash of text content (normalized)
-            let normalized_text = text.trim().to_lowercase();
-            let mut hasher = DefaultHasher::new();
-            normalized_text.hash(&mut hasher);
-            let text_hash = format!("{:016x}", hasher.finish());
+            let text_hash = transcript_text_hash(text);
 
             // Check if this exact transcript already exists within last 30 seconds
             let thirty_secs_ago = (now - chrono::Duration::seconds(30)).to_rfc3339();
@@ -898,8 +1283,8 @@ impl DatabaseManager {
 
             // Insert with hash
             let result = sqlx::query(
-                "INSERT INTO transcripts (meeting_id, text, speaker, timestamp, is_final, confidence, text_hash) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO transcripts (meeting_id, text, speaker, timestamp, is_final, confidence, text_hash, word_timings) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(meeting_id)
             .bind(text)
@@ -908,6 +1293,7 @@ impl DatabaseManager {
             .bind(is_final as i32)
             .bind(confidence)
             .bind(&text_hash)
+            .bind(word_timings)
             .execute(&self.pool)
             .await?;
 
@@ -931,8 +1317,24 @@ impl DatabaseManager {
         Ok(result.last_insert_rowid())
     }
 
-    /// Get transcripts for a meeting
+    /// Get transcripts for a meeting, with stricken spans rendered as
+    /// `[stricken from the record]`. This is what AI prompts, exports and
+    /// every other plain-text consumer must use.
     pub async fn get_transcripts(&self, meeting_id: &str) -> Result<Vec<Transcript>, sqlx::Error> {
+        let mut rows = self.get_transcripts_marked(meeting_id).await?;
+        for t in rows.iter_mut() {
+            t.text = crate::redaction::render_plain(&t.text);
+        }
+        Ok(rows)
+    }
+
+    /// Transcripts with raw strike-marker tokens (`⟦strickenid…⟧`) left in
+    /// place, for UI views that render the marker bar. Tokens carry only the
+    /// redaction id, never content.
+    pub async fn get_transcripts_marked(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<Transcript>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT id, meeting_id, text, speaker, timestamp, is_final, confidence 
              FROM transcripts WHERE meeting_id = ? ORDER BY timestamp ASC",
@@ -984,11 +1386,182 @@ impl DatabaseManager {
             .map(|r| SearchResult {
                 meeting_id: r.get("meeting_id"),
                 meeting_title: r.get("meeting_title"),
-                transcript_text: r.get("transcript_text"),
+                transcript_text: crate::redaction::render_plain(&r.get::<String, _>("transcript_text")),
                 timestamp: DateTime::parse_from_rfc3339(&r.get::<String, _>("timestamp"))
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
                 relevance: r.get("relevance"),
+            })
+            .collect())
+    }
+
+    /// Ranked transcript search for chat context: FTS5 + bm25, with a short
+    /// snippet around the match plus the meeting title and start time.
+    /// `query` must already be a valid FTS5 expression (see [`fts_or_query`]).
+    pub async fn search_transcript_context(
+        &self,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<TranscriptContextHit>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                t.id AS transcript_id,
+                t.meeting_id,
+                m.title AS meeting_title,
+                m.started_at AS meeting_started_at,
+                t.timestamp,
+                t.speaker,
+                snippet(transcripts_fts, 0, '', '', '…', 32) AS snippet,
+                bm25(transcripts_fts) AS relevance
+            FROM transcripts_fts
+            JOIN transcripts t ON transcripts_fts.rowid = t.id
+            JOIN meetings m ON t.meeting_id = m.id
+            WHERE transcripts_fts MATCH ?
+            ORDER BY relevance
+            LIMIT ?
+            "#,
+        )
+        .bind(query)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TranscriptContextHit {
+                transcript_id: r.get("transcript_id"),
+                meeting_id: r.get("meeting_id"),
+                meeting_title: r.get("meeting_title"),
+                meeting_started_at: r.get("meeting_started_at"),
+                timestamp: r.get("timestamp"),
+                speaker: r.get("speaker"),
+                snippet: crate::redaction::render_plain(&r.get::<String, _>("snippet")),
+                relevance: r.get("relevance"),
+            })
+            .collect())
+    }
+
+    /// Plain-text search over analyzed activities and captured screen text
+    /// (no FTS index exists for these; LIKE over the most recent rows).
+    /// Returns (id, timestamp, source label, text), newest first.
+    pub async fn search_activity_text(
+        &self,
+        terms: &[String],
+        limit: i64,
+    ) -> Result<Vec<(String, String, String, String)>, sqlx::Error> {
+        if terms.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut out = Vec::new();
+
+        let cond = terms
+            .iter()
+            .map(|_| "(summary LIKE ? OR focus_area LIKE ? OR window_title LIKE ?)")
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let sql = format!(
+            "SELECT id, start_time, category, app_name, summary FROM activity_log \
+             WHERE {} ORDER BY start_time DESC LIMIT ?",
+            cond
+        );
+        let mut q = sqlx::query(&sql);
+        for t in terms {
+            let pat = format!("%{}%", t);
+            q = q.bind(pat.clone()).bind(pat.clone()).bind(pat);
+        }
+        for r in q.bind(limit).fetch_all(&self.pool).await? {
+            let app: Option<String> = r.get("app_name");
+            let category: String = r.get("category");
+            out.push((
+                format!("activity-{}", r.get::<i64, _>("id")),
+                r.get::<String, _>("start_time"),
+                format!("activity: {}{}", category, app.map(|a| format!(" / {}", a)).unwrap_or_default()),
+                r.get::<String, _>("summary"),
+            ));
+        }
+
+        let cond = terms.iter().map(|_| "text LIKE ?").collect::<Vec<_>>().join(" OR ");
+        let sql = format!(
+            "SELECT snapshot_id, ts, app_name, window_title, text FROM text_snapshots \
+             WHERE {} ORDER BY ts DESC LIMIT ?",
+            cond
+        );
+        let mut q = sqlx::query(&sql);
+        for t in terms {
+            q = q.bind(format!("%{}%", t));
+        }
+        for r in q.bind(limit).fetch_all(&self.pool).await? {
+            let app: Option<String> = r.get("app_name");
+            let title: Option<String> = r.get("window_title");
+            let label = match (app, title) {
+                (Some(a), Some(t)) => format!("screen text: {} — {}", a, t),
+                (Some(a), None) => format!("screen text: {}", a),
+                (None, Some(t)) => format!("screen text: {}", t),
+                (None, None) => "screen text".to_string(),
+            };
+            out.push((
+                format!("snapshot-{}", r.get::<String, _>("snapshot_id")),
+                r.get::<String, _>("ts"),
+                label,
+                r.get::<String, _>("text"),
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Save one assistant Q&A exchange locally.
+    pub async fn add_assistant_conversation(
+        &self,
+        id: &str,
+        timestamp: &str,
+        user_query: &str,
+        assistant_response: &str,
+        model_used: &str,
+        context_refs: &[String],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO assistant_conversations \
+             (id, timestamp, user_query, assistant_response, model_used, context_refs) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(timestamp)
+        .bind(user_query)
+        .bind(assistant_response)
+        .bind(model_used)
+        .bind(serde_json::to_string(context_refs).unwrap_or_else(|_| "[]".to_string()))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Most recent assistant exchanges, newest first:
+    /// (id, timestamp, user_query, assistant_response, model_used, context_refs)
+    #[allow(clippy::type_complexity)]
+    pub async fn list_assistant_conversations(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<(String, String, String, String, String, Vec<String>)>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT id, timestamp, user_query, assistant_response, model_used, context_refs \
+             FROM assistant_conversations ORDER BY timestamp DESC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let refs: String = r.get("context_refs");
+                (
+                    r.get("id"),
+                    r.get("timestamp"),
+                    r.get("user_query"),
+                    r.get("assistant_response"),
+                    r.get("model_used"),
+                    serde_json::from_str(&refs).unwrap_or_default(),
+                )
             })
             .collect())
     }
@@ -1159,6 +1732,26 @@ impl DatabaseManager {
         .execute(&self.pool)
         .await?;
 
+        Ok(())
+    }
+
+    /// Record which display/window a screen state was captured from
+    pub async fn set_screen_state_source(
+        &self,
+        state_id: &str,
+        source_key: &str,
+        label: &str,
+        app_name: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE screen_states SET source_key = ?, window_title = ?, app_name = ? WHERE state_id = ?",
+        )
+        .bind(source_key)
+        .bind(label)
+        .bind(app_name)
+        .bind(state_id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -1876,9 +2469,15 @@ pub struct Frame {
 pub struct SyncedTimeline {
     pub meeting_id: String,
     pub meeting_title: String,
+    /// RFC3339 meeting start, to place markers (whose times are wall-clock)
+    #[serde(default)]
+    pub started_at: String,
     pub duration_seconds: i64,
     pub frames: Vec<TimelineFrame>,
     pub transcripts: Vec<TimelineTranscript>,
+    /// "Stricken from the record" markers (no content) for this meeting
+    #[serde(default)]
+    pub redactions: Vec<crate::redaction::RedactionRecord>,
 }
 
 /// Frame on the timeline (simplified for UI)
@@ -1985,8 +2584,9 @@ impl DatabaseManager {
             frames
         };
 
-        // Get transcripts
-        let transcripts = self.get_transcripts(meeting_id).await?;
+        // Get transcripts (UI view: keep strike-marker tokens for the bar)
+        let transcripts = self.get_transcripts_marked(meeting_id).await?;
+        let redactions = crate::redaction::list_strikes(&self.pool, meeting_id).await?;
         let timeline_transcripts: Vec<TimelineTranscript> = transcripts
             .into_iter()
             .map(|t| {
@@ -2005,9 +2605,11 @@ impl DatabaseManager {
         Ok(Some(SyncedTimeline {
             meeting_id: meeting_id.to_string(),
             meeting_title: meeting.title,
+            started_at: start_time.to_rfc3339(),
             duration_seconds: duration,
             frames: timeline_frames,
             transcripts: timeline_transcripts,
+            redactions,
         }))
     }
 }
@@ -2042,9 +2644,6 @@ pub struct ActivityLogEntry {
     pub visible_files: Option<String>,
     pub confidence: Option<f32>,
     pub frame_ids: Option<String>,
-    pub pinecone_id: Option<String>,
-    pub supabase_id: Option<String>,
-    pub synced_at: Option<DateTime<Utc>>,
 }
 
 /// Entity extracted from VLM analysis (Phase 3)
@@ -2319,75 +2918,8 @@ impl DatabaseManager {
                 visible_files: r.get("visible_files"),
                 confidence: r.get("confidence"),
                 frame_ids: r.get("frame_ids"),
-                pinecone_id: r.get("pinecone_id"),
-                supabase_id: r.get("supabase_id"),
-                synced_at: r
-                    .get::<Option<String>, _>("synced_at")
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&Utc)),
             })
             .collect())
-    }
-
-    /// Get unsynced activities
-    pub async fn get_unsynced_activities(
-        &self,
-        limit: i32,
-    ) -> Result<Vec<ActivityLogEntry>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT * FROM activity_log WHERE synced_at IS NULL ORDER BY start_time ASC LIMIT ?",
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| ActivityLogEntry {
-                id: Some(r.get("id")),
-                start_time: DateTime::parse_from_rfc3339(&r.get::<String, _>("start_time"))
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now()),
-                end_time: r
-                    .get::<Option<String>, _>("end_time")
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&Utc)),
-                duration_seconds: r.get("duration_seconds"),
-                app_name: r.get("app_name"),
-                window_title: r.get("window_title"),
-                category: r.get("category"),
-                summary: r.get("summary"),
-                focus_area: r.get("focus_area"),
-                visible_files: r.get("visible_files"),
-                confidence: r.get("confidence"),
-                frame_ids: r.get("frame_ids"),
-                pinecone_id: r.get("pinecone_id"),
-                supabase_id: r.get("supabase_id"),
-                synced_at: None,
-            })
-            .collect())
-    }
-
-    /// Update activity with sync info
-    pub async fn mark_activity_synced(
-        &self,
-        activity_id: i64,
-        pinecone_id: Option<&str>,
-        supabase_id: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        let synced_at = Utc::now().to_rfc3339();
-
-        sqlx::query(
-            "UPDATE activity_log SET pinecone_id = ?, supabase_id = ?, synced_at = ? WHERE id = ?",
-        )
-        .bind(pinecone_id)
-        .bind(supabase_id)
-        .bind(&synced_at)
-        .bind(activity_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
     }
 
     /// Get activity stats by category for a date
@@ -2486,12 +3018,6 @@ impl DatabaseManager {
                 visible_files: r.get("visible_files"),
                 confidence: r.get("confidence"),
                 frame_ids: r.get("frame_ids"),
-                pinecone_id: r.get("pinecone_id"),
-                supabase_id: r.get("supabase_id"),
-                synced_at: r
-                    .get::<Option<String>, _>("synced_at")
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&Utc)),
             })
             .collect())
     }
@@ -2792,8 +3318,8 @@ impl DatabaseManager {
         &self,
         meeting_id: &str,
     ) -> Result<Option<MeetingNotes>, sqlx::Error> {
-        let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>)>(
-            "SELECT id, meeting_id, summary, key_topics, decisions, action_items, participants, generated_at, model_used FROM meeting_notes WHERE meeting_id = ? ORDER BY generated_at DESC LIMIT 1"
+        let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, i64)>(
+            "SELECT id, meeting_id, summary, key_topics, decisions, action_items, participants, generated_at, model_used, stale_after_edit FROM meeting_notes WHERE meeting_id = ? ORDER BY generated_at DESC LIMIT 1"
         )
         .bind(meeting_id)
         .fetch_optional(&self.pool)
@@ -2810,6 +3336,7 @@ impl DatabaseManager {
                 participants,
                 generated_at,
                 model_used,
+                stale,
             )| {
                 MeetingNotes {
                     id,
@@ -2823,6 +3350,7 @@ impl DatabaseManager {
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now()),
                     model_used,
+                    stale_after_edit: stale != 0,
                 }
             },
         ))
@@ -2972,5 +3500,317 @@ impl DatabaseManager {
                 }
             },
         ))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Create a temporary database for testing
+    async fn test_db() -> (DatabaseManager, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("nf-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let db = DatabaseManager::new(&db_path).await.unwrap();
+        db.run_migrations().await.unwrap();
+        (db, dir)
+    }
+
+    /// Clean up temp directory
+    fn cleanup(dir: PathBuf) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // ─── Initialization ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_database_creates_and_migrates() {
+        let (db, dir) = test_db().await;
+        // If we get here, creation and migrations succeeded
+        // Verify by listing meetings (should return empty)
+        let meetings = db.list_meetings(10).await.unwrap();
+        assert!(meetings.is_empty());
+        cleanup(dir);
+    }
+
+    // ─── Meeting CRUD ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_create_and_get_meeting() {
+        let (db, dir) = test_db().await;
+
+        let meeting = db.create_meeting("test-1", "Daily Standup").await.unwrap();
+        assert_eq!(meeting.id, "test-1");
+        assert_eq!(meeting.title, "Daily Standup");
+        assert!(meeting.ended_at.is_none());
+
+        let fetched = db.get_meeting("test-1").await.unwrap();
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().title, "Daily Standup");
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_meeting_returns_none() {
+        let (db, dir) = test_db().await;
+        let result = db.get_meeting("nonexistent").await.unwrap();
+        assert!(result.is_none());
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_list_meetings_returns_recent_first() {
+        let (db, dir) = test_db().await;
+
+        db.create_meeting("m1", "First Meeting").await.unwrap();
+        // Small delay to ensure ordering
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        db.create_meeting("m2", "Second Meeting").await.unwrap();
+
+        let meetings = db.list_meetings(10).await.unwrap();
+        assert_eq!(meetings.len(), 2);
+        // Most recent first
+        assert_eq!(meetings[0].id, "m2");
+        assert_eq!(meetings[1].id, "m1");
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_update_meeting_title() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Original").await.unwrap();
+        db.update_meeting_title("m1", "Updated Title").await.unwrap();
+
+        let meeting = db.get_meeting("m1").await.unwrap().unwrap();
+        assert_eq!(meeting.title, "Updated Title");
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_end_meeting_sets_timestamp_and_duration() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        // Wait a brief moment so duration > 0
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        db.end_meeting("m1").await.unwrap();
+
+        let meeting = db.get_meeting("m1").await.unwrap().unwrap();
+        assert!(meeting.ended_at.is_some());
+        assert!(meeting.duration_seconds.is_some());
+        assert!(meeting.duration_seconds.unwrap() >= 0);
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_delete_meeting() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Doomed").await.unwrap();
+        db.delete_meeting("m1").await.unwrap();
+
+        let result = db.get_meeting("m1").await.unwrap();
+        assert!(result.is_none());
+
+        cleanup(dir);
+    }
+
+    // ─── Transcripts ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_and_get_transcripts() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.add_transcript("m1", "Hello world", Some("Alice"), true, 0.95)
+            .await
+            .unwrap();
+        db.add_transcript("m1", "Hi there", Some("Bob"), true, 0.88)
+            .await
+            .unwrap();
+
+        let transcripts = db.get_transcripts("m1").await.unwrap();
+        assert_eq!(transcripts.len(), 2);
+        assert_eq!(transcripts[0].text, "Hello world");
+        assert_eq!(transcripts[0].speaker.as_deref(), Some("Alice"));
+        assert!(transcripts[0].is_final);
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_search_transcripts() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Design Review").await.unwrap();
+
+        db.add_transcript("m1", "We should use Kubernetes for the deployment", None, true, 0.9)
+            .await
+            .unwrap();
+        db.add_transcript("m1", "The frontend needs a complete redesign", None, true, 0.9)
+            .await
+            .unwrap();
+
+        let results = db.search_transcripts("kubernetes").await.unwrap();
+        assert!(
+            !results.is_empty(),
+            "Search should find transcript containing 'kubernetes'"
+        );
+
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_search_transcript_context_ranks_and_snips() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Infra Sync").await.unwrap();
+        db.create_meeting("m2", "Design Review").await.unwrap();
+        db.add_transcript("m1", "We will migrate the cluster to Kubernetes next quarter", None, true, 0.9)
+            .await
+            .unwrap();
+        db.add_transcript("m2", "The frontend needs a complete redesign", None, true, 0.9)
+            .await
+            .unwrap();
+
+        let q = fts_or_query("What did we decide about Kubernetes?").unwrap();
+        assert_eq!(q, "\"decide\" OR \"kubernetes\"");
+        let hits = db.search_transcript_context(&q, 5).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].meeting_title, "Infra Sync");
+        assert!(hits[0].snippet.to_lowercase().contains("kubernetes"));
+
+        assert!(fts_or_query("the and?!").is_none());
+
+        db.add_assistant_conversation("c1", "2026-01-01T00:00:00Z", "q", "a", "m", &["x".into()])
+            .await
+            .unwrap();
+        let convs = db.list_assistant_conversations(10).await.unwrap();
+        assert_eq!(convs.len(), 1);
+        assert_eq!(convs[0].5, vec!["x".to_string()]);
+
+        cleanup(dir);
+    }
+
+    // ─── Frames ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_and_count_frames() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.add_frame("m1", Utc::now(), None, None).await.unwrap();
+        db.add_frame("m1", Utc::now(), Some("/tmp/frame2.png"), None).await.unwrap();
+
+        let count = db.count_frames("m1").await.unwrap();
+        assert_eq!(count, 2);
+
+        let frames = db.get_frames("m1", 10).await.unwrap();
+        assert_eq!(frames.len(), 2);
+
+        cleanup(dir);
+    }
+
+    // ─── Meeting Notes ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_save_and_get_meeting_notes() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.save_meeting_notes(
+            "notes-1",
+            "m1",
+            Some("This was a productive meeting"),
+            Some("[\"architecture\",\"deployment\"]"),
+            Some("[\"Use K8s\"]"),
+            Some("[\"Update docs\"]"),
+            Some("[\"Alice\",\"Bob\"]"),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let notes = db.get_meeting_notes("m1").await.unwrap();
+        assert!(notes.is_some());
+        let notes = notes.unwrap();
+        assert_eq!(notes.summary.as_deref(), Some("This was a productive meeting"));
+        assert!(notes.key_topics.is_some());
+
+        cleanup(dir);
+    }
+
+    // ─── Meeting Comments ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_and_get_comments() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m1", "Test").await.unwrap();
+
+        db.add_meeting_comment("c1", "m1", "Great point about security", Some("note"), None, None)
+            .await
+            .unwrap();
+
+        let comments = db.get_meeting_comments("m1").await.unwrap();
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].comment, "Great point about security");
+        assert_eq!(comments[0].comment_type, "note");
+
+        cleanup(dir);
+    }
+
+    // ─── Meeting-end housekeeping ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_close_stale_meetings_uses_last_capture() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("open", "Left open").await.unwrap();
+        db.create_meeting("empty", "No content").await.unwrap();
+        db.create_meeting("done", "Closed").await.unwrap();
+        db.end_meeting("done").await.unwrap();
+        let start = db.get_meeting("open").await.unwrap().unwrap().started_at;
+        let last = start + chrono::Duration::minutes(42);
+        db.add_transcript_at("open", "real words", None, true, 0.9, start + chrono::Duration::minutes(5))
+            .await
+            .unwrap();
+        db.add_transcript_at("open", "later words", None, true, 0.9, last).await.unwrap();
+
+        assert_eq!(db.close_stale_meetings().await.unwrap(), 2);
+        let m = db.get_meeting("open").await.unwrap().unwrap();
+        assert_eq!(m.ended_at.map(|e| e.timestamp()), Some(last.timestamp()));
+        assert_eq!(m.duration_seconds, Some(42 * 60));
+        let e = db.get_meeting("empty").await.unwrap().unwrap();
+        assert_eq!(e.duration_seconds, Some(0));
+        // Content untouched, and a second run is a no-op
+        assert_eq!(db.get_transcripts("open").await.unwrap().len(), 2);
+        assert_eq!(db.close_stale_meetings().await.unwrap(), 0);
+        cleanup(dir);
+    }
+
+    #[tokio::test]
+    async fn test_delete_junk_after_end_point_only() {
+        let (db, dir) = test_db().await;
+        db.create_meeting("m", "M").await.unwrap();
+        let t = Utc::now();
+        let s = chrono::Duration::seconds;
+        db.add_transcript_at("m", "Bye-bye.", None, true, 0.9, t - s(60)).await.unwrap(); // before end
+        db.add_transcript_at("m", "Thanks all, talk Thursday.", None, true, 0.9, t + s(5)).await.unwrap();
+        db.add_transcript_at("m", "Bye-bye. Bye-bye.", None, true, 0.9, t + s(40)).await.unwrap();
+        db.add_transcript_at("m", "you you you", None, true, 0.9, t + s(80)).await.unwrap();
+        let n = db
+            .delete_transcripts_after_matching("m", t, crate::transcription::filter::is_junk)
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        let left: Vec<String> = db.get_transcripts("m").await.unwrap().into_iter().map(|t| t.text).collect();
+        assert_eq!(left, vec!["Bye-bye.".to_string(), "Thanks all, talk Thursday.".to_string()]);
+        cleanup(dir);
     }
 }

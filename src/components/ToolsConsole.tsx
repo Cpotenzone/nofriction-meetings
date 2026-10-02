@@ -36,8 +36,6 @@ export function ToolsConsole() {
     const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [queuePaused, setQueuePaused] = useState(false);
-    const [isPausing, setIsPausing] = useState(false);
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
@@ -61,20 +59,6 @@ export function ToolsConsole() {
         const interval = setInterval(loadData, 15000); // Refresh every 15s
         return () => clearInterval(interval);
     }, [loadData]);
-
-    const handleTogglePause = async () => {
-        setIsPausing(true);
-        try {
-            const newState = await invoke<boolean>('pause_ingest_queue', {
-                paused: !queuePaused
-            });
-            setQueuePaused(!newState);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
-        } finally {
-            setIsPausing(false);
-        }
-    };
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -128,23 +112,6 @@ export function ToolsConsole() {
                 </div>
             )}
 
-            {/* Queue Control */}
-            <div className="queue-control-section">
-                <div className="queue-control-header">
-                    <h4>⚙️ Queue Control</h4>
-                    <button
-                        className={`btn ${queuePaused ? 'btn-primary' : 'btn-danger'}`}
-                        onClick={handleTogglePause}
-                        disabled={isPausing}
-                    >
-                        {isPausing ? '...' : queuePaused ? '▶️ Resume Queue' : '⏸️ Pause Queue'}
-                    </button>
-                </div>
-                <p className="queue-status-text">
-                    Queue is currently {queuePaused ? 'paused' : 'running'}
-                </p>
-            </div>
-
             {/* Database Stats */}
             {dbStats && (
                 <div className="db-stats-section">
@@ -156,7 +123,7 @@ export function ToolsConsole() {
                         </div>
                         <div className="db-stat">
                             <div className="stat-value">{dbStats.frames.toLocaleString()}</div>
-                            <div className="stat-label">Frames</div>
+                            <div className="stat-label">Captures</div>
                         </div>
                         <div className="db-stat">
                             <div className="stat-value">{dbStats.transcripts.toLocaleString()}</div>

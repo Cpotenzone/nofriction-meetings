@@ -2,6 +2,8 @@
 // Type-safe wrappers for Tauri commands
 
 import { invoke } from "@tauri-apps/api/core";
+import type { RedactionRecord } from "./redaction";
+import { withAiConsent } from "./ai";
 
 // Types
 export interface RecordingStatus {
@@ -9,6 +11,7 @@ export interface RecordingStatus {
     duration_seconds: number;
     video_frames: number;
     audio_samples: number;
+    audio_warning?: string | null;
 }
 
 export interface AudioDevice {
@@ -32,6 +35,7 @@ export interface Meeting {
     started_at: string;
     ended_at: string | null;
     duration_seconds: number | null;
+    calendar_event_id: string | null;
 }
 
 export interface Transcript {
@@ -67,10 +71,15 @@ export interface TranscriptEvent {
     start: number;
     duration: number;
     speaker: string | null;
+    /** Groups interim hypotheses with their final segments (local Whisper) */
+    utterance_id?: string | null;
 }
 
 export interface AppSettings {
+    /** Always null from the backend: secrets stay in the Keychain. */
     deepgram_api_key: string | null;
+    /** {configured, last4} per secret setting key */
+    secret_status?: Record<string, { configured: boolean; last4: string | null }>;
     selected_microphone: string | null;
     selected_monitor: number | null;
     auto_start_recording: boolean;
@@ -181,9 +190,14 @@ export interface TimelineTranscript {
 export interface SyncedTimeline {
     meeting_id: string;
     meeting_title: string;
+    /** RFC3339 meeting start (places stricken-screen markers) */
+    started_at?: string;
     duration_seconds: number;
     frames: TimelineFrame[];
+    /** Transcript text keeps strike-marker tokens; see lib/redaction.ts */
     transcripts: TimelineTranscript[];
+    /** "Stricken from the record" markers (no content) */
+    redactions?: RedactionRecord[];
 }
 
 // Synced timeline command
@@ -218,24 +232,6 @@ export async function getSavedSettings(): Promise<{ microphone: string | null; m
 // Knowledge Base Configuration Commands
 // ============================================
 
-// Supabase commands
-export async function configureSupabase(connectionString: string): Promise<void> {
-    return invoke("configure_supabase", { connectionString });
-}
-
-export async function checkSupabase(): Promise<boolean> {
-    return invoke<boolean>("check_supabase");
-}
-
-// Pinecone commands
-export async function configurePinecone(apiKey: string, indexHost: string, namespace?: string): Promise<void> {
-    return invoke("configure_pinecone", { apiKey, indexHost, namespace });
-}
-
-export async function checkPinecone(): Promise<boolean> {
-    return invoke<boolean>("check_pinecone");
-}
-
 // VLM commands
 export async function checkVlm(): Promise<boolean> {
     return invoke<boolean>("check_vlm");
@@ -248,10 +244,6 @@ export async function checkVlmVision(): Promise<boolean> {
 // Knowledge Base Processing
 export async function analyzePendingFrames(limit?: number): Promise<{ frames_processed: number; activities_created: number }> {
     return invoke("analyze_pending_frames", { limit });
-}
-
-export async function syncToCloud(limit?: number): Promise<{ activities_synced: number; pinecone_upserts: number; supabase_inserts: number }> {
-    return invoke("sync_to_cloud", { limit });
 }
 
 export async function getPendingFrameCount(): Promise<number> {
@@ -275,15 +267,10 @@ export interface SearchOptions {
     end_date?: string;
     category?: string;
     limit?: number;
-    sources?: string[];
 }
 
 export async function searchKnowledgeBase(options: SearchOptions): Promise<KBSearchResult[]> {
     return invoke<KBSearchResult[]>("search_knowledge_base", { options });
-}
-
-export async function quickSemanticSearch(query: string, limit?: number): Promise<KBSearchResult[]> {
-    return invoke<KBSearchResult[]>("quick_semantic_search", { query, limit });
 }
 
 // ============================================================================
@@ -436,11 +423,6 @@ export async function getThemeTimeToday(theme: string): Promise<number> {
     return invoke<number>("get_theme_time_today", { theme });
 }
 
-// Trigger manual ingest for a meeting
-export async function triggerMeetingIngest(meetingId: string): Promise<string> {
-    return invoke<string>("trigger_meeting_ingest", { meetingId });
-}
-
 // Debug logging to terminal
 export async function debugLog(message: string): Promise<void> {
     return invoke("debug_log", { message });
@@ -448,11 +430,11 @@ export async function debugLog(message: string): Promise<void> {
 
 // AI / LLM Commands
 export async function aiChat(presetId: string, message: string, meetingId?: string): Promise<string> {
-    return invoke<string>("ai_chat", {
+    return withAiConsent(() => invoke<string>("ai_chat", {
         presetId,
         message,
         meetingId
-    });
+    }));
 }
 
 // ============================================
@@ -512,6 +494,9 @@ export interface LiveInsightEvent {
     from_topic?: string;
     to_topic?: string;
     reason?: string;
+    importance?: number;
+    deadline_ref?: string;
+    owner?: string;
     timestamp_ms: number;
 }
 
@@ -520,7 +505,7 @@ export async function getMeetingState(): Promise<MeetingState> {
 }
 
 export async function generateCatchUp(meetingId: string): Promise<CatchUpCapsule> {
-    return invoke<CatchUpCapsule>("generate_catch_up", { meetingId });
+    return withAiConsent(() => invoke<CatchUpCapsule>("generate_catch_up", { meetingId }));
 }
 
 export async function getLiveInsights(meetingId: string): Promise<LiveInsightEvent[]> {
@@ -591,11 +576,46 @@ export async function setAlwaysOnEnabled(enabled: boolean): Promise<void> {
 
 
 // ============================================
-// Meeting Intelligence & Window Management
+// Meeting-end detection (auto-stop)
 // ============================================
 
-export async function dismissMeetingDetection(detectionId: string): Promise<void> {
-    return invoke("dismiss_meeting_detection", { detectionId });
+export type MeetingEndSignal = "mic_released" | "window_closed" | "calendar_ended" | "silence";
+
+/** Payload of `meeting-end-detected` */
+export interface MeetingEndDetected {
+    meeting_id: string;
+    kind: MeetingEndSignal;
+    reason: string;
+    /** Seconds until the recording stops */
+    countdown: number;
+    deadline: string;
+}
+
+export interface MeetingEndStatus {
+    monitoring: boolean;
+    pending: MeetingEndDetected | null;
+}
+
+export interface AutoStopSettings {
+    enabled: boolean;
+    silenceMinutes: number;
+}
+
+/** "Keep recording": cancel the countdown and snooze detection */
+export async function meetingEndKeepRecording(): Promise<boolean> {
+    return invoke<boolean>("meeting_end_keep_recording");
+}
+
+export async function getMeetingEndStatus(): Promise<MeetingEndStatus> {
+    return invoke<MeetingEndStatus>("get_meeting_end_status");
+}
+
+export async function getAutoStopSettings(): Promise<AutoStopSettings> {
+    return invoke<AutoStopSettings>("get_auto_stop_settings");
+}
+
+export async function setAutoStopSettings(enabled: boolean, silenceMinutes?: number): Promise<AutoStopSettings> {
+    return invoke<AutoStopSettings>("set_auto_stop_settings", { enabled, silenceMinutes });
 }
 
 export async function setGenieMode(isGenie: boolean): Promise<void> {
@@ -795,5 +815,295 @@ export async function getEnrichedCalendarEvents(): Promise<CalendarEventEnriched
 }
 
 export async function generateMeetingIntel(eventId: string, topicName: string): Promise<MeetingIntelResult> {
-    return invoke<MeetingIntelResult>("generate_meeting_intel", { eventId, topicName });
+    return withAiConsent(() => invoke<MeetingIntelResult>("generate_meeting_intel", { eventId, topicName }));
 }
+
+// Calendar Integration — Meeting Attendees
+export interface MeetingAttendee {
+    id: number;
+    meeting_id: string;
+    name: string;
+    email: string;
+    company: string | null;
+    role: string;
+}
+
+export interface CalendarMatchEvent {
+    meeting_id: string;
+    event_id: string;
+    event_title: string;
+    attendee_count: number;
+    attendee_names: string[];
+    attendee_emails: string[];
+    start_time: string;
+    end_time: string;
+}
+
+export async function getMeetingAttendees(meetingId: string): Promise<MeetingAttendee[]> {
+    return invoke<MeetingAttendee[]>("get_meeting_attendees", { meetingId });
+}
+
+// Calendar Access
+export async function checkCalendarAccess(): Promise<boolean> {
+    return invoke<boolean>("check_calendar_access");
+}
+
+export async function requestCalendarAccess(): Promise<boolean> {
+    return invoke<boolean>("request_calendar_access");
+}
+
+// Meeting Title Update
+export async function updateMeetingTitle(meetingId: string, title: string): Promise<void> {
+    return invoke<void>("update_meeting_title", { meetingId, title });
+}
+
+// People Lookup — AI-powered attendee enrichment
+export interface AttendeeProfile {
+    email: string;
+    name: string;
+    company: string;
+    company_domain: string;
+    briefing: string;
+}
+
+export interface CompanyProfile {
+    domain: string;
+    name: string;
+    briefing: string;
+}
+
+export interface MeetingIntelPackage {
+    event_title: string;
+    attendees: AttendeeProfile[];
+    companies: CompanyProfile[];
+    meeting_prep: string;
+}
+
+export async function lookupAttendees(eventTitle: string, attendeeEmails: string[]): Promise<MeetingIntelPackage> {
+    return withAiConsent(() => invoke<MeetingIntelPackage>("lookup_attendees", { eventTitle, attendeeEmails }));
+}
+
+// Recording-Calendar Overlap
+export async function matchRecordingToCalendar(meetingId: string): Promise<CalendarMatchEvent | null> {
+    return invoke<CalendarMatchEvent | null>("match_recording_to_calendar", { meetingId });
+}
+
+// Data Chatbot (RAG)
+export interface ChatSource {
+    id: string;
+    summary: string;
+    source: string;
+    score: number | null;
+    timestamp: string | null;
+    app_name: string | null;
+}
+
+export interface ChatResponse {
+    answer: string;
+    sources: ChatSource[];
+    context_count: number;
+}
+
+export interface ChatHistoryMessage {
+    role: "user" | "assistant";
+    content: string;
+}
+
+export async function chatWithData(
+    message: string,
+    history: ChatHistoryMessage[]
+): Promise<ChatResponse> {
+    return withAiConsent(() => invoke<ChatResponse>("chat_with_data", { message, history }));
+}
+
+// ============================================
+// Meeting Report Prompt Commands
+// ============================================
+
+export interface MeetingReport {
+    summary: string;
+    key_topics: string[];
+    decisions: { text: string; made_by: string | null; context: string | null }[];
+    action_items: { task: string; assignee: string | null; due_date: string | null; priority: string | null }[];
+    participants: string[];
+}
+
+export async function getMeetingReportPrompt(): Promise<string> {
+    return invoke<string>("get_meeting_report_prompt");
+}
+
+export async function setMeetingReportPrompt(prompt: string): Promise<void> {
+    return invoke("set_meeting_report_prompt", { prompt });
+}
+
+export async function generateMeetingReport(meetingId: string): Promise<MeetingReport> {
+    return withAiConsent(() => invoke<MeetingReport>("generate_meeting_report", { meetingId }));
+}
+
+// ============================================
+// Prompt Management Commands
+// ============================================
+
+export interface PromptRecord {
+    id: string;
+    name: string;
+    description: string | null;
+    category: string;
+    system_prompt: string;
+    user_prompt_template: string | null;
+    model_id: string | null;
+    temperature: number;
+    max_tokens: number | null;
+    theme: string | null;
+    version: number;
+    is_builtin: boolean;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface PromptUpdate {
+    name?: string;
+    description?: string;
+    category?: string;
+    system_prompt?: string;
+    user_prompt_template?: string;
+    model_id?: string;
+    temperature?: number;
+    max_tokens?: number;
+    is_active?: boolean;
+}
+
+export async function listPrompts(category?: string): Promise<PromptRecord[]> {
+    return invoke<PromptRecord[]>("list_prompts", { category: category ?? null });
+}
+
+export async function getPrompt(id: string): Promise<PromptRecord | null> {
+    return invoke<PromptRecord | null>("get_prompt", { id });
+}
+
+export async function updatePrompt(id: string, updates: PromptUpdate): Promise<PromptRecord | null> {
+    return invoke<PromptRecord | null>("update_prompt", { id, updates });
+}
+
+export async function deletePrompt(id: string): Promise<boolean> {
+    return invoke<boolean>("delete_prompt", { id });
+}
+
+export async function duplicatePrompt(id: string, newName: string): Promise<PromptRecord | null> {
+    return invoke<PromptRecord | null>("duplicate_prompt", { id, newName });
+}
+
+export async function listPromptsByTheme(theme: string): Promise<PromptRecord[]> {
+    return invoke<PromptRecord[]>("list_prompts_by_theme", { theme });
+}
+
+export async function testPrompt(promptId: string, testInput: string): Promise<string> {
+    return withAiConsent(() => invoke<string>("test_prompt", { promptId, testInput }));
+}
+
+// ── Capture sources: which displays / windows are screenshotted ──────────
+
+export type CaptureTarget =
+    | { kind: "display"; id: number }
+    | { kind: "window"; id: number };
+
+export interface CaptureSource {
+    target: CaptureTarget;
+    title: string;
+    app_name: string | null;
+    width: number;
+    height: number;
+    is_primary: boolean;
+    thumbnail: string | null;
+}
+
+export interface FrameCapturedEvent {
+    state_id: string | null;
+    meeting_id: string | null;
+    path: string;
+    source: string;
+    label: string;
+    timestamp: string;
+    manual: boolean;
+}
+
+export const targetKey = (t: CaptureTarget) => `${t.kind}:${t.id}`;
+
+export async function listCaptureSources(withThumbnails = true): Promise<CaptureSource[]> {
+    return invoke("list_capture_sources", { withThumbnails });
+}
+
+export async function getCaptureTargets(): Promise<CaptureTarget[]> {
+    return invoke("get_capture_targets");
+}
+
+export async function setCaptureTargets(targets: CaptureTarget[]): Promise<void> {
+    return invoke("set_capture_targets", { targets });
+}
+
+export async function snapCaptureTarget(target: CaptureTarget): Promise<{ path: string; label: string }> {
+    return invoke("snap_capture_target", { target });
+}
+
+// ── People (from the calendar) + LinkedIn ────────────────────────────────
+
+export interface Person {
+    id: string;
+    email: string;
+    name: string | null;
+    company: string | null;
+    company_domain: string | null;
+    linkedin_url: string | null;
+    notes: string | null;
+    is_self: boolean;
+    role: string | null;
+    meeting_count: number;
+    last_met: string | null;
+}
+
+export interface MeetingDetails {
+    meeting_id: string;
+    calendar_event_id: string | null;
+    event_title: string | null;
+    scheduled_start: string | null;
+    scheduled_end: string | null;
+    location: string | null;
+    meeting_url: string | null;
+    notes: string | null;
+    calendar_name: string | null;
+    organizer_email: string | null;
+}
+
+export interface MeetingPeople {
+    details: MeetingDetails | null;
+    people: Person[];
+}
+
+export type CalendarAccess = "authorized" | "denied" | "restricted" | "not_determined" | "unknown";
+
+export interface CalendarSyncResult {
+    access: CalendarAccess;
+    report: { meetings_checked: number; meetings_linked: number; people_linked: number } | null;
+}
+
+export const syncCalendar = (relinkAll = false): Promise<CalendarSyncResult> =>
+    invoke("sync_calendar", { relinkAll });
+
+export const getCalendarAccessStatus = (): Promise<CalendarAccess> =>
+    invoke("get_calendar_access_status");
+
+export const getMeetingPeople = (meetingId: string): Promise<MeetingPeople> =>
+    invoke("get_meeting_people", { meetingId });
+
+export const listPeople = (): Promise<Person[]> => invoke("list_people");
+
+export const setPersonLinkedin = (personId: string, url: string | null): Promise<string | null> =>
+    invoke("set_person_linkedin", { personId, url });
+
+/** LinkedIn has no lookup API; a prefilled people search is the honest shortcut. */
+export const linkedinSearchUrl = (p: Pick<Person, "name" | "email" | "company">) => {
+    const who = p.name || p.email.split("@")[0].replace(/[._-]+/g, " ");
+    const q = [who, p.company].filter(Boolean).join(" ");
+    return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
+};

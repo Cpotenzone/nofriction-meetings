@@ -18,6 +18,8 @@ import {
     Building2,
     CheckCircle2
 } from 'lucide-react';
+import { friendlyAiError, isNoProviderError } from '../../../lib/ai';
+import { AiSetupNotice } from '../../AiSetupNotice';
 import * as tauri from '../../../lib/tauri';
 import {
     VaultTopic,
@@ -51,17 +53,22 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
     const [meetingList, setMeetingList] = useState<Meeting[]>([]);
     const [isExporting, setIsExporting] = useState(false);
     const [isExportLoading, setIsExportLoading] = useState(false);
-    const [importSuccess, setImportSuccess] = useState<{ title: string; path: string } | null>(null);
+    const [importSuccess, setImportSuccess] = useState<{ title: string; path: string; count?: number } | null>(null);
     const [activeTag, setActiveTag] = useState<string | null>(null);
     const [tagFiles, setTagFiles] = useState<VaultFile[]>([]);
     const [showGraph, setShowGraph] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [selectedMeetings, setSelectedMeetings] = useState<Set<string>>(new Set());
+    const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
+
 
     // Calendar Intelligence State
     const [calendarEvents, setCalendarEvents] = useState<CalendarEventEnriched[]>([]);
     const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
     const [isGeneratingIntel, setIsGeneratingIntel] = useState<string | null>(null);
     const [intelResult, setIntelResult] = useState<MeetingIntelResult | null>(null);
+    const [intelError, setIntelError] = useState<string | null>(null);
+    const [intelNeedsAi, setIntelNeedsAi] = useState(false);
 
     useEffect(() => {
         loadVaultData();
@@ -123,6 +130,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         if (!selectedTopic) return;
         setIsGeneratingIntel(eventId);
         setIntelResult(null);
+        setIntelError(null);
+        setIntelNeedsAi(false);
         try {
             const result = await tauri.generateMeetingIntel(eventId, selectedTopic.name);
             setIntelResult(result);
@@ -131,7 +140,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
             // Auto-dismiss after 10s
             setTimeout(() => setIntelResult(null), 10000);
         } catch (err) {
-            console.error("Intel generation failed:", err);
+            console.error("Intel generation failed:", friendlyAiError(err));
+            if (isNoProviderError(err)) setIntelNeedsAi(true);
+            else setIntelError(friendlyAiError(err));
         } finally {
             setIsGeneratingIntel(null);
         }
@@ -160,22 +171,42 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         }
     };
 
-    const handleExportMeeting = async (meetingId: string, meetingTitle: string) => {
-        if (!selectedTopic) return;
+    const handleExportMeetings = async () => {
+        if (!selectedTopic || selectedMeetings.size === 0) return;
         setIsExportLoading(true);
-        try {
-            const resultPath = await tauri.exportMeetingToVault(selectedTopic.name, meetingId);
-            setIsExporting(false);
-            setImportSuccess({ title: meetingTitle || 'Meeting', path: resultPath });
-            loadVaultData();
-            // Auto-dismiss after 5s
-            setTimeout(() => setImportSuccess(null), 5000);
-        } catch (err) {
-            console.error("Failed to import meeting:", err);
-            alert("Import failed. See console for details.");
-        } finally {
-            setIsExportLoading(false);
+        const total = selectedMeetings.size;
+        let completed = 0;
+        const errors: string[] = [];
+
+        for (const meetingId of selectedMeetings) {
+            completed++;
+            setImportProgress({ current: completed, total });
+            try {
+                await tauri.exportMeetingToVault(selectedTopic.name, meetingId);
+            } catch (err) {
+                console.error(`Failed to import meeting ${meetingId}:`, err);
+                errors.push(meetingId);
+            }
         }
+
+        setIsExporting(false);
+        setImportProgress(null);
+        setSelectedMeetings(new Set());
+        await loadVaultData();
+
+        const successCount = total - errors.length;
+        if (successCount > 0) {
+            setImportSuccess({
+                title: `${successCount} meeting${successCount > 1 ? 's' : ''}`,
+                path: selectedTopic.name,
+                count: successCount,
+            });
+            setTimeout(() => setImportSuccess(null), 5000);
+        }
+        if (errors.length > 0) {
+            alert(`${errors.length} meeting(s) failed to import. Check console for details.`);
+        }
+        setIsExportLoading(false);
     };
 
     const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,12 +231,31 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
 
     const handleOpenExportModal = async () => {
         try {
-            const meetings = await tauri.getMeetings(25);
+            const meetings = await tauri.getMeetings(50);
             setMeetingList(meetings);
+            setSelectedMeetings(new Set());
             setIsExporting(true);
         } catch (err) {
             console.error("Failed to load meetings:", err);
         }
+    };
+
+    const toggleMeetingSelection = (meetingId: string) => {
+        setSelectedMeetings(prev => {
+            const next = new Set(prev);
+            if (next.has(meetingId)) {
+                next.delete(meetingId);
+            } else {
+                next.add(meetingId);
+            }
+            return next;
+        });
+    };
+
+    const isMeetingAlreadyImported = (meetingId: string): boolean => {
+        if (!selectedTopic) return false;
+        // Check if any linked meeting name contains this ID
+        return selectedTopic.meetings.some(m => m.includes(meetingId));
     };
 
     const formatDuration = (seconds: number | null) => {
@@ -559,6 +609,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                         <p className="empty-text">No upcoming meetings found</p>
                     )}
 
+                    {intelNeedsAi && <AiSetupNotice feature="Attendee briefings" compact />}
+                    {intelError && <p className="empty-text" role="alert">Couldn't write the briefing: {intelError}</p>}
+
                     {intelResult && (
                         <div className="intel-result-banner">
                             <CheckCircle2 size={16} />
@@ -592,34 +645,63 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                     <div className="export-modal-overlay">
                         <div className="export-modal">
                             <div className="import-modal-header">
-                                <h4>Import Meeting to {selectedTopic?.name}</h4>
-                                <p className="import-subtitle">Transcripts, AI Intelligence, and screenshots will be imported to your Obsidian vault.</p>
+                                <h4>Import Meetings to {selectedTopic?.name}</h4>
+                                <p className="import-subtitle">
+                                    Select meetings to import. Transcripts, AI Intelligence, and screenshots will be added to your Obsidian vault.
+                                </p>
                             </div>
                             <div className="meeting-select-list">
-                                {meetingList.map(m => (
-                                    <div
-                                        key={m.id}
-                                        className="meeting-select-item"
-                                        onClick={() => handleExportMeeting(m.id, m.title || 'Untitled Meeting')}
-                                    >
-                                        <div className="m-info">
-                                            <span className="m-title">{m.title || 'Untitled Meeting'}</span>
-                                            <span className="m-date">
-                                                {new Date(m.started_at).toLocaleDateString('en-US', {
-                                                    month: 'short', day: 'numeric', year: 'numeric',
-                                                    hour: '2-digit', minute: '2-digit'
-                                                })}
-                                                {m.duration_seconds ? ` · ${formatDuration(m.duration_seconds)}` : ''}
-                                            </span>
+                                {meetingList.map(m => {
+                                    const alreadyImported = isMeetingAlreadyImported(m.id);
+                                    const isSelected = selectedMeetings.has(m.id);
+                                    return (
+                                        <div
+                                            key={m.id}
+                                            className={`meeting-select-item ${alreadyImported ? 'imported' : ''} ${isSelected ? 'selected' : ''}`}
+                                            onClick={() => !alreadyImported && toggleMeetingSelection(m.id)}
+                                        >
+                                            <div className="m-checkbox">
+                                                {alreadyImported ? (
+                                                    <CheckCircle2 size={16} className="check-imported" />
+                                                ) : (
+                                                    <div className={`checkbox ${isSelected ? 'checked' : ''}`}>
+                                                        {isSelected && <span>✓</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="m-info">
+                                                <span className="m-title">{m.title || 'Untitled Meeting'}</span>
+                                                <span className="m-date">
+                                                    {new Date(m.started_at).toLocaleDateString('en-US', {
+                                                        month: 'short', day: 'numeric', year: 'numeric',
+                                                        hour: '2-digit', minute: '2-digit'
+                                                    })}
+                                                    {m.duration_seconds ? ` · ${formatDuration(m.duration_seconds)}` : ''}
+                                                </span>
+                                            </div>
+                                            {alreadyImported && (
+                                                <span className="m-imported-badge">Already Imported</span>
+                                            )}
                                         </div>
-                                        <span className="m-import-label">Import →</span>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {meetingList.length === 0 && (
                                     <div className="empty-text">No meetings found. Start a recording first.</div>
                                 )}
                             </div>
-                            <button className="cancel-btn" onClick={() => setIsExporting(false)}>Cancel</button>
+                            <div className="import-modal-footer">
+                                <button className="cancel-btn" onClick={() => setIsExporting(false)}>Cancel</button>
+                                <button
+                                    className="action-btn primary import-btn"
+                                    disabled={selectedMeetings.size === 0 || isExportLoading}
+                                    onClick={handleExportMeetings}
+                                >
+                                    {isExportLoading
+                                        ? `Importing ${importProgress?.current || 0}/${importProgress?.total || 0}...`
+                                        : `Import ${selectedMeetings.size} Meeting${selectedMeetings.size !== 1 ? 's' : ''}`
+                                    }
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

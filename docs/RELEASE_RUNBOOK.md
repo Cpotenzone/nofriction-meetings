@@ -1,8 +1,17 @@
-# noFriction Meetings - macOS Release Runbook
+# noFriction Meetings - macOS Release Runbook (Developer ID DMG)
 
 ## Overview
 
-This document provides commands and procedures for building, signing, notarizing, and verifying macOS DMG releases.
+This document covers the **Developer ID (DMG) flavor**: building, signing,
+notarizing and verifying a DMG distributed outside the App Store.
+
+- The **Mac App Store** build (sandboxed `.pkg`, StoreKit, TestFlight) is a
+  separate flavor: see [MAC_APP_STORE_BUILD.md](MAC_APP_STORE_BUILD.md).
+- The end-to-end commercial launch (App Store Connect, TestFlight, review)
+  is in [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) and
+  [APP_STORE_RELEASE.md](APP_STORE_RELEASE.md).
+- The DMG build has no StoreKit and no Pro gating; it can't check App Store
+  purchases.
 
 ---
 
@@ -56,7 +65,7 @@ base64 -i ~/Desktop/Developer_ID_Application.p12 | pbcopy
 ### Run Release Build
 
 ```bash
-cd /Users/caseypotenzone/.gemini/antigravity/nofriction-meetings
+# from the repository root
 
 # Full release (with notarization)
 ./scripts/release-macos.sh
@@ -69,7 +78,7 @@ SKIP_NOTARIZATION=1 ./scripts/release-macos.sh
 
 ```
 dist/
-├── noFriction-Meetings-1.0.0.dmg     # Final signed/notarized DMG
+├── noFriction-Meetings-<version>.dmg     # Final signed/notarized DMG
 └── release-manifest.json              # Build metadata
 ```
 
@@ -90,7 +99,7 @@ codesign --verify --deep --strict --verbose=2 \
 ### 2. Verify DMG Signature
 
 ```bash
-codesign --verify --verbose=2 dist/noFriction-Meetings-1.0.0.dmg
+codesign --verify --verbose=2 dist/noFriction-Meetings-<version>.dmg
 ```
 
 ### 3. Gatekeeper Assessment
@@ -102,7 +111,7 @@ spctl --assess --type execute --verbose=2 \
 
 # Check DMG
 spctl --assess --type open --context context:primary-signature --verbose=2 \
-  dist/noFriction-Meetings-1.0.0.dmg
+  dist/noFriction-Meetings-<version>.dmg
 ```
 
 ### 4. Check Quarantine (simulated download)
@@ -110,10 +119,10 @@ spctl --assess --type open --context context:primary-signature --verbose=2 \
 ```bash
 # Add quarantine attribute (simulates browser download)
 xattr -w com.apple.quarantine "0081;$(printf '%x' $(date +%s));Safari;$(uuidgen)" \
-  dist/noFriction-Meetings-1.0.0.dmg
+  dist/noFriction-Meetings-<version>.dmg
 
 # Check it's set
-xattr -l dist/noFriction-Meetings-1.0.0.dmg
+xattr -l dist/noFriction-Meetings-<version>.dmg
 
 # Should show quarantine attribute
 ```
@@ -121,7 +130,7 @@ xattr -l dist/noFriction-Meetings-1.0.0.dmg
 ### 5. Verify Notarization Staple
 
 ```bash
-xcrun stapler validate dist/noFriction-Meetings-1.0.0.dmg
+xcrun stapler validate dist/noFriction-Meetings-<version>.dmg
 # Expected: "The validate action worked!"
 ```
 
@@ -162,7 +171,9 @@ This simulates a real user download experience.
    | Permission | When Requested | System Preferences Path |
    |------------|----------------|-------------------------|
    | Microphone | When recording starts | Privacy > Microphone |
-   | Screen Recording | When capture starts | Privacy > Screen Recording |
+   | Screen & System Audio Recording | When capture starts | Privacy > Screen & System Audio Recording |
+   | Calendar | Setup wizard / first calendar match | Privacy > Calendars |
+   | Accessibility (DMG only, optional) | When screen-text capture is turned on | Privacy > Accessibility |
 
 6. **Verify Functionality**
    - Start a recording
@@ -184,7 +195,7 @@ This simulates a real user download experience.
 
 ```bash
 # Calculate checksum
-shasum -a 256 dist/noFriction-Meetings-1.0.0.dmg
+shasum -a 256 dist/noFriction-Meetings-<version>.dmg
 
 # Compare with published checksum (from release-manifest.json or GitHub Release)
 ```
@@ -203,8 +214,8 @@ shasum -a 256 dist/noFriction-Meetings-1.0.0.dmg
 ### Tag-based Release
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v<version>
+git push origin v<version>
 # Workflow runs automatically, creates GitHub Release with DMG
 ```
 

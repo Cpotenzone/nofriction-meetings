@@ -163,7 +163,13 @@ sign_app() {
     
     # Verify signature
     log_info "Verifying signature..."
-    codesign --verify --deep --strict --verbose=2 "$APP_PATH" || log_warn "Signature verification failed (proceeding anyway)"
+    # A bundle that fails its designated requirement can't hold TCC grants:
+    # macOS re-prompts for mic/screen on every launch and ScreenCaptureKit
+    # (system audio) stays denied. Never ship one.
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH" \
+        || log_error "Signature verification failed — check for a custom 'Always Trust' setting on the signing cert (security dump-trust-settings)"
+    codesign -dr - "$APP_PATH" 2>&1 | grep -q "anchor apple generic" \
+        || log_error "Designated requirement is not Apple-anchored — the signing cert has a custom trust override in Keychain Access; set it back to 'Use System Defaults'"
     
     log_success "Application signed"
 }

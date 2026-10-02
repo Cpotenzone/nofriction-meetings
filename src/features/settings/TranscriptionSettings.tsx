@@ -1,31 +1,115 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 interface TranscriptionSettingsProps {
     onSave?: () => void;
 }
 
+interface WhisperModelInfo {
+    name: string;
+    size_mb: number;
+    description: string;
+    installed: boolean;
+    active: boolean;
+}
+
+interface LocalSttStatus {
+    models_dir: string | null;
+    preferred_model: string;
+    ready: boolean;
+    resolved_model: string | null;
+    models: WhisperModelInfo[];
+}
+
+interface WhisperDownloadProgress {
+    model: string;
+    downloaded_bytes: number;
+    total_bytes: number | null;
+    done: boolean;
+    error: string | null;
+}
+
 export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
-    const [provider, setProvider] = useState("deepgram");
+    const [provider, setProvider] = useState("local");
     const [deepgramKey, setDeepgramKey] = useState("");
     const [deepgramModel, setDeepgramModel] = useState("nova-3");
     const [geminiKey, setGeminiKey] = useState("");
     const [geminiModel, setGeminiModel] = useState("models/gemini-2.0-flash-exp");
     const [gladiaKey, setGladiaKey] = useState("");
     const [googleKey, setGoogleKey] = useState("");
+    const [googleModel, setGoogleModel] = useState("chirp_2");
+    const [googleRegion, setGoogleRegion] = useState("us-central1");
+    const [googleDiarization, setGoogleDiarization] = useState(true);
 
     const [isSaving, setIsSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
 
+    // Local (offline) Whisper state
+    const [localStatus, setLocalStatus] = useState<LocalSttStatus | null>(null);
+    const [downloading, setDownloading] = useState<string | null>(null);
+    const [downloadPct, setDownloadPct] = useState<number>(0);
 
     useEffect(() => {
         loadSettings();
+        loadLocalStatus();
+
+        let unlisten: (() => void) | null = null;
+        listen<WhisperDownloadProgress>("whisper_download_progress", (e) => {
+            const p = e.payload;
+            if (p.error) {
+                setDownloading(null);
+                setStatus(`Model download failed: ${p.error}`);
+                return;
+            }
+            if (p.done) {
+                setDownloading(null);
+                setDownloadPct(0);
+                loadLocalStatus();
+                return;
+            }
+            if (p.total_bytes) {
+                setDownloadPct(Math.round((p.downloaded_bytes / p.total_bytes) * 100));
+            }
+        }).then((fn) => { unlisten = fn; });
+
+        return () => { unlisten?.(); };
     }, []);
+
+    const loadLocalStatus = async () => {
+        try {
+            const s = await invoke<LocalSttStatus>("get_local_stt_status");
+            setLocalStatus(s);
+        } catch (err) {
+            console.warn("Local STT status unavailable:", err);
+        }
+    };
+
+    const handleDownloadModel = async (model: string) => {
+        setDownloading(model);
+        setDownloadPct(0);
+        try {
+            await invoke("download_whisper_model", { model });
+        } catch (err) {
+            setStatus(`Model download failed: ${err}`);
+            setDownloading(null);
+        }
+        loadLocalStatus();
+    };
+
+    const handleSelectModel = async (model: string) => {
+        try {
+            await invoke("set_local_whisper_model", { model });
+            loadLocalStatus();
+        } catch (err) {
+            setStatus(`Failed to select model: ${err}`);
+        }
+    };
 
     const loadSettings = async () => {
         try {
             const settings = await invoke<any>("get_settings");
-            setProvider(settings.transcription_provider || "deepgram");
+            setProvider(settings.transcription_provider || "local");
 
             // Keys are not returned by get_settings for security (usually), 
             // but we might want placeholders or status indicators.
@@ -35,11 +119,11 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
             const dgKey = await invoke<string | null>("get_deepgram_api_key");
             if (dgKey) setDeepgramKey(dgKey);
 
-            const dgModel = await invoke<string | null>("get_deepgram_model");
+            const dgModel = await invoke<string | null>("get_setting", { key: "deepgram_model" });
             if (dgModel) setDeepgramModel(dgModel);
 
 
-            const gModel = await invoke<string | null>("get_gemini_model");
+            const gModel = await invoke<string | null>("get_setting", { key: "gemini_model" });
             if (gModel) setGeminiModel(gModel);
 
             const gKey = await invoke<string | null>("get_gemini_api_key");
@@ -79,8 +163,9 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
 
             // Save models
             try {
-                await invoke("set_deepgram_model", { model: deepgramModel });
-                await invoke("set_gemini_model", { model: geminiModel });
+                // Read by the providers at connect time (settings.rs)
+                await invoke("set_setting", { key: "deepgram_model", value: deepgramModel });
+                await invoke("set_setting", { key: "gemini_model", value: geminiModel });
             } catch (err) {
                 console.error("Failed to save models", err);
             }
@@ -119,7 +204,7 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                 return;
             }
 
-            setStatus("✅ Settings saved successfully");
+            setStatus("Settings saved");
             setTimeout(() => setStatus(null), 3000);
             onSave?.();
         } catch (err) {
@@ -142,10 +227,11 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                         className="modern-select"
                         disabled={isSaving}
                     >
+                        <option value="local">Local Whisper — offline, no API key</option>
+                        <option value="google_stt">Google Cloud STT (Chirp 2)</option>
                         <option value="deepgram">Deepgram (Nova-3)</option>
                         <option value="gemini">Google Gemini Live</option>
                         <option value="gladia">Gladia</option>
-                        <option value="google_stt">Google Cloud STT</option>
                     </select>
                 </div>
             </div>
@@ -155,10 +241,128 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                 <p className="section-desc">Manage API keys for supported transcription services.</p>
 
                 <div className="api-key-grid">
+                    {/* Local Whisper — offline, first-class */}
+                    <div className={`provider-card ${provider === "local" ? "active" : ""}`}>
+                        <div className="provider-header">
+                            <span className="name">Local Whisper (Offline)</span>
+                            {provider === "local" && <span className="badge">Active</span>}
+                        </div>
+                        <p className="provider-desc">
+                            Runs entirely on this Mac (Metal-accelerated). No API key, no
+                            network, nothing leaves your machine. Download a model once,
+                            then transcription works offline forever.
+                        </p>
+                        {localStatus && (
+                            <div className="input-group">
+                                <label>
+                                    Models{" "}
+                                    {localStatus.ready
+                                        ? `— ready (${localStatus.resolved_model})`
+                                        : "— none installed yet"}
+                                </label>
+                                {localStatus.models.map((m) => (
+                                    <div
+                                        key={m.name}
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 8,
+                                            padding: "6px 0",
+                                            fontSize: 12,
+                                        }}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name="whisper-model"
+                                            checked={m.active}
+                                            disabled={!m.installed}
+                                            onChange={() => handleSelectModel(m.name)}
+                                        />
+                                        <span style={{ minWidth: 110, fontWeight: 600 }}>{m.name}</span>
+                                        <span style={{ flex: 1, opacity: 0.7 }}>
+                                            {m.description} ({m.size_mb} MB)
+                                        </span>
+                                        {m.installed ? (
+                                            <span className="badge">Installed</span>
+                                        ) : downloading === m.name ? (
+                                            <span style={{ minWidth: 90 }}>{downloadPct}%…</span>
+                                        ) : (
+                                            <button
+                                                className="btn-secondary"
+                                                style={{ padding: "2px 10px", fontSize: 11 }}
+                                                disabled={downloading !== null}
+                                                onClick={() => handleDownloadModel(m.name)}
+                                            >
+                                                Download
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Google STT */}
+                    <div className={`provider-card ${provider === "google_stt" ? "active" : ""}`}>
+                        <div className="provider-header">
+                            <span className="name">Google Cloud STT V2</span>
+                            {provider === "google_stt" && <span className="badge">Active</span>}
+                        </div>
+                        <p className="provider-desc">
+                            Chirp 2 model with speaker diarization. Requires a GCP service account with Speech-to-Text API enabled.
+                        </p>
+                        <div className="input-group">
+                            <label>Service Account JSON</label>
+                            <textarea
+                                value={googleKey}
+                                onChange={(e) => setGoogleKey(e.target.value)}
+                                placeholder='Paste your service account JSON key here...'
+                                className="modern-input"
+                                rows={3}
+                                style={{ fontFamily: "monospace", fontSize: "11px", resize: "vertical" }}
+                            />
+                        </div>
+                        <div className="input-group">
+                            <label>Model</label>
+                            <select
+                                value={googleModel}
+                                onChange={(e) => setGoogleModel(e.target.value)}
+                                className="modern-select"
+                            >
+                                <option value="chirp_2">Chirp 2 (Latest, Best Quality)</option>
+                                <option value="chirp">Chirp (Previous Gen)</option>
+                                <option value="latest_long">Long-form (V1 Compat)</option>
+                                <option value="latest_short">Short-form (V1 Compat)</option>
+                            </select>
+                        </div>
+                        <div className="input-group">
+                            <label>Region</label>
+                            <select
+                                value={googleRegion}
+                                onChange={(e) => setGoogleRegion(e.target.value)}
+                                className="modern-select"
+                            >
+                                <option value="us-central1">US Central (Iowa)</option>
+                                <option value="europe-west4">Europe West (Netherlands)</option>
+                                <option value="asia-southeast1">Asia Southeast (Singapore)</option>
+                            </select>
+                        </div>
+                        <div className="input-group toggle-group">
+                            <label>Speaker Diarization</label>
+                            <label className="toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={googleDiarization}
+                                    onChange={(e) => setGoogleDiarization(e.target.checked)}
+                                />
+                                <span className="toggle-slider" />
+                            </label>
+                        </div>
+                    </div>
+
                     {/* Deepgram */}
                     <div className={`provider-card ${provider === "deepgram" ? "active" : ""}`}>
                         <div className="provider-header">
-                            <span className="icon">🦄</span>
                             <span className="name">Deepgram</span>
                             {provider === "deepgram" && <span className="badge">Active</span>}
                         </div>
@@ -190,7 +394,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                     {/* Gemini */}
                     <div className={`provider-card ${provider === "gemini" ? "active" : ""}`}>
                         <div className="provider-header">
-                            <span className="icon">✨</span>
                             <span className="name">Google Gemini</span>
                             {provider === "gemini" && <span className="badge">Active</span>}
                         </div>
@@ -221,7 +424,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                     {/* Gladia */}
                     <div className={`provider-card ${provider === "gladia" ? "active" : ""}`}>
                         <div className="provider-header">
-                            <span className="icon">🌊</span>
                             <span className="name">Gladia</span>
                             {provider === "gladia" && <span className="badge">Active</span>}
                         </div>
@@ -232,25 +434,6 @@ export function TranscriptionSettings({ onSave }: TranscriptionSettingsProps) {
                                 value={gladiaKey}
                                 onChange={(e) => setGladiaKey(e.target.value)}
                                 placeholder="Enter Gladia Key"
-                                className="modern-input"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Google STT */}
-                    <div className={`provider-card ${provider === "google_stt" ? "active" : ""}`}>
-                        <div className="provider-header">
-                            <span className="icon">☁️</span>
-                            <span className="name">Google Cloud STT</span>
-                            {provider === "google_stt" && <span className="badge">Active</span>}
-                        </div>
-                        <div className="input-group">
-                            <label>JSON Key (Base64)</label>
-                            <input
-                                type="password"
-                                value={googleKey}
-                                onChange={(e) => setGoogleKey(e.target.value)}
-                                placeholder="Paste JSON Key content"
                                 className="modern-input"
                             />
                         </div>

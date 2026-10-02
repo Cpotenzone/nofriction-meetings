@@ -1,196 +1,130 @@
-// noFriction Meetings - Live Transcript Component
-// Near real-time paragraph-based transcript display
+// noFriction Meetings - Live Transcript
+//
+// One job: make what's being said readable the instant it's said.
+// Text is set as calm paragraphs in a single reading column. The words
+// still being spoken appear in place, dimmed, and firm up as Whisper
+// finalizes them — nothing jumps, nothing re-flows below the fold.
 
 import { useEffect, useRef, useMemo } from "react";
 import type { LiveTranscript } from "../hooks/useTranscripts";
+import { MicIcon } from "./icons";
+import "./LiveTranscript.css";
 
 interface LiveTranscriptProps {
     transcripts: LiveTranscript[];
     isRecording: boolean;
+    onStartRecording?: () => void;
 }
 
-interface SpeakerBlock {
+interface Paragraph {
     id: string;
-    speaker: string;
-    initials: string;
-    color: string;
-    timestamp: Date;
-    paragraphs: string[];
-    currentInterim: string | null;
-    isFinal: boolean;
+    speaker: string | null;
+    start: Date;
+    finals: { id: string; text: string }[];
+    interim: string | null;
 }
 
-// Generate consistent colors for speakers
-const SPEAKER_COLORS = [
-    "#8B5CF6", // Purple
-    "#3B82F6", // Blue
-    "#10B981", // Green
-    "#F59E0B", // Amber
-    "#EF4444", // Red
-    "#EC4899", // Pink
-    "#6366F1", // Indigo
-    "#14B8A6", // Teal
-];
+/** A pause this long (or a speaker change) starts a new paragraph. */
+const PARAGRAPH_GAP_MS = 6000;
+/** Paragraphs are also capped so the timestamp gutter stays useful. */
+const PARAGRAPH_MAX_MS = 45000;
 
-function getSpeakerColor(speaker: string): string {
-    const hash = speaker.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return SPEAKER_COLORS[hash % SPEAKER_COLORS.length];
-}
+function groupParagraphs(transcripts: LiveTranscript[]): Paragraph[] {
+    const out: Paragraph[] = [];
+    let cur: Paragraph | null = null;
+    let lastAt = 0;
 
-function getInitials(speaker: string): string {
-    if (!speaker) return "?";
-    if (speaker.startsWith("Speaker ")) {
-        return `S${speaker.split(" ")[1]}`;
+    for (const t of transcripts) {
+        const at = t.timestamp.getTime();
+        const newPara =
+            !cur ||
+            cur.speaker !== t.speaker ||
+            at - lastAt > PARAGRAPH_GAP_MS ||
+            at - cur.start.getTime() > PARAGRAPH_MAX_MS;
+
+        if (newPara) {
+            cur = { id: t.id, speaker: t.speaker, start: t.timestamp, finals: [], interim: null };
+            out.push(cur);
+        }
+        if (t.isFinal) {
+            cur!.finals.push({ id: t.id, text: t.text });
+        } else {
+            cur!.interim = t.text;
+        }
+        lastAt = Math.max(lastAt, at);
     }
-    const parts = speaker.split(" ");
-    if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return speaker.slice(0, 2).toUpperCase();
+    return out;
 }
 
-export function LiveTranscriptView({ transcripts, isRecording }: LiveTranscriptProps) {
+const formatTime = (date: Date) =>
+    date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+export function LiveTranscriptView({ transcripts, isRecording, onStartRecording }: LiveTranscriptProps) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const autoScrollRef = useRef(true);
+    const followRef = useRef(true);
 
-    // Group transcripts into speaker blocks with live interim support
-    const speakerBlocks = useMemo(() => {
-        const blocks: SpeakerBlock[] = [];
-        let currentBlock: SpeakerBlock | null = null;
+    const paragraphs = useMemo(() => groupParagraphs(transcripts), [transcripts]);
 
-        for (const t of transcripts) {
-            const speaker = t.speaker || "Speaker";
-
-            // Start new block if different speaker or too much time passed
-            const shouldStartNewBlock = !currentBlock ||
-                currentBlock.speaker !== speaker ||
-                t.timestamp.getTime() - currentBlock.timestamp.getTime() > 15000; // 15 second window
-
-            if (shouldStartNewBlock) {
-                if (currentBlock) {
-                    blocks.push(currentBlock);
-                }
-                currentBlock = {
-                    id: t.id,
-                    speaker,
-                    initials: getInitials(speaker),
-                    color: getSpeakerColor(speaker),
-                    timestamp: t.timestamp,
-                    paragraphs: [],
-                    currentInterim: null,
-                    isFinal: t.isFinal,
-                };
-            }
-
-            if (t.isFinal) {
-                currentBlock!.paragraphs.push(t.text);
-                currentBlock!.currentInterim = null;
-                currentBlock!.isFinal = true;
-            } else {
-                // Update interim - this is the "live" text being spoken
-                currentBlock!.currentInterim = t.text;
-            }
-        }
-
-        if (currentBlock) {
-            blocks.push(currentBlock);
-        }
-
-        return blocks;
+    // Follow the live edge unless the reader has scrolled up
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || !followRef.current) return;
+        requestAnimationFrame(() => {
+            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        });
     }, [transcripts]);
 
-    // Auto-scroll to bottom immediately when transcripts change
-    useEffect(() => {
-        if (autoScrollRef.current && containerRef.current) {
-            // Use requestAnimationFrame for smooth scrolling
-            requestAnimationFrame(() => {
-                if (containerRef.current) {
-                    containerRef.current.scrollTop = containerRef.current.scrollHeight;
-                }
-            });
-        }
-    }, [transcripts]); // React to every transcript change for responsiveness
-
-    // Detect manual scroll to pause auto-scroll
     const handleScroll = () => {
-        if (!containerRef.current) return;
-        const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-        autoScrollRef.current = scrollHeight - scrollTop - clientHeight < 50;
+        const el = containerRef.current;
+        if (!el) return;
+        followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     };
 
-    const formatTime = (date: Date) => {
-        return date.toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-        });
-    };
-
-    if (speakerBlocks.length === 0) {
+    if (paragraphs.length === 0) {
         return (
-            <div className="empty-state">
-                <div className="empty-state-icon">🎙️</div>
-                <p className="empty-state-text">
+            <div className="lt-empty">
+                <div className={`lt-empty__mark ${isRecording ? "is-listening" : ""}`}>
+                    <MicIcon size={28} strokeWidth={1.5} />
+                </div>
+                <p className="lt-empty__title">{isRecording ? "Listening" : "Ready when you are"}</p>
+                <p className="lt-empty__hint">
                     {isRecording
-                        ? "Listening... Start speaking to see live transcription"
-                        : "Start recording to capture live transcription"}
+                        ? "Words appear here as they're spoken."
+                        : "Transcribed on this Mac. Nothing leaves it."}
                 </p>
-                {isRecording && (
-                    <div className="listening-indicator">
-                        <span className="pulse-dot"></span>
-                        <span className="pulse-dot"></span>
-                        <span className="pulse-dot"></span>
-                    </div>
+                {!isRecording && onStartRecording && (
+                    <button className="lt-empty__action" onClick={onStartRecording} type="button">
+                        Start recording
+                    </button>
                 )}
             </div>
         );
     }
 
     return (
-        <div
-            ref={containerRef}
-            className="transcript-conversation"
-            onScroll={handleScroll}
-        >
-            {speakerBlocks.map((block) => (
-                <div
-                    key={block.id}
-                    className="speaker-block"
-                >
-                    {/* Avatar */}
-                    <div
-                        className="speaker-avatar"
-                        style={{ backgroundColor: block.color }}
-                    >
-                        {block.initials}
-                    </div>
-
-                    {/* Content */}
-                    <div className="speaker-content">
-                        {/* Header */}
-                        <div className="speaker-header">
-                            <span className="speaker-name">{block.speaker}</span>
-                            <span className="speaker-time">{formatTime(block.timestamp)}</span>
-                        </div>
-
-                        {/* Finalized paragraphs */}
-                        <div className="speaker-text">
-                            {block.paragraphs.map((para, idx) => (
-                                <span key={idx} className="final-text">
-                                    {para}{" "}
+        <div ref={containerRef} className="lt" onScroll={handleScroll} aria-live="polite">
+            {paragraphs.map((p) => (
+                <section key={p.id} className="lt-para">
+                    <time className="lt-para__time" dateTime={p.start.toISOString()}>
+                        {formatTime(p.start)}
+                    </time>
+                    <div className="lt-para__body">
+                        {p.speaker && <div className="lt-para__speaker">{p.speaker}</div>}
+                        <p className="lt-para__text">
+                            {p.finals.map((f) => (
+                                <span key={f.id} className="lt-final">
+                                    {f.text}{" "}
                                 </span>
                             ))}
-
-                            {/* Live interim text - shown inline */}
-                            {block.currentInterim && (
-                                <span className="interim-text">
-                                    {block.currentInterim}
-                                    <span className="typing-cursor">|</span>
+                            {p.interim && (
+                                <span className="lt-interim">
+                                    {p.interim}
+                                    <span className="lt-caret" aria-hidden />
                                 </span>
                             )}
-                        </div>
+                        </p>
                     </div>
-                </div>
+                </section>
             ))}
         </div>
     );

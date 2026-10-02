@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        noFriction Meetings - Mac App Store entitlements (App Sandbox).
+        Used by tauri.mas.conf.json / scripts/release-mas.sh.
+        The Developer ID (DMG) build keeps entitlements.plist.
+
+        No JIT / unsigned-executable-memory / disable-library-validation:
+        WKWebView JIT runs out of process, and every dylib in the bundle is
+        signed by us. (Verified by launching the sandboxed build; see
+        docs/MAC_APP_STORE_BUILD.md.)
+
+        Keychain: API keys stay in the login keychain as generic passwords
+        (secrets.rs). Sandboxed apps can read/write the items they create,
+        so no keychain-access-groups entitlement is needed - which also means
+        a local test build runs without a provisioning profile.
+    -->
+
+    <!-- Required for the Mac App Store -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- App identity; must match the embedded provisioning profile.
+         release-mas.sh strips these two for a profile-less local test build
+         (AMFI refuses to launch them without a matching profile). -->
+    <key>com.apple.application-identifier</key>
+    <string>C7GCEESE2V.com.nofriction.meetings</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>C7GCEESE2V</string>
+
+    <!-- Outgoing connections: AI providers (BYOK), cloud transcription,
+         Whisper model download from Hugging Face, local Ollama/LM Studio -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Microphone for transcription -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Calendar (EventKit) for meeting detection and attendees -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
+
+    <!-- Obsidian vault folder chosen in the open panel, kept across launches
+         with an app-scoped security bookmark (bookmarks.rs) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+
+    <!-- "Export data" saves a JSON file via the web view download -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+
+    <!-- Screen Recording (ScreenCaptureKit / screenshots) has no entitlement;
+         it is a TCC permission the user grants in System Settings. -->
+</dict>
+</plist>

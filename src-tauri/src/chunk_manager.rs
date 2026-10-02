@@ -397,9 +397,7 @@ impl ChunkManager {
 
 impl Default for ChunkManager {
     fn default() -> Self {
-        let storage_dir = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("com.nofriction.meetings");
+        let storage_dir = crate::paths::app_data_dir();
         Self::new(storage_dir, RetentionPolicy::default())
     }
 }

@@ -1,19 +1,59 @@
 import React, { useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { LiveTranscriptView } from '../../LiveTranscript';
+import { CaptureBar, CaptureFilmstrip } from '../../CaptureBar';
 import { useRecording } from '../../../hooks/useRecording';
 import { useTranscripts } from '../../../hooks/useTranscripts';
 import { invoke } from '@tauri-apps/api/core';
 import { LiveInsightEvent } from '../../../lib/tauri';
+import { AiSetupNotice, useAiStatus } from '../../AiSetupNotice';
 import { AnimatePresence, motion } from 'framer-motion';
+import {
+    CheckSquareIcon,
+    CheckIcon,
+    WarningIcon,
+    QuestionIcon,
+    UsersIcon,
+    TargetIcon,
+    LightbulbIcon,
+    SparkleIcon,
+} from '../../icons';
 
 interface FlowStateViewProps {
     recording: ReturnType<typeof useRecording>;
     transcripts: ReturnType<typeof useTranscripts>;
 }
 
+interface TranscriptionStatus {
+    connected: boolean;
+    provider: string;
+    error: string | null;
+}
+
 export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcripts }) => {
     const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isPolling, setIsPolling] = useState(false);
+    const [sttStatus, setSttStatus] = useState<TranscriptionStatus | null>(null);
+    // No AI provider yet: say so (with a way to add one) instead of implying analysis runs
+    const { configured: aiConfigured, refresh: refreshAi } = useAiStatus();
+    // "Live insights during meetings" (Settings → AI Engine → Automatic AI)
+    const [liveInsightsOn, setLiveInsightsOn] = useState(true);
+    useEffect(() => {
+        refreshAi();
+        invoke<{ liveInsights: boolean }>('get_ai_automation')
+            .then((a) => setLiveInsightsOn(a.liveInsights))
+            .catch(() => setLiveInsightsOn(true));
+    }, [recording.isRecording, refreshAi]);
+
+    // Surface transcription health — historically failures were silent and
+    // users got screenshots with no transcript and no explanation.
+    useEffect(() => {
+        let unlisten: (() => void) | null = null;
+        listen<TranscriptionStatus>('transcription_status', (e) => {
+            setSttStatus(e.payload);
+        }).then((fn) => { unlisten = fn; });
+        return () => { unlisten?.(); };
+    }, []);
 
     // Poll for live insights during recording
     useEffect(() => {
@@ -42,31 +82,37 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
         return () => clearInterval(interval);
     }, [recording.isRecording, recording.meetingId]);
 
-    const getInsightIcon = (type: string) => {
+    const getInsightIcon = (type: string): React.ReactNode => {
         switch (type.toLowerCase()) {
-            case 'action_item': return '📋';
-            case 'decision': return '✅';
-            case 'risk_signal': return '⚠️';
-            case 'question_suggestion': return '❓';
-            case 'commitment': return '🤝';
-            case 'topic_shift': return '🎯';
-            default: return '💡';
+            case 'action_item': return <CheckSquareIcon size={13} />;
+            case 'decision': return <CheckIcon size={13} />;
+            case 'risk_signal': return <WarningIcon size={13} />;
+            case 'question_suggestion': return <QuestionIcon size={13} />;
+            case 'commitment': return <UsersIcon size={13} />;
+            case 'topic_shift': return <TargetIcon size={13} />;
+            default: return <LightbulbIcon size={13} />;
         }
     };
 
     return (
         <div className="agency-view flow-state">
+            <CaptureBar isRecording={recording.isRecording} sttStatus={sttStatus} audioWarning={recording.audioWarning} />
             <div className="flow-content">
                 {/* Main Transcript Area */}
                 <div className="flow-transcript-container">
                     <LiveTranscriptView
                         isRecording={recording.isRecording}
                         transcripts={transcripts.liveTranscripts}
+                        onStartRecording={async () => {
+                            transcripts.clearLiveTranscripts();
+                            await recording.startRecording();
+                        }}
                     />
                 </div>
 
                 {/* Right Panel: Real-time Intelligence */}
                 <aside className="flow-intelligence-panel">
+                    <CaptureFilmstrip isRecording={recording.isRecording} />
                     <div className="panel-header">
                         <h3>LIVE INTELLIGENCE</h3>
                         <div className={`live-indicator ${recording.isRecording ? 'active' : ''}`}>
@@ -85,8 +131,17 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
                                     exit={{ opacity: 0 }}
                                     className="placeholder-card"
                                 >
-                                    <span className="icon">✦</span>
-                                    <p>{recording.isRecording ? "Analyzing conversation..." : "Start recording to see insights"}</p>
+                                    <span className="icon"><SparkleIcon size={22} strokeWidth={1.5} /></span>
+                                    <p>
+                                        {!liveInsightsOn
+                                            ? "Live insights are off. Turn them on in Settings → AI Engine → Automatic AI."
+                                            : recording.isRecording
+                                                ? "Listening for action items, decisions and risks…"
+                                                : "Action items, decisions and risks surface here while you record."}
+                                    </p>
+                                    {aiConfigured === false && (
+                                        <AiSetupNotice feature="After-meeting AI notes" compact />
+                                    )}
                                 </motion.div>
                             ) : (
                                 insights.map((insight) => (

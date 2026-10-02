@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use image::DynamicImage;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -135,11 +136,18 @@ struct StateAccumulator {
     pending_keyframe: Option<Arc<DynamicImage>>,
 }
 
+/// One capture source's dedup gate + open state. Each display or window
+/// being captured gets its own lane, so interleaved frames from different
+/// sources don't look like constant change to each other.
+struct Lane {
+    gate: DedupGate,
+    acc: StateAccumulator,
+}
+
 /// State builder for converting frames into states
 pub struct StateBuilder {
     config: StateConfig,
-    dedup_gate: Mutex<DedupGate>,
-    accumulator: Mutex<StateAccumulator>,
+    lanes: Mutex<HashMap<String, Lane>>,
     meeting_id: Mutex<Option<String>>,
 }
 
@@ -151,15 +159,9 @@ impl StateBuilder {
 
     /// Create with custom configuration
     pub fn with_config(config: StateConfig) -> Self {
-        let dedup_gate = DedupGate::with_config(config.dedup.clone());
-
         Self {
             config,
-            dedup_gate: Mutex::new(dedup_gate),
-            accumulator: Mutex::new(StateAccumulator {
-                current_state: None,
-                pending_keyframe: None,
-            }),
+            lanes: Mutex::new(HashMap::new()),
             meeting_id: Mutex::new(None),
         }
     }
@@ -167,22 +169,31 @@ impl StateBuilder {
     /// Start tracking a new meeting
     pub fn start_meeting(&self, meeting_id: &str) {
         *self.meeting_id.lock() = Some(meeting_id.to_string());
-        self.dedup_gate.lock().reset();
-        let mut acc = self.accumulator.lock();
-        acc.current_state = None;
-        acc.pending_keyframe = None;
+        self.lanes.lock().clear();
     }
 
-    /// End meeting and finalize current state
-    pub fn end_meeting(&self) -> Option<ScreenState> {
+    /// The meeting currently being tracked, if any
+    pub fn current_meeting_id(&self) -> Option<String> {
+        self.meeting_id.lock().clone()
+    }
+
+    /// End meeting and finalize all open states (one per source)
+    pub fn end_meeting(&self) -> Vec<ScreenState> {
         *self.meeting_id.lock() = None;
-        self.finalize_current_state()
+        let mut lanes = self.lanes.lock();
+        let finished = lanes
+            .values_mut()
+            .filter_map(|lane| Self::finalize(&mut lane.acc))
+            .collect();
+        lanes.clear();
+        finished
     }
 
-    /// Process a frame and determine if it's a state boundary
-    /// Returns the processing result with state information
+    /// Process a frame from `source` (e.g. "display:1", "window:4242") and
+    /// determine if it's a state boundary for that source.
     pub fn process_frame(
         &self,
+        source: &str,
         image: Arc<DynamicImage>,
         timestamp: DateTime<Utc>,
     ) -> FrameProcessResult {
@@ -195,139 +206,100 @@ impl StateBuilder {
             None => return FrameProcessResult::PassThrough,
         };
 
-        // Run deduplication check
-        let dedup_result = self.dedup_gate.lock().check_frame(&image);
+        let mut lanes = self.lanes.lock();
+        let lane = lanes.entry(source.to_string()).or_insert_with(|| Lane {
+            gate: DedupGate::with_config(self.config.dedup.clone()),
+            acc: StateAccumulator {
+                current_state: None,
+                pending_keyframe: None,
+            },
+        });
 
-        // Check for forced state boundary (max duration)
-        let force_boundary = {
-            let acc = self.accumulator.lock();
-            if let Some(ref state) = acc.current_state {
-                let duration = (timestamp - state.start_ts).num_milliseconds() as u64;
-                duration >= self.config.max_state_duration_ms
-            } else {
-                false
-            }
-        };
+        let dedup_result = lane.gate.check_frame(&image);
 
-        // Check for suppressed boundary (min duration)
-        let suppress_boundary = {
-            let acc = self.accumulator.lock();
-            if let Some(ref state) = acc.current_state {
-                let duration = (timestamp - state.start_ts).num_milliseconds() as u64;
-                duration < self.config.min_state_duration_ms
-            } else {
-                false
-            }
-        };
+        let current_duration = lane
+            .acc
+            .current_state
+            .as_ref()
+            .map(|st| (timestamp - st.start_ts).num_milliseconds().max(0) as u64);
 
-        // Decision: extend or new state?
-        let is_boundary = if force_boundary {
-            true
-        } else if suppress_boundary {
-            false
-        } else {
-            !dedup_result.is_duplicate
+        let is_boundary = match current_duration {
+            None => true,
+            Some(d) if d >= self.config.max_state_duration_ms => true,
+            Some(d) if d < self.config.min_state_duration_ms => false,
+            Some(_) => !dedup_result.is_duplicate,
         };
 
         if is_boundary {
-            // State boundary - finalize current and start new
-            let completed = self.finalize_current_state();
-            let new_state_id = self.open_new_state(&meeting_id, timestamp, image, &dedup_result);
-
+            let completed = Self::finalize(&mut lane.acc);
+            let new_state_id = Self::open_new_state(&mut lane.acc, &meeting_id, timestamp, image, &dedup_result);
             FrameProcessResult::NewState {
                 completed_state: completed,
                 new_state_id,
             }
         } else {
-            // Extend current state
-            let mut acc = self.accumulator.lock();
-            if let Some(ref mut state) = acc.current_state {
-                state.end_ts = Some(timestamp);
-
-                // Update flags based on dedup reason
-                match dedup_result.reason {
-                    DedupReason::MotionNoise => {
-                        state.flags.high_motion = true;
-                    }
-                    DedupReason::DeltaSimilar => {
-                        // Possibly scroll-like but need text comparison
-                    }
-                    _ => {}
-                }
-
-                FrameProcessResult::Extended {
-                    state_id: state.state_id.clone(),
-                    new_end_ts: timestamp,
-                }
-            } else {
-                // No current state, start one
-                drop(acc);
-                let new_state_id =
-                    self.open_new_state(&meeting_id, timestamp, image, &dedup_result);
-
-                FrameProcessResult::NewState {
-                    completed_state: None,
-                    new_state_id,
-                }
+            let state = lane
+                .acc
+                .current_state
+                .as_mut()
+                .expect("non-boundary implies an open state");
+            state.end_ts = Some(timestamp);
+            if matches!(dedup_result.reason, DedupReason::MotionNoise) {
+                state.flags.high_motion = true;
+            }
+            FrameProcessResult::Extended {
+                state_id: state.state_id.clone(),
+                new_end_ts: timestamp,
             }
         }
     }
 
-    /// Get the current pending keyframe (for saving)
-    pub fn take_pending_keyframe(&self) -> Option<Arc<DynamicImage>> {
-        self.accumulator.lock().pending_keyframe.take()
-    }
-
-    /// Get current state info (for monitoring)
-    pub fn current_state_id(&self) -> Option<String> {
-        self.accumulator
+    /// Take the pending keyframe for `source` (for saving)
+    pub fn take_pending_keyframe(&self, source: &str) -> Option<Arc<DynamicImage>> {
+        self.lanes
             .lock()
-            .current_state
-            .as_ref()
-            .map(|s| s.state_id.clone())
+            .get_mut(source)
+            .and_then(|lane| lane.acc.pending_keyframe.take())
     }
 
-    /// Finalize and return the current state
-    fn finalize_current_state(&self) -> Option<ScreenState> {
-        let mut acc = self.accumulator.lock();
+    /// Current state ids across sources (for monitoring)
+    pub fn current_state_ids(&self) -> Vec<String> {
+        self.lanes
+            .lock()
+            .values()
+            .filter_map(|l| l.acc.current_state.as_ref().map(|s| s.state_id.clone()))
+            .collect()
+    }
 
-        if let Some(mut state) = acc.current_state.take() {
-            // Ensure end_ts is set
+    fn finalize(acc: &mut StateAccumulator) -> Option<ScreenState> {
+        acc.current_state.take().map(|mut state| {
             if state.end_ts.is_none() {
                 state.end_ts = Some(Utc::now());
             }
-            Some(state)
-        } else {
-            None
-        }
+            state
+        })
     }
 
-    /// Open a new state
     fn open_new_state(
-        &self,
+        acc: &mut StateAccumulator,
         meeting_id: &str,
         timestamp: DateTime<Utc>,
         image: Arc<DynamicImage>,
         dedup_result: &DedupResult,
     ) -> String {
-        let mut acc = self.accumulator.lock();
-
         let phash_str = DedupGate::hash_to_string(&dedup_result.ahash);
         let mut state = ScreenState::new(meeting_id, timestamp, phash_str);
         state.delta_score = dedup_result.delta_score;
         state.end_ts = Some(timestamp); // Initially same as start
-
         let state_id = state.state_id.clone();
-
         acc.current_state = Some(state);
         acc.pending_keyframe = Some(image);
-
         state_id
     }
 
     /// Update config at runtime
     pub fn update_config(&mut self, config: StateConfig) {
-        self.dedup_gate.lock().reset();
+        self.lanes.lock().clear();
         self.config = config;
     }
 }
@@ -357,7 +329,7 @@ mod tests {
         builder.start_meeting("test_meeting");
 
         let img = create_test_image(128);
-        let result = builder.process_frame(img, Utc::now());
+        let result = builder.process_frame("display:1", img, Utc::now());
 
         match result {
             FrameProcessResult::NewState { new_state_id, .. } => {
@@ -375,14 +347,36 @@ mod tests {
         let img = create_test_image(128);
 
         // First frame -> new state
-        builder.process_frame(img.clone(), Utc::now());
+        builder.process_frame("display:1", img.clone(), Utc::now());
 
         // Same frame -> extend
-        let result = builder.process_frame(img, Utc::now());
+        let result = builder.process_frame("display:1", img, Utc::now());
 
         match result {
             FrameProcessResult::Extended { .. } => {}
             _ => panic!("Expected Extended for duplicate frame"),
         }
+    }
+
+    #[test]
+    fn test_sources_dedupe_independently() {
+        let builder = StateBuilder::new();
+        builder.start_meeting("test_meeting");
+        let a = create_test_image(20);
+        let b = create_test_image(230);
+        let t = Utc::now();
+        builder.process_frame("display:1", a.clone(), t);
+        builder.process_frame("window:7", b.clone(), t);
+        // Interleaved but unchanged per source → both extend
+        let later = t + chrono::Duration::seconds(2);
+        assert!(matches!(
+            builder.process_frame("display:1", a, later),
+            FrameProcessResult::Extended { .. }
+        ));
+        assert!(matches!(
+            builder.process_frame("window:7", b, later),
+            FrameProcessResult::Extended { .. }
+        ));
+        assert_eq!(builder.end_meeting().len(), 2);
     }
 }

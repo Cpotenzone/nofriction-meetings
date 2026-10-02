@@ -1,16 +1,20 @@
 // noFriction Meetings - Sidebar Layout
 import { useState, useEffect, useRef } from "react";
+import { AiConsentModal } from "./components/AiConsentModal";
+import { PaywallModal } from "./components/PaywallModal";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { CommandPalette, useCommandPalette } from "./components/CommandPalette";
 import { debugLog } from "./lib/tauri";
 import "./App.css";
-import { MeetingDetectionBanner } from "./components/MeetingDetectionBanner";
+import { MeetingEndBanner } from "./components/MeetingEndBanner";
 import { SetupWizard, useSetupRequired } from "./features/onboarding/SetupWizard";
+import { isOffline } from "./lib/offline";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 import { GenieView } from "./components/GenieView";
 import { AgencyLayout, AgencyMode } from "./components/agency/AgencyLayout";
+import { openSettings } from "./lib/navigation";
 
 
 function App() {
@@ -21,43 +25,145 @@ function App() {
   const recording = useRecording();
   const transcripts = useTranscripts(recording.meetingId);
   const commandPalette = useCommandPalette();
-  const setupRequired = useSetupRequired();
+  const [setupRequired, setSetupRequired] = useSetupRequired();
   const [isGenieMode, setIsGenieMode] = useState(false);
   const isGenieModeRef = useRef(isGenieMode);
   isGenieModeRef.current = isGenieMode;
 
-  // Menu event listeners
+  // Latest hook values for the (register-once) native event handlers below
+  const recordingRef = useRef(recording);
+  recordingRef.current = recording;
+  const transcriptsRef = useRef(transcripts);
+  transcriptsRef.current = transcripts;
+  const commandPaletteRef = useRef(commandPalette);
+  commandPaletteRef.current = commandPalette;
+
+  // Menu event listeners — registered once. Re-registering on every render
+  // raced the async listen() calls against cleanup and leaked handlers, so a
+  // single tray click could start or stop recording several times.
   useEffect(() => {
     const listeners: (() => void)[] = [];
+    let disposed = false;
+    const add = (off: () => void) => (disposed ? off() : listeners.push(off));
 
     const setupListeners = async () => {
-      listeners.push(await listen("menu:search", () => setActiveMode("deck")));
-      listeners.push(await listen("menu:insights", () => setActiveMode("deck")));
-      listeners.push(await listen("menu:settings", () => setActiveMode("deck")));
-      // Tray menu events
-      listeners.push(await listen("tray:start_recording", async () => {
+      // Read through refs so handlers always see current state
+      const recording = {
+        get isRecording() { return recordingRef.current.isRecording; },
+        get isPaused() { return recordingRef.current.isPaused; },
+        startRecording: () => recordingRef.current.startRecording(),
+        stopRecording: () => recordingRef.current.stopRecording(),
+        pauseRecording: () => recordingRef.current.pauseRecording(),
+        resumeRecording: () => recordingRef.current.resumeRecording(),
+      };
+      const transcripts = { clearLiveTranscripts: () => transcriptsRef.current.clearLiveTranscripts() };
+      add(await listen("menu:search", () => setActiveMode("deck")));
+      add(await listen("menu:insights", () => setActiveMode("deck")));
+      // Menu bar (menu_builder.rs) and tray: every item does something
+      add(await listen("menu:settings", () => openSettings("general")));
+      add(await listen("menu:view_settings", () => openSettings("general")));
+      add(await listen("menu:view_live", () => setActiveMode("flow")));
+      add(await listen("menu:view_rewind", () => setActiveMode("deck")));
+      add(await listen("menu:view_prompts", () => setActiveMode("prompts")));
+      add(await listen("menu:ask_ai", () => setActiveMode("chat")));
+      add(await listen("menu:help", () => setActiveMode("help")));
+      add(await listen("menu:command_palette", () => commandPaletteRef.current.open()));
+      add(await listen("menu:new_recording", async () => {
         if (!recording.isRecording) {
           transcripts.clearLiveTranscripts();
           await recording.startRecording();
+        } else if (recording.isPaused) {
+          await recording.resumeRecording();
         }
       }));
-      listeners.push(await listen("tray:stop_recording", async () => {
+      add(await listen("menu:stop_recording", async () => {
         if (recording.isRecording) {
           await recording.stopRecording();
           setMeetingListRefreshKey((k) => k + 1);
         }
       }));
-      listeners.push(await listen("enter-genie-mode", async () => {
+      // Tray menu events
+      add(await listen("tray:start_recording", async () => {
+        if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        }
+      }));
+      add(await listen("tray:stop_recording", async () => {
+        if (recording.isRecording) {
+          await recording.stopRecording();
+          setMeetingListRefreshKey((k) => k + 1);
+        }
+      }));
+      // Meeting-end detection: the countdown ran out — stop through the
+      // same path as the user's Stop (video, accessibility, notes/report)
+      add(await listen("meeting-end-auto-stop", async () => {
+        if (recording.isRecording) {
+          try {
+            await recording.stopRecording();
+          } catch (err) {
+            console.error("Auto-stop failed:", err);
+          }
+          setMeetingListRefreshKey((k) => k + 1);
+        }
+      }));
+      // Backend had to stop it itself (UI didn't respond in time)
+      add(await listen("recording-stopped-automatically", () => {
+        setMeetingListRefreshKey((k) => k + 1);
+      }));
+      add(await listen("tray:pause_recording", async () => {
+        if (recording.isRecording && !recording.isPaused) {
+          await recording.pauseRecording();
+        }
+      }));
+      add(await listen("tray:resume_recording", async () => {
+        if (recording.isRecording && recording.isPaused) {
+          await recording.resumeRecording();
+        }
+      }));
+      // Capture mode events from tray
+      add(await listen("menu:mode_ambient", async () => {
+        if (recording.isPaused) {
+          await recording.resumeRecording();
+        } else if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        }
+      }));
+      add(await listen("menu:mode_meeting", async () => {
+        if (recording.isPaused) {
+          await recording.resumeRecording();
+        } else if (!recording.isRecording) {
+          transcripts.clearLiveTranscripts();
+          await recording.startRecording();
+        }
+      }));
+      add(await listen("menu:mode_pause", async () => {
+        if (recording.isRecording && !recording.isPaused) {
+          await recording.pauseRecording();
+        }
+      }));
+      add(await listen("enter-genie-mode", async () => {
         if (!isGenieModeRef.current) {
           await invoke("set_genie_mode", { isGenie: true });
           setIsGenieMode(true);
         }
       }));
+      // Calendar integration: log when recording matches a calendar event
+      add(await listen<{ event_title: string; attendee_count: number; attendee_names: string[] }>("calendar_match", (event) => {
+        const { event_title, attendee_count, attendee_names } = event.payload;
+        const names = attendee_names.slice(0, 3).join(", ");
+        const extra = attendee_count > 3 ? ` +${attendee_count - 3} more` : "";
+        console.log(`📅 Recording linked to "${event_title}" — ${attendee_count} attendees: ${names}${extra}`);
+      }));
     };
 
     setupListeners();
-    return () => listeners.forEach(unlisten => unlisten());
-  }, [recording, transcripts]);
+    return () => {
+      disposed = true;
+      listeners.forEach((unlisten) => unlisten());
+    };
+  }, []);
 
   // Hooks must be unconditional
   const [isBackendReady, setIsBackendReady] = useState(false);
@@ -66,6 +172,12 @@ function App() {
 
   // Listen for startup events and poll as fallback
   useEffect(() => {
+    // Browser preview (no Tauri IPC): mock mode — skip backend readiness gate
+    if (isOffline()) {
+      setIsBackendReady(true);
+      return;
+    }
+
     let unlistenReady: (() => void) | null = null;
     let unlistenError: (() => void) | null = null;
     let pollInterval: number | null = null;
@@ -131,10 +243,6 @@ function App() {
     );
   }
 
-  if (setupRequired) {
-    return <SetupWizard onComplete={() => window.location.reload()} />;
-  }
-
   const handleToggleRecording = async () => {
     try {
       if (recording.isRecording) {
@@ -164,7 +272,7 @@ function App() {
           </>
         ) : (
           <>
-            <div className="loading-spinner" style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: '#7c3aed' }} />
+            <div className="loading-spinner" style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary, #6366f1)' }} />
             <div>
               <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 500 }}>Initializing noFriction Meetings...</p>
               {isLongLoading && (
@@ -179,6 +287,12 @@ function App() {
     );
   }
 
+  // First run (or re-run from Settings → General). Shown once the backend
+  // is ready: the steps call commands that need the database and models dir.
+  if (setupRequired) {
+    return <SetupWizard onComplete={() => setSetupRequired(false)} />;
+  }
+
   // When a meeting is selected
   const handleMeetingSelect = (meetingId: string) => {
     debugLog(`Meeting selected: ${meetingId}`);
@@ -188,8 +302,20 @@ function App() {
   };
 
 
+  const meetingEndBanner = (
+    <MeetingEndBanner
+      isRecording={recording.isRecording}
+      onStopNow={async () => {
+        await recording.stopRecording();
+        setMeetingListRefreshKey((k) => k + 1);
+      }}
+    />
+  );
+
   if (isGenieMode) {
     return (
+      <>
+      {meetingEndBanner}
       <GenieView
         onRestore={() => setIsGenieMode(false)}
         liveTranscripts={transcripts.liveTranscripts.map(t => t.text)}
@@ -200,6 +326,7 @@ function App() {
         }}
         meetingId={recording.meetingId}
       />
+      </>
     );
   }
 
@@ -214,29 +341,30 @@ function App() {
         selectedMeetingId={selectedMeetingId}
         onToggleRecording={handleToggleRecording}
         refreshKey={meetingListRefreshKey}
+        onOpenCommandPalette={commandPalette.open}
       />
 
-      {/* Meeting Detection Banner - shows when meetings detected */}
-      {!recording.isRecording && activeMode === 'flow' && (
-        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
-          <MeetingDetectionBanner
-            onStartRecording={async () => {
-              transcripts.clearLiveTranscripts();
-              await recording.startRecording();
-            }}
-          />
-        </div>
-      )}
+      {/* "Send meeting content to {Provider}?" (App Review 5.1.2(i)) */}
+      <AiConsentModal />
+      <PaywallModal />
+
+      {/* "Meeting seems to have ended — stopping in 30s" */}
+      {meetingEndBanner}
 
       {/* Command Palette */}
       <CommandPalette
         isOpen={commandPalette.isOpen}
         onClose={commandPalette.close}
         onNavigate={(tab: string) => {
-          // Map legacy tabs to modes roughly
           if (tab === 'live') setActiveMode('flow');
+          else if (tab === 'chat') setActiveMode('chat');
+          else if (tab === 'prompts') setActiveMode('prompts');
+          else if (tab === 'help') setActiveMode('help');
+          else if (tab === 'settings') openSettings('general');
+          else if (tab === 'settings:ai') openSettings('ai');
           else setActiveMode('deck');
         }}
+        onSelectMeeting={handleMeetingSelect}
         onStartRecording={async () => {
           transcripts.clearLiveTranscripts();
           await recording.startRecording();

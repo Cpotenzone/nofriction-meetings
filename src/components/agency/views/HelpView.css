@@ -1,0 +1,206 @@
+/* HelpView - Documentation Hub */
+.help-view {
+    padding: 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.help-header {
+    margin-bottom: 1.5rem;
+    flex-shrink: 0;
+}
+
+.help-header h2 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #60a5fa, var(--accent-primary-hover, #818cf8));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0 0 0.25rem 0;
+}
+
+.help-header p {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+/* Tab Navigation */
+.help-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 1.5rem;
+    flex-shrink: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.help-tab {
+    padding: 0.5rem 1rem;
+    border: none;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.help-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.help-tab.active {
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(167, 139, 250, 0.2));
+    color: var(--accent-primary-hover, #818cf8);
+    box-shadow: 0 0 12px rgba(167, 139, 250, 0.1);
+}
+
+/* Content Area */
+.help-content {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.help-content::-webkit-scrollbar {
+    width: 4px;
+}
+
+.help-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+/* Section Styling */
+.help-section {
+    margin-bottom: 2rem;
+}
+
+.help-section h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #60a5fa;
+    margin: 0 0 0.75rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(96, 165, 250, 0.15);
+}
+
+.help-section h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 1.25rem 0 0.5rem 0;
+}
+
+.help-section p,
+.help-section li {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.85rem;
+    line-height: 1.7;
+}
+
+.help-section ul,
+.help-section ol {
+    padding-left: 1.25rem;
+    margin: 0.5rem 0;
+}
+
+.help-section li {
+    margin-bottom: 0.35rem;
+}
+
+/* Code blocks */
+.help-code {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-primary-hover, #818cf8);
+    overflow-x: auto;
+    margin: 0.5rem 0 1rem;
+}
+
+/* Info callouts */
+.help-callout {
+    background: rgba(96, 165, 250, 0.08);
+    border-left: 3px solid #60a5fa;
+    border-radius: 0 8px 8px 0;
+    padding: 0.75rem 1rem;
+    margin: 0.75rem 0;
+}
+
+.help-callout.warning {
+    background: rgba(251, 191, 36, 0.08);
+    border-left-color: #fbbf24;
+}
+
+.help-callout.security {
+    background: rgba(239, 68, 68, 0.08);
+    border-left-color: #ef4444;
+}
+
+.help-callout p {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+.help-callout strong {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Table styling */
+.help-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.82rem;
+}
+
+.help-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.help-table td {
+    padding: 0.5rem 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.help-table code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    color: var(--accent-primary-hover, #818cf8);
+}
+
+/* Version badge */
+.help-version {
+    display: inline-block;
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--accent-primary-hover, #818cf8);
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}

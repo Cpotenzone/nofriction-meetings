@@ -31,6 +31,20 @@ pub struct CalendarEventNative {
     pub meeting_url: Option<String>,
     /// Event notes/description
     pub notes: Option<String>,
+    /// Attendees with display names (EKParticipant), organizer included
+    #[serde(default)]
+    pub participants: Vec<CalendarParticipant>,
+}
+
+/// A person on a calendar invite.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarParticipant {
+    pub email: String,
+    /// Display name from the invite, when the calendar provides one
+    pub name: Option<String>,
+    pub is_organizer: bool,
+    /// The calendar owner (you)
+    pub is_self: bool,
 }
 
 /// Calendar access status
@@ -121,17 +135,22 @@ impl CalendarClient {
                 0 => CalendarAccessStatus::NotDetermined,
                 1 => CalendarAccessStatus::Restricted,
                 2 => CalendarAccessStatus::Denied,
-                3 => CalendarAccessStatus::Authorized,
+                3 => CalendarAccessStatus::Authorized, // Legacy (macOS < 14)
+                4 => CalendarAccessStatus::Authorized, // EKAuthorizationStatusFullAccess (macOS 14+)
                 _ => CalendarAccessStatus::Unknown,
             }
         }
     }
 
     /// Request calendar access (will prompt user)
+    /// Uses a stateless no-op completion block + polling to avoid ObjC block copy crashes.
+    /// The completion block passed to EventKit is copied via XPC to CalendarDaemon;
+    /// embedding Rust state in the block causes crashes in _Block_copy.
     #[cfg(target_os = "macos")]
     pub async fn request_access() -> Result<bool, String> {
         use objc::runtime::{Class, Object};
         use objc::{msg_send, sel, sel_impl};
+        use std::os::raw::c_void;
 
         // First check current status
         let initial_status = Self::check_access();
@@ -153,25 +172,66 @@ impl CalendarClient {
                 return Err("Failed to create EKEventStore".to_string());
             }
 
-            // Request access by calling requestAccessToEntityType:completion:
-            // Since block closures are complex, we'll trigger the request by simply
-            // accessing calendar data which will prompt for permission on first use.
-            // The actual permission prompt is triggered by EventKit internal machinery.
-            // We just need to create the store and try to access calendars.
-            let _calendars: *mut Object = msg_send![store, calendarsForEntityType: 0i64];
-
-            // Poll for status change (the request_access call triggers the system prompt)
-            for _ in 0..100 {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                let status = Self::check_access();
-                if status != CalendarAccessStatus::NotDetermined {
-                    return Ok(status == CalendarAccessStatus::Authorized);
-                }
+            // Stateless block — no captured data, safe for _Block_copy.
+            // We poll check_access() for the result instead of using the callback.
+            #[repr(C)]
+            struct BlockLiteral {
+                isa: *const c_void,
+                flags: i32,
+                reserved: i32,
+                invoke: unsafe extern "C" fn(*mut BlockLiteral, bool, *mut Object),
+                descriptor: *const BlockDescriptor,
             }
 
-            // Timeout - check final status
-            Ok(Self::check_access() == CalendarAccessStatus::Authorized)
+            #[repr(C)]
+            struct BlockDescriptor {
+                reserved: u64,
+                size: u64,
+            }
+
+            static DESCRIPTOR: BlockDescriptor = BlockDescriptor {
+                reserved: 0,
+                size: std::mem::size_of::<BlockLiteral>() as u64,
+            };
+
+            unsafe extern "C" fn noop_invoke(
+                _block: *mut BlockLiteral,
+                _granted: bool,
+                _error: *mut Object,
+            ) {
+                // No-op — result is obtained via polling check_access()
+            }
+
+            extern "C" {
+                static _NSConcreteStackBlock: *const c_void;
+            }
+
+            let mut block = BlockLiteral {
+                isa: _NSConcreteStackBlock,
+                flags: 0, // No copy/dispose helpers needed (no captured state)
+                reserved: 0,
+                invoke: noop_invoke,
+                descriptor: &DESCRIPTOR,
+            };
+
+            // Fire the permission request — macOS shows the consent dialog
+            let _: () = msg_send![store, requestFullAccessToEventsWithCompletion: &mut block as *mut BlockLiteral as *mut c_void];
         }
+
+        // Poll for the user's response (permission dialog is async)
+        for _ in 0..60 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            match Self::check_access() {
+                CalendarAccessStatus::Authorized => return Ok(true),
+                CalendarAccessStatus::Denied | CalendarAccessStatus::Restricted => {
+                    return Ok(false)
+                }
+                _ => continue,
+            }
+        }
+
+        // 30 second timeout — check one final time
+        Ok(Self::check_access() == CalendarAccessStatus::Authorized)
     }
 
     /// Fetch events for today (with caching)
@@ -201,9 +261,23 @@ impl CalendarClient {
         Ok(events)
     }
 
-    /// Internal event fetching from EventKit
-    #[cfg(target_os = "macos")]
+    /// Internal event fetching from EventKit (around now)
     fn fetch_events_internal(&self) -> Result<Vec<CalendarEventNative>, String> {
+        let now = Utc::now();
+        self.fetch_events_between(
+            now - Duration::hours(self.config.lookbehind_hours),
+            now + Duration::hours(self.config.lookahead_hours),
+        )
+    }
+
+    /// Fetch events in an arbitrary window (used to backfill past meetings).
+    /// EventKit caps a single predicate at 4 years; callers pass far less.
+    #[cfg(target_os = "macos")]
+    pub fn fetch_events_between(
+        &self,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+    ) -> Result<Vec<CalendarEventNative>, String> {
         use objc::runtime::{Class, Object, BOOL, YES};
         use objc::{msg_send, sel, sel_impl};
 
@@ -221,11 +295,6 @@ impl CalendarClient {
             if store.is_null() {
                 return Err("Failed to create EKEventStore".to_string());
             }
-
-            // Get date range
-            let now = Utc::now();
-            let start_date = now - Duration::hours(self.config.lookbehind_hours);
-            let end_date = now + Duration::hours(self.config.lookahead_hours);
 
             // Create NSDate objects
             let nsdate_class = Class::get("NSDate").ok_or("NSDate not found")?;
@@ -341,28 +410,59 @@ impl CalendarClient {
                 // Try to extract meeting URL from location or notes
                 let meeting_url = extract_meeting_url(&location, &notes);
 
-                // Get attendees
+                // Get attendees (EKParticipant: URL=mailto:, name, isCurrentUser)
+                let read_participant = |p: *mut Object, is_organizer: bool| -> Option<CalendarParticipant> {
+                    if p.is_null() {
+                        return None;
+                    }
+                    let url: *mut Object = msg_send![p, URL];
+                    if url.is_null() {
+                        return None;
+                    }
+                    let raw: *mut Object = msg_send![url, absoluteString];
+                    let raw = nsstring_to_rust(raw);
+                    let email = raw.strip_prefix("mailto:").unwrap_or(&raw);
+                    let email = urlencoding::decode(email).map(|e| e.into_owned()).unwrap_or_else(|_| email.to_string());
+                    if email.is_empty() || !email.contains('@') {
+                        return None;
+                    }
+                    let name_obj: *mut Object = msg_send![p, name];
+                    let name = if name_obj.is_null() { String::new() } else { nsstring_to_rust(name_obj) };
+                    let is_self: BOOL = msg_send![p, isCurrentUser];
+                    Some(CalendarParticipant {
+                        email: email.to_lowercase(),
+                        // Some providers put the email in the name field
+                        name: Some(name).filter(|n| !n.is_empty() && !n.contains('@')),
+                        is_organizer,
+                        is_self: is_self == YES,
+                    })
+                };
+
+                let mut participants: Vec<CalendarParticipant> = Vec::new();
+                let organizer_obj: *mut Object = msg_send![event, organizer];
+                if let Some(org) = read_participant(organizer_obj, true) {
+                    participants.push(org);
+                }
                 let attendees_array: *mut Object = msg_send![event, attendees];
-                let mut attendees = Vec::new();
                 if !attendees_array.is_null() {
                     let att_count: usize = msg_send![attendees_array, count];
                     for j in 0..att_count {
                         let attendee: *mut Object = msg_send![attendees_array, objectAtIndex: j];
-                        if !attendee.is_null() {
-                            let url: *mut Object = msg_send![attendee, URL];
-                            if !url.is_null() {
-                                let email_str: *mut Object = msg_send![url, absoluteString];
-                                let email = nsstring_to_rust(email_str);
-                                // Remove mailto: prefix
-                                let email =
-                                    email.strip_prefix("mailto:").unwrap_or(&email).to_string();
-                                if !email.is_empty() {
-                                    attendees.push(email);
-                                }
+                        if let Some(p) = read_participant(attendee, false) {
+                            if let Some(existing) = participants.iter_mut().find(|e| e.email == p.email) {
+                                existing.name = existing.name.take().or(p.name);
+                                existing.is_self |= p.is_self;
+                            } else {
+                                participants.push(p);
                             }
                         }
                     }
                 }
+                let attendees: Vec<String> = participants
+                    .iter()
+                    .filter(|p| !p.is_organizer || !p.is_self)
+                    .map(|p| p.email.clone())
+                    .collect();
 
                 events.push(CalendarEventNative {
                     event_id,
@@ -375,6 +475,7 @@ impl CalendarClient {
                     is_all_day: is_all_day == YES,
                     meeting_url,
                     notes,
+                    participants,
                 });
             }
 
@@ -427,7 +528,11 @@ impl CalendarClient {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn fetch_events(&self) -> Result<Vec<CalendarEventNative>, String> {
+    pub fn fetch_events_between(
+        &self,
+        _start: DateTime<Utc>,
+        _end: DateTime<Utc>,
+    ) -> Result<Vec<CalendarEventNative>, String> {
         Err("Calendar access only available on macOS".to_string())
     }
 }

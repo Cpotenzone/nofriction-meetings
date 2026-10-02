@@ -72,7 +72,7 @@ impl FrameExtractor {
         }
 
         // Use ffmpeg to extract frame
-        let status = Command::new("ffmpeg")
+        let status = Command::new(crate::video_recorder::find_tool("ffmpeg").unwrap_or_else(|| "ffmpeg".into()))
             .args([
                 "-ss",
                 &format!("{:.3}", timestamp_secs),
@@ -154,7 +154,7 @@ impl FrameExtractor {
         }
 
         // Extract and scale in one ffmpeg call
-        let status = Command::new("ffmpeg")
+        let status = Command::new(crate::video_recorder::find_tool("ffmpeg").unwrap_or_else(|| "ffmpeg".into()))
             .args([
                 "-ss",
                 &format!("{:.3}", timestamp_secs),
@@ -216,7 +216,7 @@ impl FrameExtractor {
         // Use ffmpeg scene detection filter
         let output_pattern = frames_dir.join("scene_%04d.jpg");
 
-        let status = Command::new("ffmpeg")
+        let status = Command::new(crate::video_recorder::find_tool("ffmpeg").unwrap_or_else(|| "ffmpeg".into()))
             .args([
                 "-i",
                 video_path.to_str().unwrap(),
@@ -285,7 +285,7 @@ impl FrameExtractor {
 
     /// Get video duration using ffprobe
     pub fn get_video_duration(&self, video_path: &Path) -> Result<f64, String> {
-        let output = Command::new("ffprobe")
+        let output = Command::new(crate::video_recorder::find_tool("ffprobe").unwrap_or_else(|| "ffprobe".into()))
             .args([
                 "-v",
                 "quiet",
@@ -331,9 +331,7 @@ impl FrameExtractor {
 
 impl Default for FrameExtractor {
     fn default() -> Self {
-        let cache_dir = dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("com.nofriction.meetings");
+        let cache_dir = crate::paths::app_cache_dir();
         Self::new(cache_dir)
     }
 }

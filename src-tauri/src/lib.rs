@@ -2,10 +2,23 @@
 // Professional macOS meeting transcription app
 #![allow(unexpected_cfgs)]
 
+pub mod ai;
 pub mod ai_client;
+pub mod build_info;
+pub mod bookmarks;
+pub mod core_audio;
+pub mod entitlement;
+pub mod paths;
+pub mod secrets;
+pub mod store;
+pub mod audio_mixer;
 pub mod attendee_intel;
 pub mod capture_engine;
 pub mod catch_up_agent;
+// m1: ffmpeg-based screen video + frame extraction can't run in the App
+// Sandbox (no Homebrew binaries). Screenshots (capture_engine/xcap) still
+// feed frames and the timeline in the `mas` build.
+#[cfg(not(feature = "mas"))]
 pub mod chunk_manager;
 pub mod clustering;
 pub mod commands;
@@ -13,26 +26,18 @@ pub mod database;
 pub mod dork_mode;
 pub mod meeting_notes;
 
-// pub mod deepgram_client; // Deprecated
+#[cfg(not(feature = "mas"))]
 pub mod frame_extractor;
 pub mod live_intel_agent;
 pub mod meeting_intel;
 pub mod menu_builder;
-pub mod pinecone_client;
 pub mod prompt_manager;
 pub mod settings;
-pub mod supabase_client;
 pub mod transcription; // New module
+#[cfg(not(feature = "mas"))]
 pub mod video_recorder;
 pub mod vlm_client;
 pub mod vlm_scheduler;
-
-// Environment configuration
-pub mod env_config;
-
-// Intelligence Pipeline integration
-pub mod ingest_client;
-pub mod ingest_queue;
 
 // Phase 1: Stateful Screen Ingest
 pub mod capture_metrics;
@@ -64,13 +69,17 @@ pub mod storage_manager;
 pub mod ambient_capture;
 pub mod continue_prompt;
 pub mod interaction_loop;
-pub mod meeting_trigger;
+pub mod meeting_end;
+pub mod notifications;
 pub mod power_manager;
 pub mod privacy_filter;
 pub mod tray_builder;
 
 // v3.0.0: Obsidian Vault Integration
 pub mod obsidian_vault;
+pub mod people;
+// Transcript/screen editing + "Strike from the record" (docs/REDACTION.md)
+pub mod redaction;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -78,34 +87,24 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use capture_engine::CaptureEngine;
 use database::DatabaseManager;
-// use deepgram_client::DeepgramClient; // Deprecated
+
 use ambient_capture::AmbientCaptureService;
 use interaction_loop::InteractionLoop;
 use live_intel_agent::LiveIntelAgent;
-use meeting_trigger::MeetingTriggerEngine;
-use pinecone_client::PineconeClient;
 use power_manager::PowerManager;
 use prompt_manager::PromptManager;
 use settings::SettingsManager;
-use supabase_client::SupabaseClient;
 use transcription::TranscriptionManager;
-use vlm_client::VLMClient;
 
 /// Application state shared across commands
 pub struct AppState {
     pub capture_engine: Arc<RwLock<CaptureEngine>>,
-    // pub deepgram_client: Arc<RwLock<DeepgramClient>>, // Deprecated
+
     pub transcription_manager: Arc<TranscriptionManager>, // New
     pub database: Arc<DatabaseManager>,
     pub settings: Arc<SettingsManager>,
-    pub vlm_client: Arc<RwLock<VLMClient>>,
     pub vlm_scheduler: Arc<vlm_scheduler::VLMScheduler>,
-    pub supabase_client: Arc<RwLock<SupabaseClient>>,
-    pub pinecone_client: Arc<RwLock<PineconeClient>>,
     pub prompt_manager: Arc<PromptManager>,
-    // Intelligence Pipeline integration
-    pub ingest_client: Option<Arc<ingest_client::IngestClient>>,
-    pub ingest_queue: Arc<parking_lot::Mutex<ingest_queue::IngestQueue>>,
     // Phase 1: Stateful Screen Ingest
     pub state_builder: Arc<RwLock<state_builder::StateBuilder>>,
     pub metrics_collector: Arc<capture_metrics::MetricsCollector>,
@@ -117,7 +116,6 @@ pub struct AppState {
     // v2.5.0: Always-On Recording
     pub power_manager: Arc<PowerManager>,
     pub ambient_capture: Arc<AmbientCaptureService>,
-    pub meeting_trigger: Arc<MeetingTriggerEngine>,
     pub interaction_loop: Arc<InteractionLoop>,
     // v2.7.0: Continuous Accessibility Capture
     pub accessibility_capture: Arc<accessibility_capture::AccessibilityCaptureService>,
@@ -154,11 +152,20 @@ impl AppState {
         database.run_migrations().await?;
         log::info!("Database initialized.");
 
-        // Load environment configuration
-        log::info!("Loading environment configuration from .env...");
-        let _ = emitter.emit("init-step", "Loading Environment Configuration...");
-        let env_config = env_config::EnvConfig::load();
-        log::info!("Environment configuration loaded.");
+        // A Delete still inside its undo window when the app quit or crashed
+        // is committed now: it is never silently dropped (docs/REDACTION.md).
+        for e in redaction::commit_all_pending(database.pool(), &redaction::RedactionEnv::for_app()).await {
+            log::error!("Pending delete could not be applied: {}", e);
+        }
+
+        // Meetings left open by a previous run (quit/crash mid-recording, or
+        // recorded before stop marked meetings ended) get ended_at = their
+        // last captured moment. Nothing can be recording yet. Never deletes.
+        match database.close_stale_meetings().await {
+            Ok(0) => {}
+            Ok(n) => log::info!("Closed {} meeting(s) left open by a previous run", n),
+            Err(e) => log::warn!("Could not close stale meetings: {}", e),
+        }
 
         // Initialize settings manager (uses same pool)
         log::info!("Initializing Settings Manager...");
@@ -166,6 +173,17 @@ impl AppState {
         let settings = SettingsManager::new(database.get_pool());
         settings.init().await?;
         log::info!("Settings Manager initialized.");
+
+        // One-time: move any plaintext secrets (SQLite rows, legacy
+        // ~/.nofriction-meetings/.env) into the Keychain and delete the
+        // plaintext copies. Idempotent; a no-op once done.
+        let _ = emitter.emit("init-step", "Securing API keys...");
+        secrets::migrate_settings(&settings).await;
+        #[cfg(not(feature = "mas"))]
+        secrets::migrate_home_env();
+        // One-time: the app is client-only; drop Supabase/Pinecone/ingest
+        // credentials and settings left by older versions. Idempotent.
+        secrets::purge_removed_services(&settings).await;
 
         // Load saved settings
         let saved_settings = settings.get_all().await.unwrap_or_default();
@@ -188,26 +206,63 @@ impl AppState {
             log::info!("Loaded Gemini API key from settings");
         }
 
-        // Auto-populate transcription keys from .env if not already saved
-        if saved_settings.deepgram_api_key.is_none() {
-            if let Some(ref key) = env_config.deepgram_api_key {
-                log::info!("✓ Auto-populating Deepgram API key from .env");
-                let _ = settings.set_deepgram_api_key(key).await;
-                transcription_manager
-                    .set_api_key_for_provider(transcription::ProviderType::Deepgram, key.clone());
-            }
+        // Configure local (offline) transcription: models live in app data
+        let whisper_models_dir = app_data_dir.join("models");
+        let _ = std::fs::create_dir_all(&whisper_models_dir);
+        transcription::local_whisper::configure(
+            whisper_models_dir,
+            saved_settings.local_whisper_model.clone(),
+        );
+
+        // One-time migration to the local (offline) engine: long-lived
+        // installs still carry provider='deepgram' with stale keys from the
+        // cloud era, which fails silently while local Whisper sits unused.
+        // If a Whisper model is installed and the user hasn't been migrated
+        // yet, switch them to local once. Cloud stays selectable in Settings.
+        let mut saved_provider = saved_settings.transcription_provider.clone();
+        let migration_done = settings
+            .get("local_migration_done")
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !migration_done
+            && saved_provider != "local"
+            && transcription::local_whisper::resolve_model_path().is_ok()
+        {
+            log::warn!(
+                "Migrating transcription provider {} → local (offline Whisper); \
+                 previous cloud setup was failing silently",
+                saved_provider
+            );
+            let _ = settings.set_transcription_provider("local").await;
+            let _ = settings.set("local_migration_done", "true").await;
+            saved_provider = "local".to_string();
+        } else if !migration_done {
+            let _ = settings.set("local_migration_done", "true").await;
         }
-        if saved_settings.gemini_api_key.is_none() {
-            if let Some(ref key) = env_config.gemini_api_key {
-                log::info!("✓ Auto-populating Gemini API key from .env");
-                let _ = settings.set_gemini_api_key(key).await;
-                transcription_manager
-                    .set_api_key_for_provider(transcription::ProviderType::Gemini, key.clone());
-            }
+
+        // m12: a cloud provider without a key can't transcribe anything.
+        // Fall back to on-device Whisper (the default for new installs); the
+        // model downloads from Hugging Face into <app data>/models on first
+        // use. Cloud providers stay selectable once a key is added.
+        let cloud_key_present = match saved_provider.as_str() {
+            "deepgram" => saved_settings.deepgram_api_key.is_some(),
+            "gemini" => saved_settings.gemini_api_key.is_some(),
+            "gladia" => saved_settings.gladia_api_key.is_some(),
+            "google_stt" => saved_settings.google_stt_key_json.is_some(),
+            _ => true,
+        };
+        if !cloud_key_present {
+            log::warn!(
+                "Transcription provider '{}' has no API key; using local Whisper instead",
+                saved_provider
+            );
+            let _ = settings.set_transcription_provider("local").await;
+            saved_provider = "local".to_string();
         }
 
         // Restore saved transcription provider choice
-        let saved_provider = &saved_settings.transcription_provider;
         match saved_provider.as_str() {
             "gemini" => {
                 transcription_manager.switch_provider(transcription::ProviderType::Gemini);
@@ -220,6 +275,10 @@ impl AppState {
             "google_stt" => {
                 transcription_manager.switch_provider(transcription::ProviderType::GoogleSTT);
                 log::info!("Restored saved transcription provider: GoogleSTT");
+            }
+            "local" => {
+                transcription_manager.switch_provider(transcription::ProviderType::Local);
+                log::info!("Restored saved transcription provider: Local Whisper (offline)");
             }
             _ => {
                 // Default is Deepgram, already set in TranscriptionManager::new()
@@ -239,93 +298,19 @@ impl AppState {
             capture.set_monitor(monitor);
             log::info!("Loaded saved monitor: {}", monitor);
         }
-
-        // Initialize knowledge base clients
-        log::info!("Initializing Knowledge Base Clients...");
-        let _ = emitter.emit("init-step", "Connecting to Knowledge Base...");
-        let vlm = VLMClient::new();
-
-        // Configure VLM client with saved settings
-        if let Some(ref base_url) = saved_settings.vlm_base_url {
-            vlm.set_base_url(base_url.clone());
-            log::info!("VLM configured with base URL: {}", base_url);
-        }
-        if let Some(ref token) = saved_settings.vlm_bearer_token {
-            vlm.set_bearer_token(token.clone());
-            log::info!("VLM bearer token configured");
-        }
-        if let Some(ref model) = saved_settings.vlm_model_primary {
-            vlm.set_model(model.clone());
-        }
-        if let Some(ref model) = saved_settings.vlm_model_fallback {
-            vlm.set_fallback_model(model.clone());
+        let saved_targets = commands::capture_sources::load_persisted_targets(&settings).await;
+        if !saved_targets.is_empty() {
+            capture.set_capture_targets(saved_targets);
         }
 
-        // Also configure the global VLM client for standalone functions
-        if let Some(ref base_url) = saved_settings.vlm_base_url {
-            crate::vlm_client::vlm_configure(base_url, saved_settings.vlm_bearer_token.as_deref());
+        // AI provider layer (bring-your-own-key; see docs/AI_PROVIDERS.md).
+        // Non-secret config from settings; keys from the Keychain.
+        let ai_first_run = ai::config::init(Arc::new(SettingsManager::new(database.get_pool()))).await;
+        if ai_first_run {
+            // Keep existing local-Ollama setups working without a key
+            tauri::async_runtime::spawn(ai::config::autodetect_local());
         }
-
-        // Auto-populate settings from .env if not already set or empty
-        if saved_settings
-            .supabase_connection_string
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-        {
-            if let Some(ref conn_str) = env_config.supabase_connection_string {
-                log::info!("✓ Auto-populating Supabase connection string from .env");
-                let _ = settings.set_supabase_connection(conn_str).await;
-            }
-        }
-        if saved_settings
-            .pinecone_api_key
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-        {
-            if let Some(ref api_key) = env_config.pinecone_api_key {
-                log::info!("✓ Auto-populating Pinecone API key from .env");
-                let _ = settings.set_pinecone_api_key(api_key).await;
-            }
-        }
-        if saved_settings
-            .pinecone_index_host
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-        {
-            if let Some(ref host) = env_config.pinecone_index_host {
-                log::info!("✓ Auto-populating Pinecone index host from .env");
-                let _ = settings.set_pinecone_index_host(host).await;
-            }
-        }
-        if saved_settings
-            .pinecone_namespace
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-        {
-            if let Some(ref ns) = env_config.pinecone_namespace {
-                log::info!("✓ Auto-populating Pinecone namespace from .env");
-                let _ = settings.set_pinecone_namespace(ns).await;
-            }
-        }
-        if saved_settings
-            .vlm_base_url
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-        {
-            if let Some(ref url) = env_config.vlm_base_url {
-                log::info!("✓ Auto-populating VLM base URL from .env");
-                let _ = settings.set_vlm_base_url(url).await;
-            }
-        }
-
-        let supabase = SupabaseClient::new();
-
-        let pinecone = Arc::new(RwLock::new(PineconeClient::new()));
+        let ai_client = ai_client::AIClient::new();
 
         // Initialize prompt manager with same pool
         log::info!("Initializing Prompt Manager...");
@@ -362,35 +347,6 @@ impl AppState {
 
         log::info!("AppState initialization complete.");
 
-        // Initialize Intelligence Pipeline integration
-        log::info!("Initializing Intelligence Pipeline integration...");
-        let _ = emitter.emit("init-step", "Setting up Intelligence Pipeline...");
-
-        // Initialize ingest queue (always available for local queueing)
-        let queue_path = app_data_dir.join("ingest_queue.db");
-        let ingest_queue = ingest_queue::IngestQueue::new(&queue_path)
-            .map_err(|e| format!("Failed to initialize ingest queue: {}", e))?;
-
-        // Initialize ingest client if enabled
-        let ingest_client = if saved_settings.enable_ingest.unwrap_or(false) {
-            if let (Some(base_url), Some(bearer_token)) = (
-                saved_settings.ingest_base_url.as_ref(),
-                saved_settings.ingest_bearer_token.as_ref(),
-            ) {
-                log::info!("Ingest enabled, creating client for: {}", base_url);
-                Some(Arc::new(ingest_client::IngestClient::new(
-                    base_url.clone(),
-                    bearer_token.clone(),
-                )))
-            } else {
-                log::warn!("Ingest enabled but missing configuration");
-                None
-            }
-        } else {
-            log::info!("Ingest disabled");
-            None
-        };
-
         // Initialize Phase 1: Stateful Screen Ingest components
         log::info!("Initializing Stateful Screen Ingest (v2.0)...");
         let _ = emitter.emit("init-step", "Setting up Stateful Capture Pipeline...");
@@ -412,10 +368,6 @@ impl AppState {
         log::info!("Initializing Ambient Capture Service...");
         let ambient_capture = AmbientCaptureService::new();
 
-        // Initialize v2.5.0: Meeting Trigger Engine
-        log::info!("Initializing Meeting Trigger Engine...");
-        let meeting_trigger = MeetingTriggerEngine::new();
-
         // Initialize v2.5.0: Interaction Loop for human check-ins
         log::info!("Initializing Interaction Loop...");
         let interaction_loop = InteractionLoop::new();
@@ -425,15 +377,15 @@ impl AppState {
         let accessibility_capture =
             Arc::new(accessibility_capture::AccessibilityCaptureService::new());
 
-        // Auto-start accessibility capture if enabled
-        if saved_settings.accessibility_capture_enabled {
+        // Auto-start accessibility capture if enabled (m2: never in the
+        // sandboxed build, where the AX API is compiled out)
+        if saved_settings.accessibility_capture_enabled && build_info::ACCESSIBILITY_CAPTURE {
             log::info!("Starting Accessibility Capture (enabled in settings)...");
             let acc_cap = accessibility_capture.clone();
             let db_clone = database.clone();
             let settings_clone = settings.clone();
-            let pinecone_clone = pinecone.clone();
             tokio::spawn(async move {
-                if let Err(e) = acc_cap.start(db_clone, settings_clone, pinecone_clone) {
+                if let Err(e) = acc_cap.start(db_clone, settings_clone) {
                     log::warn!("Failed to start accessibility capture: {}", e);
                 }
             });
@@ -445,25 +397,24 @@ impl AppState {
 
         // Wire up audio callback to TranscriptionManager
         let tm_clone = transcription_manager.clone();
+        let mixer = Arc::new(crate::audio_mixer::AudioMixer::new());
         capture.set_audio_callback(Arc::new(move |buffer| {
-            // Always forward audio to the provider — the provider handles
-            // buffering/dropping based on its own connection state.
-            tm_clone.process_audio(&buffer.samples, buffer.sample_rate, buffer.channels);
+            // Mic + system audio are mixed into one 16kHz stream; the provider
+            // handles buffering/dropping based on its own connection state.
+        // Forwarded under the mixer lock so chunks stay in order (non-blocking)
+        mixer.push_with(buffer.source, &buffer.samples, buffer.sample_rate, buffer.channels, |mixed| {
+            tm_clone.process_audio(mixed, crate::audio_mixer::MIX_SAMPLE_RATE, 1);
+        });
         }));
 
         Ok(Self {
             capture_engine: Arc::new(RwLock::new(capture)),
-            // deepgram_client: Arc::new(RwLock::new(deepgram)),
+
             transcription_manager,
             database,
             settings: settings.clone(),
-            vlm_client: Arc::new(RwLock::new(vlm)),
             vlm_scheduler: Arc::new(vlm_scheduler),
-            supabase_client: Arc::new(RwLock::new(supabase)),
-            pinecone_client: pinecone,
             prompt_manager,
-            ingest_client,
-            ingest_queue: Arc::new(parking_lot::Mutex::new(ingest_queue)),
             state_builder: Arc::new(RwLock::new(state_builder)),
             metrics_collector: Arc::new(metrics_collector),
             episode_builder: Arc::new(RwLock::new(episode_builder)),
@@ -471,12 +422,11 @@ impl AppState {
             calendar_client: Arc::new(RwLock::new(calendar_client::CalendarClient::new())),
             power_manager: Arc::new(power_manager),
             ambient_capture: Arc::new(ambient_capture),
-            meeting_trigger: Arc::new(meeting_trigger),
             interaction_loop: Arc::new(interaction_loop),
             accessibility_capture,
             // v2.8.0: Dork Mode (Study Mode)
             dork_mode_session: Arc::new(RwLock::new(None)),
-            ai_client: Arc::new(RwLock::new(ai_client::AIClient::new())),
+            ai_client: Arc::new(RwLock::new(ai_client)),
             // v3.0.0: Obsidian Vault Integration
             vault_manager: {
                 let vm = Arc::new(obsidian_vault::VaultManager::new());
@@ -484,10 +434,10 @@ impl AppState {
                 let settings_clone = settings.clone();
                 let vm_clone = vm.clone();
                 tokio::spawn(async move {
-                    if let Ok(saved_settings) = settings_clone.get_all().await {
-                        if let Some(vault_path) = saved_settings.obsidian_vault_path {
-                            vm_clone.set_vault_path(vault_path);
-                        }
+                    // m6: prefer the security-scoped bookmark (required in the
+                    // sandbox); fall back to the plain path (DMG build).
+                    if let Some(vault_path) = commands::vault::restore_vault_access(&settings_clone).await {
+                        vm_clone.set_vault_path(vault_path);
                     }
                 });
                 vm
@@ -506,16 +456,84 @@ pub enum InitStatus {
 
 pub struct InitializationState(pub Arc<RwLock<InitStatus>>);
 
+/// Writes log output to both stderr and a rotating file. When launched as a
+/// .app bundle, stderr goes nowhere — the log file is the only way to see
+/// what the app did (<app data dir>/logs/app.log; in the sandbox that is
+/// ~/Library/Containers/com.nofriction.meetings/Data/Library/Application Support/com.nofriction.meetings/logs).
+struct TeeWriter {
+    file: Option<std::fs::File>,
+}
+
+impl std::io::Write for TeeWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = std::io::stderr().write_all(buf);
+        if let Some(f) = self.file.as_mut() {
+            let _ = f.write_all(buf);
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        let _ = std::io::stderr().flush();
+        if let Some(f) = self.file.as_mut() {
+            let _ = f.flush();
+        }
+        Ok(())
+    }
+}
+
+fn open_log_file() -> Option<std::fs::File> {
+    let dir = paths::logs_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("app.log");
+    // Simple size cap: start fresh past 5MB
+    if path.metadata().map(|m| m.len() > 5_000_000).unwrap_or(false) {
+        let _ = std::fs::rename(&path, dir.join("app.log.1"));
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .ok()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Before anything opens files under the data folder (the log file
+    // included): move the pre-3.6 `ai.nofriction.meetings` folder to the new
+    // identifier's folder. DMG build only; never deletes data.
+    let data_migration = paths::migrate_legacy_data_dir();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Pipe(Box::new(TeeWriter {
+            file: open_log_file(),
+        })))
+        .init();
+    log::info!(
+        "──── noFriction Meetings starting (v{}) ────",
+        env!("CARGO_PKG_VERSION")
+    );
+    log::info!("Build flavor: {}", build_info::FLAVOR);
+    paths::log_migration(&data_migration);
+    // The removed ingest feature left ingest_queue.db behind: archive it
+    // into <app data>/backups (never deleted).
+    paths::archive_removed_ingest_queue_at_startup();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
+            ai::set_app_handle(handle.clone());
+            // Notification clicks (app activation) bring the window back
+            notifications::init(&handle);
+            // StoreKit: start the Transaction.updates listener and load the
+            // current entitlement (no-op outside the `mas` build).
+            store::start(handle.clone());
+            let caps = build_info::capabilities();
+            log::info!(
+                "Apple on-device model: {}",
+                if caps.apple_intelligence { "available".to_string() } else { format!("unavailable ({})", caps.apple_intelligence_reason) }
+            );
 
             // Initialize AppState synchronously to prevent race conditions
             let init_state = Arc::new(RwLock::new(InitStatus::Initializing));
@@ -549,12 +567,31 @@ pub fn run() {
                                         handle_clone.emit("init-step", "Finalizing App State...");
                                     log::info!("AppState created, managing state...");
                                     handle_clone.manage(state);
+                                    // "Live insights during meetings" switch
+                                    {
+                                        let h = handle_clone.clone();
+                                        tauri::async_runtime::spawn(async move {
+                                            if let Some(st) = h.try_state::<AppState>() {
+                                                commands::intel::load_ai_automation(&st).await;
+                                            }
+                                        });
+                                    }
 
                                     // Update status to Ready
                                     *init_state_clone.write() = InitStatus::Ready;
 
                                     log::info!("State managed, emitting app-ready...");
                                     let _ = handle_clone.emit("app-ready", ());
+                                    // Tray checkbox mirrors the auto-stop setting
+                                    {
+                                        let h = handle_clone.clone();
+                                        tauri::async_runtime::spawn(async move {
+                                            if let Ok(s) = meeting_end::get_auto_stop_settings(h.clone()).await {
+                                                tray_builder::set_auto_stop_checked(&h, s.enabled);
+                                            }
+                                        });
+                                    }
+                                    commands::people::spawn_startup_sync(&handle_clone);
                                     log::info!(
                                         "noFriction Meetings v{} initialized successfully",
                                         env!("CARGO_PKG_VERSION")
@@ -608,6 +645,8 @@ pub fn run() {
             commands::test_microphone,
             commands::test_accessibility,
             commands::request_permission,
+            commands::get_microphone_auth_status,
+            commands::open_system_settings,
             commands::start_recording,
             commands::stop_recording,
             commands::get_recording_status,
@@ -635,9 +674,8 @@ pub fn run() {
             commands::delete_meeting,
             commands::get_settings,
             commands::get_setting,
+            commands::set_setting,
             // AI Commands
-            commands::check_ollama,
-            commands::get_ollama_models,
             commands::get_ai_presets,
             commands::ai_chat,
             commands::summarize_meeting,
@@ -647,28 +685,13 @@ pub fn run() {
             commands::check_vlm_vision,
             commands::analyze_frame,
             commands::analyze_frames_batch,
-            // TheBrain Cloud API Commands
-            commands::thebrain_authenticate,
-            commands::check_thebrain,
-            commands::set_vlm_api_url,
-            commands::get_thebrain_models,
+            // Assistant chat (active AI provider)
             commands::capture_accessibility_snapshot,
-            commands::thebrain_chat,
-            commands::thebrain_rag_chat,
+            commands::assistant_chat,
+            commands::assistant_rag_chat,
             commands::store_conversation,
             commands::get_conversation_history,
-            commands::thebrain_rag_chat_with_memory,
-            commands::configure_supabase,
-            commands::check_supabase,
-            commands::sync_activity_to_supabase,
-            commands::query_activities,
-            commands::configure_pinecone,
-            commands::check_pinecone,
-            commands::upsert_to_pinecone,
-            commands::semantic_search,
-            commands::get_pinecone_stats,
-            commands::index_meeting_transcripts,
-            commands::index_all_transcripts_to_pinecone,
+            commands::assistant_rag_chat_with_memory,
             commands::get_accessibility_snapshots,
             commands::get_meeting_timeline,
             // Capture Mode Commands
@@ -678,20 +701,44 @@ pub fn run() {
             commands::set_always_on_capture,
             commands::set_queue_frames_for_vlm,
             commands::set_frame_capture_interval,
-            commands::configure_knowledge_base,
+            // Capture sources (displays / windows) + on-demand snapshots
+            commands::list_capture_sources,
+            commands::get_capture_targets,
+            commands::set_capture_targets,
+            commands::snap_capture_target,
+            commands::pause_recording,
+            // Calendar-linked people + LinkedIn
+            commands::sync_calendar,
+            commands::get_calendar_access_status,
+            commands::get_meeting_people,
+            commands::list_people,
+            commands::set_person_linkedin,
+            commands::resume_recording,
+            // Local (offline) speech-to-text
+            commands::get_local_stt_status,
+            commands::set_local_whisper_model,
+            commands::download_whisper_model,
+            commands::delete_whisper_model,
             commands::get_capture_settings,
-            // AI Provider Settings
-            commands::set_ai_provider_settings,
-            commands::get_ai_provider_settings,
+            // AI Providers (bring your own key; Keychain-backed)
+            ai::commands::ai_list_providers,
+            ai::commands::ai_detect_provider,
+            ai::commands::ai_save_key,
+            ai::commands::ai_delete_key,
+            ai::commands::ai_set_active,
+            ai::commands::ai_clear_vision,
+            ai::commands::ai_set_custom_endpoint,
+            ai::commands::ai_list_models,
+            ai::commands::ai_test,
+            ai::commands::ai_grant_consent,
+            ai::commands::ai_revoke_consent,
+            ai::commands::ai_status,
             // VLM Processing Commands (Phase 4)
             commands::analyze_pending_frames,
             commands::get_pending_frame_count,
             commands::get_activity_stats,
-            commands::get_unsynced_activities,
-            commands::sync_to_cloud,
             // Search Commands (Phase 6)
             commands::search_knowledge_base,
-            commands::quick_semantic_search,
             commands::get_local_activities,
             // Data Management Commands
             commands::clear_cache,
@@ -731,14 +778,23 @@ pub fn run() {
             // Realtime Transcription (Deepgram)
             commands::start_realtime_transcription,
             // Video Recording Commands
+            #[cfg(not(feature = "mas"))]
             commands::start_video_recording,
+            #[cfg(not(feature = "mas"))]
             commands::stop_video_recording,
+            #[cfg(not(feature = "mas"))]
             commands::get_video_recording_status,
+            #[cfg(not(feature = "mas"))]
             commands::video_pin_moment,
+            #[cfg(not(feature = "mas"))]
             commands::extract_frame_at,
+            #[cfg(not(feature = "mas"))]
             commands::extract_thumbnail,
+            #[cfg(not(feature = "mas"))]
             commands::get_storage_stats,
+            #[cfg(not(feature = "mas"))]
             commands::apply_retention,
+            #[cfg(not(feature = "mas"))]
             commands::delete_video_storage,
             // VLM Scheduler Commands
             commands::set_vlm_auto_process,
@@ -760,12 +816,6 @@ pub fn run() {
             commands::get_theme_time_today,
             // Intel Commands
             commands::get_recent_entities,
-            // Intelligence Pipeline Commands
-            commands::set_enable_ingest,
-            commands::set_ingest_config,
-            commands::get_ingest_queue_stats,
-            commands::test_ingest_connection,
-            commands::trigger_meeting_ingest,
             // Phase 3: Timeline Commands
             commands::get_timeline_events,
             commands::get_topic_clusters,
@@ -785,7 +835,6 @@ pub fn run() {
             admin_commands::get_audit_log,
             admin_commands::get_audit_log_count,
             admin_commands::get_system_health,
-            admin_commands::get_admin_queue_stats,
             admin_commands::get_feature_flags,
             admin_commands::set_feature_flag,
             // v2.1.0: Learned Data Commands
@@ -796,7 +845,6 @@ pub fn run() {
             admin_commands::restore_data_version,
             // v2.1.0: Tools Console Commands (M4)
             admin_commands::get_job_history,
-            admin_commands::pause_ingest_queue,
             admin_commands::get_database_stats,
             // v2.1.0: Video Diagnostics Commands
             commands::get_capture_diagnostics,
@@ -808,9 +856,6 @@ pub fn run() {
             commands::pause_capture,
             commands::get_always_on_settings,
             commands::set_always_on_enabled,
-            commands::get_running_meeting_apps,
-            commands::check_audio_usage,
-            commands::dismiss_meeting_detection,
             commands::set_genie_mode,
             // v2.8.0: Dork Mode (Study Mode) Commands
             commands::set_session_mode,
@@ -841,6 +886,52 @@ pub fn run() {
             // v3.1.0: Calendar Intelligence Commands
             commands::generate_meeting_intel,
             commands::get_enriched_calendar_events,
+            // v3.0.0: Calendar Integration — Attendees
+            commands::get_meeting_attendees,
+            // v3.2.0: Calendar Access, People Lookup, Recording Overlap
+            commands::update_meeting_title,
+            commands::lookup_attendees,
+            commands::match_recording_to_calendar,
+            // v3.3.0: Data Chatbot (RAG)
+            commands::chat_with_data,
+            // v3.4.0: Meeting Report Prompt Management
+            commands::get_meeting_report_prompt,
+            commands::set_meeting_report_prompt,
+            commands::generate_meeting_report,
+            commands::get_ai_automation,
+            commands::draft_followup_email,
+            commands::set_ai_automation,
+            // Meeting notes (Recordings → Notes)
+            commands::generate_meeting_notes,
+            commands::get_meeting_notes,
+            // Editing + "Strike from the record"
+            redaction::commands::delete_transcript_words,
+            redaction::commands::strike_transcript_words,
+            redaction::commands::delete_transcript_line,
+            redaction::commands::strike_transcript_line,
+            redaction::commands::delete_screens,
+            redaction::commands::strike_screens,
+            redaction::commands::undo_redaction,
+            redaction::commands::commit_redaction,
+            redaction::commands::list_failed_redactions,
+            redaction::commands::retry_failed_redactions,
+            redaction::commands::list_redactions,
+            redaction::commands::preview_strike_words,
+            redaction::commands::preview_strike_screens,
+            redaction::commands::get_meeting_ai_status,
+            // Build flavor / capabilities (UI hides features the build lacks)
+            build_info::get_build_capabilities,
+            // StoreKit (Mac App Store build; DMG returns "not available")
+            store::store_products,
+            store::store_purchase,
+            store::store_entitlement,
+            store::store_restore,
+            store::store_manage_subscriptions,
+            // Meeting-end detection (auto-stop)
+            meeting_end::meeting_end_keep_recording,
+            meeting_end::get_meeting_end_status,
+            meeting_end::get_auto_stop_settings,
+            meeting_end::set_auto_stop_settings,
         ])
         .on_window_event(|window, event| {
             match event {
@@ -873,6 +964,28 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
+            tauri::RunEvent::Exit => {
+                // Deletes still in their 5s undo window are committed on quit
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    let db = state.database.clone();
+                    // Quitting mid-recording: close the meeting row now
+                    let open_meeting = state.state_builder.read().current_meeting_id();
+                    if let Some(mid) = open_meeting {
+                        if let Err(e) = tauri::async_runtime::block_on(db.end_meeting(&mid)) {
+                            log::warn!("Could not close meeting {} on quit: {}", mid, e);
+                        } else {
+                            log::info!("Closed in-progress meeting {} on quit", mid);
+                        }
+                    }
+                    let errors = tauri::async_runtime::block_on(redaction::commit_all_pending(
+                        db.pool(),
+                        &redaction::RedactionEnv::for_app(),
+                    ));
+                    for e in errors {
+                        log::error!("Pending delete could not be applied on quit: {}", e);
+                    }
+                }
+            }
             tauri::RunEvent::Reopen { .. } => {
                 #[cfg(target_os = "macos")]
                 {

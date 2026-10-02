@@ -3,8 +3,10 @@ import { MeetingHistory } from '../../MeetingHistory';
 import { KBSearch } from '../../KBSearch';
 import { InsightsView } from '../../InsightsView';
 import { RewindGallery } from '../../RewindGallery';
+import { MeetingNotesPanel } from '../../MeetingNotesPanel';
+import { MeetingPeople, PeopleDirectory } from '../../People';
 
-type DeckTab = 'history' | 'insights' | 'search';
+type DeckTab = 'history' | 'people' | 'insights' | 'search';
 
 interface InsightDeckViewProps {
     onSelectMeeting: (id: string) => void;
@@ -14,6 +16,8 @@ interface InsightDeckViewProps {
 
 export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeeting, selectedMeetingId, refreshKey }) => {
     const [activeTab, setActiveTab] = useState<DeckTab>('history');
+    // Selected recording: screenshots + transcript, or its AI notes
+    const [meetingView, setMeetingView] = useState<'rewind' | 'notes'>('rewind');
 
     return (
         <div className="agency-view insight-deck">
@@ -23,7 +27,13 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         className={`deck-tab ${activeTab === 'history' ? 'active' : ''}`}
                         onClick={() => setActiveTab('history')}
                     >
-                        HISTORY
+                        RECORDINGS
+                    </button>
+                    <button
+                        className={`deck-tab ${activeTab === 'people' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('people')}
+                    >
+                        PEOPLE
                     </button>
                     <button
                         className={`deck-tab ${activeTab === 'insights' ? 'active' : ''}`}
@@ -35,7 +45,7 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         className={`deck-tab ${activeTab === 'search' ? 'active' : ''}`}
                         onClick={() => setActiveTab('search')}
                     >
-                        KNOWLEDGE BASE
+                        SEARCH
                     </button>
                 </div>
             </header>
@@ -50,10 +60,41 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                             compact={!!selectedMeetingId}
                         />
                         {selectedMeetingId && (
-                            <div className="deck-playback-panel" style={{ overflow: 'hidden', height: '100%' }}>
-                                <RewindGallery meetingId={selectedMeetingId} isRecording={false} />
+                            <div className="deck-playback-panel" style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <MeetingPeople meetingId={selectedMeetingId} />
+                                <div className="deck-tabs" role="tablist" aria-label="Recording view" style={{ padding: '6px 0' }}>
+                                    <button
+                                        role="tab"
+                                        aria-selected={meetingView === 'rewind'}
+                                        className={`deck-tab ${meetingView === 'rewind' ? 'active' : ''}`}
+                                        onClick={() => setMeetingView('rewind')}
+                                    >
+                                        REWIND
+                                    </button>
+                                    <button
+                                        role="tab"
+                                        aria-selected={meetingView === 'notes'}
+                                        className={`deck-tab ${meetingView === 'notes' ? 'active' : ''}`}
+                                        onClick={() => setMeetingView('notes')}
+                                    >
+                                        NOTES
+                                    </button>
+                                </div>
+                                <div style={{ flex: 1, minHeight: 0 }}>
+                                    {meetingView === 'rewind' ? (
+                                        <RewindGallery meetingId={selectedMeetingId} isRecording={false} />
+                                    ) : (
+                                        <MeetingNotesPanel meetingId={selectedMeetingId} />
+                                    )}
+                                </div>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {activeTab === 'people' && (
+                    <div className="deck-panel" style={{ overflowY: 'auto' }}>
+                        <PeopleDirectory />
                     </div>
                 )}
 
