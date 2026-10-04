@@ -1,11 +1,15 @@
 # noFriction for iPhone & iPad
 
-Native SwiftUI app (iOS/iPadOS 18+). Records meetings, transcribes them on
-the device, matches them to your calendar, and links attendees to LinkedIn.
-Audio, photos and transcripts stay on the device, and transcription runs on it.
-AI features (notes, follow-up emails) send the meeting's text to the AI provider
-**you** choose, with your own key, or run on Apple's on-device model. We run no
-servers.
+Native SwiftUI app (iOS/iPadOS 18+), with an Apple Watch app (watchOS 10+)
+inside it. Records meetings, transcribes them on the device, matches them to
+your calendar, and links attendees to LinkedIn. Audio, photos and transcripts
+stay on the device, and transcription runs on it. AI features (notes,
+follow-up emails) run on Apple's on-device model, or send the meeting's text
+to the one AI endpoint **you** enter. We run no servers.
+
+**Apple Watch:** record on the watch; the audio goes to the iPhone, which
+imports it as a normal meeting (transcribed on the iPhone, calendar-matched,
+AI notes, Delete / Strike, export). See [docs/WATCH_APP.md](../docs/WATCH_APP.md).
 
 ## Build
 
@@ -16,8 +20,17 @@ open NoFriction.xcodeproj
 ```
 
 Team `C7GCEESE2V`, automatic signing. Bundle id `com.nofriction.meetings` (shared with
-the Mac app for Universal Purchase). Version = `MARKETING_VERSION` in `project.yml`;
-the build number comes from `build_number.txt` (last one used), bumped by the release script.
+the Mac app for Universal Purchase); the watch app is `com.nofriction.meetings.watchkitapp`,
+embedded at `noFriction.app/Watch/NoFrictionWatch.app`. Version = `MARKETING_VERSION` in
+`project.yml` (both apps); the build number comes from `build_number.txt` (last one used),
+bumped by the release script.
+
+| Target | What |
+|---|---|
+| `NoFriction` | iPhone/iPad app (`NoFriction/` + `Shared/`) |
+| `NoFrictionWatch` | Apple Watch app (`NoFrictionWatch/` + `Shared/`), scheme `NoFrictionWatch` |
+| `NoFrictionTests`, `NoFrictionUITests` | iPhone unit / UI tests |
+| `NoFrictionWatchTests` | watch unit tests (run on a watch simulator) |
 
 ## Release (TestFlight / App Store)
 
@@ -29,17 +42,23 @@ ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=~/keys/AuthKey_….p8 \
 ```
 
 Export settings live in `ExportOptions.plist`. The API key is read from the
-environment only; never commit it.
+environment only; never commit it. The archive and IPA must contain the watch
+app; the script checks it (same version/build, signed) and the credential scan
+covers it. Manual signing needs a second profile for the watch app
+(`NF_WATCH_PROFILE_UUID`; see the script header and docs/WATCH_APP.md).
 
 ## App Store screenshots
 
 ```bash
-scripts/ios-screenshots.sh         # iPhone 6.9" + iPad 13" → AppStore/screenshots/<device>/NN-name.png
+scripts/ios-screenshots.sh         # iPhone 6.9" + iPad 13" + Apple Watch 46mm → AppStore/screenshots/<device>/NN-name.png
+scripts/ios-screenshots.sh watch   # just the watch (416x496)
 ```
 
-Creates/boots the simulators, sets the 9:41 status bar, runs
+Boots the existing simulators, sets the 9:41 status bar, runs
 `NoFrictionUITests/AppStoreScreenshots` on invented sample data
-(`-NFSeedDemo -NFDemoLive`) and checks the pixel sizes.
+(`-NFSeedDemo -NFDemoLive`) and checks the pixel sizes. The watch shots come
+from the watch app's debug demo states (`-NFWatchDemo recording|idle|list`),
+flattened to opaque PNGs.
 
 Debug runs use `NoFriction.storekit` (local StoreKit testing: both Pro products with
 a 1-week free trial). Release/TestFlight builds use the real App Store; there is no
@@ -64,13 +83,18 @@ Pro bypass.
 | StoreKit 2 (noFriction Pro) + paywall | `Store/Store.swift`, `Views/PaywallView.swift` |
 | Settings tab, consent + recording notices | `Views/SettingsView.swift`, `Views/Sheets.swift` |
 | First-run welcome (consent, permissions in context, AI setup, Pro); Settings → Show welcome again | `Views/OnboardingView.swift` |
-| Privacy manifest | `PrivacyInfo.xcprivacy` |
+| Privacy manifest | `PrivacyInfo.xcprivacy` (watch app: `../NoFrictionWatch/PrivacyInfo.xcprivacy`) |
+| Apple Watch recordings: WatchConnectivity, inbox, import + on-device file transcription | `Watch/` (spec: `docs/WATCH_APP.md`) |
+| Watch ↔ iPhone contract (metadata, audio format, shared notice text) | `../Shared/WatchTransfer.swift` |
+| Watch app: recorder, transfer queue, UI | `../NoFrictionWatch/` |
 
-**AI** follows `docs/AI_PROVIDERS.md` (shared with the Mac app): paste a key in
-Settings and the provider is detected from its prefix and checked by listing models.
-Before the first request to a cloud provider the app asks for consent. With no
-provider set, Apple's on-device model is used where available (iOS 26+, Apple
-Intelligence on). AI notes and follow-up emails need noFriction Pro.
+**AI** follows `docs/AI_PROVIDERS.md` (shared with the Mac app): Apple's
+on-device model where available (iOS 26+, Apple Intelligence on), or one
+OpenAI-compatible endpoint the user enters in Settings (base URL, model ID and,
+only if it needs one, a key kept in the Keychain). There are no built-in
+services, presets or keys, and saving makes no network request. Before meeting
+content first goes to a public endpoint the app asks for consent. AI notes and
+follow-up emails need noFriction Pro.
 
 **Transcription** picks the best on-device engine:
 
@@ -82,7 +106,9 @@ Intelligence on). AI notes and follow-up emails need noFriction Pro.
   system limits.
 
 Neither runs in the Simulator (Apple disables on-device speech there); test
-transcription on a device.
+transcription on a device. Apple Watch recordings are transcribed from the
+file with the same two engines (`Watch/FileTranscription.swift`), in chunks,
+resumable, through the same `TranscriptFilter`.
 
 **Screens**: iOS doesn't let one app capture another app's screen, so the
 phone/iPad version takes photos (slides, whiteboards, a laptop screen) or
@@ -93,10 +119,16 @@ imports screenshots from Photos into the meeting timeline.
 ```bash
 xcodebuild test -project NoFriction.xcodeproj -scheme NoFriction \
   -destination 'platform=iOS Simulator,name=NF iPhone 17 Pro' -only-testing:NoFrictionTests
+xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
+  -destination 'platform=watchOS Simulator,name=NF Apple Watch Series 11 (46mm)'
 ```
 
 - `NoFrictionTests` — LinkedIn normalization, calendar matching, name/company parsing,
   key detection, URL policy, redaction, context fitting, request building, entitlements.
+- `NoFrictionTests/WatchImportTests` — watch metadata, idempotent import, calendar match,
+  chunked transcription with a scripted transcriber, resume from checkpoint, Strike on watch audio.
+- `NoFrictionWatchTests` — watch recorder state machine, transfer queue (delete on delivery,
+  keep and retry on error), crash recovery.
 - `NoFrictionTests/RedactionTests` — word splicing, strike markers, AI-notes redaction, export/prompt
   placeholders, audio silencing (decoded zeros, same length), photo purge, store files free of struck text.
 - `NoFrictionUITests/ScreensTests` — walks every screen with sample data
