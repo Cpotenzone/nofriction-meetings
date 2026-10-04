@@ -325,6 +325,28 @@ final class WatchImporterTests: XCTestCase {
         XCTAssertEqual(m.orderedSegments.first?.start.timeIntervalSince(start) ?? -1, 35, accuracy: 0.01)
     }
 
+    func testFinishesAnImportInterruptedAfterSaving() throws {
+        // The app died after saving the meeting, before its audio was placed
+        let meta = try stageRecording(seconds: 3)
+        let key = meta.recordingID.uuidString
+        let saved = Meeting(title: "Saved first", startedAt: meta.startedAt)
+        saved.source = Meeting.Source.watch
+        saved.sourceRecordingID = key
+        saved.audioFileName = "watch-\(key).m4a"
+        saved.importState = Meeting.ImportState.failed.rawValue      // a transcription attempt found no file
+        saved.importError = "The recording's audio file is missing."
+        context.insert(saved)
+        try context.save()
+
+        let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
+        importer.processInbox()
+        XCTAssertEqual(meetings().count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioDir.appending(path: "watch-\(key).m4a").path(percentEncoded: false)))
+        XCTAssertEqual(saved.importPhase, .pending, "transcription can run now")
+        XCTAssertNil(saved.importError)
+        XCTAssertTrue(inbox.pending().isEmpty)
+    }
+
     func testCalendarMatchNamesTheMeetingAndAddsAttendees() throws {
         try stageRecording(seconds: 60)
         let importer = makeImporter(ScriptedTranscriber { _, _ in [] },

@@ -72,51 +72,67 @@ final class WatchImporter {
     }
 
     /// One recording → one meeting. `audio` is its parts in order (one file
-    /// unless it was paused); they become one file. A recording id seen
-    /// before returns the existing meeting and discards the duplicate files.
+    /// unless it was paused); they become the meeting's one audio file. A
+    /// recording id seen before returns the existing meeting and discards
+    /// the duplicate files.
+    ///
+    /// Order: the meeting is saved first, then the audio is placed, then the
+    /// inbox is cleared. If the app dies in between, the next pass finds the
+    /// meeting without its audio and finishes placing it.
     @discardableResult
     func importRecording(_ metadata: WatchRecordingMetadata, audio: [URL]) throws -> Meeting {
         let key = metadata.recordingID.uuidString
-        if let existing = meeting(sourceRecordingID: key) {
-            env.inbox.remove(metadata.recordingID)
-            for url in audio { try? FileManager.default.removeItem(at: url) }
-            return existing
-        }
-
         // The imported file is the meeting's audio file: Delete / Strike
         // silence it in place, Delete Meeting removes it
         let fileName = "watch-\(key).\(WatchTransfer.fileExtension)"
         let target = env.audioDirectory.appending(path: fileName)
-        try FileManager.default.createDirectory(at: env.audioDirectory, withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: target.path(percentEncoded: false)) {
-            // Made before an interrupted import; the inbox copies are duplicates
-            for url in audio where url != target { try? FileManager.default.removeItem(at: url) }
-        } else if audio.count == 1, let only = audio.first {
-            try FileManager.default.moveItem(at: only, to: target)
+        let hasAudio = FileManager.default.fileExists(atPath: target.path(percentEncoded: false))
+
+        let record: Meeting
+        if let existing = self.meeting(sourceRecordingID: key) {
+            guard !hasAudio else {
+                // Delivered again after its import: a duplicate
+                env.inbox.remove(metadata.recordingID)
+                for url in audio { try? FileManager.default.removeItem(at: url) }
+                return existing
+            }
+            record = existing
         } else {
-            try AudioChunks.join(audio, to: target)
-            for url in audio { try? FileManager.default.removeItem(at: url) }
+            record = Meeting(title: RecordingSession.defaultTitle(for: metadata.startedAt), startedAt: metadata.startedAt)
+            record.endedAt = metadata.endedAt
+            record.source = Meeting.Source.watch
+            record.sourceRecordingID = key
+            record.audioFileName = fileName
+            record.importState = Meeting.ImportState.pending.rawValue
+            record.importProgress = 0
+            record.audioDuration = metadata.duration
+            record.sourcePausesJSON = Self.encodePauses(metadata.pauses)
+            context.insert(record)
+            // Same matching rules as a recording made on this iPhone
+            let events = env.events(metadata.startedAt.addingTimeInterval(-3600), metadata.endedAt.addingTimeInterval(3600))
+            if let event = CalendarMatching.bestEvent(start: metadata.startedAt, end: metadata.endedAt, in: events) {
+                MeetingLinker.link(record, to: event, in: context)
+            }
+            try context.save()
         }
 
-        let meeting = Meeting(title: RecordingSession.defaultTitle(for: metadata.startedAt), startedAt: metadata.startedAt)
-        meeting.endedAt = metadata.endedAt
-        meeting.source = Meeting.Source.watch
-        meeting.sourceRecordingID = key
-        meeting.audioFileName = fileName
-        meeting.importState = Meeting.ImportState.pending.rawValue
-        meeting.importProgress = 0
-        meeting.audioDuration = metadata.duration
-        meeting.sourcePausesJSON = Self.encodePauses(metadata.pauses)
-        context.insert(meeting)
-
-        // Same matching rules as a recording made on this iPhone
-        let events = env.events(metadata.startedAt.addingTimeInterval(-3600), metadata.endedAt.addingTimeInterval(3600))
-        if let event = CalendarMatching.bestEvent(start: metadata.startedAt, end: metadata.endedAt, in: events) {
-            MeetingLinker.link(meeting, to: event, in: context)
+        if !hasAudio {
+            try FileManager.default.createDirectory(at: env.audioDirectory, withIntermediateDirectories: true)
+            if audio.count == 1, let only = audio.first {
+                try FileManager.default.moveItem(at: only, to: target)
+            } else {
+                try AudioChunks.join(audio, to: target)
+                for url in audio { try? FileManager.default.removeItem(at: url) }
+            }
+            // A transcription attempt that ran before the audio was in place
+            if record.importPhase == .failed {
+                record.importState = Meeting.ImportState.pending.rawValue
+                record.importError = nil
+                try? context.save()
+            }
         }
-        try context.save()
         env.inbox.remove(metadata.recordingID)
-        return meeting
+        return record
     }
 
     // MARK: Queue
