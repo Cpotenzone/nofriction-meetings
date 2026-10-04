@@ -57,7 +57,10 @@ enum AudioSilencer {
         settings[AVFormatIDKey] = kAudioFormatMPEG4AAC
         settings[AVSampleRateKey] = rate
         settings[AVNumberOfChannelsKey] = format.channelCount
-        if settings[AVEncoderBitRateKey] == nil { settings[AVEncoderBitRateKey] = 64_000 }
+        // The AAC encoder only takes bit rates that suit the sample rate:
+        // 64 kbit/s is fine at 48 kHz (iPhone recordings) but rejected at
+        // 16 kHz (Apple Watch recordings). Try the file's own rate first.
+        let bitRates = bitRateCandidates(existing: settings[AVEncoderBitRateKey] as? Int, channels: Int(format.channelCount))
 
         let temp = url.deletingLastPathComponent()
             .appending(path: ".silencing-\(UUID().uuidString).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
@@ -66,8 +69,7 @@ enum AudioSilencer {
         do {
             // Scoped so the writer is closed (and the file finalized) before the swap
             do {
-                let output = try AVAudioFile(forWriting: temp, settings: settings,
-                                             commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+                let output = try openWriter(temp, settings: settings, bitRates: bitRates, format: format)
                 let chunk: AVAudioFrameCount = 32_768
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk) else {
                     throw Failure.writeFailed("no buffer")
@@ -94,6 +96,29 @@ enum AudioSilencer {
         } catch {
             throw Failure.writeFailed(error.localizedDescription)
         }
+    }
+
+    /// Highest first, starting from the file's own rate when known.
+    static func bitRateCandidates(existing: Int?, channels: Int) -> [Int] {
+        let perChannel = [64_000, 48_000, 32_000, 24_000, 16_000]
+        var out: [Int] = existing.map { [$0] } ?? []
+        for r in perChannel.map({ $0 * max(1, channels) }) where !out.contains(r) { out.append(r) }
+        return out
+    }
+
+    private static func openWriter(_ url: URL, settings: [String: Any], bitRates: [Int], format: AVAudioFormat) throws -> AVAudioFile {
+        var lastError: Error = Failure.writeFailed("no usable bit rate")
+        for rate in bitRates {
+            var s = settings
+            s[AVEncoderBitRateKey] = rate
+            do {
+                return try AVAudioFile(forWriting: url, settings: s, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+            } catch {
+                lastError = error
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        throw lastError
     }
 
     private static func zero(_ buffer: AVAudioPCMBuffer, from: Int, to: Int) {

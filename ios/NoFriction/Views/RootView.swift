@@ -8,6 +8,7 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @Environment(RedactionCenter.self) private var redactions
+    @Environment(WatchImporter.self) private var watchImporter
     @State private var tab: AppTab = .now
     @AppStorage(Onboarding.completedKey) private var onboardingCompleted = false
 
@@ -49,9 +50,15 @@ struct RootView: View {
             }
             #endif
         }
+        .onChange(of: session.phase) { _, phase in
+            // Watch imports wait while this iPhone records; carry on after
+            if phase == .idle { watchImporter.resume() }
+        }
         .onChange(of: scenePhase) { _, phase in
             // Pick up meetings recorded before calendar access was granted
             if phase == .active { _ = MeetingLinker.backfill(in: context) }
+            // Apple Watch recordings waiting (or cut short in the background)
+            if phase == .active { watchImporter.resume() }
             // Leaving the foreground commits a pending Delete (never silently dropped)
             if phase != .active { redactions.commitPending() }
             // A meeting-end countdown follows the app off screen as a notification

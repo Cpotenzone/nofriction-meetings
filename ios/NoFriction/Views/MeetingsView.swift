@@ -70,12 +70,20 @@ private struct MeetingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(meeting.title).font(.body.weight(.medium)).lineLimit(1)
+            HStack(spacing: 6) {
+                Text(meeting.title).font(.body.weight(.medium)).lineLimit(1)
+                if meeting.isFromWatch { WatchBadge() }
+            }
             HStack(spacing: 8) {
                 Text([meeting.startedAt.formatted(date: .omitted, time: .shortened), meeting.duration?.minutesLabel]
                     .compactMap { $0 }.joined(separator: " · "))
                 if !meeting.snapshots.isEmpty {
                     Label("\(meeting.snapshots.count)", systemImage: "photo").labelStyle(.titleAndIcon)
+                }
+                if let phase = meeting.importPhase {
+                    Text(phase == .failed ? "Not transcribed" : "Transcribing…")
+                        .foregroundStyle(phase == .failed ? .orange : Theme.accent)
+                        .accessibilityIdentifier("meeting-row-import-state")
                 }
             }
             .font(.caption)
@@ -89,5 +97,16 @@ private struct MeetingRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Small Apple Watch mark for meetings recorded on the watch.
+struct WatchBadge: View {
+    var body: some View {
+        Image(systemName: "applewatch")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Recorded on Apple Watch")
+            .accessibilityIdentifier("watch-badge")
     }
 }

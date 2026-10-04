@@ -28,6 +28,24 @@ final class Meeting {
     /// the Notes section offers to regenerate. See docs/REDACTION.md.
     var aiNotesStale: Bool = false
 
+    // Apple Watch recordings (docs/WATCH_APP.md). All optional, so stores
+    // from before the watch app migrate without a schema version.
+    /// "watch" when recorded on Apple Watch; nil when recorded on this device
+    var source: String?
+    /// The watch's recording id. Each one is imported once.
+    var sourceRecordingID: String?
+    /// Transcription of an imported recording: see `ImportState`. nil = done (or recorded live).
+    var importState: String?
+    /// Why the last attempt failed (a system message, never transcript text)
+    var importError: String?
+    /// Seconds of the audio file transcribed so far: where a resumed run starts
+    var importProgress: Double?
+    /// Length of the audio file in seconds (imported recordings)
+    var audioDuration: Double?
+    /// JSON `[[at, length]]`: where the watch recording was paused (file
+    /// seconds, wall-clock seconds), to map file time back to clock time
+    var sourcePausesJSON: String?
+
     @Relationship(deleteRule: .cascade, inverse: \Segment.meeting) var segments: [Segment] = []
     @Relationship(deleteRule: .cascade, inverse: \Snapshot.meeting) var snapshots: [Snapshot] = []
     @Relationship(deleteRule: .cascade, inverse: \Attendance.meeting) var attendances: [Attendance] = []
@@ -65,6 +83,26 @@ final class Meeting {
     }
 
     func redaction(id: UUID) -> Redaction? { redactions.first { $0.id == id } }
+
+    enum Source { static let watch = "watch" }
+
+    /// Where an imported recording's transcription stands.
+    enum ImportState: String {
+        /// Waiting its turn (or for the app to come to the foreground)
+        case pending
+        case transcribing
+        /// Stopped with `importError`; Retry starts again where it stopped
+        case failed
+    }
+
+    var isFromWatch: Bool { source == Source.watch }
+    var importPhase: ImportState? { importState.flatMap(ImportState.init(rawValue:)) }
+
+    /// 0…1 while an imported recording is being transcribed
+    var importFraction: Double? {
+        guard importPhase != nil, let total = audioDuration, total > 0 else { return nil }
+        return min(1, max(0, (importProgress ?? 0) / total))
+    }
 }
 
 /// A finalized stretch of transcript.
@@ -213,13 +251,26 @@ enum Storage {
     static let documents = URL.documentsDirectory
     static let audio = documents.appending(path: "Audio", directoryHint: .isDirectory)
     static let snapshots = documents.appending(path: "Snapshots", directoryHint: .isDirectory)
+    /// Apple Watch recordings received but not yet imported (file + metadata JSON)
+    static let watchInbox = documents.appending(path: "WatchInbox", directoryHint: .isDirectory)
 
     static let modelTypes: [any PersistentModel.Type] = [
         Meeting.self, Segment.self, Snapshot.self, Person.self, Attendance.self, Redaction.self,
     ]
 
+    /// The app's store. Opened in App.init, before any view, because Apple
+    /// Watch recordings can arrive while the app runs in the background.
+    @MainActor
+    static func makeContainer() -> ModelContainer {
+        do {
+            return try ModelContainer(for: Schema(modelTypes))
+        } catch {
+            fatalError("Couldn't open the meeting store: \(error.localizedDescription)")
+        }
+    }
+
     static func prepare() {
-        for dir in [audio, snapshots] {
+        for dir in [audio, snapshots, watchInbox] {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
     }
