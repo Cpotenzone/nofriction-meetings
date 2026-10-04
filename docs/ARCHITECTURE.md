@@ -18,16 +18,17 @@ device. There are no accounts, no noFriction servers, no analytics.
                  │  UI: live view, meetings, people, search, edit/strike  │
                  │                    │ AI feature (Pro)                  │
                  │                    ▼                                   │
-                 │  provider layer (keys in Keychain, consent per provider)│
+                 │  AI layer (Apple on-device or a user endpoint; consent)│
                  └────────────┬───────────────────────┬───────────────────┘
                               ▼                       ▼
-                user's cloud provider          local model / Apple on-device
-                (OpenAI default, …)            (Ollama, LM Studio, Foundation Models)
+                user-entered endpoint          Apple on-device
+                (OpenAI-compatible URL)        (Foundation Models, no network)
 ```
 
 Specs shared by both apps:
-- [AI_PROVIDERS.md](AI_PROVIDERS.md): presets, paste-a-key detection,
-  guardrails, Keychain storage, consent, StoreKit licensing and Pro gating.
+- [AI_PROVIDERS.md](AI_PROVIDERS.md): Apple on-device or one user-entered
+  endpoint, URL policy, guardrails, endpoint-bound Keychain storage, consent,
+  StoreKit licensing and Pro gating.
 - [REDACTION.md](REDACTION.md): Delete and "Strike from the record".
 
 Release and distribution:
@@ -62,9 +63,9 @@ Details: [MAC_APP_STORE_BUILD.md](MAC_APP_STORE_BUILD.md).
 | App wiring, commands | `lib.rs`, `commands/` (`mod.rs`, `ai.rs`, `capture.rs`, `capture_sources.rs`, `intel.rs`, `local_stt.rs`, `people.rs`, `prompt.rs`, `vault.rs`) |
 | Storage | `database.rs` (SQLite via sqlx, FTS5 search), `settings.rs`, `paths.rs` (data folder + one-time migration), `storage_manager.rs` |
 | Capture | `capture_engine.rs` (screenshots of chosen displays/windows, dedupe), `audio_mixer.rs` (mic + system audio), `core_audio.rs`, `privacy_filter.rs`, `dedupe_gate.rs`; DMG only: `video_recorder.rs`, `frame_extractor.rs`, `chunk_manager.rs`, `accessibility_*.rs` |
-| Transcription | `transcription/`: `local_whisper.rs` (default, whisper.cpp model `large-v3-turbo` q5, downloaded once into `<app data>/models`), optional bring-your-own-key `deepgram.rs`, `gladia.rs`, `google_stt.rs`, `gemini.rs`; `filter.rs` drops Whisper's invented filler on silence |
-| Meetings | `meeting_trigger.rs` (meeting-app / mic detection), `meeting_end.rs` (auto-stop), `calendar_client.rs`, `people.rs`, `attendee_intel.rs` |
-| AI | `ai/` (`providers.rs` presets, detection, URL policy, log redaction; `client.rs` adapters + guardrails; `config.rs`; `commands.rs`), `ai_client.rs` (prompt-level helpers), `meeting_notes.rs`, `live_intel_agent.rs`, `meeting_intel.rs`, `catch_up_agent.rs`, `vlm_client.rs` + `vlm_scheduler.rs` (screenshot analysis via the vision provider), `vision_ocr.rs` (Apple Vision OCR, local), `prompt_manager.rs` |
+| Transcription | `transcription/`: `local_whisper.rs` (default, whisper.cpp model `large-v3-turbo` q5, downloaded once into `<app data>/models`) is the only provider (cloud transcription was removed 2026-10-03); `filter.rs` drops Whisper's invented filler on silence |
+| Meetings | `meeting_end.rs` (auto-stop: call-app mic release, window, calendar, silence), `calendar_client.rs`, `people.rs`, `attendee_intel.rs` |
+| AI | `ai/` (`providers.rs` Apple + custom endpoint choices, URL policy, log redaction; `client.rs` adapters + guardrails; `config.rs`; `commands.rs`), `ai_client.rs` (prompt-level helpers), `meeting_notes.rs`, `live_intel_agent.rs`, `meeting_intel.rs`, `catch_up_agent.rs`, `vlm_client.rs` + `vlm_scheduler.rs` (screenshot analysis via the configured AI), `vision_ocr.rs` (Apple Vision OCR, local), `prompt_manager.rs` |
 | Editing | `redaction.rs` (+ `redaction/tests.rs`): Delete / Strike purge pipeline |
 | Secrets | `secrets.rs`: Keychain; migrates and deletes old plaintext keys; removes leftovers of retired integrations |
 | Store | `store.rs` + `swift/NoFrictionBridge/` (StoreKit 2 in `mas`, Apple Foundation Models in both), `entitlement.rs` |
@@ -128,12 +129,12 @@ map and test commands: [ios/README.md](../ios/README.md).
 
 ## Shared rules
 
-- **No servers.** Network traffic is limited to: the user's AI provider, the
-  user's optional cloud transcription provider (Mac), the one-time Whisper
-  model download (Mac, Hugging Face), StoreKit (Apple), and links the user
-  opens (LinkedIn search, provider key pages).
+- **No servers.** Network traffic is limited to: the AI endpoint the user
+  entered (if any), the one-time Whisper model download (Mac, Hugging Face),
+  StoreKit (Apple), and links the user opens (e.g. LinkedIn search).
 - **Keys** live only in the Keychain and never reach the UI (only `last4`).
-- **Consent** is asked once per cloud provider before the first request.
+- **Consent** is asked before meeting content first goes to a public custom
+  endpoint; it's tied to that endpoint.
 - **Free vs Pro**: recording, transcription, calendar/people, photos and
   screens, search and export are free; AI features need noFriction Pro
   (App Store builds only).

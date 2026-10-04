@@ -114,7 +114,7 @@ architecture, which the App Store accepts because the minimum macOS is 12.3.
 | m9 identifier | `tauri.conf.json` identifier is `com.nofriction.meetings`. The DMG build moves `~/Library/Application Support/ai.nofriction.meetings` to `…/com.nofriction.meetings` once at startup (`paths.rs`; only if the new folder is missing or empty; never deletes; logs the result). |
 | m10 Info.plist | `ITSAppUsesNonExemptEncryption=false`, `LSApplicationCategoryType=public.app-category.productivity`. Hardcoded `CFBundleVersion` removed so each upload can set its own build number. |
 | m11 StoreKit | Swift bridge (below). |
-| m12 transcription default | **Fixed (both)**: new installs default to local Whisper, and a saved cloud provider with no key falls back to local Whisper at startup. The model downloads from Hugging Face into `<app data>/models` (needs `network.client`). |
+| m12 transcription default | **Fixed (both)**: new installs default to local Whisper, and (since 2026-10-03) local Whisper is the only transcription provider. The model downloads from Hugging Face into `<app data>/models` (needs `network.client`). |
 | m13 keys in SQLite | Done earlier (Keychain). The `mas` build uses the data-protection keychain (no `keychain-access-groups` needed; the default group is the app's application-identifier from the profile). A profile-less local test build falls back to the login keychain. |
 | m14 owner infra | Hidden in `mas`: the Admin Console tab. Supabase, Pinecone and the ingest server were later removed from both flavors (3.6.0); leftover keys are deleted at startup (`secrets.rs`). |
 | m15 release script | `scripts/release-mas.sh` (above). |
@@ -145,7 +145,7 @@ fetched from GitHub at build time. The plain C ABI has neither problem.
 `ai::client::complete`, which every LLM call goes through, returns
 `PRO_REQUIRED: …`. `withAiConsent()` in the frontend shows the paywall
 (`PaywallModal.tsx`: price, period, trial text, Restore Purchases, Terms =
-Apple standard EULA, Privacy = https://nofriction.ai/privacy placeholder)
+Apple standard EULA, Privacy = https://nofriction.io/privacy)
 and retries after a purchase. Settings → Subscription shows the status.
 Background jobs (live intel, screenshot analysis) just log the error.
 The DMG build has no gating (compiled out).
