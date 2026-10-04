@@ -25,9 +25,11 @@ npm run tauri dev
 
 No `.env` file and no API keys are needed to build or run. Transcription runs
 on-device (Whisper; the setup assistant downloads the model on first run). AI
-features are bring-your-own-key: paste a key in **Settings → AI Engine** (or
-use a local Ollama / LM Studio server, or Apple's on-device model on macOS 26).
-Keys are stored in the macOS Keychain, never in SQLite, files or the repo.
+features use Apple's on-device model (macOS 26+) or one endpoint you enter in
+**Settings → AI Engine** (an OpenAI-compatible URL, model and optional key,
+e.g. a local Ollama or LM Studio server). There are no built-in services or
+supplied keys. Keys are stored in the macOS Keychain, never in SQLite, files
+or the repo.
 See `docs/AI_PROVIDERS.md`.
 
 > **Note:** First build will take 5-10 minutes for Rust compilation. Subsequent builds are fast (incremental).
@@ -70,7 +72,7 @@ nofriction-meetings/
 │       ├── commands/         # Tauri command handlers (by domain)
 │       ├── ai/               # Bring-your-own-key AI providers (Keychain)
 │       ├── database.rs       # SQLite operations + migrations
-│       ├── transcription/    # Local Whisper + optional cloud providers
+│       ├── transcription/    # Local Whisper (on-device only)
 │       ├── redaction.rs      # Delete / "Strike from the record"
 │       └── ...               # Domain modules
 ├── docs/                     # Documentation
