@@ -140,14 +140,6 @@ export async function setMonitor(monitorId: number): Promise<void> {
 }
 
 // Settings commands
-export async function setDeepgramApiKey(apiKey: string): Promise<void> {
-    return invoke("set_deepgram_api_key", { apiKey });
-}
-
-export async function getDeepgramApiKey(): Promise<string | null> {
-    return invoke<string | null>("get_deepgram_api_key");
-}
-
 export async function getSettings(): Promise<AppSettings> {
     return invoke<AppSettings>("get_settings");
 }

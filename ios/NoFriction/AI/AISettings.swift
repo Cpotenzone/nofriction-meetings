@@ -17,6 +17,17 @@ final class AISettings {
         }
     }
 
+    struct KeyStore {
+        var get: (String) -> String?
+        var set: (String, String) throws -> Void
+        var delete: (String) throws -> Void
+
+        static let live = KeyStore(
+            get: { KeychainStore.get($0) },
+            set: { key, account in try KeychainStore.set(key, for: account) },
+            delete: { try KeychainStore.deleteChecked($0) })
+    }
+
     private enum Keys {
         static let providers = "ai.providers"
         static let active = "ai.activeProvider"
@@ -24,30 +35,40 @@ final class AISettings {
     }
 
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let keyStore: KeyStore
     private(set) var saved: [String: Saved]
     private(set) var consented: Set<String>
     private(set) var activeProviderID: String?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, keyStore: KeyStore = .live) {
         self.defaults = defaults
+        self.keyStore = keyStore
         saved = (defaults.data(forKey: Keys.providers)).flatMap { try? JSONDecoder().decode([String: Saved].self, from: $0) } ?? [:]
         consented = Set(defaults.stringArray(forKey: Keys.consent) ?? [])
         activeProviderID = defaults.string(forKey: Keys.active)
-        // Drop entries whose key vanished (e.g. restored to a new device: keys are ThisDeviceOnly)
-        for (id, _) in saved {
-            if let p = AIProvider.byID(id), p.requiresKey, !KeychainStore.has(id) { saved[id] = nil }
-        }
-        if let a = activeProviderID, saved[a] == nil { activeProviderID = nil }
+        // Keep old selections and saved data intact. Unsupported selections fail closed
+        // below instead of silently switching the recipient or on-device model.
         persist()
     }
 
     /// Saved providers in table order.
     var savedProviders: [AIProvider] { AIProvider.all.filter { saved[$0.id] != nil } }
 
-    /// The provider AI features use: the chosen one, else Apple on-device when available.
+    /// A fresh installation may use available Apple AI. Any explicit selection
+    /// must remain valid; legacy named providers require the user to configure AI.
     var effectiveProvider: AIProvider? {
-        if let a = activeProviderID, let p = AIProvider.byID(a), saved[a] != nil { return p }
+        if let id = activeProviderID {
+            guard let provider = AIProvider.byID(id), saved[id] != nil else { return nil }
+            if provider == .apple { return AppleOnDevice.isAvailable ? .apple : nil }
+            guard let base = baseURL(for: provider), URLPolicy.isAllowed(base),
+                  let model = saved[id]?.model, !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return provider
+        }
         return AppleOnDevice.isAvailable ? .apple : nil
+    }
+
+    var needsEndpointSetup: Bool {
+        activeProviderID != nil && effectiveProvider == nil
     }
 
     var isConfigured: Bool { effectiveProvider != nil }
@@ -56,7 +77,7 @@ final class AISettings {
 
     func baseURL(for provider: AIProvider) -> URL? {
         if let s = saved[provider.id]?.baseURL, let u = URL(string: s) { return u }
-        return provider.defaultBaseURL
+        return nil
     }
 
     func hasConsent(_ provider: AIProvider) -> Bool {
@@ -71,32 +92,30 @@ final class AISettings {
                               contextTokens: AppleOnDevice.contextTokens, consentGranted: true)
         }
         guard let s = saved[p.id] else { return nil }
-        let key = KeychainStore.get(p.id)
-        if p.requiresKey && (key ?? "").isEmpty { return nil }
+        // A key is read only when this saved endpoint explicitly includes one.
+        let key = s.last4 == nil ? nil : keyStore.get(p.id)
+        if s.last4 != nil && (key ?? "").isEmpty { return nil }
+
         return AIEndpoint(provider: p, baseURL: baseURL(for: p), apiKey: key, model: s.model,
                           contextTokens: s.contextTokens, consentGranted: hasConsent(p))
-    }
-
-    /// Endpoint used to validate a key before it's saved.
-    static func probe(_ provider: AIProvider, key: String?, baseURL: URL?) -> AIEndpoint {
-        AIEndpoint(provider: provider, baseURL: baseURL ?? provider.defaultBaseURL, apiKey: key, model: "",
-                   contextTokens: ContextFit.defaultContextTokens, consentGranted: false)
     }
 
     // MARK: Changes
 
     func save(_ provider: AIProvider, key: String?, baseURL: URL?, models: [ModelInfo]) throws {
+        guard provider == .custom, let baseURL else { throw AIError.notConfigured }
+        guard URLPolicy.isAllowed(baseURL) else { throw AIError.insecureURL }
+        guard models.count == 1,
+              let model = models.first?.id.trimmingCharacters(in: .whitespacesAndNewlines),
+              !model.isEmpty else { throw AIError.notConfigured }
+        // All routing input is checked before a key is stored. Saving is local only.
         if let key, !key.isEmpty {
-            try KeychainStore.set(key, for: provider.id)
-        } else if !provider.requiresKey {
-            KeychainStore.delete(provider.id)
+            try keyStore.set(key, provider.id)
+        } else {
+            try keyStore.delete(provider.id)
         }
         let previous = saved[provider.id]
-        let ids = models.map(\.id)
-        let model = previous.flatMap { ids.contains($0.model) ? $0.model : nil }
-            ?? ModelPicker.defaultModel(for: provider, from: ids) ?? ""
-        let newBase = provider.editableBaseURL ? baseURL?.absoluteString : nil
-        // A different server is a different recipient: ask again
+        let newBase = baseURL.absoluteString
         if previous?.baseURL != newBase { consented.remove(provider.id) }
         saved[provider.id] = Saved(last4: key.flatMap { $0.isEmpty ? nil : KeyDetector.last4($0) },
                                    baseURL: newBase, model: model, models: models)
@@ -112,7 +131,7 @@ final class AISettings {
     }
 
     func remove(_ provider: AIProvider) {
-        KeychainStore.delete(provider.id)
+        try? keyStore.delete(provider.id)
         saved[provider.id] = nil
         consented.remove(provider.id)
         if activeProviderID == provider.id { activeProviderID = savedProviders.first?.id }
@@ -120,7 +139,7 @@ final class AISettings {
     }
 
     func setActive(_ provider: AIProvider) {
-        guard saved[provider.id] != nil else { return }
+        guard AIProvider.byID(provider.id) == provider, saved[provider.id] != nil else { return }
         activeProviderID = provider.id
         persist()
     }

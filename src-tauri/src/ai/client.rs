@@ -145,7 +145,7 @@ impl std::fmt::Display for AiError {
             ),
             AiError::NoProvider => write!(
                 f,
-                "AI_NO_PROVIDER: No AI provider is set up. Open Settings → AI Engine and paste an API key."
+                "AI_NO_PROVIDER: No AI provider is set up. Open Settings → AI Engine and configure your endpoint and model, or use Apple on-device."
             ),
             AiError::NoKey(p) => write!(f, "AI_NO_KEY: No API key saved for {}. Add one in Settings → AI Engine.", p),
             AiError::VisionUnavailable => write!(
@@ -238,7 +238,7 @@ pub fn resolve_for(cfg: &config::AiConfig, provider: &str, model: &str) -> Resul
         super::emit_consent_required(provider);
         return Err(AiError::ConsentRequired(provider.to_string()));
     }
-    let key = config::api_key(provider);
+    let key = config::api_key(cfg, provider);
     if p.key == KeyNeed::Required && key.is_none() {
         return Err(AiError::NoKey(p.name.to_string()));
     }
@@ -949,22 +949,20 @@ mod tests {
     }
 
     #[test]
-    fn consent_is_enforced_for_cloud_only() {
+    fn custom_requests_need_an_explicit_url_and_remote_consent() {
         let mut c = config::AiConfig::default();
-        let err = resolve_for(&c, "openai", "gpt-4.1-mini").unwrap_err();
-        assert_eq!(err, AiError::ConsentRequired("openai".into()));
-        // Local needs no consent and no key
-        let t = resolve_for(&c, "ollama", "qwen3:8b").unwrap();
-        assert_eq!(t.base_url, "http://localhost:11434/v1");
-        assert_eq!(t.context_tokens, 8_192);
-        // Consent granted but no key → NoKey
-        c.provider_mut("openai").consent = true;
-        assert!(matches!(resolve_for(&c, "openai", "gpt-4.1-mini"), Err(AiError::NoKey(_))));
-        // A "local" preset pointed at a public host is cloud: consent first
-        c.provider_mut("ollama").base_url = Some("https://ollama.example.com/v1".into());
-        assert_eq!(resolve_for(&c, "ollama", "qwen3:8b").unwrap_err(), AiError::ConsentRequired("ollama".into()));
-        c.provider_mut("ollama").consent = true;
-        assert!(resolve_for(&c, "ollama", "qwen3:8b").is_ok());
+        assert!(matches!(resolve_for(&c, "custom", "user-model"), Err(AiError::BadUrl(_))));
+        for legacy in ["gemini", "openai", "deepgram", "ollama"] {
+            c.provider_mut(legacy).consent = true;
+            c.provider_mut(legacy).base_url = Some("https://legacy.example.com/v1".into());
+            assert!(resolve_for(&c, legacy, "saved-model").is_err());
+        }
+        c.provider_mut("custom").base_url = Some("http://127.0.0.1:8000/v1".into());
+        assert_eq!(resolve_for(&c, "custom", "user-model").unwrap().base_url, "http://127.0.0.1:8000/v1");
+        c.provider_mut("custom").base_url = Some("https://user.example.com/v1".into());
+        assert_eq!(resolve_for(&c, "custom", "user-model").unwrap_err(), AiError::ConsentRequired("custom".into()));
+        c.provider_mut("custom").consent = true;
+        assert_eq!(resolve_for(&c, "custom", "user-model").unwrap().base_url, "https://user.example.com/v1");
     }
 
     #[test]

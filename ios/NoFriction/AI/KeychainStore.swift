@@ -45,7 +45,12 @@ enum KeychainStore {
 
     static func has(_ account: String) -> Bool { get(account) != nil }
 
+    static func deleteChecked(_ account: String) throws {
+        let status = SecItemDelete(base(account) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure.status(status) }
+    }
+
     static func delete(_ account: String) {
-        SecItemDelete(base(account) as CFDictionary)
+        try? deleteChecked(account)
     }
 }

@@ -50,7 +50,7 @@ export function HelpSection() {
                             <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>Core Features</h4>
                             <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '12px' }}>
                                 {[
-                                    { icon: '🎤', title: 'Live Transcription', desc: 'On-device Whisper by default; cloud services optional with your own key.' },
+                                    { icon: '🎤', title: 'Live Transcription', desc: 'On-device Whisper transcription after the local model is downloaded.' },
                                     { icon: '⏮️', title: 'Rewind', desc: 'Pick a meeting in REWIND to see screenshots and transcript side by side, or switch to its Notes.' },
                                     { icon: '🧠', title: 'AI Notes', desc: caps?.pro_gating
                                         ? 'Summary, key topics, decisions and action items with your AI provider (Settings → AI Engine). Requires noFriction Pro.'
@@ -160,14 +160,14 @@ export function HelpSection() {
                             <div style={{ marginBottom: '24px' }}>
                                 <h4 style={{ color: '#fca5a5', fontWeight: 600, marginBottom: '8px' }}>No transcript appears</h4>
                                 <p style={{ fontSize: '14px', color: '#d1d5db', marginBottom: '8px', lineHeight: '1.6' }}>
-                                    With Local Whisper (the default), download a model first in Settings → Transcription. With a cloud service, check its key there; LIVE shows "Transcription stopped" with the reason if it can't connect.
+                                    Download a Local Whisper model first in Settings → Transcription. LIVE shows "Transcription stopped" with the reason if local transcription cannot start.
                                 </p>
                             </div>
 
                             <div style={{ marginBottom: '24px' }}>
                                 <h4 style={{ color: '#fca5a5', fontWeight: 600, marginBottom: '8px' }}>No AI notes after a meeting</h4>
                                 <p style={{ fontSize: '14px', color: '#d1d5db', marginBottom: '8px', lineHeight: '1.6' }}>
-                                    Notes are written automatically only for recordings longer than 6 minutes, and only once an AI provider is set up and allowed in Settings → AI Engine (use Test there to check the key).{caps?.pro_gating ? ' In the App Store version they also need noFriction Pro (Settings → Subscription).' : ''} You can always click Generate notes in the meeting's Notes view in REWIND. Automatic notes can be turned off with Write a report after each meeting.
+                                    Notes are written automatically only for recordings longer than 6 minutes, and only once Apple on-device is available or your endpoint and model are configured and allowed in Settings → AI Engine.{caps?.pro_gating ? ' In the App Store version they also need noFriction Pro (Settings → Subscription).' : ''} You can always click Generate notes in the meeting's Notes view in REWIND. Automatic notes can be turned off with Write a report after each meeting.
                                 </p>
                             </div>
 
@@ -181,7 +181,7 @@ export function HelpSection() {
                             <div style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15))', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '20px', borderRadius: '12px' }}>
                                 <p style={{ fontSize: '16px', color: '#93c5fd', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <span style={{ fontSize: '20px' }}>💡</span>
-                                    <span><strong>Need more help?</strong> Email support@nofriction.ai or use Help → Contact Support…. Version, Privacy Policy and Terms of Use are in Settings → About.</span>
+                                    <span><strong>Need more help?</strong> Email casey@nofriction.io or use Help → Contact Support…. Version, Privacy Policy and Terms of Use are in Settings → About.</span>
                                 </p>
                             </div>
                         </section>

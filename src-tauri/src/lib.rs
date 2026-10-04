@@ -194,18 +194,6 @@ impl AppState {
         let _ = emitter.emit("init-step", "Initializing Transcription Service...");
         let transcription_manager = Arc::new(TranscriptionManager::new());
 
-        // Load ALL provider API keys from settings (persists across restarts)
-        if let Some(ref api_key) = saved_settings.deepgram_api_key {
-            transcription_manager
-                .set_api_key_for_provider(transcription::ProviderType::Deepgram, api_key.clone());
-            log::info!("Loaded Deepgram API key from settings");
-        }
-        if let Some(ref api_key) = saved_settings.gemini_api_key {
-            transcription_manager
-                .set_api_key_for_provider(transcription::ProviderType::Gemini, api_key.clone());
-            log::info!("Loaded Gemini API key from settings");
-        }
-
         // Configure local (offline) transcription: models live in app data
         let whisper_models_dir = app_data_dir.join("models");
         let _ = std::fs::create_dir_all(&whisper_models_dir);
@@ -214,77 +202,9 @@ impl AppState {
             saved_settings.local_whisper_model.clone(),
         );
 
-        // One-time migration to the local (offline) engine: long-lived
-        // installs still carry provider='deepgram' with stale keys from the
-        // cloud era, which fails silently while local Whisper sits unused.
-        // If a Whisper model is installed and the user hasn't been migrated
-        // yet, switch them to local once. Cloud stays selectable in Settings.
-        let mut saved_provider = saved_settings.transcription_provider.clone();
-        let migration_done = settings
-            .get("local_migration_done")
-            .await
-            .ok()
-            .flatten()
-            .is_some();
-        if !migration_done
-            && saved_provider != "local"
-            && transcription::local_whisper::resolve_model_path().is_ok()
-        {
-            log::warn!(
-                "Migrating transcription provider {} → local (offline Whisper); \
-                 previous cloud setup was failing silently",
-                saved_provider
-            );
-            let _ = settings.set_transcription_provider("local").await;
-            let _ = settings.set("local_migration_done", "true").await;
-            saved_provider = "local".to_string();
-        } else if !migration_done {
-            let _ = settings.set("local_migration_done", "true").await;
-        }
-
-        // m12: a cloud provider without a key can't transcribe anything.
-        // Fall back to on-device Whisper (the default for new installs); the
-        // model downloads from Hugging Face into <app data>/models on first
-        // use. Cloud providers stay selectable once a key is added.
-        let cloud_key_present = match saved_provider.as_str() {
-            "deepgram" => saved_settings.deepgram_api_key.is_some(),
-            "gemini" => saved_settings.gemini_api_key.is_some(),
-            "gladia" => saved_settings.gladia_api_key.is_some(),
-            "google_stt" => saved_settings.google_stt_key_json.is_some(),
-            _ => true,
-        };
-        if !cloud_key_present {
-            log::warn!(
-                "Transcription provider '{}' has no API key; using local Whisper instead",
-                saved_provider
-            );
-            let _ = settings.set_transcription_provider("local").await;
-            saved_provider = "local".to_string();
-        }
-
-        // Restore saved transcription provider choice
-        match saved_provider.as_str() {
-            "gemini" => {
-                transcription_manager.switch_provider(transcription::ProviderType::Gemini);
-                log::info!("Restored saved transcription provider: Gemini");
-            }
-            "gladia" => {
-                transcription_manager.switch_provider(transcription::ProviderType::Gladia);
-                log::info!("Restored saved transcription provider: Gladia");
-            }
-            "google_stt" => {
-                transcription_manager.switch_provider(transcription::ProviderType::GoogleSTT);
-                log::info!("Restored saved transcription provider: GoogleSTT");
-            }
-            "local" => {
-                transcription_manager.switch_provider(transcription::ProviderType::Local);
-                log::info!("Restored saved transcription provider: Local Whisper (offline)");
-            }
-            _ => {
-                // Default is Deepgram, already set in TranscriptionManager::new()
-                log::info!("Transcription provider: Deepgram (default)");
-            }
-        }
+        // Cloud transcription presets are retired. Saved settings/keys are
+        // preserved, but the manager can instantiate only local Whisper.
+        log::info!("Transcription: local Whisper; legacy service configuration is inactive");
 
         // Initialize capture engine with saved preferences
         log::info!("Initializing Capture Engine...");
@@ -305,11 +225,7 @@ impl AppState {
 
         // AI provider layer (bring-your-own-key; see docs/AI_PROVIDERS.md).
         // Non-secret config from settings; keys from the Keychain.
-        let ai_first_run = ai::config::init(Arc::new(SettingsManager::new(database.get_pool()))).await;
-        if ai_first_run {
-            // Keep existing local-Ollama setups working without a key
-            tauri::async_runtime::spawn(ai::config::autodetect_local());
-        }
+        ai::config::init(Arc::new(SettingsManager::new(database.get_pool()))).await;
         let ai_client = ai_client::AIClient::new();
 
         // Initialize prompt manager with same pool
@@ -661,12 +577,6 @@ pub fn run() {
             commands::set_audio_device,
             commands::get_monitors,
             commands::set_monitor,
-            commands::set_deepgram_api_key,
-            commands::get_deepgram_api_key,
-            commands::set_gemini_api_key,
-            commands::get_gemini_api_key,
-            commands::set_gladia_api_key,
-            commands::set_google_stt_key,
             commands::set_active_provider,
             commands::debug_log,
             commands::get_meetings,

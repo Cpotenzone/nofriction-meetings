@@ -40,7 +40,7 @@ enum AIError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: "Set up an AI provider in Settings first."
+        case .notConfigured: "Configure Apple on-device or enter your AI endpoint and model in Settings first."
         case .consentRequired(let p): "Allow sending meeting content to \(p) first."
         case .insecureURL: "That address isn't allowed. Cloud services need https://. Plain http:// only works for this device, your local network or a Tailscale address."
         case .wrongKey(let m): "Wrong or revoked key." + (m.isEmpty ? "" : " \(m)")
@@ -89,17 +89,14 @@ enum ContextFit {
 // MARK: - Request building (pure; unit-tested)
 
 enum RequestBuilder {
-    static let anthropicVersion = "2023-06-01"
     static let maxOutputTokens = 16_000
 
     /// Total time allowed for one completion.
     static func timeout(maxTokens: Int) -> TimeInterval { 60 + Double(maxTokens) / 8 }
 
-    /// Tokens actually requested. Models that think before answering (Claude,
-    /// OpenAI reasoning models) spend part of max_tokens on that, so give them room.
+    /// Allow extra output budget when the configured model uses reasoning tokens.
     static func outputBudget(proto: AIProtocol, requested: Int, completionTokens: Bool) -> Int {
         switch proto {
-        case .anthropic: min(requested + 4096, maxOutputTokens)
         case .openai: completionTokens ? min(requested + 4096, maxOutputTokens) : requested
         case .foundationModels: requested
         }
@@ -107,26 +104,10 @@ enum RequestBuilder {
 
     static func chat(_ ep: AIEndpoint, messages: [ChatMessage], maxTokens: Int, temperature: Double?,
                      completionTokens: Bool = false) throws -> URLRequest {
-        guard let base = ep.baseURL else { throw AIError.notConfigured }
+        guard ep.provider == .custom, let base = ep.baseURL,
+              !ep.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.notConfigured }
         guard URLPolicy.isAllowed(base) else { throw AIError.insecureURL }
         switch ep.provider.proto {
-        case .anthropic:
-            var req = URLRequest(url: base.appending(path: "messages"))
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
-            if let key = ep.apiKey, !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-api-key") }
-            let system = messages.filter { $0.role == "system" }.map(\.content).joined(separator: "\n\n")
-            var body: [String: Any] = [
-                "model": ep.model,
-                "max_tokens": maxTokens,
-                "messages": messages.filter { $0.role != "system" }.map { ["role": $0.role, "content": $0.content] },
-            ]
-            // No temperature: current Claude models reject sampling parameters.
-            if !system.isEmpty { body["system"] = system }
-            req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
-            req.timeoutInterval = timeout(maxTokens: maxTokens)
-            return req
         case .openai:
             var req = URLRequest(url: base.appending(path: "chat/completions"))
             req.httpMethod = "POST"
@@ -151,28 +132,6 @@ enum RequestBuilder {
         }
     }
 
-    static func get(_ url: URL, _ ep: AIEndpoint) throws -> URLRequest {
-        guard URLPolicy.isAllowed(url) else { throw AIError.insecureURL }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.timeoutInterval = 15
-        if let key = ep.apiKey, !key.isEmpty {
-            if ep.provider.proto == .anthropic {
-                req.setValue(key, forHTTPHeaderField: "x-api-key")
-                req.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
-            } else {
-                req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-            }
-        }
-        return req
-    }
-
-    static func models(_ ep: AIEndpoint) throws -> URLRequest {
-        guard let base = ep.baseURL else { throw AIError.notConfigured }
-        var url = base.appending(path: "models")
-        if ep.provider.proto == .anthropic { url.append(queryItems: [URLQueryItem(name: "limit", value: "1000")]) }
-        return try get(url, ep)
-    }
 }
 
 // MARK: - Response parsing (pure; unit-tested)
@@ -204,7 +163,7 @@ enum ResponseParser {
         switch status {
         case 401, 403: return .wrongKey(m)
         case 402, 429: return .noCredit(m)
-        case 400 where m.lowercased().contains("api key"): return .wrongKey(m)  // Gemini answers 400 for a bad key
+        case 400 where m.lowercased().contains("api key"): return .wrongKey(m)
         default: return .server(status, m)
         }
     }
@@ -235,19 +194,7 @@ enum ResponseParser {
         return text
     }
 
-    static func anthropicText(_ data: Data) throws -> String {
-        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = obj["content"] as? [[String: Any]] else { throw AIError.badResponse }
-        let stop = obj["stop_reason"] as? String
-        if stop == "refusal" { throw AIError.refused }
-        let text = content.filter { ($0["type"] as? String) == "text" }
-            .compactMap { $0["text"] as? String }.joined()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { throw stop == "max_tokens" ? AIError.truncated : AIError.emptyAnswer }
-        return text
-    }
-
-    /// Local reasoning models (Qwen, DeepSeek-R1 via Ollama) inline <think>…</think>.
+    /// Some compatible models inline reasoning in <think>…</think>.
     static func stripThinking(_ s: String) -> String {
         guard s.contains("<think>") else { return s }
         var out = s
@@ -261,48 +208,6 @@ enum ResponseParser {
         return out
     }
 
-    /// OpenAI-style `{data:[{id}]}`, a bare array (Together), Anthropic `{data:[{id,max_input_tokens}]}`,
-    /// or Ollama `/api/tags` `{models:[{name}]}`.
-    static func models(_ data: Data) throws -> [ModelInfo] {
-        let obj = try JSONSerialization.jsonObject(with: data)
-        let list: [[String: Any]]
-        if let d = obj as? [String: Any] {
-            list = (d["data"] as? [[String: Any]]) ?? (d["models"] as? [[String: Any]]) ?? []
-        } else {
-            list = (obj as? [[String: Any]]) ?? []
-        }
-        var seen = Set<String>()
-        return list.compactMap { m in
-            guard var id = (m["id"] as? String) ?? (m["name"] as? String) ?? (m["model"] as? String) else { return nil }
-            if id.hasPrefix("models/") { id = String(id.dropFirst(7)) }  // Gemini
-            guard !id.isEmpty, seen.insert(id).inserted else { return nil }
-            let ctx = ["max_input_tokens", "context_length", "context_window", "max_context_length"]
-                .lazy.compactMap { m[$0] as? Int }.first
-            return ModelInfo(id: id, contextTokens: ctx)
-        }
-    }
-}
-
-enum ModelPicker {
-    private static let nonChat = ["embed", "whisper", "tts", "dall-e", "moderation", "image", "audio",
-                                  "realtime", "transcribe", "rerank", "guard", "davinci", "babbage", "sora", "omni-moderation"]
-
-    static func isChatCapable(_ id: String) -> Bool {
-        let l = id.lowercased()
-        return !nonChat.contains { l.contains($0) }
-    }
-
-    /// First match from the preset's preference list (exact, then prefix), else the first chat model.
-    static func defaultModel(for provider: AIProvider, from ids: [String]) -> String? {
-        let chat = ids.filter(isChatCapable)
-        for pref in provider.preferredModels {
-            if let m = chat.first(where: { $0 == pref }) { return m }
-        }
-        for pref in provider.preferredModels {
-            if let m = chat.sorted().first(where: { $0.hasPrefix(pref) }) { return m }
-        }
-        return chat.first ?? ids.first
-    }
 }
 
 // MARK: - Client
@@ -315,7 +220,7 @@ actor AIClient {
     static let maxResponseBytes = 4 * 1024 * 1024
     private static let completionTokenModelsKey = "ai.completionTokenModels"
 
-    /// Models known to want max_completion_tokens and no temperature ("provider|model").
+    /// Models known to want max_completion_tokens and no temperature ("endpoint|model").
     private var completionTokenModels: Set<String>
 
     init() {
@@ -323,16 +228,17 @@ actor AIClient {
     }
 
     func complete(_ messages: [ChatMessage], maxTokens: Int, temperature: Double = 0.3, endpoint ep: AIEndpoint) async throws -> String {
-        if ep.needsConsent && !ep.consentGranted { throw AIError.consentRequired(ep.provider.name) }
+        if ep.needsConsent && !ep.consentGranted { throw AIError.consentRequired(ep.baseURL?.host() ?? ep.provider.name) }
         let requested = min(max(maxTokens, 16), 8192)
 
         if ep.provider.proto == .foundationModels {
             return try await AppleOnDevice.complete(messages, maxTokens: requested, temperature: temperature)
         }
-        guard let base = ep.baseURL else { throw AIError.notConfigured }
+        guard ep.provider == .custom, let base = ep.baseURL,
+              !ep.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.notConfigured }
         guard URLPolicy.isAllowed(base) else { throw AIError.insecureURL }
 
-        let modelKey = "\(ep.provider.id)|\(ep.model)"
+        let modelKey = "\(base.absoluteString)|\(ep.model)"
         var useCompletionTokens = completionTokenModels.contains(modelKey)
         for attempt in 0..<2 {
             let budget = RequestBuilder.outputBudget(proto: ep.provider.proto, requested: requested,
@@ -342,9 +248,7 @@ actor AIClient {
                                               completionTokens: useCompletionTokens)
             let (data, status) = try await send(req, secrets: [ep.apiKey].compactMap { $0 })
             if (200..<300).contains(status) {
-                return ep.provider.proto == .anthropic
-                    ? try ResponseParser.anthropicText(data)
-                    : try ResponseParser.openAIText(data)
+                return try ResponseParser.openAIText(data)
             }
             let message = ResponseParser.errorMessage(data, secrets: [ep.apiKey].compactMap { $0 })
             if status == 400, attempt == 0, ep.provider.proto == .openai, !useCompletionTokens,
@@ -357,37 +261,6 @@ actor AIClient {
             throw ResponseParser.statusError(status, data, secrets: [ep.apiKey].compactMap { $0 })
         }
         throw AIError.badResponse
-    }
-
-    /// Check the key/URL by listing models. Returns the models on success.
-    func validate(_ ep: AIEndpoint) async throws -> [ModelInfo] {
-        let secrets = [ep.apiKey].compactMap { $0 }
-        if ep.provider.proto == .foundationModels {
-            if let reason = AppleOnDevice.unavailableReason { throw AIError.onDevice(reason) }
-            return [ModelInfo(id: "apple-on-device", contextTokens: AppleOnDevice.contextTokens)]
-        }
-        if let check = ep.provider.validationURL {
-            let (data, status) = try await send(try RequestBuilder.get(check, ep), secrets: secrets, total: 15)
-            guard (200..<300).contains(status) else { throw ResponseParser.statusError(status, data, secrets: secrets) }
-            if !ep.provider.staticModels.isEmpty {
-                return ep.provider.staticModels.map { ModelInfo(id: $0, contextTokens: nil) }
-            }
-        }
-        let (data, status) = try await send(try RequestBuilder.models(ep), secrets: secrets, total: 15)
-        if (200..<300).contains(status) {
-            let models = (try? ResponseParser.models(data)) ?? []
-            if models.isEmpty && ep.provider.staticModels.isEmpty && !ep.provider.editableBaseURL {
-                throw AIError.badResponse
-            }
-            return models.isEmpty ? ep.provider.staticModels.map { ModelInfo(id: $0, contextTokens: nil) } : models
-        }
-        // Older Ollama builds have no /v1/models; /api/tags lists the same models
-        if status == 404, ep.provider == .ollama, let base = ep.baseURL {
-            let root = base.lastPathComponent == "v1" ? base.deletingLastPathComponent() : base
-            let (d2, s2) = try await send(try RequestBuilder.get(root.appending(path: "api/tags"), ep), secrets: secrets, total: 15)
-            if (200..<300).contains(s2) { return (try? ResponseParser.models(d2)) ?? [] }
-        }
-        throw ResponseParser.statusError(status, data, secrets: secrets)
     }
 
     // MARK: Transport

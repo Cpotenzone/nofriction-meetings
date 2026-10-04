@@ -235,10 +235,10 @@ struct OnboardingView: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 16) {
-                feature("waveform", "Transcribed on this device", "Audio and transcripts never leave your iPhone or iPad.")
+                feature("waveform", "Transcribed on this device", "Recording and transcription stay on your iPhone or iPad.")
                 feature("calendar", "Matched to your calendar", "Each recording is named after the meeting, with who attended.")
                 feature("eye.slash", "Strike from the record", "Remove words, lines or photos for good, audio included.")
-                feature("sparkles", "AI notes, your way", "Use your own AI provider, or Apple's on-device model.")
+                feature("sparkles", "AI notes, your way", "Use Apple on-device or your own AI endpoint.")
             }
             .padding(.top, 6)
         } actions: {
@@ -360,13 +360,13 @@ struct OnboardingView: View {
                         Text("Set up AI")
                             .font(.largeTitle.weight(.bold))
                             .accessibilityAddTraits(.isHeader)
-                        Text("AI notes and follow-up emails use the AI you choose. Paste an API key and noFriction detects the provider. Your key stays in this device's Keychain.")
+                        Text("Use Apple on-device when available, or enter your own endpoint, model ID and optional key. Saving sends no request. Your key stays in this device's Keychain.")
                             .foregroundStyle(.secondary)
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
                 }
-                AIKeySection(model: connect)
+                AIEndpointSection(model: connect)
                 if AppleOnDevice.isAvailable {
                     Section {
                         Button {

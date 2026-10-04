@@ -1,4 +1,4 @@
-//! Provider presets, paste-a-key detection, URL policy, redaction and
+//! Apple on-device and explicit custom endpoint policy, redaction and
 //! per-model heuristics (context window, vision). Spec: docs/AI_PROVIDERS.md.
 
 use once_cell::sync::Lazy;
@@ -29,7 +29,7 @@ pub struct Preset {
     pub protocol: Protocol,
     /// Empty for `custom` (user-entered)
     pub base_url: &'static str,
-    /// Auto-detect prefixes (longest wins across all presets)
+    /// Empty: credentials never choose an endpoint.
     pub key_prefixes: &'static [&'static str],
     pub key_url: &'static str,
     pub key: KeyNeed,
@@ -43,7 +43,7 @@ pub struct Preset {
     pub preferred_contains: &'static [&'static str],
 }
 
-pub const DEFAULT_PROVIDER: &str = "openai";
+pub const DEFAULT_PROVIDER: &str = "custom";
 
 /// The Apple on-device preset (key-less fallback when no provider is set up).
 pub const APPLE_PROVIDER: &str = "apple";
@@ -54,162 +54,6 @@ pub const APPLE_BASE_URL: &str = "apple://on-device";
 pub const APPLE_CONTEXT_TOKENS: usize = 4_096;
 
 pub static PRESETS: &[Preset] = &[
-    Preset {
-        id: "openai",
-        name: "OpenAI",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.openai.com/v1",
-        key_prefixes: &["sk-proj-", "sk-svcacct-", "sk-"],
-        key_url: "https://platform.openai.com/api-keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["gpt-4.1-mini", "gpt-5-mini", "gpt-4o-mini", "gpt-4.1", "gpt-5", "gpt-4o"],
-        preferred_contains: &["gpt-"],
-    },
-    Preset {
-        id: "anthropic",
-        name: "Anthropic Claude",
-        protocol: Protocol::Anthropic,
-        base_url: "https://api.anthropic.com/v1",
-        key_prefixes: &["sk-ant-"],
-        key_url: "https://console.anthropic.com/settings/keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5", "claude-sonnet-4-6"],
-        preferred_contains: &["sonnet", "opus", "haiku"],
-    },
-    Preset {
-        id: "gemini",
-        name: "Google Gemini",
-        protocol: Protocol::OpenAI,
-        base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-        key_prefixes: &["AIza"],
-        key_url: "https://aistudio.google.com/apikey",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["gemini-3.8-flash", "gemini-3-flash", "gemini-2.5-flash", "gemini-flash-latest"],
-        preferred_contains: &["flash", "gemini"],
-    },
-    Preset {
-        id: "xai",
-        name: "xAI Grok",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.x.ai/v1",
-        key_prefixes: &["xai-"],
-        key_url: "https://console.x.ai",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["grok-4-fast", "grok-4", "grok-3-mini", "grok-3"],
-        preferred_contains: &["grok"],
-    },
-    Preset {
-        id: "groq",
-        name: "Groq",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.groq.com/openai/v1",
-        key_prefixes: &["gsk_"],
-        key_url: "https://console.groq.com/keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"],
-        preferred_contains: &["llama", "gpt-oss"],
-    },
-    Preset {
-        id: "openrouter",
-        name: "OpenRouter",
-        protocol: Protocol::OpenAI,
-        base_url: "https://openrouter.ai/api/v1",
-        key_prefixes: &["sk-or-"],
-        key_url: "https://openrouter.ai/keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["openai/gpt-4.1-mini", "openai/gpt-4o-mini", "google/gemini-2.5-flash", "anthropic/claude-sonnet-5"],
-        preferred_contains: &["gpt-4", "gemini", "claude"],
-    },
-    Preset {
-        id: "mistral",
-        name: "Mistral",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.mistral.ai/v1",
-        key_prefixes: &[],
-        key_url: "https://console.mistral.ai/api-keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["mistral-medium-latest", "mistral-small-latest", "mistral-large-latest"],
-        preferred_contains: &["mistral"],
-    },
-    Preset {
-        id: "deepseek",
-        name: "DeepSeek",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.deepseek.com/v1",
-        key_prefixes: &[],
-        key_url: "https://platform.deepseek.com/api_keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["deepseek-chat"],
-        preferred_contains: &["deepseek"],
-    },
-    Preset {
-        id: "perplexity",
-        name: "Perplexity",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.perplexity.ai/router/v1",
-        key_prefixes: &["pplx-"],
-        key_url: "https://www.perplexity.ai/settings/api",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["perplexity/sonar", "sonar"],
-        preferred_contains: &["sonar"],
-    },
-    Preset {
-        id: "together",
-        name: "Together AI",
-        protocol: Protocol::OpenAI,
-        base_url: "https://api.together.xyz/v1",
-        key_prefixes: &[],
-        key_url: "https://api.together.ai/settings/api-keys",
-        key: KeyNeed::Required,
-        local: false,
-        editable_url: false,
-        preferred: &["meta-llama/Llama-3.3-70B-Instruct-Turbo"],
-        preferred_contains: &["Instruct"],
-    },
-    Preset {
-        id: "ollama",
-        name: "Ollama (local)",
-        protocol: Protocol::OpenAI,
-        base_url: "http://localhost:11434/v1",
-        key_prefixes: &[],
-        key_url: "https://ollama.com",
-        key: KeyNeed::None,
-        local: true,
-        editable_url: true,
-        preferred: &["qwen3:8b", "llama3.1:8b", "gemma3:12b"],
-        preferred_contains: &[],
-    },
-    Preset {
-        id: "lmstudio",
-        name: "LM Studio (local)",
-        protocol: Protocol::OpenAI,
-        base_url: "http://localhost:1234/v1",
-        key_prefixes: &[],
-        key_url: "https://lmstudio.ai",
-        key: KeyNeed::None,
-        local: true,
-        editable_url: true,
-        preferred: &[],
-        preferred_contains: &[],
-    },
     Preset {
         id: APPLE_PROVIDER,
         name: "Apple on-device",
@@ -294,28 +138,10 @@ pub struct Detection {
     pub alternatives: Vec<String>,
 }
 
-/// Detect the provider from the key prefix. Longest matching prefix wins.
-pub fn detect_provider(key: &str) -> Detection {
-    let mut best: Option<(&Preset, usize)> = None;
-    for p in PRESETS {
-        for pre in p.key_prefixes {
-            if key.starts_with(pre) && best.map_or(true, |(_, len)| pre.len() > len) {
-                best = Some((p, pre.len()));
-            }
-        }
-    }
-    match best {
-        Some((p, len)) => {
-            // A bare `sk-` (not sk-proj/sk-svcacct/sk-ant/sk-or) may be DeepSeek
-            let alternatives = if p.id == "openai" && len == 3 {
-                vec!["deepseek".to_string()]
-            } else {
-                vec![]
-            };
-            Detection { provider: Some(p.id.into()), name: Some(p.name.into()), alternatives }
-        }
-        None => Detection { provider: None, name: None, alternatives: vec![] },
-    }
+/// Retained compatibility response: credentials never choose a destination.
+pub fn detect_provider(_key: &str) -> Detection {
+    // A credential never chooses a destination. The user must enter a URL.
+    Detection { provider: None, name: None, alternatives: vec![] }
 }
 
 // ---------------------------------------------------------------------------
@@ -514,24 +340,16 @@ mod tests {
     }
 
     #[test]
-    fn detects_prefixes_longest_wins() {
-        assert_eq!(det("xai-abc123abc123").as_deref(), Some("xai"));
-        assert_eq!(det("gsk_abc123abc123").as_deref(), Some("groq"));
-        assert_eq!(det("sk-ant-api03-abcdef").as_deref(), Some("anthropic"));
-        assert_eq!(det("sk-or-v1-abcdef").as_deref(), Some("openrouter"));
-        assert_eq!(det("AIzaSyAbcdefghijklmnop").as_deref(), Some("gemini"));
-        assert_eq!(det("pplx-abcdefgh1234").as_deref(), Some("perplexity"));
-        assert_eq!(det("sk-proj-abcdefgh1234").as_deref(), Some("openai"));
-        assert_eq!(det("sk-svcacct-abcdefgh1234").as_deref(), Some("openai"));
-        assert_eq!(det("totally-unknown-key").as_deref(), None);
-    }
-
-    #[test]
-    fn bare_sk_is_openai_with_deepseek_alternative() {
-        let d = detect_provider("sk-abcdefghijklmnop");
-        assert_eq!(d.provider.as_deref(), Some("openai"));
-        assert_eq!(d.alternatives, vec!["deepseek"]);
-        assert!(detect_provider("sk-proj-abcdefghijkl").alternatives.is_empty());
+    fn no_key_prefix_selects_a_service() {
+        for key in ["sk-test-user-key", "AIza-test-user-key", "gsk_test-user-key", "custom-user-key"] {
+            assert_eq!(det(key), None);
+        }
+        assert_eq!(PRESETS.iter().map(|p| p.id).collect::<Vec<_>>(), vec!["apple", "custom"]);
+        assert_eq!(preset("custom").unwrap().base_url, "");
+        assert!(PRESETS.iter().all(|p| !p.base_url.starts_with("http")));
+        for legacy in ["gemini", "openai", "anthropic", "ollama", "lmstudio", "deepseek"] {
+            assert!(preset(legacy).is_none());
+        }
     }
 
     #[test]
@@ -547,7 +365,7 @@ mod tests {
 
     #[test]
     fn url_policy() {
-        assert_eq!(check_base_url("https://api.openai.com/v1/").unwrap(), "https://api.openai.com/v1");
+        assert_eq!(check_base_url("https://ai.example.com/v1/").unwrap(), "https://ai.example.com/v1");
         assert!(check_base_url("http://localhost:11434/v1").is_ok());
         assert!(check_base_url("http://127.0.0.1:1234/v1").is_ok());
         assert!(check_base_url("http://192.168.1.20:8000/v1").is_ok());
@@ -564,7 +382,7 @@ mod tests {
         assert!(check_base_url("ftp://example.com").is_err());
         assert!(check_base_url("not a url").is_err());
         assert!(url_is_local("http://localhost:11434/v1"));
-        assert!(!url_is_local("https://api.openai.com/v1"));
+        assert!(!url_is_local("https://ai.example.com/v1"));
     }
 
     #[test]
@@ -582,23 +400,10 @@ mod tests {
     }
 
     #[test]
-    fn default_model_choice() {
-        let openai = preset("openai").unwrap();
-        let models: Vec<String> = ["whisper-1", "text-embedding-3-small", "gpt-4o-mini", "gpt-4.1-mini", "dall-e-3"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(pick_default_model(openai, &models).as_deref(), Some("gpt-4.1-mini"));
-        let gemini = preset("gemini").unwrap();
-        let gm: Vec<String> = ["gemini-embedding-001", "gemini-2.5-flash-image", "gemini-9-flash"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(pick_default_model(gemini, &gm).as_deref(), Some("gemini-9-flash"));
-        let ollama = preset("ollama").unwrap();
-        let om = vec!["nomic-embed-text".to_string(), "qwen3-vl:8b".to_string()];
-        assert_eq!(pick_default_model(ollama, &om).as_deref(), Some("qwen3-vl:8b"));
-        assert_eq!(pick_vision_model(ollama, &om, Some("qwen3:8b")).as_deref(), Some("qwen3-vl:8b"));
+    fn custom_models_come_only_from_the_supplied_list() {
+        let p = preset("custom").unwrap();
+        assert!(pick_default_model(p, &[]).is_none());
+        assert_eq!(pick_default_model(p, &["user-model".into()]).as_deref(), Some("user-model"));
     }
 
     #[test]

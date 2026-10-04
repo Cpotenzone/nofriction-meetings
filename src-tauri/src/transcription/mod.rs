@@ -7,11 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::AppHandle;
 
-pub mod deepgram;
 pub mod filter;
-pub mod gemini;
-pub mod gladia;
-pub mod google_stt;
 pub mod local_whisper;
 
 /// Shared gate for FINAL segments from providers that don't supply their
@@ -65,17 +61,13 @@ pub trait TranscriptionProvider: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderType {
-    Deepgram,
-    Gemini,
-    Gladia,
-    GoogleSTT,
     /// On-device whisper.cpp — no API key, fully offline
     Local,
 }
 
 impl Default for ProviderType {
     fn default() -> Self {
-        Self::Deepgram
+        Self::Local
     }
 }
 
@@ -89,12 +81,12 @@ pub struct TranscriptionManager {
 
 impl TranscriptionManager {
     pub fn new() -> Self {
-        // Default to Deepgram initially
-        let default_provider = deepgram::DeepgramProvider::new();
+        // Local only: no configured key or legacy setting can select a remote service.
+        let default_provider = local_whisper::LocalWhisperProvider::new();
 
         Self {
             current_provider: Arc::new(RwLock::new(Box::new(default_provider))),
-            provider_type: Arc::new(RwLock::new(ProviderType::Deepgram)),
+            provider_type: Arc::new(RwLock::new(ProviderType::Local)),
             api_keys: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -105,10 +97,6 @@ impl TranscriptionManager {
         self.stop();
 
         let new_provider: Box<dyn TranscriptionProvider> = match provider_type {
-            ProviderType::Deepgram => Box::new(deepgram::DeepgramProvider::new()),
-            ProviderType::Gemini => Box::new(gemini::GeminiProvider::new()),
-            ProviderType::Gladia => Box::new(gladia::GladiaProvider::new()),
-            ProviderType::GoogleSTT => Box::new(google_stt::GoogleSTTProvider::new()),
             ProviderType::Local => Box::new(local_whisper::LocalWhisperProvider::new()),
         };
 
@@ -184,5 +172,18 @@ impl TranscriptionManager {
             meeting_id,
             live_intel_agent,
         );
+    }
+}
+
+#[cfg(test)]
+mod provider_tests {
+    use super::*;
+    #[test]
+    fn fresh_manager_is_local_and_legacy_cloud_values_are_rejected() {
+        assert_eq!(ProviderType::default(), ProviderType::Local);
+        assert_eq!(TranscriptionManager::new().get_provider_type(), ProviderType::Local);
+        for legacy in ["gemini", "deepgram", "gladia", "google_stt"] {
+            assert!(serde_json::from_value::<ProviderType>(serde_json::json!(legacy)).is_err());
+        }
     }
 }

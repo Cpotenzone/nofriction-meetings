@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' wss://*.deepgram.com https://generativelanguage.googleapis.com https://api.deepgram.com https://api.gladia.io; font-src 'self' data:",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self'; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": [
@@ -49,7 +49,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Live meeting transcription for macOS",
-    "longDescription": "noFriction Meetings captures your screen and audio to provide real-time meeting transcription — fully on-device by default (local Whisper + Ollama), with optional cloud providers.",
+    "longDescription": "noFriction Meetings captures your screen and audio to provide real-time meeting transcription — with local Whisper transcription. Optional AI uses Apple on-device or an OpenAI-compatible endpoint and model explicitly configured by the user; no remote AI service is preconfigured.",
     "macOS": {
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "12.3",
