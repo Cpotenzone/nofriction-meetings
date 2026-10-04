@@ -37,6 +37,7 @@ enum DemoMode: String {
             model.recorder.showDemo(elapsed: 12 * 60 + 40, paused: true)
         case .list:
             seedList(model.store)
+            model.page = .recordings
         }
         model.refresh()
     }

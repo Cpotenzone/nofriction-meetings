@@ -42,6 +42,7 @@ struct RootView: View {
             redactions.recover(context: context)
             #if DEBUG
             DemoData.seedIfRequested(context)
+            DemoData.seedWatchDemoIfRequested(context)
             if ProcessInfo.processInfo.arguments.contains("-NFDemoLive") {
                 DemoData.showLiveMeeting(session: session, context: context)
             }

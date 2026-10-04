@@ -42,6 +42,8 @@ final class WatchAppModel {
     }
     /// Show the notice, then start (first use, or started by the App Intent before it was accepted)
     var showNotice = false
+    enum Page: Hashable { case record, recordings }
+    var page: Page = .record
     /// Lost recordings found at launch (the app was killed while recording)
     private(set) var launchNotice: String?
 
@@ -88,6 +90,7 @@ final class WatchAppModel {
 
     /// The big Record button.
     func recordTapped() {
+        page = .record
         guard noticeAccepted else {
             showNotice = true
             return

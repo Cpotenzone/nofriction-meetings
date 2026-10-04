@@ -1,25 +1,22 @@
 import SwiftUI
 
-/// Record screen; recent recordings one tap away.
+/// Two vertical pages (Digital Crown or swipe): Record, then Recordings.
 struct WatchRootView: View {
     @Environment(WatchAppModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack {
-            RecordView()
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            RecordingsListView()
-                        } label: {
-                            Image(systemName: "list.bullet")
-                        }
-                        .accessibilityLabel("Recordings")
-                        .accessibilityIdentifier("watch-recordings")
-                    }
-                }
+        TabView(selection: $model.page) {
+            NavigationStack {
+                RecordView()
+            }
+            .tag(WatchAppModel.Page.record)
+            NavigationStack {
+                RecordingsListView()
+            }
+            .tag(WatchAppModel.Page.recordings)
         }
+        .tabViewStyle(.verticalPage)
         .sheet(isPresented: $model.showNotice) {
             RecordingNoticeView()
         }
