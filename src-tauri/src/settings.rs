@@ -96,8 +96,8 @@ impl AppSettings {
             gemini_api_key: None,
             gladia_api_key: None,
             google_stt_key_json: None,
-            deepgram_model: Some("nova-3".to_string()),
-            gemini_model: Some("models/gemini-2.0-flash-exp".to_string()),
+            deepgram_model: None, // legacy storage only; cloud transcription is retired
+            gemini_model: None, // legacy storage only; cloud transcription is retired
             transcription_provider: "local".to_string(), // m12: on-device Whisper, no key needed
             local_whisper_model: Some("large-v3-turbo-q5_0".to_string()), // best accuracy/speed balance on Apple Silicon
             selected_microphone: None,
@@ -119,7 +119,7 @@ impl AppSettings {
             product_dev_interval_ms: 2000,           // 2 seconds
             admin_interval_ms: 2000,                 // 2 seconds
             personal_interval_ms: 3000,              // 3 seconds
-            vlm_base_url: None, // None = local Ollama (http://localhost:11434)
+            vlm_base_url: None, // Legacy storage only; AI endpoints are explicitly configured.
             vlm_model_primary: Some("qwen2.5vl:7b".to_string()),
             vlm_model_fallback: Some("qwen2.5vl:3b".to_string()),
             // Stateful Screen Ingest defaults
@@ -436,10 +436,7 @@ impl SettingsManager {
 
     /// Get Deepgram Model
     pub async fn get_deepgram_model(&self) -> Result<Option<String>, sqlx::Error> {
-        Ok(self
-            .get("deepgram_model")
-            .await?
-            .or_else(|| Some("nova-3".to_string())))
+        self.get("deepgram_model").await
     }
 
     /// Save Gemini Model
@@ -449,10 +446,7 @@ impl SettingsManager {
 
     /// Get Gemini Model
     pub async fn get_gemini_model(&self) -> Result<Option<String>, sqlx::Error> {
-        Ok(self
-            .get("gemini_model")
-            .await?
-            .or_else(|| Some("models/gemini-2.0-flash-exp".to_string())))
+        self.get("gemini_model").await
     }
 
     /// Set transcription provider

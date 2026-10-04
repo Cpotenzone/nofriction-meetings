@@ -1,8 +1,9 @@
 # noFriction user guide
 
 noFriction records your meetings, transcribes them on your device, matches
-them to your calendar and, with the AI you choose, writes notes. It works on
-iPhone, iPad and Mac. There's no account to create.
+them to your calendar and writes notes with Apple's on-device model or an AI
+endpoint you set up yourself. It works on iPhone, iPad and Mac. There's no
+account to create.
 
 - [Get started](#get-started)
 - [Record a meeting](#record-a-meeting)
@@ -30,9 +31,10 @@ iPhone, iPad and Mac. There's no account to create.
 ### Mac (macOS 12.3 or later)
 
 1. Install noFriction from the Mac App Store and open it.
-2. The setup wizard asks how to transcribe. Choose **Private & Offline**: the
-   app downloads a 547 MB speech model once and then transcribes on your Mac,
-   even offline.
+2. The setup wizard offers a speech model for on-device transcription. Click
+   **Download** on the recommended model (547 MB; a smaller one is offered for
+   older or Intel Macs). It's downloaded once, and then the app transcribes on
+   your Mac, even offline. No cloud transcription service or key is used.
 3. Allow **Microphone**, **Screen & System Audio Recording** (so the other
    people on a call are captured, and screens can be saved) and **Calendars**.
    If you miss a prompt, open System Settings → Privacy & Security.
@@ -100,41 +102,83 @@ their profile link.
 
 ## Connect your AI
 
-AI features use **your own** AI account, so your provider bills you directly
-and noFriction never sees your data.
+AI runs in one of two places, and you choose which. noFriction doesn't host a
+model, doesn't supply an API key and doesn't pick a service for you. Nothing
+remote is set up until you enter it.
 
-1. Get an API key from a provider, for example
-   [OpenAI](https://platform.openai.com/api-keys) (the default),
-   [Anthropic](https://console.anthropic.com/settings/keys) or
-   [Google Gemini](https://aistudio.google.com/apikey). Also supported:
-   xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity and Together.
-2. Paste it:
-   - iPhone/iPad: **Settings tab → Connect AI → Paste your API key → Connect**.
-   - Mac: **Settings → AI Engine → Paste your API key**.
-3. noFriction recognizes the provider, checks the key and picks a model. You
-   can change the model in the same screen.
-4. The first time an AI feature sends a meeting to a cloud provider, the app
-   asks you and says what will be sent. You can revoke this later in Settings.
+### Apple on-device (no setup, no key)
 
-**No key needed:**
-- **Apple on-device model**: on iOS 26 or macOS 26 or later with Apple
-  Intelligence on. On iPhone/iPad, tap **Use Apple on-device (no key)**; on
-  the Mac it's used automatically when no other provider is set up. Nothing
-  leaves the device. (On the Mac, it doesn't analyze screenshots.)
-- **Your own server**: Ollama, LM Studio or any OpenAI-compatible endpoint.
-  iPhone/iPad: **Settings tab → Your own server**. Mac: **Settings → AI
-  Engine** (local endpoints).
+Needs iOS 26 or macOS 26 or later on a device that supports Apple
+Intelligence, with Apple Intelligence turned on and its model downloaded.
+Nothing leaves the device.
 
-Keys are stored in the system Keychain. To remove one: iPhone/iPad, swipe
-left on it under **Saved providers**; Mac, **Settings → AI Engine → Saved
-providers**.
+- If you haven't chosen anything else, the app uses it automatically when it's
+  available.
+- iPhone/iPad: to switch to it, go to **Settings tab → Saved connections** and
+  tap **Use Apple on-device (no key)**, or tap **Apple on-device** if it's
+  already listed. It's also offered in the **Set up AI** sheet that opens from
+  a meeting.
+- Mac: **Settings → AI Engine → Saved providers → Apple on-device → Use**.
+  On the Mac, Apple on-device doesn't analyze screenshots.
+
+### Your own endpoint
+
+Any server that speaks the OpenAI-compatible chat-completions API. Examples
+are Ollama or LM Studio running on your Mac or on another computer on your
+network, or an HTTPS service you've chosen and have an account with. From
+your server's documentation you need:
+
+- **Base URL**: the address the API lives under, usually ending in `/v1`. For
+  example, Ollama on the same Mac is `http://localhost:11434/v1` and LM Studio
+  is `http://localhost:1234/v1`. On iPhone/iPad, `localhost` means the phone
+  itself, so use the other computer's network address (for example
+  `http://192.168.1.20:11434/v1` or `http://my-mac.local:11434/v1`), and make
+  sure the server accepts connections from your network.
+- **Model ID**: exactly as your server names it.
+- **API key**: only if your server requires one. Leave it empty otherwise.
+
+Enter them:
+- iPhone/iPad: **Settings tab → Your AI endpoint**: **Base URL**, **Model
+  ID**, **API key (optional)** → **Save endpoint**.
+- Mac: **Settings → AI Engine → Local & custom servers**: the URL, **Model
+  name** and **API key (optional)** → **Save connection**.
+
+Saving doesn't contact the server. To check it on the Mac, click **Test**
+next to it under **Saved providers**; **↻** under **Models** reloads the
+server's model list. On iPhone/iPad, try **Summarize** on a meeting.
+
+Good to know:
+- **HTTPS for the internet.** An address on the internet must start with
+  `https://`. Plain `http://` works only for this device, your local network
+  (including `.local` names) or a Tailscale network.
+- **Permission before sending.** Before meeting content first goes to a public
+  (internet) endpoint, the app asks you and shows where it will go. Revoke it
+  any time: iPhone/iPad, **Settings tab → What leaves this device → Revoke**;
+  Mac, **Settings → AI Engine → Revoke permission to send to …**. Endpoints on
+  your own network don't ask, but the content still travels to that machine.
+- **What's sent.** Depending on the feature: transcript text, the meeting
+  title, attendee names and emails, notes and, on the Mac, screenshots for
+  screen features. The endpoint's operator decides what it keeps; noFriction
+  never receives any of it.
+- **Keys.** A key is stored in the system Keychain, tied to the endpoint you
+  entered it for, and is never shown in full again. If you change the
+  endpoint's address, its old key, permission and model are cleared, and you
+  enter them again.
+- **Coming from an earlier version?** If an older version had an AI service
+  chosen by name, it's no longer available and AI asks you to set it up again.
+  Choose Apple on-device or enter that service's endpoint yourself. Your
+  meetings aren't affected.
+
+To remove a connection and its key: iPhone/iPad, swipe left on it under
+**Saved connections**; Mac, **Settings → AI Engine → Saved providers →
+Remove**.
 
 ---
 
 ## Use the AI features
 
-AI features need **noFriction Pro** (see [Subscription](#subscription)) and a
-connected AI.
+AI features need **noFriction Pro** (see [Subscription](#subscription)) and
+Apple on-device or your own endpoint (see [Connect your AI](#connect-your-ai)).
 
 **iPhone/iPad**, in a meeting:
 - **Summarize**: notes with a summary, decisions and action items. Owners
@@ -148,7 +192,7 @@ connected AI.
 - **Live insights**: during a recording, LIVE shows action items, decisions,
   risks and deadlines as they come up.
 - **Meeting report**: after a recording longer than six minutes, noFriction
-  writes a summary, decisions and action items with your connected AI. Export
+  writes a summary, decisions and action items with your chosen AI. Export
   it to Obsidian to read it (see [Export](#export-your-meetings)).
 - **Meeting prep**: in **INTEL**, **Lookup** on an upcoming meeting gives a
   prep brief on the attendees (uses notes in your Obsidian vault).
@@ -171,7 +215,7 @@ Both remove the content from the transcript, search, the saved audio
 (iPhone/iPad, replaced with silence), screenshots, the app's backups (Mac)
 and future exports. AI notes made before the edit are marked so you can
 regenerate them. Copies you already shared, exported or sent to an AI
-provider can't be recalled. On the Mac, you can't edit the screens of a
+endpoint can't be recalled. On the Mac, you can't edit the screens of a
 meeting that is still recording.
 
 To delete a whole meeting: iPhone/iPad, open it → **⋯ → Delete Meeting**; Mac,
@@ -205,22 +249,25 @@ Meetings don't sync between devices. Each device keeps what it recorded.
 - **Cancel**: **Manage Subscription** in the same place, or your device's
   Settings → your name → Subscriptions. You keep Pro until the end of the
   period.
-- Your AI provider's usage is billed by that provider, not included in Pro.
+- Pro doesn't include an AI service. If your own endpoint charges for use,
+  its operator bills you, not noFriction.
 
 ---
 
 ## Privacy
 
 - Audio, transcripts, photos and screenshots are stored only on your device.
-- Transcription runs on the device (on the Mac, unless you choose a cloud
-  transcription service in **Settings → Transcription**, with your own key).
-- AI features send meeting text (and, on the Mac, screenshots for screen
-  features) straight to the provider you chose. On the Mac, once a provider is
-  connected and approved, live insights and the after-meeting report use it
-  automatically. Turn either off in **Settings → AI Engine → Automatic AI**.
+- Transcription always runs on the device: Apple speech recognition on
+  iPhone/iPad, Whisper on the Mac. There's no cloud transcription.
+- With Apple on-device AI, nothing leaves the device. With your own endpoint,
+  AI features send meeting text (and, on the Mac, screenshots for screen
+  features) straight to that endpoint, after your permission if it's on the
+  internet. On the Mac, once AI is set up (and approved, for an internet
+  endpoint), live insights and the after-meeting report use it automatically.
+  Turn either off in **Settings → AI Engine → Automatic AI**.
 - No accounts, no analytics, no tracking, no noFriction servers.
 
-Full policy: [nofriction.ai/privacy](https://nofriction.ai/privacy).
+Full policy: [nofriction.io/privacy](https://nofriction.io/privacy).
 
 ---
 
@@ -232,11 +279,15 @@ Full policy: [nofriction.ai/privacy](https://nofriction.ai/privacy).
 | Other people on the call aren't transcribed (Mac) | Allow **Screen & System Audio Recording**, then restart the recording. |
 | No screenshots (Mac) | Allow Screen & System Audio Recording; check **LIVE → Change** has a screen or window selected. |
 | Meeting not named from the calendar | Allow Calendars. The recording must overlap a calendar event. |
-| "Wrong key" | Copy the whole key again; check it hasn't been revoked. |
-| "No credit" or rate-limited | Add billing or credit at your provider. |
-| Can't reach a local server | Check the address. Plain `http://` only works for this device, your local network or Tailscale. On iPhone/iPad, allow Local Network access. |
+| AI asks to be set up | Choose Apple on-device, or enter your endpoint's base URL and model (see [Connect your AI](#connect-your-ai)). A service chosen by name in an older version is no longer available. |
+| Apple on-device isn't offered | It needs iOS 26 or macOS 26 or later on a device that supports Apple Intelligence, with Apple Intelligence turned on and its model finished downloading. |
+| "Wrong key" | Enter the endpoint's key again in full; check it hasn't been revoked. |
+| "No credit" or rate-limited | Your endpoint refused the request for billing or rate limits; check with its operator. |
+| Model not found or no answer | Check the model ID is exactly what your server lists. On the Mac, **↻** under **Models** reloads the list. |
+| Can't reach a local server | Check the address and that the server is running. Plain `http://` only works for this device, your local network or Tailscale. On iPhone/iPad, allow Local Network access, and use the computer's network address, not `localhost`. |
 | Recording stopped by itself | That's automatic stop; see [Automatic stop](#automatic-stop). |
 | Subscription not recognized | **Restore Purchases**, signed in with the Apple Account you subscribed with. |
 
-Still stuck? Email [support@nofriction.ai](mailto:support@nofriction.ai)
-with your device, OS version and app version.
+Still stuck? Email [casey@nofriction.io](mailto:casey@nofriction.io) or use
+[nofriction.io/contact](https://nofriction.io/contact), with your device, OS
+version and app version.

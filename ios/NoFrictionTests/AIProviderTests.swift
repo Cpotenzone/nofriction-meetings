@@ -2,32 +2,26 @@ import StoreKit
 import XCTest
 @testable import noFriction
 
-final class KeyDetectionTests: XCTestCase {
-    func testDetectsEachPrefix() {
-        XCTAssertEqual(KeyDetector.detect("sk-proj-abc123")?.id, "openai")
-        XCTAssertEqual(KeyDetector.detect("sk-svcacct-abc123")?.id, "openai")
-        XCTAssertEqual(KeyDetector.detect("sk-abc123")?.id, "openai")
-        XCTAssertEqual(KeyDetector.detect("sk-ant-api03-abc")?.id, "anthropic")
-        XCTAssertEqual(KeyDetector.detect("sk-or-v1-abc")?.id, "openrouter")
-        XCTAssertEqual(KeyDetector.detect("AIzaSyAbc123")?.id, "gemini")
-        XCTAssertEqual(KeyDetector.detect("xai-abc123")?.id, "xai")
-        XCTAssertEqual(KeyDetector.detect("gsk_abc123")?.id, "groq")
-        XCTAssertEqual(KeyDetector.detect("pplx-abc123")?.id, "perplexity")
-        XCTAssertNil(KeyDetector.detect("abcdef123456"))
+final class AIProviderCatalogTests: XCTestCase {
+    func testOnlyExplicitEndpointAndAppleAreAvailable() {
+        XCTAssertEqual(AIProvider.all.map(\.id), ["custom", "apple"])
+        XCTAssertEqual(AIProvider.custom.proto, .openai)
+        XCTAssertFalse(AIProvider.custom.isOnDevice)
+        XCTAssertTrue(AIProvider.apple.isOnDevice)
     }
 
-    func testBareSkTriesOpenAIThenDeepSeek() {
-        XCTAssertEqual(KeyDetector.candidates(for: "sk-abc123").map(\.id), ["openai", "deepseek"])
-        XCTAssertEqual(KeyDetector.candidates(for: "sk-proj-abc").map(\.id), ["openai"])
-        XCTAssertEqual(KeyDetector.candidates(for: "sk-ant-abc").map(\.id), ["anthropic"])
-        XCTAssertEqual(KeyDetector.candidates(for: "unknown"), [])
+    func testLegacyNamedProvidersAreUnavailable() {
+        for id in ["openai", "anthropic", "gemini", "xai", "groq", "openrouter", "mistral",
+                   "deepseek", "perplexity", "together", "ollama", "lmstudio"] {
+            XCTAssertNil(AIProvider.byID(id), id)
+        }
     }
 
-    func testNormalizeStripsQuotesBearerAndWhitespace() {
-        XCTAssertEqual(KeyDetector.normalize("  \"sk-proj-abc\"\n"), "sk-proj-abc")
-        XCTAssertEqual(KeyDetector.normalize("Bearer sk-ant-xyz"), "sk-ant-xyz")
-        XCTAssertEqual(KeyDetector.normalize("'gsk_1 2'"), "gsk_12")
-        XCTAssertEqual(KeyDetector.last4("sk-proj-abcdWXYZ"), "WXYZ")
+    func testNormalizeStripsQuotesBearerAndWhitespaceWithoutChoosingAHost() {
+        XCTAssertEqual(KeyDetector.normalize("  \"fixture-key\"\n"), "fixture-key")
+        XCTAssertEqual(KeyDetector.normalize("Bearer fixture-key"), "fixture-key")
+        XCTAssertEqual(KeyDetector.normalize("'fixture 1 2'"), "fixture12")
+        XCTAssertEqual(KeyDetector.last4("fixture-abcdWXYZ"), "WXYZ")
     }
 }
 
@@ -35,12 +29,14 @@ final class URLPolicyTests: XCTestCase {
     private func allowed(_ s: String) -> Bool { URLPolicy.isAllowed(URL(string: s)!) }
 
     func testCloudNeedsHTTPS() {
-        XCTAssertTrue(allowed("https://api.openai.com/v1"))
-        XCTAssertFalse(allowed("http://api.openai.com/v1"))
+        XCTAssertTrue(allowed("https://api.example.com/v1"))
+        XCTAssertFalse(allowed("http://api.example.com/v1"))
         XCTAssertFalse(allowed("http://example.com:11434/v1"))
         XCTAssertFalse(allowed("http://8.8.8.8/v1"))
         XCTAssertFalse(allowed("ftp://localhost/v1"))
-        XCTAssertFalse(allowed("https://user:pw@api.openai.com/v1"))
+        XCTAssertFalse(allowed("https://user:pw@api.example.com/v1"))
+        XCTAssertFalse(allowed("https://api.example.com/v1?api_key=fixture"))
+        XCTAssertFalse(allowed("https://api.example.com/v1#fixture"))
     }
 
     func testHTTPAllowedForLocalAndPrivateHosts() {
@@ -60,8 +56,8 @@ final class URLPolicyTests: XCTestCase {
     }
 
     func testConsentOnlyForCloud() {
-        XCTAssertTrue(URLPolicy.needsConsent(provider: .openai, baseURL: AIProvider.openai.defaultBaseURL))
-        XCTAssertFalse(URLPolicy.needsConsent(provider: .ollama, baseURL: URL(string: "http://192.168.1.2:11434/v1")))
+        XCTAssertTrue(URLPolicy.needsConsent(provider: .custom, baseURL: URL(string: "https://api.example.com/v1")))
+        XCTAssertFalse(URLPolicy.needsConsent(provider: .custom, baseURL: URL(string: "http://192.168.1.2:11434/v1")))
         XCTAssertTrue(URLPolicy.needsConsent(provider: .custom, baseURL: URL(string: "https://my-proxy.example.com/v1")))
         XCTAssertFalse(URLPolicy.needsConsent(provider: .apple, baseURL: nil))
     }
@@ -72,19 +68,6 @@ final class URLPolicyTests: XCTestCase {
         XCTAssertNil(URLPolicy.parseBaseURL("   "))
     }
 
-    func testCloudPresetsAreHTTPS() {
-        for p in AIProvider.cloud {
-            XCTAssertEqual(p.defaultBaseURL?.scheme, "https", p.id)
-            if let v = p.validationURL { XCTAssertEqual(v.scheme, "https", p.id) }
-        }
-    }
-
-    func testNoPrivateHostsShip() {
-        for p in AIProvider.all {
-            let hosts = [p.defaultBaseURL, p.validationURL, p.getKeyURL].compactMap { $0?.host() }
-            XCTAssertFalse(hosts.contains { $0.hasSuffix(".ts.net") }, p.id)
-        }
-    }
 }
 
 final class RedactionTests: XCTestCase {
@@ -114,8 +97,8 @@ final class RedactionTests: XCTestCase {
     func testStatusMapping() {
         XCTAssertEqual(ResponseParser.statusError(429, Data(), secrets: []), .noCredit(""))
         XCTAssertEqual(ResponseParser.statusError(402, Data(), secrets: []), .noCredit(""))
-        let gemini = Data(#"[{"error":{"code":400,"message":"Please pass a valid API key"}}]"#.utf8)
-        if case .wrongKey = ResponseParser.statusError(400, gemini, secrets: []) {} else { XCTFail("gemini bad key") }
+        let invalidKey = Data(#"[{"error":{"code":400,"message":"Please pass a valid API key"}}]"#.utf8)
+        if case .wrongKey = ResponseParser.statusError(400, invalidKey, secrets: []) {} else { XCTFail("invalid key response") }
         if case .server(500, _) = ResponseParser.statusError(500, Data("oops".utf8), secrets: []) {} else { XCTFail() }
     }
 }
@@ -148,115 +131,91 @@ final class ContextFitTests: XCTestCase {
 final class RequestBuildingTests: XCTestCase {
     private let msgs = [ChatMessage(role: "system", content: "Be brief."), ChatMessage(role: "user", content: "Hi")]
 
-    private func ep(_ p: AIProvider, key: String? = "k-123456", base: URL? = nil) -> AIEndpoint {
-        AIEndpoint(provider: p, baseURL: base ?? p.defaultBaseURL, apiKey: key, model: "m1",
-                   contextTokens: 32_768, consentGranted: true)
+    private func ep(key: String? = "fixture-key", base: URL? = URL(string: "https://endpoint.example/v1"),
+                    model: String = "user-selected-model", consent: Bool = true) -> AIEndpoint {
+        AIEndpoint(provider: .custom, baseURL: base, apiKey: key, model: model,
+                   contextTokens: 32_768, consentGranted: consent)
     }
 
     private func body(_ r: URLRequest) throws -> [String: Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(r.httpBody)) as? [String: Any])
     }
 
-    func testOpenAIRequest() throws {
-        let r = try RequestBuilder.chat(ep(.openai), messages: msgs, maxTokens: 700, temperature: 0.5)
-        XCTAssertEqual(r.url?.absoluteString, "https://api.openai.com/v1/chat/completions")
+    func testCompatibleRequestUsesOnlyEnteredEndpointAndModel() throws {
+        let r = try RequestBuilder.chat(ep(), messages: msgs, maxTokens: 700, temperature: 0.5)
+        XCTAssertEqual(r.url?.absoluteString, "https://endpoint.example/v1/chat/completions")
         XCTAssertEqual(r.httpMethod, "POST")
-        XCTAssertEqual(r.value(forHTTPHeaderField: "Authorization"), "Bearer k-123456")
+        XCTAssertEqual(r.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-key")
         XCTAssertNil(r.value(forHTTPHeaderField: "x-api-key"))
         let b = try body(r)
+        XCTAssertEqual(b["model"] as? String, "user-selected-model")
         XCTAssertEqual(b["max_tokens"] as? Int, 700)
         XCTAssertEqual(b["temperature"] as? Double, 0.5)
         XCTAssertEqual(b["stream"] as? Bool, false)
         XCTAssertNil(b["response_format"])
         let sent = try XCTUnwrap(b["messages"] as? [[String: String]])
-        XCTAssertEqual(sent.first?["role"], "system")   // system stays in messages
+        XCTAssertEqual(sent.first?["role"], "system")
         XCTAssertEqual(r.timeoutInterval, 60 + 700.0 / 8, accuracy: 0.01)
     }
 
-    func testOpenAICompletionTokensVariant() throws {
-        let r = try RequestBuilder.chat(ep(.openai), messages: msgs, maxTokens: 900, temperature: 0.5, completionTokens: true)
+    func testReasoningTokenVariantRetainsExplicitModel() throws {
+        let r = try RequestBuilder.chat(ep(), messages: msgs, maxTokens: 900, temperature: 0.5, completionTokens: true)
         let b = try body(r)
+        XCTAssertEqual(b["model"] as? String, "user-selected-model")
         XCTAssertEqual(b["max_completion_tokens"] as? Int, 900)
         XCTAssertNil(b["max_tokens"])
         XCTAssertNil(b["temperature"])
     }
 
-    func testAnthropicRequest() throws {
-        let r = try RequestBuilder.chat(ep(.anthropic, key: "sk-ant-abc"), messages: msgs, maxTokens: 1500, temperature: 0.2)
-        XCTAssertEqual(r.url?.absoluteString, "https://api.anthropic.com/v1/messages")
-        XCTAssertEqual(r.value(forHTTPHeaderField: "x-api-key"), "sk-ant-abc")
-        XCTAssertEqual(r.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
+    func testExplicitLocalEndpointNeedsNoKey() throws {
+        let r = try RequestBuilder.chat(ep(key: nil, base: URL(string: "http://127.0.0.1:8080/v1")),
+                                        messages: msgs, maxTokens: 100, temperature: nil)
+        XCTAssertEqual(r.url?.absoluteString, "http://127.0.0.1:8080/v1/chat/completions")
         XCTAssertNil(r.value(forHTTPHeaderField: "Authorization"))
-        let b = try body(r)
-        XCTAssertEqual(b["system"] as? String, "Be brief.")
-        XCTAssertEqual(b["max_tokens"] as? Int, 1500)
-        XCTAssertNil(b["temperature"])
-        XCTAssertNil(b["response_format"])
-        let sent = try XCTUnwrap(b["messages"] as? [[String: String]])
-        XCTAssertEqual(sent.map { $0["role"] }, ["user"])
     }
 
-    func testModelsRequests() throws {
-        let a = try RequestBuilder.models(ep(.anthropic, key: "sk-ant-abc"))
-        XCTAssertEqual(a.url?.path(), "/v1/models")
-        XCTAssertEqual(a.value(forHTTPHeaderField: "x-api-key"), "sk-ant-abc")
-        XCTAssertEqual(a.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
-        let o = try RequestBuilder.models(ep(.groq, key: "gsk_x"))
-        XCTAssertEqual(o.url?.absoluteString, "https://api.groq.com/openai/v1/models")
-        XCTAssertEqual(o.value(forHTTPHeaderField: "Authorization"), "Bearer gsk_x")
-        let local = try RequestBuilder.models(ep(.ollama, key: nil))
-        XCTAssertNil(local.value(forHTTPHeaderField: "Authorization"))
+    func testMissingEndpointOrModelCannotBuildRequest() {
+        for endpoint in [ep(base: nil), ep(model: " \n")] {
+            XCTAssertThrowsError(try RequestBuilder.chat(endpoint, messages: msgs, maxTokens: 100, temperature: nil)) {
+                XCTAssertEqual($0 as? AIError, .notConfigured)
+            }
+        }
     }
 
-    func testRefusesInsecureCloudURL() {
-        XCTAssertThrowsError(try RequestBuilder.chat(ep(.custom, base: URL(string: "http://api.example.com/v1")),
-                                                     messages: msgs, maxTokens: 100, temperature: nil)) { e in
-            XCTAssertEqual(e as? AIError, .insecureURL)
+    func testRefusesInsecureRemoteURL() {
+        XCTAssertThrowsError(try RequestBuilder.chat(ep(base: URL(string: "http://api.example.com/v1")),
+                                                     messages: msgs, maxTokens: 100, temperature: nil)) {
+            XCTAssertEqual($0 as? AIError, .insecureURL)
+        }
+    }
+
+    func testRemoteRequestRequiresConsentBeforeNetwork() async {
+        do {
+            _ = try await AIClient().complete(msgs, maxTokens: 100, endpoint: ep(consent: false))
+            XCTFail("Unconsented remote request must fail before transport")
+        } catch {
+            XCTAssertEqual(error as? AIError, .consentRequired("endpoint.example"))
         }
     }
 
     func testOutputBudgetLeavesRoomForThinking() {
         XCTAssertEqual(RequestBuilder.outputBudget(proto: .openai, requested: 700, completionTokens: false), 700)
-        XCTAssertGreaterThan(RequestBuilder.outputBudget(proto: .anthropic, requested: 700, completionTokens: false), 700)
+        XCTAssertGreaterThan(RequestBuilder.outputBudget(proto: .openai, requested: 700, completionTokens: true), 700)
         XCTAssertLessThanOrEqual(RequestBuilder.outputBudget(proto: .openai, requested: 8000, completionTokens: true), 16_000)
     }
 }
 
 final class ResponseParsingTests: XCTestCase {
-    func testOpenAIAnswer() throws {
+    func testCompatibleAnswer() throws {
         let d = Data(#"{"choices":[{"message":{"content":"<think>hmm</think> Hello "},"finish_reason":"stop"}]}"#.utf8)
         XCTAssertEqual(try ResponseParser.openAIText(d), "Hello")
         let cut = Data(#"{"choices":[{"message":{"content":""},"finish_reason":"length"}]}"#.utf8)
         XCTAssertThrowsError(try ResponseParser.openAIText(cut)) { XCTAssertEqual($0 as? AIError, .truncated) }
     }
 
-    func testAnthropicAnswerSkipsThinkingBlocks() throws {
-        let d = Data(#"{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"Notes"}],"stop_reason":"end_turn"}"#.utf8)
-        XCTAssertEqual(try ResponseParser.anthropicText(d), "Notes")
-        let refused = Data(#"{"content":[],"stop_reason":"refusal"}"#.utf8)
-        XCTAssertThrowsError(try ResponseParser.anthropicText(refused)) { XCTAssertEqual($0 as? AIError, .refused) }
-    }
-
-    func testModelListShapes() throws {
-        let openai = Data(#"{"object":"list","data":[{"id":"gpt-5-mini"},{"id":"text-embedding-3-small"}]}"#.utf8)
-        XCTAssertEqual(try ResponseParser.models(openai).map(\.id), ["gpt-5-mini", "text-embedding-3-small"])
-        let anthropic = Data(#"{"data":[{"id":"claude-opus-5","max_input_tokens":1000000}],"has_more":false}"#.utf8)
-        XCTAssertEqual(try ResponseParser.models(anthropic).first?.contextTokens, 1_000_000)
-        let together = Data(#"[{"id":"meta-llama/Llama-3.3-70B-Instruct-Turbo","context_length":131072}]"#.utf8)
-        XCTAssertEqual(try ResponseParser.models(together).first?.contextTokens, 131_072)
-        let gemini = Data(#"{"data":[{"id":"models/gemini-2.5-flash"}]}"#.utf8)
-        XCTAssertEqual(try ResponseParser.models(gemini).first?.id, "gemini-2.5-flash")
-        let ollama = Data(#"{"models":[{"name":"llama3.2:latest"}]}"#.utf8)
-        XCTAssertEqual(try ResponseParser.models(ollama).first?.id, "llama3.2:latest")
-    }
-
-    func testDefaultModelPicksPreferenceThenChatModel() {
-        XCTAssertEqual(ModelPicker.defaultModel(for: .openai, from: ["whisper-1", "gpt-4o-mini", "gpt-5-mini"]), "gpt-5-mini")
-        XCTAssertEqual(ModelPicker.defaultModel(for: .gemini, from: ["embedding-001", "gemini-2.5-flash-preview-09"]), "gemini-2.5-flash-preview-09")
-        XCTAssertEqual(ModelPicker.defaultModel(for: .ollama, from: ["nomic-embed-text", "llama3.2"]), "llama3.2")
-        // Sonnet by default: users pay their own bill, and notes don't need Opus
-        XCTAssertEqual(ModelPicker.defaultModel(for: .anthropic,
-                                                from: ["claude-opus-5-5", "claude-haiku-4-5-20251001", "claude-sonnet-5"]), "claude-sonnet-5")
+    func testRefusedCompatibleAnswer() {
+        let d = Data(#"{"choices":[{"message":{"refusal":"Declined"}}]}"#.utf8)
+        XCTAssertThrowsError(try ResponseParser.openAIText(d)) { XCTAssertEqual($0 as? AIError, .refused) }
     }
 
     func testMaxCompletionTokensHint() {
@@ -298,18 +257,170 @@ final class StoreEntitlementTests: XCTestCase {
 
 @MainActor
 final class AISettingsTests: XCTestCase {
-    func testConsentAndActiveProvider() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "nf-tests-\(UUID().uuidString)"))
-        let s = AISettings(defaults: defaults)
-        let url = URL(string: "http://192.168.1.9:11434/v1")!
-        try s.save(.ollama, key: nil, baseURL: url, models: [ModelInfo(id: "llama3.2", contextTokens: nil)])
-        XCTAssertEqual(s.effectiveProvider, .ollama)
-        XCTAssertEqual(s.model(for: "ollama"), "llama3.2")
-        XCTAssertTrue(s.hasConsent(.ollama))                 // LAN server: no consent needed
+    private final class FixtureVault {
+        var value: String?
+        var failDeletion = false
+        var reads = 0
+        enum Failure: Error { case deletion }
+        var store: AISettings.KeyStore {
+            AISettings.KeyStore(get: { _ in self.reads += 1; return self.value },
+                                set: { key, _ in self.value = key },
+                                delete: { _ in
+                if self.failDeletion { throw Failure.deletion }
+                self.value = nil
+            })
+        }
+    }
+
+    private func defaults() throws -> UserDefaults {
+        try XCTUnwrap(UserDefaults(suiteName: "nf-tests-\(UUID().uuidString)"))
+    }
+
+    func testExplicitLocalEndpointAndActiveProvider() throws {
+        let s = AISettings(defaults: try defaults(), keyStore: FixtureVault().store)
+        let url = URL(string: "http://192.168.1.9:8080/v1")!
+        try s.save(.custom, key: nil, baseURL: url, models: [ModelInfo(id: "my-model", contextTokens: nil)])
+        XCTAssertEqual(s.effectiveProvider, .custom)
+        XCTAssertEqual(s.model(for: "custom"), "my-model")
+        XCTAssertTrue(s.hasConsent(.custom))
         let ep = try XCTUnwrap(s.endpoint())
         XCTAssertEqual(ep.baseURL, url)
         XCTAssertFalse(ep.needsConsent)
-        s.remove(.ollama)
-        XCTAssertNil(s.saved["ollama"])
+        s.remove(.custom)
+        XCTAssertNil(s.saved["custom"])
+    }
+
+    func testLegacySelectionsFailClosedAndPreserveSavedContent() throws {
+        for id in ["openai", "anthropic", "gemini", "xai", "groq", "openrouter", "mistral",
+                   "deepseek", "perplexity", "together", "ollama", "lmstudio"] {
+            let d = try defaults()
+            let saved = [id: AISettings.Saved(last4: "TEST", baseURL: nil, model: "previous-model", models: [])]
+            d.set(try JSONEncoder().encode(saved), forKey: "ai.providers")
+            d.set(id, forKey: "ai.activeProvider")
+            d.set([id], forKey: "ai.consent")
+            d.set("existing meeting fixture", forKey: "meeting-preservation-fixture")
+            let s = AISettings(defaults: d, keyStore: FixtureVault().store)
+            XCTAssertEqual(s.activeProviderID, id)
+            XCTAssertEqual(s.saved, saved)
+            XCTAssertNil(s.effectiveProvider, id)
+            XCTAssertNil(s.endpoint(), id)
+            XCTAssertFalse(s.isConfigured, id)
+            XCTAssertTrue(s.needsEndpointSetup)
+            XCTAssertEqual(d.string(forKey: "meeting-preservation-fixture"), "existing meeting fixture")
+        }
+    }
+
+    func testMissingSavedSelectionDoesNotFallback() throws {
+        let d = try defaults()
+        d.set("gemini", forKey: "ai.activeProvider")
+        let s = AISettings(defaults: d, keyStore: FixtureVault().store)
+        XCTAssertNil(s.effectiveProvider)
+        XCTAssertNil(s.endpoint())
+        XCTAssertEqual(s.activeProviderID, "gemini")
+    }
+
+    func testIncompleteStoredCustomEndpointCannotRun() throws {
+        for saved in [AISettings.Saved(last4: nil, baseURL: nil, model: "my-model", models: []),
+                      AISettings.Saved(last4: nil, baseURL: "https://endpoint.example/v1", model: "", models: [])] {
+            let d = try defaults()
+            d.set(try JSONEncoder().encode(["custom": saved]), forKey: "ai.providers")
+            d.set("custom", forKey: "ai.activeProvider")
+            let s = AISettings(defaults: d, keyStore: FixtureVault().store)
+            XCTAssertNil(s.effectiveProvider)
+            XCTAssertNil(s.endpoint())
+        }
+    }
+
+    func testSaveRejectsMissingEndpointAndModelBeforeChangingConfiguration() throws {
+        let s = AISettings(defaults: try defaults(), keyStore: FixtureVault().store)
+        XCTAssertThrowsError(try s.save(.custom, key: nil, baseURL: nil,
+                                        models: [ModelInfo(id: "my-model", contextTokens: nil)]))
+        XCTAssertThrowsError(try s.save(.custom, key: nil, baseURL: URL(string: "https://endpoint.example/v1"), models: []))
+        XCTAssertThrowsError(try s.save(.custom, key: nil, baseURL: URL(string: "https://endpoint.example/v1"),
+                                        models: [ModelInfo(id: " \n", contextTokens: nil)]))
+        XCTAssertTrue(s.saved.isEmpty)
+        XCTAssertNil(s.activeProviderID)
+    }
+
+    func testChangingEndpointClearsOldKeyAndSharingConsent() throws {
+        let vault = FixtureVault()
+        let s = AISettings(defaults: try defaults(), keyStore: vault.store)
+        let models = [ModelInfo(id: "my-model", contextTokens: nil)]
+        try s.save(.custom, key: "synthetic-endpoint-A-key", baseURL: URL(string: "https://first.example/v1"), models: models)
+        s.grantConsent(.custom)
+        XCTAssertTrue(s.hasConsent(.custom))
+        XCTAssertEqual(s.endpoint()?.apiKey, "synthetic-endpoint-A-key")
+        try s.save(.custom, key: nil, baseURL: URL(string: "https://second.example/v1"), models: models)
+        XCTAssertNil(s.endpoint()?.apiKey)
+        XCTAssertNil(s.saved["custom"]?.last4)
+        XCTAssertFalse(s.hasConsent(.custom))
+        XCTAssertEqual(s.endpoint()?.baseURL?.host(), "second.example")
+    }
+
+    func testNewKeyMustBeExplicitForChangedEndpoint() throws {
+        let vault = FixtureVault()
+        let s = AISettings(defaults: try defaults(), keyStore: vault.store)
+        let models = [ModelInfo(id: "my-model", contextTokens: nil)]
+        try s.save(.custom, key: "synthetic-endpoint-A-key", baseURL: URL(string: "https://first.example/v1"), models: models)
+        s.grantConsent(.custom)
+        try s.save(.custom, key: "synthetic-endpoint-B-key", baseURL: URL(string: "https://second.example/v1"), models: models)
+        XCTAssertEqual(s.endpoint()?.apiKey, "synthetic-endpoint-B-key")
+        XCTAssertFalse(s.hasConsent(.custom))
+    }
+
+    func testFailedKeyDeletionCannotChangeDestinationOrConsent() throws {
+        let vault = FixtureVault()
+        let s = AISettings(defaults: try defaults(), keyStore: vault.store)
+        let models = [ModelInfo(id: "my-model", contextTokens: nil)]
+        let originalURL = URL(string: "https://first.example/v1")!
+        try s.save(.custom, key: "synthetic-original-key", baseURL: originalURL, models: models)
+        s.grantConsent(.custom)
+        vault.failDeletion = true
+        XCTAssertThrowsError(try s.save(.custom, key: nil,
+                                        baseURL: URL(string: "https://second.example/v1"), models: models))
+        XCTAssertEqual(s.endpoint()?.baseURL, originalURL)
+        XCTAssertEqual(s.endpoint()?.apiKey, "synthetic-original-key")
+        XCTAssertTrue(s.hasConsent(.custom))
+    }
+
+    func testKeylessSavedEndpointNeverReadsOrphanedCredential() throws {
+        let d = try defaults()
+        let saved = AISettings.Saved(last4: nil, baseURL: "http://127.0.0.1:8080/v1", model: "my-model", models: [])
+        d.set(try JSONEncoder().encode(["custom": saved]), forKey: "ai.providers")
+        d.set("custom", forKey: "ai.activeProvider")
+        let vault = FixtureVault()
+        vault.value = "synthetic-orphaned-key"
+        let s = AISettings(defaults: d, keyStore: vault.store)
+        XCTAssertNotNil(s.endpoint())
+        XCTAssertNil(s.endpoint()?.apiKey)
+        XCTAssertEqual(vault.reads, 0)
+    }
+
+    func testSetupStartsBlankAndRejectsKeyOnlyInput() throws {
+        let s = AISettings(defaults: try defaults(), keyStore: FixtureVault().store)
+        let form = AIConnectModel()
+        XCTAssertTrue(form.serverURL.isEmpty)
+        XCTAssertTrue(form.serverModel.isEmpty)
+        XCTAssertTrue(form.serverKey.isEmpty)
+        form.serverKey = "synthetic-key-never-probed"
+        XCTAssertFalse(form.canSave)
+        form.saveEndpoint(s)
+        XCTAssertTrue(s.saved.isEmpty)
+        if case .failed = form.status {} else { XCTFail("Key-only setup must require an endpoint") }
+    }
+
+    func testSetupStoresExplicitConfigurationWithoutConnecting() throws {
+        let s = AISettings(defaults: try defaults(), keyStore: FixtureVault().store)
+        let form = AIConnectModel()
+        form.serverURL = "https://unreachable-fixture.invalid/v1"
+        form.serverModel = "entered-model"
+        XCTAssertTrue(form.canSave)
+        form.saveEndpoint(s)
+        // An unreachable host can be saved because saving is local and never probes it.
+        XCTAssertEqual(s.endpoint()?.baseURL?.host(), "unreachable-fixture.invalid")
+        XCTAssertEqual(s.endpoint()?.model, "entered-model")
+        XCTAssertEqual(form.consentPrompt, .custom)
+        XCTAssertFalse(s.hasConsent(.custom))
+        if case .connected = form.status {} else { XCTFail("Explicit setup should be saved locally") }
     }
 }

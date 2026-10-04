@@ -70,11 +70,11 @@ export function useCapabilities(): BuildCapabilities | null {
 
 /** Apple's standard EULA (Terms of Use), linked from the paywall (guideline 3.1.2). */
 export const TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
-/** Placeholder until the privacy page is published (docs/APP_STORE_RELEASE.md §5.3 step 9). */
-export const PRIVACY_URL = "https://nofriction.ai/privacy";
+/** Owner-approved site; the meeting-app policy supplement remains a release gate. */
+export const PRIVACY_URL = "https://nofriction.io/privacy";
 /** Placeholder until the support page is published (site/ support page). */
-export const SUPPORT_URL = "https://nofriction.ai/support";
-export const SUPPORT_EMAIL = "support@nofriction.ai";
+export const SUPPORT_URL = "https://nofriction.io/contact";
+export const SUPPORT_EMAIL = "casey@nofriction.io";
 
 export interface StoreProduct {
     id: string;

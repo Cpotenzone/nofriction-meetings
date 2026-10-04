@@ -1,10 +1,13 @@
 import SwiftUI
 
-/// App Review 5.1.2(i): ask before the first request to each cloud provider.
+/// Ask before meeting text is sent to the configured remote endpoint.
 struct AIConsentSheet: View {
     let provider: AIProvider
+    @Environment(AISettings.self) private var settings
     let onAllow: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private var recipient: String { settings.baseURL(for: provider)?.host() ?? provider.name }
 
     var body: some View {
         NavigationStack {
@@ -14,9 +17,9 @@ struct AIConsentSheet: View {
                         .font(.system(size: 44))
                         .foregroundStyle(Theme.ai)
                         .accessibilityHidden(true)
-                    Text("Send meeting content to \(provider.name)?")
+                    Text("Send meeting content to \(recipient)?")
                         .font(.title2.weight(.semibold))
-                    Text(Self.body(provider.name))
+                    Text(Self.body(recipient))
                         .font(.body)
                         .foregroundStyle(.secondary)
                     Label("Audio and photos never leave this device.", systemImage: "lock.fill")
@@ -50,9 +53,10 @@ struct AIConsentSheet: View {
 
     /// Spec copy. iOS never sends screenshots, so that clause is left out.
     static func body(_ name: String) -> String {
-        "To write notes, summaries and emails, noFriction sends the transcript, the meeting title, " +
-            "attendee names and invite notes to \(name) using your API key. \(name)'s privacy policy " +
-            "and terms apply. Nothing is sent to noFriction; we have no servers."
+        "If you allow this remote endpoint, noFriction sends the transcript, the meeting title, " +
+            "attendee names and invite notes to \(name), including your API key if configured. The endpoint operator's privacy policy " +
+            "and terms apply. This is optional: you can use a local or Apple on-device model instead. " +
+            "noFriction offers no hosted models and receives none of this content."
     }
 }
 
@@ -74,7 +78,7 @@ struct RecordingNoticeSheet: View {
                 .accessibilityAddTraits(.isHeader)
             Text(Self.text)
                 .foregroundStyle(.secondary)
-            Text("Audio and transcripts are stored only on this device.")
+            Text("Audio and transcripts are stored on this device. Optional cloud AI sends meeting text directly to the provider you choose.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)

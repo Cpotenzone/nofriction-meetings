@@ -45,9 +45,12 @@ final class OnboardingTests: XCTestCase {
         }
         app.buttons["onboarding-continue"].tap()
 
-        // 4. AI: paste-a-key with detection, or skip
+        // 4. AI: explicit endpoint and model, optional key, or skip
         let key = app.secureTextFields["api-key-field"]
         XCTAssertTrue(key.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["ai-endpoint-url"].exists)
+        XCTAssertTrue(app.textFields["ai-model-id"].exists)
+        XCTAssertFalse(app.buttons["save-ai-endpoint"].isEnabled)
         saveShot("onboarding-4-ai")
         let skip = app.buttons["onboarding-ai-skip"]
         if skip.exists { skip.tap() } else { app.buttons["onboarding-continue"].tap() }

@@ -48,3 +48,6 @@ src-tauri/swift/NoFrictionBridge/.swiftpm/
 # tauri icon also emits mobile icon sets; the iPhone app lives in ios/
 src-tauri/icons/android/
 src-tauri/icons/ios/
+
+# Mac App Store build output (release-mas.sh)
+dist-mas/

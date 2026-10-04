@@ -1,139 +1,24 @@
 import Foundation
 
-/// Wire protocol a provider speaks. See docs/AI_PROVIDERS.md (shared with the Mac app).
+/// Supported execution paths: an explicitly configured compatible endpoint or Apple on-device.
 enum AIProtocol: String, Codable, Sendable {
-    case openai            // POST {base}/chat/completions
-    case anthropic         // POST {base}/messages
+    case openai            // POST {user-entered base}/chat/completions
     case foundationModels  // Apple on-device (iOS 26+)
 }
 
-/// A provider preset. Users bring their own key; we ship none and run no servers.
 struct AIProvider: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let proto: AIProtocol
-    /// nil for `custom` (user enters it) and `apple` (no network).
-    let defaultBaseURL: URL?
-    /// Key prefixes used for auto-detect. Longest match across all presets wins.
-    let keyPrefixes: [String]
-    let requiresKey: Bool
-    /// The user may change the base URL (local servers, custom endpoints).
-    let editableBaseURL: Bool
-    let getKeyURL: URL?
-    /// Default-model preference, matched exactly first, then as a prefix.
-    let preferredModels: [String]
-    /// Models to offer when the provider has no usable list endpoint.
-    let staticModels: [String]
-    /// Absolute URL used to check the key when `{base}/models` isn't
-    /// authenticated (OpenRouter) or lives elsewhere (Perplexity).
-    let validationURL: URL?
-
     var isOnDevice: Bool { proto == .foundationModels }
 
-    static func == (a: AIProvider, b: AIProvider) -> Bool { a.id == b.id }
-    func hash(into h: inout Hasher) { h.combine(id) }
-}
-
-extension AIProvider {
-    private static func u(_ s: String) -> URL { URL(string: s)! }
-
-    static let openai = AIProvider(
-        id: "openai", name: "OpenAI", proto: .openai, defaultBaseURL: u("https://api.openai.com/v1"),
-        keyPrefixes: ["sk-proj-", "sk-svcacct-", "sk-"], requiresKey: true, editableBaseURL: false,
-        getKeyURL: u("https://platform.openai.com/api-keys"),
-        preferredModels: ["gpt-5-mini", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini"], staticModels: [], validationURL: nil)
-
-    static let anthropic = AIProvider(
-        id: "anthropic", name: "Anthropic Claude", proto: .anthropic, defaultBaseURL: u("https://api.anthropic.com/v1"),
-        keyPrefixes: ["sk-ant-"], requiresKey: true, editableBaseURL: false,
-        getKeyURL: u("https://console.anthropic.com/settings/keys"),
-        preferredModels: ["claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5"], staticModels: [], validationURL: nil)
-
-    static let gemini = AIProvider(
-        id: "gemini", name: "Google Gemini", proto: .openai,
-        defaultBaseURL: u("https://generativelanguage.googleapis.com/v1beta/openai"),
-        keyPrefixes: ["AIza"], requiresKey: true, editableBaseURL: false,
-        getKeyURL: u("https://aistudio.google.com/apikey"),
-        preferredModels: ["gemini-3-flash", "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro"],
-        staticModels: [], validationURL: nil)
-
-    static let xai = AIProvider(
-        id: "xai", name: "xAI Grok", proto: .openai, defaultBaseURL: u("https://api.x.ai/v1"),
-        keyPrefixes: ["xai-"], requiresKey: true, editableBaseURL: false, getKeyURL: u("https://console.x.ai"),
-        preferredModels: ["grok-4", "grok-3-mini", "grok-3"], staticModels: [], validationURL: nil)
-
-    static let groq = AIProvider(
-        id: "groq", name: "Groq", proto: .openai, defaultBaseURL: u("https://api.groq.com/openai/v1"),
-        keyPrefixes: ["gsk_"], requiresKey: true, editableBaseURL: false, getKeyURL: u("https://console.groq.com/keys"),
-        preferredModels: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"], staticModels: [], validationURL: nil)
-
-    static let openrouter = AIProvider(
-        id: "openrouter", name: "OpenRouter", proto: .openai, defaultBaseURL: u("https://openrouter.ai/api/v1"),
-        keyPrefixes: ["sk-or-"], requiresKey: true, editableBaseURL: false, getKeyURL: u("https://openrouter.ai/keys"),
-        preferredModels: ["openai/gpt-5-mini", "anthropic/claude-sonnet-5", "openai/gpt-4o-mini"], staticModels: [],
-        // /models is public on OpenRouter, so it can't tell a bad key from a good one
-        validationURL: u("https://openrouter.ai/api/v1/key"))
-
-    static let mistral = AIProvider(
-        id: "mistral", name: "Mistral", proto: .openai, defaultBaseURL: u("https://api.mistral.ai/v1"),
-        keyPrefixes: [], requiresKey: true, editableBaseURL: false, getKeyURL: u("https://console.mistral.ai/api-keys"),
-        preferredModels: ["mistral-medium-latest", "mistral-large-latest", "mistral-small-latest"], staticModels: [],
-        validationURL: nil)
-
-    static let deepseek = AIProvider(
-        id: "deepseek", name: "DeepSeek", proto: .openai, defaultBaseURL: u("https://api.deepseek.com/v1"),
-        keyPrefixes: [], requiresKey: true, editableBaseURL: false, getKeyURL: u("https://platform.deepseek.com/api_keys"),
-        preferredModels: ["deepseek-chat"], staticModels: [], validationURL: nil)
-
-    static let perplexity = AIProvider(
-        id: "perplexity", name: "Perplexity", proto: .openai, defaultBaseURL: u("https://api.perplexity.ai"),
-        keyPrefixes: ["pplx-"], requiresKey: true, editableBaseURL: false,
-        getKeyURL: u("https://www.perplexity.ai/settings/api"),
-        preferredModels: ["sonar"], staticModels: ["sonar", "sonar-pro", "sonar-reasoning-pro"],
-        // Chat lives at /chat/completions; the (authenticated) model list is /v1/models
-        validationURL: u("https://api.perplexity.ai/v1/models"))
-
-    static let together = AIProvider(
-        id: "together", name: "Together AI", proto: .openai, defaultBaseURL: u("https://api.together.xyz/v1"),
-        keyPrefixes: [], requiresKey: true, editableBaseURL: false,
-        getKeyURL: u("https://api.together.ai/settings/api-keys"),
-        preferredModels: ["meta-llama/Llama-3.3-70B-Instruct-Turbo"], staticModels: [], validationURL: nil)
-
-    static let ollama = AIProvider(
-        id: "ollama", name: "Ollama (local)", proto: .openai, defaultBaseURL: u("http://localhost:11434/v1"),
-        keyPrefixes: [], requiresKey: false, editableBaseURL: true, getKeyURL: u("https://ollama.com"),
-        preferredModels: [], staticModels: [], validationURL: nil)
-
-    static let lmstudio = AIProvider(
-        id: "lmstudio", name: "LM Studio (local)", proto: .openai, defaultBaseURL: u("http://localhost:1234/v1"),
-        keyPrefixes: [], requiresKey: false, editableBaseURL: true, getKeyURL: u("https://lmstudio.ai"),
-        preferredModels: [], staticModels: [], validationURL: nil)
-
-    static let custom = AIProvider(
-        id: "custom", name: "Custom (OpenAI-compatible)", proto: .openai, defaultBaseURL: nil,
-        keyPrefixes: [], requiresKey: false, editableBaseURL: true, getKeyURL: nil,
-        preferredModels: [], staticModels: [], validationURL: nil)
-
-    static let apple = AIProvider(
-        id: "apple", name: "Apple on-device", proto: .foundationModels, defaultBaseURL: nil,
-        keyPrefixes: [], requiresKey: false, editableBaseURL: false, getKeyURL: nil,
-        preferredModels: ["apple-on-device"], staticModels: ["apple-on-device"], validationURL: nil)
-
-    /// Table order from the spec.
-    static let all: [AIProvider] = [
-        .openai, .anthropic, .gemini, .xai, .groq, .openrouter, .mistral, .deepseek,
-        .perplexity, .together, .ollama, .lmstudio, .custom, .apple,
-    ]
-
-    /// Providers you paste a key for.
-    static let cloud: [AIProvider] = all.filter { $0.requiresKey }
-    /// Providers you point at your own server.
-    static let selfHosted: [AIProvider] = [.ollama, .lmstudio, .custom]
-
+    static let custom = AIProvider(id: "custom", name: "Your AI endpoint", proto: .openai)
+    static let apple = AIProvider(id: "apple", name: "Apple on-device", proto: .foundationModels)
+    static let all: [AIProvider] = [.custom, .apple]
     static func byID(_ id: String) -> AIProvider? { all.first { $0.id == id } }
 }
 
-// MARK: - Key detection
+// MARK: - Key input
 
 enum KeyDetector {
     /// Trim whitespace, surrounding quotes and a leading "Bearer ".
@@ -148,26 +33,6 @@ enum KeyDetector {
         return s.components(separatedBy: .whitespacesAndNewlines).joined()
     }
 
-    /// The provider whose longest prefix matches, or nil.
-    static func detect(_ key: String) -> AIProvider? {
-        var best: (AIProvider, Int)?
-        for p in AIProvider.all {
-            for prefix in p.keyPrefixes where key.hasPrefix(prefix) {
-                if prefix.count > (best?.1 ?? 0) { best = (p, prefix.count) }
-            }
-        }
-        return best?.0
-    }
-
-    /// Providers to try, in order. A bare `sk-` key is OpenAI first, then DeepSeek.
-    static func candidates(for key: String) -> [AIProvider] {
-        guard let p = detect(key) else { return [] }
-        if p == .openai, !key.hasPrefix("sk-proj-"), !key.hasPrefix("sk-svcacct-") {
-            return [.openai, .deepseek]
-        }
-        return [p]
-    }
-
     static func last4(_ key: String) -> String { String(key.suffix(4)) }
 }
 
@@ -180,7 +45,7 @@ enum URLPolicy {
         guard let scheme = url.scheme?.lowercased(), let host = url.host(percentEncoded: false), !host.isEmpty else {
             return false
         }
-        if url.user != nil || url.password != nil { return false }  // no credentials in URLs
+        if url.user != nil || url.password != nil || url.query != nil || url.fragment != nil { return false }  // no credentials in URLs
         switch scheme {
         case "https": return true
         case "http": return isPrivateHost(host)

@@ -9,17 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.6.0] - 2026-10-01
 
-Ready for TestFlight on iPhone, iPad and Mac. Users bring their own AI key,
-and nothing goes through a noFriction server.
+Prepared for TestFlight and App Store review on iPhone, iPad and Mac. AI runs
+on Apple's on-device model or on an endpoint you set up yourself, transcription
+stays on the device, and nothing goes through a noFriction server.
 
 ### Added
-- **Use any AI with your own key.** Paste a key in Settings → AI Engine and the
-  app recognizes the provider and checks that the key works. Supported:
-  OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter,
-  Mistral, DeepSeek, Perplexity and Together. Local models work too (Ollama,
-  LM Studio, any OpenAI-compatible URL), and Apple's on-device model needs no
-  key. Keys live in the Keychain. The app asks before sending meeting content
-  to a provider for the first time.
+- **Choose where AI runs.** Use Apple's on-device model (iOS/macOS 26 or later
+  with Apple Intelligence; no key, nothing leaves the device), or enter your
+  own OpenAI-compatible endpoint: its base URL, the model and, only if it needs
+  one, your key. Local servers such as Ollama or LM Studio work. noFriction
+  supplies no AI service, model or API key, and nothing remote is set up by
+  default. A key you enter stays in the Keychain, tied to that endpoint. The
+  app asks before sending meeting content to a public endpoint, and shows
+  where it will go.
 - **Delete and "Strike from the record."** Remove words, whole lines or
   screens from a meeting:
   - **Delete** leaves no trace and has 5 seconds of undo.
@@ -45,8 +47,11 @@ and nothing goes through a noFriction server.
 ### Changed
 - **Client-only.** Supabase, Pinecone and the ingest server were removed.
   Search and "chat with your meetings" now run on the local full-text index.
-- Local Whisper is the default transcription. Cloud transcription is optional,
-  with your own key.
+- **Transcription is on-device only:** local Whisper on the Mac, Apple speech
+  recognition on iPhone and iPad. The cloud transcription options (Deepgram,
+  Gladia, Google, Gemini) were removed.
+- AI services chosen by name in earlier versions are no longer available; AI
+  asks you to choose Apple on-device or enter an endpoint. Meetings are kept.
 - The app's identifier is now `com.nofriction.meetings` on every platform. The
   Mac data folder moves on first launch, and nothing is deleted.
 

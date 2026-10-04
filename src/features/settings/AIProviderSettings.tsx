@@ -1,18 +1,15 @@
 // noFriction Meetings - AI settings (bring your own key)
-// Paste a key for any major provider (auto-detected), or point at a local
-// Ollama / LM Studio / OpenAI-compatible server. Keys go straight to the
+// Enter your own OpenAI-compatible endpoint and model, or use Apple on-device.
+// Keys go straight to the
 // macOS Keychain; this screen only ever sees the last 4 characters.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
     ai,
-    aiErrorClass,
     friendlyAiError,
     notifyAiStatusChanged,
     requestConsent,
-    type AiDetection,
     type AiKind,
     type AiProviderInfo,
     type AiStatus,
@@ -22,7 +19,7 @@ import "./AIProviderSettings.css";
 
 type Feedback = { ok: boolean; text: string } | null;
 
-const LOCAL_IDS = ["ollama", "lmstudio", "custom"];
+const LOCAL_IDS = ["custom"];
 
 export function AIProviderSettings() {
     const [providers, setProviders] = useState<AiProviderInfo[]>([]);
@@ -57,12 +54,10 @@ export function AIProviderSettings() {
     return (
         <div className="ai-settings">
             <ActiveSummary status={status} onChange={refresh} />
-            <PasteKey providers={providers} onSaved={refresh} />
             <SavedProviders saved={saved} onChange={refresh} />
             <ModelPickers providers={providers} byId={byId} status={status} onChange={refresh} />
             <AutomaticAi configured={!!status?.text} />
             <LocalEndpoints providers={providers.filter((p) => LOCAL_IDS.includes(p.id))} onChange={refresh} />
-            <GetAKey providers={providers} />
             <Advanced />
         </div>
     );
@@ -89,8 +84,8 @@ function ActiveSummary({ status, onChange }: { status: AiStatus | null; onChange
         <section className="settings-section">
             <h3>AI provider</h3>
             <p className="section-desc">
-                Bring your own API key. noFriction talks to the provider directly from this Mac; there is no
-                noFriction server in between.
+                Use Apple on-device, or enter your own OpenAI-compatible endpoint and model. No remote
+                service is configured by default. Keys are optional and stay in your macOS Keychain.
             </p>
             <div className="ai-active-grid">
                 <div className="ai-active-item">
@@ -137,141 +132,6 @@ function StateBadge({ state }: { state: string }) {
     };
     const [label, cls] = labels[state] ?? [state, "warn"];
     return <span className={`ai-badge ai-badge-${cls}`}>{label}</span>;
-}
-
-// ---------------------------------------------------------------------------
-
-function PasteKey({ providers, onSaved }: { providers: AiProviderInfo[]; onSaved: () => void }) {
-    const [key, setKey] = useState("");
-    const [reveal, setReveal] = useState(false);
-    const [detection, setDetection] = useState<AiDetection | null>(null);
-    const [override, setOverride] = useState<string>("");
-    const [busy, setBusy] = useState(false);
-    const [feedback, setFeedback] = useState<Feedback>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
-    const keyed = providers.filter((p) => p.key !== "none");
-
-    // Live auto-detect (debounced)
-    useEffect(() => {
-        setFeedback(null);
-        if (!key.trim()) {
-            setDetection(null);
-            return;
-        }
-        const t = setTimeout(() => {
-            ai.detect(key).then(setDetection).catch(() => setDetection(null));
-        }, 150);
-        return () => clearTimeout(t);
-    }, [key]);
-
-    const chosen = override || detection?.provider || "";
-    const chosenName = providers.find((p) => p.id === chosen)?.name;
-
-    const paste = async () => {
-        try {
-            const text = await navigator.clipboard.readText();
-            if (text) setKey(text.trim());
-            else inputRef.current?.focus();
-        } catch {
-            inputRef.current?.focus();
-            setFeedback({ ok: false, text: "Clipboard not available here. Click the field and press ⌘V." });
-        }
-    };
-
-    const connect = async () => {
-        if (!key.trim()) return;
-        setBusy(true);
-        setFeedback(null);
-        try {
-            const r = await ai.saveKey(key, override || null);
-            setKey("");
-            setOverride("");
-            setDetection(null);
-            setFeedback({
-                ok: true,
-                text: `✓ Connected to ${r.name} · ${r.models.length} models${r.model ? ` · using ${r.model}` : ""}`,
-            });
-            onSaved();
-            if (r.needs_consent) {
-                if (await requestConsent(r.provider)) onSaved();
-            }
-        } catch (e) {
-            const cls = aiErrorClass(e);
-            if (cls === "unknown_provider") {
-                setFeedback({ ok: false, text: "We couldn't tell which service this key is for. Pick it from the list, then Connect." });
-            } else {
-                setFeedback({ ok: false, text: friendlyAiError(e) });
-            }
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const detectLabel = () => {
-        if (!key.trim()) return null;
-        if (override) return `Using ${chosenName}`;
-        if (detection?.provider) {
-            const alt = detection.alternatives.includes("deepseek") ? " (or DeepSeek; we'll check)" : "";
-            return `Looks like ${article(detection.name!)} ${detection.name} key${alt}`;
-        }
-        return "Unrecognised key format. Pick the provider below.";
-    };
-
-    return (
-        <section className="settings-section">
-            <h3>Paste your API key</h3>
-            <p className="section-desc">
-                OpenAI, Anthropic, Gemini, xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity, Together. We
-                detect the provider from the key and check it before saving it to your Keychain.
-            </p>
-            <div className="ai-key-row">
-                <input
-                    ref={inputRef}
-                    className="ai-key-input"
-                    type={reveal ? "text" : "password"}
-                    placeholder="sk-… · sk-ant-… · AIza… · xai-… · gsk_…"
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && connect()}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-label="API key"
-                />
-                <button className="btn-secondary" onClick={() => setReveal(!reveal)} disabled={!key}>
-                    {reveal ? "Hide" : "Show"}
-                </button>
-                <button className="btn-secondary" onClick={paste}>
-                    Paste
-                </button>
-                <button className="btn-primary" onClick={connect} disabled={busy || !key.trim()}>
-                    {busy ? "Checking…" : "Connect"}
-                </button>
-            </div>
-            <div className="ai-key-meta">
-                <span className={`ai-detect ${detection?.provider || override ? "ok" : ""}`}>{detectLabel()}</span>
-                {key.trim() && (
-                    <select
-                        className="ai-select ai-select-small"
-                        value={override}
-                        onChange={(e) => setOverride(e.target.value)}
-                        aria-label="Provider"
-                    >
-                        <option value="">{detection?.provider ? "Auto-detect" : "Pick provider…"}</option>
-                        {keyed.map((p) => (
-                            <option key={p.id} value={p.id}>
-                                {p.name}
-                            </option>
-                        ))}
-                    </select>
-                )}
-            </div>
-            {feedback && <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</p>}
-        </section>
-    );
-}
-
-function article(name: string) {
-    return /^[AEIOU]/i.test(name) ? "an" : "a";
 }
 
 // ---------------------------------------------------------------------------
@@ -568,8 +428,8 @@ function LocalEndpoints({ providers, onChange }: { providers: AiProviderInfo[]; 
         <section className="settings-section">
             <h3>Local & custom servers</h3>
             <p className="section-desc">
-                Run models on this Mac or your own network: Ollama, LM Studio, vLLM, or any OpenAI-compatible
-                server. Plain http:// is only allowed for localhost, *.local, LAN and Tailscale addresses.
+                Enter a local or remote OpenAI-compatible endpoint yourself. Remote addresses require HTTPS
+                and permission before meeting content is sent. Private local addresses may use HTTP.
             </p>
             {providers.map((p) => (
                 <LocalEndpoint key={p.id} p={p} onChange={onChange} />
@@ -581,6 +441,7 @@ function LocalEndpoints({ providers, onChange }: { providers: AiProviderInfo[]; 
 function LocalEndpoint({ p, onChange }: { p: AiProviderInfo; onChange: () => void }) {
     const [url, setUrl] = useState(p.base_url ?? "");
     const [key, setKey] = useState("");
+    const [model, setModel] = useState(p.model ?? "");
     const [busy, setBusy] = useState(false);
     const [feedback, setFeedback] = useState<Feedback>(null);
 
@@ -591,19 +452,12 @@ function LocalEndpoint({ p, onChange }: { p: AiProviderInfo; onChange: () => voi
         setFeedback(null);
         try {
             if (url.trim() !== (p.base_url ?? "")) await ai.setEndpoint(p.id, url.trim());
-            let count = 0;
-            if (p.id === "custom" && key.trim()) {
-                const r = await ai.saveKey(key, "custom");
-                count = r.models.length;
+            if (key.trim()) {
+                await ai.saveKey(key, "custom", url.trim());
                 setKey("");
-            } else {
-                const models = await ai.listModels(p.id);
-                count = models.length;
-                // Keyless servers: connecting makes them usable; select if nothing active
-                const status = await ai.status();
-                if (!status.text) await ai.setActive(p.id, null, "text");
             }
-            setFeedback({ ok: true, text: `✓ Connected · ${count} models` });
+            await ai.setActive(p.id, model.trim(), "text");
+            setFeedback({ ok: true, text: "Connection saved. No test request was sent." });
             onChange();
             const fresh = (await ai.listProviders()).find((x) => x.id === p.id);
             if (fresh?.needs_consent && fresh.active_text) await requestConsent(p.id);
@@ -632,6 +486,8 @@ function LocalEndpoint({ p, onChange }: { p: AiProviderInfo; onChange: () => voi
                     spellCheck={false}
                     aria-label={`${p.name} URL`}
                 />
+                <input className="ai-text-input" value={model} onChange={(e) => setModel(e.target.value)}
+                    placeholder="Model name" aria-label="Custom server model" autoComplete="off" />
                 {p.id === "custom" && (
                     <input
                         className="ai-text-input"
@@ -643,8 +499,8 @@ function LocalEndpoint({ p, onChange }: { p: AiProviderInfo; onChange: () => voi
                         aria-label="Custom server API key"
                     />
                 )}
-                <button className="btn-secondary" onClick={connect} disabled={busy || (p.id === "custom" && !url.trim())}>
-                    {busy ? "Connecting…" : "Connect"}
+                <button className="btn-secondary" onClick={connect} disabled={busy || !url.trim() || !model.trim()}>
+                    {busy ? "Saving…" : "Save connection"}
                 </button>
             </div>
         </div>
@@ -652,29 +508,6 @@ function LocalEndpoint({ p, onChange }: { p: AiProviderInfo; onChange: () => voi
 }
 
 // ---------------------------------------------------------------------------
-
-function GetAKey({ providers }: { providers: AiProviderInfo[] }) {
-    const cloud = providers.filter((p) => p.key_url && p.key === "required");
-    const local = providers.filter((p) => p.key_url && p.key === "none");
-    const open = (url: string) => openUrl(url).catch((e) => console.error("open failed", e));
-    return (
-        <section className="settings-section">
-            <h3>Get a key</h3>
-            <div className="ai-chips">
-                {cloud.map((p) => (
-                    <button key={p.id} className="ai-chip" onClick={() => open(p.key_url)}>
-                        {p.name} ↗
-                    </button>
-                ))}
-                {local.map((p) => (
-                    <button key={p.id} className="ai-chip" onClick={() => open(p.key_url)}>
-                        {p.name} ↗
-                    </button>
-                ))}
-            </div>
-        </section>
-    );
-}
 
 function Advanced() {
     const [open, setOpen] = useState(false);

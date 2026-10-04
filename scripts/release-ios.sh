@@ -22,7 +22,11 @@
 #
 # Output: ios/build/release/noFriction-<version>-<build>.xcarchive and, for an
 # export, ios/build/release/export-<build>/noFriction.ipa.
+# NF_IOS_BUILD_ROOT / NF_IOS_DERIVED_DATA override the build locations.
+# DerivedData stays beside this checkout by default (no internal Xcode cache).
 # The build number is recorded only after a successful archive.
+# NF_IOS_PROFILE_UUID + NF_IOS_SIGNING_IDENTITY select an installed manual
+# distribution profile/certificate without portal provisioning changes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,10 +34,13 @@ IOS="$ROOT/ios"
 PROJECT_YML="$IOS/project.yml"
 EXPORT_OPTIONS="$IOS/ExportOptions.plist"
 BUILD_FILE="$IOS/build_number.txt"
-OUT="$IOS/build/release"
+BUILD_ROOT="${NF_IOS_BUILD_ROOT:-$IOS/build}"
+OUT="$BUILD_ROOT/release"
+DERIVED_DATA="${NF_IOS_DERIVED_DATA:-$BUILD_ROOT/dd-release}"
 SCHEME="NoFriction"
 TEAM_ID="C7GCEESE2V"
 BUNDLE_ID="com.nofriction.meetings"
+AUDIT_PYTHON="${NF_AUDIT_PYTHON:-python3}"
 
 MODE="export"
 for arg in "$@"; do
@@ -54,6 +61,7 @@ ok()   { echo "  ✓ $*"; }
 warn() { echo "  ! $*"; }
 
 echo "==> Checking configuration"
+"$AUDIT_PYTHON" "$ROOT/scripts/check-ai-provider-policy.py" || err "AI source policy failed"
 for tool in xcodebuild xcodegen plutil /usr/libexec/PlistBuddy; do
   command -v "$tool" >/dev/null 2>&1 && ok "$tool" || err "$tool not found"
 done
@@ -86,8 +94,8 @@ fi
 # Signing: automatic signing can create a distribution certificate and the
 # App Store profile itself (-allowProvisioningUpdates), given an Xcode account
 # for the team or an ASC API key. Report what's on this Mac.
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "Apple Distribution"; then
-  ok "Apple Distribution certificate in the keychain"
+if security find-identity -v -p codesigning 2>/dev/null | grep -E -q "Apple Distribution: .*\($TEAM_ID\)"; then
+  ok "Apple Distribution certificate for team $TEAM_ID in the keychain"
 else
   warn "no Apple Distribution certificate in the keychain; Xcode will try to create one (needs an Admin/App Manager account or ASC key)"
 fi
@@ -112,6 +120,11 @@ if [[ $MODE == check ]]; then
 fi
 
 AUTH=()
+SIGNING=(-allowProvisioningUpdates)
+if [[ -n "${NF_IOS_PROFILE_UUID:-}" ]]; then
+  [[ -n "${NF_IOS_SIGNING_IDENTITY:-}" ]] || { echo "NF_IOS_SIGNING_IDENTITY required with NF_IOS_PROFILE_UUID" >&2; exit 1; }
+  SIGNING=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="$NF_IOS_PROFILE_UUID" CODE_SIGN_IDENTITY="$NF_IOS_SIGNING_IDENTITY")
+fi
 if [[ $have_asc == 1 ]]; then
   AUTH=(-authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 fi
@@ -129,7 +142,9 @@ xcodebuild archive \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -archivePath "$ARCHIVE" \
-  -allowProvisioningUpdates \
+  -derivedDataPath "$DERIVED_DATA" \
+  -clonedSourcePackagesDirPath "$BUILD_ROOT/SourcePackages" \
+  "${SIGNING[@]}" \
   ${AUTH[@]+"${AUTH[@]}"} \
   CURRENT_PROJECT_VERSION="$NEXT_BUILD" \
   2>&1 | tee "$OUT/archive-$NEXT_BUILD.log" | grep -E "error:|warning: .*(sign|profile|provision)|ARCHIVE (SUCCEEDED|FAILED)"
@@ -140,6 +155,12 @@ if [[ $status != 0 || ! -d "$ARCHIVE" ]]; then
   exit 1
 fi
 
+# Inspect the actual signed app before any export or upload. The scan prints
+# only redacted findings and fails closed on incomplete inspection.
+"$AUDIT_PYTHON" "$ROOT/scripts/scan-release-credentials.py" \
+  --artifact "$ARCHIVE/Products/Applications/noFriction.app" \
+  --receipt "$OUT/credential-audit-$NEXT_BUILD.json" --reject-retired-services
+
 # The archive carries this build number now: record it (monotonic), keep project.yml in step
 echo "$NEXT_BUILD" > "$BUILD_FILE"
 sed -i '' -E "s/^( *CURRENT_PROJECT_VERSION: *)\"?[0-9]+\"?/\1\"$NEXT_BUILD\"/" "$PROJECT_YML"
@@ -149,6 +170,14 @@ OPTIONS="$OUT/ExportOptions-$NEXT_BUILD.plist"
 cp "$EXPORT_OPTIONS" "$OPTIONS"
 DEST="export"; [[ $MODE == upload ]] && DEST="upload"
 /usr/libexec/PlistBuddy -c "Set :destination $DEST" "$OPTIONS"
+EXPORT_PROVISIONING=(-allowProvisioningUpdates)
+if [[ -n "${NF_IOS_PROFILE_UUID:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :signingStyle manual" "$OPTIONS"
+  /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$OPTIONS"
+  /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$BUNDLE_ID string $NF_IOS_PROFILE_UUID" "$OPTIONS"
+  /usr/libexec/PlistBuddy -c "Add :signingCertificate string $NF_IOS_SIGNING_IDENTITY" "$OPTIONS"
+  EXPORT_PROVISIONING=()
+fi
 
 EXPORT_DIR="$OUT/export-$NEXT_BUILD"
 echo "==> Exporting (destination: $DEST)"
@@ -157,13 +186,19 @@ xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportOptionsPlist "$OPTIONS" \
   -exportPath "$EXPORT_DIR" \
-  -allowProvisioningUpdates \
+  ${EXPORT_PROVISIONING[@]+"${EXPORT_PROVISIONING[@]}"} \
   ${AUTH[@]+"${AUTH[@]}"} 2>&1 | tee "$OUT/export-$NEXT_BUILD.log" | grep -E "error:|EXPORT (SUCCEEDED|FAILED)|Upload|upload"
 status=${PIPESTATUS[0]}
 set -e
 if [[ $status != 0 ]]; then
   echo "==> Export failed (exit $status); see ${OUT#$ROOT/}/export-$NEXT_BUILD.log" >&2
   exit $status
+fi
+
+if [[ $DEST != upload ]]; then
+  "$AUDIT_PYTHON" "$ROOT/scripts/scan-release-credentials.py" \
+    --artifact "$EXPORT_DIR/noFriction.ipa" \
+    --receipt "$OUT/credential-audit-ipa-$NEXT_BUILD.json" --reject-retired-services
 fi
 
 if [[ $DEST == upload ]]; then

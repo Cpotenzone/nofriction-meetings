@@ -264,10 +264,10 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
             <h3>How to Set Up AI (Bring Your Own Key)</h3>
             <ol>
                 <li>Open <strong>Settings → AI Engine</strong>.</li>
-                <li>Paste an API key from your provider. noFriction detects the provider, checks the key, and picks a model (you can change it).</li>
+                <li>Enter your own OpenAI-compatible endpoint URL, model name and optional API key. Nothing is preconfigured; saving the connection sends no test request.</li>
                 <li>The first time, confirm <strong>"Send meeting content to {"{Provider}"}?"</strong>. Nothing is sent until you allow it.</li>
                 <li>Choose whether to get <strong>Live insights during meetings</strong> and <strong>Write a report after each meeting</strong> (both on by default).</li>
-                <li>Prefer to stay offline? Use a local server (Ollama, LM Studio, or any OpenAI-compatible server) under
+                <li>Prefer to stay offline? Enter a local OpenAI-compatible server under
                     <strong> Local &amp; custom servers</strong>, or Apple's on-device model on macOS 26 with Apple Intelligence on (no key).</li>
             </ol>
             <ProNote caps={caps} />
@@ -337,7 +337,7 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
             <ol>
                 <li>Open <strong>Settings → Transcription</strong>.</li>
                 <li><strong>Local Whisper</strong> (the default) runs on this Mac, offline, with no key. Download a model once; larger models are more accurate but slower.</li>
-                <li>Optionally switch to a cloud service (Deepgram, Google Gemini Live, Gladia, or Google Cloud Speech-to-Text) with your own key. Meeting audio is then sent to that service.</li>
+                <li>Transcription remains on this Mac; no cloud transcription service is built in.</li>
             </ol>
         </div>
     </>
@@ -355,9 +355,8 @@ const TechSpec: React.FC<Caps> = ({ caps }) => (
                 with full-text search. There is no noFriction account and no noFriction server.
             </p>
             <div className="help-code">
-                Transcription: Whisper on this Mac (default); Deepgram, Gemini, Gladia or Google STT optional with your key{"\n"}
-                AI: your provider and key (OpenAI, Anthropic, Gemini, xAI, Groq, OpenRouter, Mistral,{"\n"}
-                {"    "}DeepSeek, Perplexity, Together), a local server, or Apple's on-device model{"\n"}
+                Transcription: Whisper on this Mac; no cloud transcription service{"\n"}
+                AI: Apple on-device or your own explicitly configured OpenAI-compatible endpoint{"\n"}
                 Screens: periodic screenshots; unchanged screens are skipped{"\n"}
                 Calendar: Apple Calendar (EventKit){"\n"}
                 Secrets: macOS Keychain
@@ -404,7 +403,7 @@ const TechSpec: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Settings Storage</h3>
             <p>
-                Settings are stored in the local database. API keys (AI and cloud transcription) are stored only in the
+                Settings are stored in the local database. Custom endpoint keys are stored only in the
                 macOS Keychain; the app shows just the last 4 characters.
             </p>
         </div>
@@ -428,10 +427,11 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Data Privacy & Local Storage</h3>
             <div className="help-callout security">
-                <p><strong>Your data is stored only on this Mac.</strong> Recordings, transcripts, screenshots and meeting
-                    notes live in a local database. There is no noFriction server or cloud database. The only
-                    network calls go directly to the AI or cloud-transcription provider you set up with your own key,
-                    and the app asks before sending anything to an AI provider for the first time.</p>
+                <p><strong>Meeting content is stored on this Mac.</strong> Recordings, transcripts, screenshots and meeting
+                    notes live in a local database. Optional AI requests go directly to the endpoint you configure;
+                    the app asks before sending meeting content to a public endpoint. Your selected server may retain
+                    a copy under its policy. Transcription uses Local Whisper. Model downloads and Apple services
+                    also use the network; noFriction operates no meeting-data server.</p>
             </div>
             <p>Your data folder:</p>
             <div className="help-code">
@@ -445,7 +445,7 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>API Key Security</h3>
             <ul>
-                <li><strong>Where keys live</strong>: every API key (AI providers and cloud transcription) is stored in
+                <li><strong>Where keys live</strong>: every custom endpoint key is stored in
                     the macOS Keychain, never in the database or in files. Settings only ever shows the last 4 characters.</li>
                 <li><strong>Where keys go</strong>: each key is sent only to its own provider, over HTTPS (local models
                     can use http on your own network). Redirects are refused, so a key can't be forwarded elsewhere.</li>
@@ -471,7 +471,6 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
                 </thead>
                 <tbody>
                     <tr><td>Your AI provider (only once you've added a key and allowed it)</td><td>HTTPS</td><td>Transcript text, meeting title, attendee names; screenshots for screen features</td></tr>
-                    <tr><td>Cloud transcription (only if you choose Deepgram, Gemini, Gladia or Google)</td><td>WSS / HTTPS</td><td>Meeting audio</td></tr>
                     <tr><td>Hugging Face (once)</td><td>HTTPS</td><td>Nothing; downloads the Whisper model</td></tr>
                     {caps?.storekit && <tr><td>Apple App Store</td><td>HTTPS</td><td>Subscription purchase and status (handled by Apple)</td></tr>}
                 </tbody>
@@ -530,27 +529,20 @@ const ServicesManual: React.FC<Caps> = ({ caps }) => (
             <h3>AI Providers <span className="help-version">OPTIONAL</span></h3>
             <table className="help-table">
                 <tbody>
-                    <tr><td><strong>Cloud (your key)</strong></td><td>OpenAI, Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity, Together AI</td></tr>
-                    <tr><td><strong>Local (no key)</strong></td><td>Ollama, LM Studio, or any OpenAI-compatible server</td></tr>
+                    <tr><td><strong>Cloud (your key)</strong></td><td>Your own OpenAI-compatible endpoint URL and model; no built-in service</td></tr>
+                    <tr><td><strong>Local (no key)</strong></td><td>A local OpenAI-compatible endpoint you configure</td></tr>
                     <tr><td><strong>On-device</strong></td><td>Apple's model on macOS 26 with Apple Intelligence on (no key, never leaves your Mac)</td></tr>
                     <tr><td><strong>Used For</strong></td><td>Meeting notes, follow-up emails, live insights, Chat answers, attendee briefings, screen analysis</td></tr>
                     <tr><td><strong>Billing</strong></td><td>By your provider, under your account; their privacy policy and terms apply</td></tr>
-                    <tr><td><strong>Setup</strong></td><td>Settings → AI Engine → paste your key</td></tr>
+                    <tr><td><strong>Setup</strong></td><td>Settings → AI Engine → enter endpoint, model and optional key</td></tr>
                 </tbody>
             </table>
             <ProNote caps={caps} />
         </div>
 
         <div className="help-section">
-            <h3>Cloud Transcription <span className="help-version">OPTIONAL</span></h3>
-            <table className="help-table">
-                <tbody>
-                    <tr><td><strong>Default</strong></td><td>Local Whisper on this Mac (no service used)</td></tr>
-                    <tr><td><strong>Alternatives</strong></td><td>Deepgram (Nova-3), Google Gemini Live, Gladia, Google Cloud Speech-to-Text (Chirp 2)</td></tr>
-                    <tr><td><strong>Data Sent</strong></td><td>Meeting audio, only while that service is selected</td></tr>
-                    <tr><td><strong>Setup</strong></td><td>Settings → Transcription → choose a service and enter its key</td></tr>
-                </tbody>
-            </table>
+            <h3>Local Transcription</h3>
+            <p>Whisper runs on this Mac after its model download. No audio is sent to a transcription service.</p>
         </div>
 
         <div className="help-section">
@@ -585,7 +577,7 @@ const ServicesManual: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Support</h3>
             <p>
-                Questions or problems? Email <strong>support@nofriction.ai</strong>, or use Help → Contact Support… in the menu bar. Version, Privacy Policy and Terms of
+                Questions or problems? Email <strong>casey@nofriction.io</strong>, or use Help → Contact Support… in the menu bar. Version, Privacy Policy and Terms of
                 Use are in <strong>Settings → About</strong>.
             </p>
         </div>

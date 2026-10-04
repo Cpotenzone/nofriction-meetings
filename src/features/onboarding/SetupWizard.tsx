@@ -6,11 +6,11 @@
 // and the whole assistant can be run again from Settings → General.
 // Each step shows the live state, so re-running never resets anything.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ai, friendlyAiError, notifyAiStatusChanged, type AiProviderInfo, type AiStatus } from "../../lib/ai";
+import { AIProviderSettings } from "../settings/AIProviderSettings";
 import { PRIVACY_URL, useCapabilities } from "../../lib/build";
 import { SETUP_COMPLETE_KEY } from "../../lib/navigation";
 import { FREE_FEATURES, PRO_FEATURES } from "../../components/PaywallModal";
@@ -62,7 +62,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 {step === "welcome" && <WelcomeStep />}
                 {step === "permissions" && <PermissionsStep />}
                 {step === "transcription" && <TranscriptionStep />}
-                {step === "ai" && <AiStep appleAvailable={!!caps?.apple_intelligence} />}
+                {step === "ai" && <AiStep />}
                 {step === "pro" && <ProStep />}
                 {step === "done" && <DoneStep />}
             </div>
@@ -471,8 +471,7 @@ function TranscriptionStep() {
 
             <p className="setup-footnote">
                 {installed.length > 0 && !status?.ready ? `Installed: ${installed.map((m) => m.name).join(", ")}. ` : ""}
-                Prefer a cloud service (Deepgram, Gemini, Gladia, Google)? Add your key in Settings → Transcription; audio
-                is then sent to that service.
+                Transcription stays on this Mac. No cloud transcription service is built in.
             </p>
         </div>
     );
@@ -480,186 +479,16 @@ function TranscriptionStep() {
 
 // ---------------------------------------------------------------------------
 
-function AiStep({ appleAvailable }: { appleAvailable: boolean }) {
-    const [providers, setProviders] = useState<AiProviderInfo[]>([]);
-    const [status, setStatus] = useState<AiStatus | null>(null);
-    const [key, setKey] = useState("");
-    const [busy, setBusy] = useState(false);
-    const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
-    const [consentFor, setConsentFor] = useState<{ id: string; name: string } | null>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    const refresh = useCallback(async () => {
-        try {
-            const [p, s] = await Promise.all([ai.listProviders(), ai.status()]);
-            setProviders(p);
-            setStatus(s);
-            notifyAiStatusChanged();
-        } catch (e) {
-            console.warn("AI status unavailable:", e);
-        }
-    }, []);
-
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    const openai = providers.find((p) => p.id === "openai");
-    const apple = providers.find((p) => p.id === "apple");
-    const text = status?.text;
-
-    const connect = async () => {
-        if (!key.trim()) return;
-        setBusy(true);
-        setFeedback(null);
-        try {
-            // Auto-detects the provider from the key (OpenAI, Anthropic, Gemini, …)
-            const r = await ai.saveKey(key.trim(), null);
-            setKey("");
-            setFeedback({ ok: true, text: `Connected to ${r.name}${r.model ? ` · using ${r.model}` : ""}` });
-            if (r.needs_consent) setConsentFor({ id: r.provider, name: r.name });
-            await refresh();
-        } catch (e) {
-            const msg = friendlyAiError(e);
-            setFeedback({
-                ok: false,
-                text: /UNKNOWN_PROVIDER|Unknown provider/i.test(String(e))
-                    ? "We couldn't tell which service this key is for. Add it in Settings → AI Engine, where you can pick the provider."
-                    : msg,
-            });
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const allow = async () => {
-        if (!consentFor) return;
-        try {
-            await ai.grantConsent(consentFor.id);
-            setConsentFor(null);
-            await refresh();
-        } catch (e) {
-            setFeedback({ ok: false, text: friendlyAiError(e) });
-        }
-    };
-
-    const useApple = async () => {
-        setFeedback(null);
-        try {
-            await ai.setActive("apple", apple?.model ?? null, "text");
-            setFeedback({ ok: true, text: "Using Apple's on-device model. Meeting content never leaves this Mac." });
-            await refresh();
-        } catch (e) {
-            setFeedback({ ok: false, text: friendlyAiError(e) });
-        }
-    };
-
-    const paste = async () => {
-        try {
-            const t = await navigator.clipboard.readText();
-            if (t) setKey(t.trim());
-            else inputRef.current?.focus();
-        } catch {
-            inputRef.current?.focus();
-        }
-    };
-
+function AiStep() {
     return (
         <div className="setup-step">
-            <div className="step-icon">
-                <SparkleIcon size={22} />
-            </div>
-            <h2>AI notes, summaries and chat</h2>
-            <p className="step-description">
-                Bring your own AI key — OpenAI is the default, and Anthropic, Gemini, Groq, Mistral and others work
-                too. noFriction talks to the provider directly from this Mac with your key; we never see it. Recording
-                and transcription work without AI.
-            </p>
-
-            {text && (
-                <div className="setup-ready">
-                    <CheckIcon size={16} />
-                    <span>
-                        AI is set up: {text.name} · {text.model}
-                        {!text.local && !text.consent ? " (asks before sending anything)" : ""}
-                    </span>
-                </div>
-            )}
-
-            <div className="api-key-section">
-                <label htmlFor="ai-key">{text ? "Use a different key" : "Paste your API key"}</label>
-                <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                        id="ai-key"
-                        ref={inputRef}
-                        type="password"
-                        className="setup-input"
-                        placeholder="sk-… (OpenAI) · sk-ant-… · AIza… · gsk_…"
-                        value={key}
-                        onChange={(e) => setKey(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && connect()}
-                        autoComplete="off"
-                        spellCheck={false}
-                    />
-                    <button className="setup-btn secondary perm-btn" onClick={paste}>
-                        Paste
-                    </button>
-                    <button className="setup-btn primary perm-btn" onClick={connect} disabled={busy || !key.trim()}>
-                        {busy ? "Checking…" : "Connect"}
-                    </button>
-                </div>
-                {openai?.key_url && (
-                    <button className="get-key-link as-button" onClick={() => openUrl(openai.key_url).catch(() => undefined)}>
-                        Get an OpenAI API key →
-                    </button>
-                )}
-                <p className="key-hint">Saved in your macOS Keychain. Usage is billed by your provider.</p>
-            </div>
-
-            {consentFor && (
-                <div className="setup-consent" role="dialog" aria-label={`Send meeting content to ${consentFor.name}?`}>
-                    <strong>Send meeting content to {consentFor.name}?</strong>
-                    <p>
-                        To write notes, summaries and emails, noFriction sends the transcript, the meeting title,
-                        attendee names and (for screen features) screenshots to {consentFor.name} using your API key.{" "}
-                        {consentFor.name}'s privacy policy and terms apply. Nothing is sent to noFriction; we have no
-                        servers.
-                    </p>
-                    <div style={{ display: "flex", gap: 8 }}>
-                        <button className="setup-btn secondary perm-btn" onClick={() => setConsentFor(null)}>
-                            Not now
-                        </button>
-                        <button className="setup-btn primary perm-btn" onClick={allow}>
-                            Allow
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {appleAvailable && text?.provider !== "apple" && (
-                <div className="mode-card">
-                    <div style={{ flex: 1 }}>
-                        <span className="mode-title">Use Apple on-device (no key)</span>
-                        <span className="mode-hint">
-                            Apple Intelligence runs on this Mac. Free and private; shorter, simpler notes than cloud models.
-                        </span>
-                    </div>
-                    <button className="setup-btn secondary perm-btn" onClick={useApple}>
-                        Use Apple
-                    </button>
-                </div>
-            )}
-
-            {feedback && <p className={feedback.ok ? "setup-ok" : "setup-error"}>{feedback.text}</p>}
-
-            <p className="setup-footnote">
-                Running Ollama or LM Studio? Connect it in Settings → AI Engine → Local &amp; custom servers.
-            </p>
+            <h2>Optional AI</h2>
+            <p className="step-description">Recording and transcription work without AI. Use Apple on-device,
+                or enter your own endpoint, model and optional key. noFriction supplies no remote AI service.</p>
+            <AIProviderSettings />
         </div>
     );
 }
-
-// ---------------------------------------------------------------------------
 
 function ProStep() {
     return (
@@ -679,7 +508,7 @@ function ProStep() {
             </div>
             <p className="setup-footnote">
                 Nothing to buy now. When you first use an AI feature you'll see the plans, or open Settings →
-                Subscription any time. Pro features use your own AI key (or Apple's on-device model).
+                Subscription any time. Pro features use Apple on-device or the endpoint and model you configure.
             </p>
         </div>
     );

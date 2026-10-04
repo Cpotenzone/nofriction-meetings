@@ -26,7 +26,7 @@ pub mod menu_ids {
 }
 
 /// Support page (keep in sync with SUPPORT_URL in src/lib/build.ts).
-pub const SUPPORT_URL: &str = "https://nofriction.ai/support";
+pub const SUPPORT_URL: &str = "https://nofriction.io/contact";
 
 /// Build the application menu bar
 pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {

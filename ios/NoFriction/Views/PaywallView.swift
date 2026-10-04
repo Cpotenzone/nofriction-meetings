@@ -55,7 +55,7 @@ struct PaywallView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Summaries, decisions and action items", systemImage: "list.bullet.rectangle")
             Label("Follow-up email drafts", systemImage: "envelope")
-            Label("Your own key: OpenAI, Claude, Gemini and more, or Apple on-device", systemImage: "key")
+            Label("Apple on-device or your own AI endpoint and model", systemImage: "key")
             Text("Recording, transcription, calendar and people stay free.")
                 .font(.footnote).foregroundStyle(.secondary)
                 .padding(.top, 4)
@@ -137,7 +137,7 @@ struct PaywallView: View {
     private var finePrint: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Payment is charged to your Apple Account when you confirm. The subscription renews automatically at the price shown unless you cancel at least 24 hours before the end of the current period. Any unused part of a free trial ends when you subscribe. Manage or cancel in Settings → your name → Subscriptions.")
-            Text("AI features send meeting text to the AI provider you choose, under that provider's terms. noFriction runs no servers.")
+            Text("Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, meeting text is sent directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
             HStack(spacing: 16) {
                 Link("Terms of Use (EULA)", destination: AppLinks.terms)
                 Link("Privacy Policy", destination: AppLinks.privacyPolicy)

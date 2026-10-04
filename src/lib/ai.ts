@@ -77,8 +77,8 @@ export interface AiTestResult {
 export const ai = {
     listProviders: () => invoke<AiProviderInfo[]>("ai_list_providers"),
     detect: (key: string) => invoke<AiDetection>("ai_detect_provider", { key }),
-    saveKey: (key: string, provider?: string | null) =>
-        invoke<AiSaveKeyResult>("ai_save_key", { key, provider: provider ?? null }),
+    saveKey: (key: string, provider: string, expectedBaseUrl: string) =>
+        invoke<AiSaveKeyResult>("ai_save_key", { key, provider, expectedBaseUrl }),
     deleteKey: (provider: string) => invoke<AiStatus>("ai_delete_key", { provider }),
     setActive: (provider: string, model: string | null, kind: AiKind) =>
         invoke<AiStatus>("ai_set_active", { provider, model, kind }),
@@ -87,7 +87,7 @@ export const ai = {
         invoke<AiProviderInfo>("ai_set_custom_endpoint", { provider, baseUrl }),
     listModels: (provider: string) => invoke<AiModelInfo[]>("ai_list_models", { provider }),
     test: (provider: string) => invoke<AiTestResult>("ai_test", { provider }),
-    grantConsent: (provider: string) => invoke<AiStatus>("ai_grant_consent", { provider }),
+    grantConsent: (provider: string, expectedBaseUrl: string) => invoke<AiStatus>("ai_grant_consent", { provider, expectedBaseUrl }),
     revokeConsent: (provider: string) => invoke<AiStatus>("ai_revoke_consent", { provider }),
     status: () => invoke<AiStatus>("ai_status"),
 };

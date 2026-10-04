@@ -6,7 +6,7 @@
 #   scripts/ios-screenshots.sh iphone     # just one device
 #   scripts/ios-screenshots.sh ipad
 #
-# Creates the simulators if missing ("NF iPhone 17 Pro Max", "NF iPad Pro 13"),
+# Reuses existing simulators ("NF iPhone 17 Pro Max", "NF iPad Pro 13");
 # boots them, sets the status bar to 9:41 / full battery / 4 bars, and runs
 # NoFrictionUITests/AppStoreScreenshots with the -NFSeedDemo sample data
 # (invented people and companies; no real personal data). PNGs land in
@@ -16,8 +16,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IOS="$ROOT/ios"
-OUT="$IOS/AppStore/screenshots"
-RUNTIME="${NF_SIM_RUNTIME:-$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["platform"]=="iOS" and x["isAvailable"]]; print(sorted(r,key=lambda x:[int(p) for p in x["version"].split(".")])[-1]["identifier"])')}"
+OUT="${NF_SCREENSHOT_OUTPUT:-$IOS/AppStore/screenshots}"
+BUILD_ROOT="${NF_IOS_BUILD_ROOT:-$IOS/build}"
+DERIVED_DATA="${NF_SCREENSHOT_DERIVED_DATA:-$BUILD_ROOT/dd}"
+SCREENSHOT_TEST="${NF_SCREENSHOT_TEST:-NoFrictionUITests/AppStoreScreenshots}"
+# Override test/output to capture review-only images without replacing store images.
 
 # name | device type | output folder | allowed WxH sizes
 DEVICES=(
@@ -45,8 +48,8 @@ for entry in "${DEVICES[@]}"; do
 
   udid="$(udid_for "$name")"
   if [[ -z "$udid" ]]; then
-    echo "==> creating simulator '$name' ($type, $RUNTIME)"
-    udid="$(xcrun simctl create "$name" "$type" "$RUNTIME")"
+    echo "!! Existing simulator '$name' is missing; no device was created." >&2
+    exit 1
   fi
   echo "==> $name ($udid)"
   xcrun simctl boot "$udid" 2>/dev/null || true
@@ -58,20 +61,25 @@ for entry in "${DEVICES[@]}"; do
   xcrun simctl privacy "$udid" grant calendar com.nofriction.meetings 2>/dev/null || true
 
   dest="$OUT/$folder"
-  rm -rf "$dest"; mkdir -p "$dest"
-  log="$IOS/build/screenshots-$folder.log"
-  mkdir -p "$IOS/build"
-  if ! (cd "$IOS" && TEST_RUNNER_NF_APPSTORE_DIR="$dest" xcodebuild test \
+  mkdir -p "$BUILD_ROOT" "$OUT"
+  staging="$(mktemp -d "$OUT/.capture-$folder.XXXXXX")"
+  log="$BUILD_ROOT/screenshots-$folder.log"
+  if ! (cd "$IOS" && TEST_RUNNER_NF_APPSTORE_DIR="$staging" xcodebuild test \
       -project NoFriction.xcodeproj -scheme NoFriction \
-      -destination "id=$udid" -derivedDataPath build/dd \
-      -only-testing:NoFrictionUITests/AppStoreScreenshots >"$log" 2>&1); then
+      -destination "id=$udid" -derivedDataPath "$DERIVED_DATA" \
+      -clonedSourcePackagesDirPath "$BUILD_ROOT/SourcePackages" \
+      -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
+      -only-testing:"$SCREENSHOT_TEST" >"$log" 2>&1); then
     echo "!! screenshot test failed on $name (log: ${log#$ROOT/})"
     grep -E "error: |\*\* TEST" "$log" | head -10 || true
     fail=1
+    rm -rf "$staging"
+    xcrun simctl status_bar "$udid" clear || true
+    continue
   fi
   xcrun simctl status_bar "$udid" clear || true
 
-  for png in "$dest"/*.png; do
+  for png in "$staging"/*.png; do
     [[ -e "$png" ]] || { echo "!! no screenshots in $dest"; fail=1; break; }
     w=$(sips -g pixelWidth "$png" | awk '/pixelWidth/{print $2}')
     h=$(sips -g pixelHeight "$png" | awk '/pixelHeight/{print $2}')
@@ -81,5 +89,10 @@ for entry in "${DEVICES[@]}"; do
       echo "   BAD ${w}x${h}  ${png#$ROOT/} (want one of: $sizes)"; fail=1
     fi
   done
+  if [[ $fail == 0 ]]; then
+    mkdir -p "$dest"
+    cp "$staging"/*.png "$dest/"
+  fi
+  rm -rf "$staging"
 done
 exit $fail

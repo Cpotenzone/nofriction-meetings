@@ -12,26 +12,12 @@ const NOT_NOW_QUIET_MS = 10 * 60 * 1000;
 
 export function AiConsentModal() {
     const [request, setRequest] = useState<ConsentRequest | null>(null);
-    const [name, setName] = useState<string>("");
+    const [endpoint, setEndpoint] = useState<string>("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const queue = useRef<ConsentRequest[]>([]);
     const current = useRef<ConsentRequest | null>(null);
     const dismissedAt = useRef<Record<string, number>>({});
-    const names = useRef<Record<string, string>>({});
-
-    const providerName = async (id: string) => {
-        if (!names.current[id]) {
-            try {
-                const list = await ai.listProviders();
-                list.forEach((p) => (names.current[p.id] = p.name));
-            } catch {
-                /* fall back to id */
-            }
-        }
-        return names.current[id] ?? id;
-    };
-
     const show = async (req: ConsentRequest) => {
         // Background prompts respect a recent "Not now"
         const last = dismissedAt.current[req.provider];
@@ -40,8 +26,15 @@ export function AiConsentModal() {
             return;
         }
         current.current = req;
-        setName(await providerName(req.provider));
+        setEndpoint("");
         setError(null);
+        try {
+            const selected = (await ai.listProviders()).find((p) => p.id === req.provider);
+            if (!selected?.base_url || selected.id !== "custom") throw new Error("Configure your endpoint before allowing AI.");
+            setEndpoint(selected.base_url);
+        } catch (e) {
+            setError(String(e));
+        }
         setRequest(req);
     };
 
@@ -86,10 +79,10 @@ export function AiConsentModal() {
     };
 
     const allow = async () => {
-        if (!request) return;
+        if (!request || !endpoint) return;
         setBusy(true);
         try {
-            await ai.grantConsent(request.provider);
+            await ai.grantConsent(request.provider, endpoint);
             finish(true);
         } catch (e) {
             setError(String(e));
@@ -104,21 +97,23 @@ export function AiConsentModal() {
         <div className="modal-overlay ai-consent-overlay" role="dialog" aria-modal="true" aria-labelledby="ai-consent-title">
             <div className="modal-content ai-consent-modal">
                 <div className="modal-header">
-                    <h2 id="ai-consent-title">Send meeting content to {name}?</h2>
+                    <h2 id="ai-consent-title">Send meeting content to your endpoint?</h2>
                 </div>
                 <div className="modal-body">
                     <p className="ai-consent-copy">
-                        To write notes, summaries and emails, noFriction sends the transcript, the
-                        meeting title, attendee names and (for screen features) screenshots to{" "}
-                        {name} using your API key. {name}'s privacy policy and terms apply.
-                        Nothing is sent to noFriction; we have no servers.
+                        Destination: <strong style={{ overflowWrap: "anywhere" }}>{endpoint || "Unavailable"}</strong>.
+                        If you allow it, noFriction sends transcripts, meeting titles, attendee names,
+                        email/company details and selected screenshots needed for AI features directly to this endpoint,
+                        using your optional API key. Its operator's privacy policy and terms apply.
+                        This is optional. You can use Apple on-device or a local endpoint instead.
+                        noFriction offers no hosted models and receives none of this content.
                     </p>
                     {error && <p className="ai-error-text">{error}</p>}
                     <div className="ai-consent-actions">
                         <button className="btn-secondary" onClick={() => finish(false)} disabled={busy}>
                             Not now
                         </button>
-                        <button className="btn-primary" onClick={allow} disabled={busy} autoFocus>
+                        <button className="btn-primary" onClick={allow} disabled={busy || !endpoint} autoFocus>
                             {busy ? "Saving…" : "Allow"}
                         </button>
                     </div>

@@ -502,8 +502,10 @@ export function FullSettings({ onSave: _onSave, initialCategory = "general" }: F
                                 </div>
                             </div>
                             <p className="section-desc">
-                                Your recordings, transcripts and notes stay on this Mac. AI features talk directly to the
-                                provider you choose with your own key; noFriction has no servers.
+                                Recordings, transcripts and notes are stored on this Mac. Local and Apple on-device models
+                                support offline AI after setup. Optional cloud AI sends meeting content directly to your
+                                configured endpoint with your own optional key. Transcription remains on this Mac.
+                                noFriction offers no hosted models and receives none of this content.
                             </p>
                         </section>
                         <section className="settings-section">

@@ -84,9 +84,9 @@ function AboutPanel() {
             {/* Links */}
             <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '12px' }}>
                 <p style={{ marginBottom: '8px' }}>
-                    <a href="mailto:support@nofriction.ai" style={{ color: 'var(--accent-primary, #6366f1)', textDecoration: 'none' }}>support@nofriction.ai</a>
+                    <a href="mailto:casey@nofriction.io" style={{ color: 'var(--accent-primary, #6366f1)', textDecoration: 'none' }}>casey@nofriction.io</a>
                     {' • '}
-                    <a href="https://nofriction.ai" style={{ color: 'var(--accent-primary, #6366f1)', textDecoration: 'none' }}>nofriction.ai</a>
+                    <a href="https://nofriction.io" style={{ color: 'var(--accent-primary, #6366f1)', textDecoration: 'none' }}>nofriction.io</a>
                 </p>
                 <p style={{ margin: 0 }}>© 2026 noFriction AI. All rights reserved.</p>
             </div>

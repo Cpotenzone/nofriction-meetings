@@ -3,24 +3,27 @@
 Meeting recorder for **iPhone, iPad and Mac**. It records and transcribes on
 the device, matches each meeting to your calendar and its attendees, keeps
 photos (iOS) or screenshots (Mac) next to the transcript, and writes notes
-with **the AI you choose, using your own key**. No accounts, no noFriction
-servers, no analytics.
+with **Apple's on-device model or an AI endpoint you set up yourself**. No
+accounts, no noFriction servers, no analytics.
 
 | | iPhone / iPad | Mac |
 |---|---|---|
 | App | SwiftUI, iOS/iPadOS 18+ (`ios/`) | Tauri 2: Rust + React (`src-tauri/`, `src/`), macOS 12.3+ |
 | Version | 1.0.0 | 3.6.0 |
-| Transcription | Apple on-device speech | Local Whisper (default); optional cloud with your own key (Deepgram, Gladia, Google, Gemini) |
+| Transcription | Apple on-device speech | Local Whisper on the Mac (one-time model download); no cloud transcription |
 | Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |
 | AI (noFriction Pro) | Notes (summary, decisions, action items), follow-up email | Chat across meetings, live insights, after-meeting report, meeting prep brief, screenshot analysis |
 | Also | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Markdown share | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Obsidian export, JSON export |
 
-**AI providers** (paste a key; the provider is detected and checked): OpenAI
-(default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral,
-DeepSeek, Perplexity, Together; local Ollama, LM Studio or any
-OpenAI-compatible server; Apple's on-device model with no key (iOS/macOS 26+
-with Apple Intelligence). Keys live in the Keychain. The app asks before
-sending meeting content to a cloud provider for the first time.
+**AI** has two choices. **Apple on-device** (Foundation Models, iOS/macOS 26+
+with Apple Intelligence on and its model available) needs no key and keeps
+everything on the device. Or **your own endpoint**: you enter the base URL and
+model of one OpenAI-compatible server (for example Ollama or LM Studio on your
+own machine) and, if it needs one, your own key. There are no built-in service
+presets, no default remote URL and no key detection, and noFriction supplies no
+model, service or API key. A key you enter is stored in the Keychain, tied to
+that endpoint. The app asks before it sends meeting content to a public
+(non-local) endpoint. Spec: [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md).
 
 **Business model:** free download. Recording, transcription, calendar and
 people, photos/screens, search and export are free. AI features need the
@@ -45,7 +48,7 @@ For launch:
 For developers:
 - [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md): build, run, test
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the apps fit together
-- [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md): AI provider, key, consent and licensing spec (shared by both apps)
+- [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md): AI contract (Apple on-device or your own endpoint, keys, consent), shared by both apps
 - [docs/REDACTION.md](docs/REDACTION.md): Delete and "Strike from the record" spec
 - [ios/README.md](ios/README.md): iOS app file map and tests
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): release history
@@ -64,11 +67,12 @@ cd ios && xcodegen generate && open NoFriction.xcodeproj
 ```
 
 Requirements: macOS with Xcode, Rust (stable), Node.js 18+, XcodeGen. No API
-keys are needed to build; paste keys in the running app (never commit them).
+keys are needed to build. If your own AI endpoint needs a key, enter it in the
+running app (never commit it).
 Details: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
 
 ## Support
 
-support@nofriction.ai
+casey@nofriction.io
 
 © 2026 noFriction. All rights reserved.

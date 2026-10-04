@@ -2,143 +2,87 @@ import StoreKit
 import SwiftUI
 import UIKit
 
-// MARK: - Connect flow
+// MARK: - Endpoint setup
 
-/// Paste a key → detect the provider → validate by listing models → save to
-/// the Keychain → ask for consent.
+/// Store explicit routing input locally. No key detection, validation probe or model discovery.
 @MainActor
 @Observable
 final class AIConnectModel {
     enum Status: Equatable {
         case idle
-        case checking(String)
         case connected(String)
         case failed(String)
     }
 
-    var keyText = ""
-    var manualProvider: AIProvider = .openai
-    var status: Status = .idle
-
-    var serverProvider: AIProvider = .ollama {
-        didSet { serverURL = serverProvider.defaultBaseURL?.absoluteString ?? "" }
-    }
-    var serverURL = AIProvider.ollama.defaultBaseURL?.absoluteString ?? ""
+    var serverURL = ""
+    var serverModel = ""
     var serverKey = ""
-
-    /// Set after a successful connect when the provider still needs consent.
+    var status: Status = .idle
     var consentPrompt: AIProvider?
 
-    var normalizedKey: String { KeyDetector.normalize(keyText) }
-    var detected: AIProvider? { KeyDetector.detect(normalizedKey) }
-    var isBusy: Bool { if case .checking = status { true } else { false } }
+    var canSave: Bool {
+        !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !serverModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     func pasteFromClipboard() {
-        if let s = UIPasteboard.general.string { keyText = KeyDetector.normalize(s) }
+        if let s = UIPasteboard.general.string { serverKey = KeyDetector.normalize(s) }
     }
 
-    func connectKey(_ settings: AISettings) async {
-        let key = normalizedKey
-        guard !key.isEmpty else { status = .failed("Paste a key first."); return }
-        let candidates = KeyDetector.candidates(for: key).isEmpty ? [manualProvider] : KeyDetector.candidates(for: key)
-        var lastError: Error = AIError.notConfigured
-        for (i, p) in candidates.enumerated() {
-            status = .checking("Checking with \(p.name)…")
-            do {
-                let models = try await AIClient.shared.validate(AISettings.probe(p, key: key, baseURL: nil))
-                try settings.save(p, key: key, baseURL: nil, models: models)
-                keyText = ""
-                status = .connected("Connected to \(p.name)" + (settings.model(for: p.id).map { " · \($0)" } ?? ""))
-                if !settings.hasConsent(p) { consentPrompt = p }
-                return
-            } catch AIError.wrongKey(let m) where i < candidates.count - 1 {
-                lastError = AIError.wrongKey(m)   // an sk- key may be DeepSeek's: try the next one
-            } catch {
-                lastError = error
-                break
-            }
-        }
-        status = .failed(Redactor.redact(lastError.localizedDescription, secrets: [key]))
-    }
-
-    func connectServer(_ settings: AISettings) async {
-        guard let url = URLPolicy.parseBaseURL(serverURL) else { status = .failed("Enter the server's address."); return }
+    func saveEndpoint(_ settings: AISettings) {
+        guard let url = URLPolicy.parseBaseURL(serverURL) else { status = .failed("Enter your endpoint's base URL."); return }
         guard URLPolicy.isAllowed(url) else { status = .failed(AIError.insecureURL.localizedDescription); return }
+        let model = serverModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { status = .failed("Enter the model ID supplied by your endpoint."); return }
         let key = KeyDetector.normalize(serverKey)
-        let p = serverProvider
-        status = .checking("Checking \(url.host() ?? "server")…")
         do {
-            let models = try await AIClient.shared.validate(AISettings.probe(p, key: key.isEmpty ? nil : key, baseURL: url))
-            try settings.save(p, key: key.isEmpty ? nil : key, baseURL: url, models: models)
+            try settings.save(.custom, key: key.isEmpty ? nil : key, baseURL: url,
+                              models: [ModelInfo(id: model, contextTokens: nil)])
             serverKey = ""
-            let model = settings.model(for: p.id) ?? ""
-            status = .connected(model.isEmpty ? "Connected. Enter a model name below." : "Connected · \(model)")
-            if !settings.hasConsent(p) { consentPrompt = p }
+            status = .connected("Endpoint saved. It will be used when you request AI notes or a follow-up.")
+            if !settings.hasConsent(.custom) { consentPrompt = .custom }
         } catch {
             status = .failed(Redactor.redact(error.localizedDescription, secrets: [key]))
         }
     }
 }
 
-// MARK: - Paste-a-key card (Settings + setup sheet)
-
-struct AIKeySection: View {
+struct AIEndpointSection: View {
     @Environment(AISettings.self) private var settings
     @Bindable var model: AIConnectModel
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 12) {
-                SecureField("Paste your API key", text: $model.keyText)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.body.monospaced())
-                    .padding(12)
-                    .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .privacySensitive()
-                    .submitLabel(.go)
-                    .onSubmit { connect() }
-                    .accessibilityLabel("API key")
-                    .accessibilityHint("Paste a key from OpenAI, Anthropic, Gemini or another provider.")
-                    .accessibilityIdentifier("api-key-field")
-                HStack(spacing: 10) {
-                    Button("Paste", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Paste key")
-                        .accessibilityHint("Pastes an API key from the clipboard. The provider is detected from the key.")
-                    Button {
-                        connect()
-                    } label: {
-                        Label("Connect", systemImage: "bolt.horizontal")
-                    }
+            TextField("Base URL", text: $model.serverURL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .accessibilityIdentifier("ai-endpoint-url")
+            TextField("Model ID", text: $model.serverModel)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("ai-model-id")
+            SecureField("API key (optional)", text: $model.serverKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .privacySensitive()
+                .accessibilityLabel("API key, optional")
+                .accessibilityIdentifier("api-key-field")
+            HStack(spacing: 10) {
+                Button("Paste key", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
+                    .buttonStyle(.bordered)
+                Button("Save endpoint", systemImage: "checkmark") { model.saveEndpoint(settings) }
                     .buttonStyle(.borderedProminent)
-                    .foregroundStyle(.black)   // readable on hazard yellow
-                    .disabled(model.normalizedKey.isEmpty || model.isBusy)
-                    .accessibilityIdentifier("connect-key")
-                }
-                if !model.normalizedKey.isEmpty {
-                    if let p = model.detected {
-                        Label("Detected: \(p.name) key", systemImage: "checkmark.seal")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        Picker("Provider", selection: $model.manualProvider) {
-                            ForEach(AIProvider.cloud) { Text($0.name).tag($0) }
-                        }
-                        .font(.footnote)
-                    }
-                }
-                StatusLine(status: model.status)
+                    .foregroundStyle(.black)
+                    .disabled(!model.canSave)
+                    .accessibilityIdentifier("save-ai-endpoint")
             }
-            .padding(.vertical, 4)
+            StatusLine(status: model.status)
         } header: {
-            Text("Connect AI")
+            Text("Your AI endpoint")
         } footer: {
-            Text("OpenAI, Anthropic, Gemini, xAI, Groq, OpenRouter, Perplexity and more are detected from the key. Keys are stored in this device's Keychain and never sent anywhere except the provider.")
+            Text("Enter a base URL and model ID for your own OpenAI-compatible endpoint. The key is optional and stored only in this device's Keychain. Saving makes no network request. Remote endpoints need HTTPS; HTTP is allowed only on your device or private network.")
         }
-    }
-
-    private func connect() {
-        Task { await model.connectKey(settings) }
     }
 }
 
@@ -147,8 +91,6 @@ private struct StatusLine: View {
     var body: some View {
         switch status {
         case .idle: EmptyView()
-        case .checking(let s):
-            HStack(spacing: 8) { ProgressView(); Text(s) }.font(.footnote).foregroundStyle(.secondary)
         case .connected(let s):
             Label(s, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green)
                 .accessibilityIdentifier("connect-status")
@@ -170,13 +112,10 @@ struct AISetupSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("AI notes use your own AI account. Paste an API key; OpenAI is the default.")
+                    Text("Use Apple on-device when available, or enter your own AI endpoint and model. noFriction provides no hosted models.")
                         .font(.callout)
-                    if let url = AIProvider.openai.getKeyURL {
-                        Link("Get an OpenAI key", destination: url)
-                    }
                 }
-                AIKeySection(model: model)
+                AIEndpointSection(model: model)
                 if AppleOnDevice.isAvailable {
                     Section {
                         Button("Use Apple on-device (no key)") {
@@ -222,10 +161,9 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 activeSection
-                AIKeySection(model: connect)
+                AIEndpointSection(model: connect)
                 savedSection
                 recordingSection
-                serverSection
                 privacySection
                 subscriptionSection
                 aboutSection
@@ -268,39 +206,25 @@ struct SettingsView: View {
                 if p == .apple {
                     LabeledContent("Model", value: "Apple on-device")
                 } else if let saved = settings.saved[p.id] {
-                    let chat = saved.models.map(\.id).filter(ModelPicker.isChatCapable)
-                    if !chat.isEmpty {
-                        Picker("Model", selection: Binding(
-                            get: { saved.model },
-                            set: { settings.setModel($0, for: p) })) {
-                            ForEach(chat.contains(saved.model) || saved.model.isEmpty ? chat : [saved.model] + chat, id: \.self) {
-                                Text($0).tag($0)
-                            }
-                        }
-                    }
+                    LabeledContent("Model", value: saved.model)
                     HStack {
-                        TextField(chat.isEmpty ? "Model name" : "Other model ID", text: $customModel)
+                        TextField("New model ID", text: $customModel)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                         Button("Use") {
                             settings.setModel(customModel, for: p)
                             customModel = ""
                         }
-                        .disabled(customModel.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(customModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    if chat.isEmpty && saved.model.isEmpty {
-                        Text("Enter the model to use (for example, llama3.2).").font(.footnote).foregroundStyle(.orange)
-                    } else if !saved.model.isEmpty && !chat.contains(saved.model) {
-                        LabeledContent("Model", value: saved.model)
-                    }
-                    if p.editableBaseURL, let url = settings.baseURL(for: p) {
+                    if let url = settings.baseURL(for: p) {
                         LabeledContent("Server", value: url.absoluteString)
                     }
                 }
                 Text(whatLeaves(p))
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
-                Text("No AI provider yet. Paste a key below to turn on AI notes and follow-up emails.")
+                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your meetings are unchanged. Choose Apple on-device when available, or enter your endpoint and model below." : "Choose Apple on-device when available, or enter your endpoint and model below to use AI notes and follow-ups.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -332,58 +256,31 @@ struct SettingsView: View {
                         Button("Delete", role: .destructive) { settings.remove(p) }
                     }
                     .contextMenu {
-                        Button("Delete Key", systemImage: "trash", role: .destructive) { settings.remove(p) }
+                        Button("Delete connection", systemImage: "trash", role: .destructive) { settings.remove(p) }
                     }
                 }
                 if AppleOnDevice.isAvailable && settings.saved[AIProvider.apple.id] == nil {
                     Button("Use Apple on-device (no key)") { settings.useApple() }
                 }
             } header: {
-                Text("Saved providers")
+                Text("Saved connections")
             } footer: {
-                Text("Tap to make active. Swipe left to delete a key.")
+                Text("Tap to make active. Swipe left to delete a connection and its key.")
             }
-        }
-    }
-
-    private var serverSection: some View {
-        Section {
-            Picker("Type", selection: $connect.serverProvider) {
-                ForEach(AIProvider.selfHosted) { Text($0.name).tag($0) }
-            }
-            TextField("Server address", text: $connect.serverURL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-            SecureField("API key (optional)", text: $connect.serverKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .privacySensitive()
-            Button("Connect to server") { Task { await connect.connectServer(settings) } }
-                .disabled(connect.serverURL.isEmpty || connect.isBusy)
-        } header: {
-            Text("Your own server")
-        } footer: {
-            Text("Ollama, LM Studio, or any OpenAI-compatible endpoint. Plain http:// works only for this device, your local network or Tailscale; everything else needs https://. iOS will ask for Local Network access the first time.")
         }
     }
 
     @ViewBuilder private var privacySection: some View {
         Section {
-            Text("Audio, photos and transcripts are stored only on this device. Transcription runs on the device. When you use an AI feature, the meeting's text goes to the provider you chose, under that provider's terms. noFriction has no servers and receives nothing.")
+            Text("Audio, photos and transcripts are stored only on this device. Transcription runs on the device. Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, the meeting's text goes directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
                 .font(.footnote)
             ForEach(AIProvider.all.filter { settings.consented.contains($0.id) }) { p in
                 HStack {
-                    Text("Sharing allowed: \(p.name)")
+                    Text("Sharing allowed: \(settings.baseURL(for: p)?.host() ?? p.name)")
                     Spacer()
                     Button("Revoke", role: .destructive) { settings.revokeConsent(p) }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Revoke sharing with \(p.name)")
-                }
-            }
-            DisclosureGroup("Get an API key") {
-                ForEach(AIProvider.cloud) { p in
-                    if let url = p.getKeyURL { Link(p.name, destination: url) }
                 }
             }
         } header: {
@@ -443,7 +340,7 @@ struct SettingsView: View {
         guard let s = settings.saved[p.id] else { return "" }
         var parts: [String] = []
         if let l = s.last4 { parts.append("••••\(l)") }
-        if p.editableBaseURL, let host = settings.baseURL(for: p)?.host() { parts.append(host) }
+        if let host = settings.baseURL(for: p)?.host() { parts.append(host) }
         if !s.model.isEmpty { parts.append(s.model) }
         return parts.joined(separator: " · ")
     }
@@ -453,6 +350,6 @@ struct SettingsView: View {
         if !URLPolicy.needsConsent(provider: p, baseURL: settings.baseURL(for: p)) {
             return "AI requests go to your own server at \(settings.baseURL(for: p)?.host() ?? "your network"). Nothing goes to a cloud service."
         }
-        return "When you use AI, the transcript, meeting title, attendee names and invite notes go to \(p.name). Audio and photos stay on this device."
+        return "When you use AI, the transcript, meeting title, attendee names and invite notes go to \(settings.baseURL(for: p)?.host() ?? p.name). Audio and photos stay on this device."
     }
 }

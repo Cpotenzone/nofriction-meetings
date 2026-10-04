@@ -9,6 +9,7 @@ use crate::settings::SettingsManager;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
@@ -38,7 +39,7 @@ pub struct ModelInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProviderState {
-    /// Override for editable presets (custom / ollama / lmstudio)
+    /// User-entered endpoint for the custom connection
     #[serde(default)]
     pub base_url: Option<String>,
     #[serde(default)]
@@ -76,7 +77,7 @@ impl AiConfig {
         self.providers.entry(id.to_string()).or_default()
     }
 
-    /// Effective base URL for a provider (preset default or user override).
+    /// Effective address: Apple on-device marker or explicit custom URL.
     pub fn base_url(&self, id: &str) -> Option<String> {
         let p = preset(id)?;
         let over = self.providers.get(id).and_then(|s| s.base_url.clone()).filter(|u| !u.is_empty());
@@ -87,12 +88,7 @@ impl AiConfig {
         }
     }
 
-    /// Local = on this machine / LAN / tailnet: no consent needed.
-    ///
-    /// Decided by the *configured URL*, not the preset label: Ollama and
-    /// LM Studio let the user point the URL at any https host, and a remote
-    /// host is a cloud endpoint that needs consent like any other (mirrors
-    /// iOS `URLPolicy.needsConsent`). Apple on-device never leaves the Mac.
+    /// Locality is decided by the user-entered URL, never a service name.
     pub fn is_local(&self, id: &str) -> bool {
         match preset(id) {
             Some(p) if p.protocol == providers::Protocol::Apple => true,
@@ -100,6 +96,58 @@ impl AiConfig {
             Some(p) if p.id == "custom" => self.base_url(id).map(|u| providers::url_is_local(&u)).unwrap_or(false),
             _ => false,
         }
+    }
+
+    /// No credential is read from the old shared custom slot. The normalized
+    /// destination determines its Keychain account, including for stale snapshots.
+    pub fn credential_account(&self, id: &str) -> Option<String> {
+        if id != "custom" { return None; }
+        let base = providers::check_base_url(&self.base_url(id)?).ok()?;
+        Some(format!("custom:{}", format!("{:x}", Sha256::digest(base.as_bytes()))))
+    }
+
+    pub fn check_endpoint(&self, id: &str, expected: &str) -> Result<(), String> {
+        let current = self.base_url(id).ok_or("Set your endpoint first")?;
+        if providers::check_base_url(&current)? != providers::check_base_url(expected)? {
+            return Err("The AI endpoint changed. Review the current destination and try again.".into());
+        }
+        Ok(())
+    }
+
+    /// Called under the config read lock, so an endpoint transition cannot race
+    /// this expected-destination check and the Keychain write.
+    pub fn save_key_with<F>(&self, id: &str, expected: &str, write: F) -> Result<(), String>
+    where F: FnOnce(&str) -> Result<(), String> {
+        self.check_endpoint(id, expected)?;
+        let account = self.credential_account(id).ok_or("Configure a custom endpoint first")?;
+        write(&account)
+    }
+
+    /// Bind approval to the destination actually shown in the dialog.
+    pub fn grant_endpoint_consent(&mut self, id: &str, expected: &str) -> Result<(), String> {
+        if id != "custom" { return Err("Only an explicitly configured endpoint can receive this approval".into()); }
+        let expected = providers::check_base_url(expected)?;
+        let current = self.base_url(id).ok_or("Set your endpoint before granting consent")?;
+        if current != expected { return Err("The AI endpoint changed. Close this dialog and review the new destination.".into()); }
+        self.provider_mut(id).consent = true;
+        Ok(())
+    }
+
+    /// A new destination must not inherit credentials, consent or model selection.
+    /// `forget_key` is injected so this transition is testable without Keychain writes.
+    pub fn change_endpoint<F>(&mut self, id: &str, url: Option<String>, forget_key: F) -> Result<(), String>
+    where F: FnOnce() -> Result<(), String> {
+        if self.provider(id).base_url == url { return Ok(()); }
+        forget_key()?;
+        let st = self.provider_mut(id);
+        st.base_url = url;
+        st.consent = false;
+        st.models.clear();
+        st.model = None;
+        st.vision_model = None;
+        if self.text.as_ref().map_or(false, |s| s.provider == id) { self.text = None; }
+        if self.vision.as_ref().map_or(false, |s| s.provider == id) { self.vision = None; }
+        Ok(())
     }
 
     pub fn model_info(&self, provider: &str, model: &str) -> Option<ModelInfo> {
@@ -118,19 +166,28 @@ impl AiConfig {
     /// The selection for `kind`, applying the vision→text fallback: when no
     /// vision provider is chosen, use the text model if it might take images.
     pub fn selection(&self, kind: Kind) -> Option<Selection> {
+        let configured = |selection: &Selection| {
+            preset(&selection.provider).is_some()
+                && self.base_url(&selection.provider).map_or(false, |u| selection.provider == "apple" || providers::check_base_url(&u).is_ok())
+                && !selection.model.trim().is_empty()
+        };
         match kind {
-            // Key-less fallback: Apple's on-device model when nothing is set
-            // up and Apple Intelligence is available (macOS 26+).
-            Kind::Text => self.text.clone().or_else(apple_fallback),
-            Kind::Vision => self.vision.clone().or_else(|| {
-                let t = self.text.clone()?;
-                match self.vision_capable(&t.provider, &t.model) {
-                    Some(false) => None,
-                    _ => Some(t),
+            // Preserve saved records, but never fall through a removed selection
+            // to another service. Only a fresh/unselected config may use Apple.
+            Kind::Text => match &self.text {
+                Some(s) => configured(s).then(|| s.clone()),
+                None => apple_fallback(),
+            },
+            Kind::Vision => match &self.vision {
+                Some(s) => configured(s).then(|| s.clone()),
+                None => {
+                    let t = self.text.as_ref().filter(|s| configured(s))?;
+                    (self.vision_capable(&t.provider, &t.model) != Some(false)).then(|| t.clone())
                 }
-            }),
+            },
         }
     }
+
 }
 
 fn apple_fallback() -> Option<Selection> {
@@ -142,6 +199,10 @@ fn apple_fallback() -> Option<Selection> {
 
 static CONFIG: Lazy<RwLock<AiConfig>> = Lazy::new(|| RwLock::new(AiConfig::default()));
 static SETTINGS: OnceLock<Arc<SettingsManager>> = OnceLock::new();
+
+pub fn with_snapshot<T>(f: impl FnOnce(&AiConfig) -> T) -> T {
+    f(&CONFIG.read())
+}
 
 pub fn snapshot() -> AiConfig {
     CONFIG.read().clone()
@@ -178,8 +239,9 @@ async fn persist(cfg: &AiConfig) -> Result<(), String> {
     settings.set(SETTINGS_KEY, &json).await.map_err(|e| e.to_string())
 }
 
-pub fn api_key(provider: &str) -> Option<String> {
-    secrets::get(secrets::AI_SERVICE, provider)
+pub fn api_key(cfg: &AiConfig, provider: &str) -> Option<String> {
+    let account = cfg.credential_account(provider)?;
+    secrets::get(secrets::AI_SERVICE, &account)
 }
 
 /// Provider is usable: has a key when it needs one, and a base URL.
@@ -192,7 +254,7 @@ pub fn is_ready(cfg: &AiConfig, provider: &str) -> bool {
         return false;
     }
     match p.key {
-        KeyNeed::Required => api_key(provider).is_some(),
+        KeyNeed::Required => api_key(cfg, provider).is_some(),
         _ => true,
     }
 }
@@ -208,75 +270,11 @@ pub async fn init(settings: Arc<SettingsManager>) -> bool {
             false
         }
         None => {
-            let mut cfg = AiConfig::default();
-            // Carry over a custom Ollama host from the old VLM URL setting
-            // (it pointed at Ollama's native root; the OpenAI API is /v1).
-            if let Ok(Some(url)) = settings.get("vlm_base_url").await {
-                let url = url.trim().trim_end_matches('/');
-                if !url.is_empty() && !url.contains("targon.com") && !url.contains("localhost:11434") {
-                    let candidate = if url.ends_with("/v1") { url.to_string() } else { format!("{}/v1", url) };
-                    if let Ok(ok) = providers::check_base_url(&candidate) {
-                        // Carrying the URL over is fine (the user typed it),
-                        // but a non-private host is a cloud endpoint: it keeps
-                        // consent = false, so the first send asks, and
-                        // autodetect_local() won't auto-select it.
-                        log::info!("AI: carried over Ollama endpoint from old VLM URL setting");
-                        cfg.provider_mut("ollama").base_url = Some(ok);
-                    }
-                }
-            }
+            let cfg = AiConfig::default();
             *CONFIG.write() = cfg.clone();
             let _ = persist(&cfg).await;
             true
         }
-    }
-}
-
-/// The Ollama URL to probe for auto-selection, if any. Never one off the
-/// user's own machine/network: auto-selecting it would route meeting
-/// content to a remote host without the consent prompt (e.g. an old
-/// `vlm_base_url` pointing at a cloud host, carried over by `init`).
-fn autodetect_candidate(cfg: &AiConfig) -> Option<String> {
-    if cfg.text.is_some() {
-        return None;
-    }
-    let base = cfg.base_url("ollama")?;
-    if !cfg.is_local("ollama") {
-        log::info!("AI: carried-over Ollama URL is not local; not auto-selecting it (needs consent)");
-        return None;
-    }
-    Some(base)
-}
-
-/// First launch after the upgrade: if a local Ollama is running, select it so
-/// existing installs keep working without a key. Never picks a cloud
-/// provider automatically.
-pub async fn autodetect_local() {
-    let Some(base) = autodetect_candidate(&snapshot()) else { return };
-    match super::client::list_models("ollama", &base, None).await {
-        Ok(models) if !models.is_empty() => {
-            let ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
-            let p = preset("ollama").unwrap();
-            let Some(text) = providers::pick_default_model(p, &ids) else { return };
-            let vision = providers::pick_vision_model(p, &ids, Some(&text));
-            let _ = update(|c| {
-                let st = c.provider_mut("ollama");
-                st.models = models.clone();
-                st.model = Some(text.clone());
-                st.vision_model = vision.clone();
-                if c.text.is_none() {
-                    c.text = Some(Selection { provider: "ollama".into(), model: text.clone() });
-                }
-                if c.vision.is_none() {
-                    if let Some(v) = vision.clone() {
-                        c.vision = Some(Selection { provider: "ollama".into(), model: v });
-                    }
-                }
-            })
-            .await;
-            log::info!("AI: local Ollama found, using it for text ({})", text);
-        }
-        _ => log::info!("AI: no provider configured yet (add a key in Settings → AI Engine)"),
     }
 }
 
@@ -288,64 +286,104 @@ pub(crate) fn set_for_tests(cfg: AiConfig) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn credentials_are_endpoint_bound_and_stale_saves_are_rejected() {
+        let mut c = super::AiConfig::default();
+        c.provider_mut("custom").base_url = Some("https://first.example.com/v1".into());
+        let old_snapshot = c.clone();
+        let old_account = c.credential_account("custom").unwrap();
+        assert_ne!(old_account, "custom");
+        c.change_endpoint("custom", Some("https://second.example.com/v1".into()), || Ok(())).unwrap();
+        let new_account = c.credential_account("custom").unwrap();
+        assert_ne!(old_account, new_account);
+        // Resolving from an old snapshot can only select the old account, never
+        // the credential subsequently written for a different endpoint.
+        assert_eq!(old_snapshot.credential_account("custom").unwrap(), old_account);
+        assert!(c.save_key_with("custom", "https://first.example.com/v1", |_| panic!("must not write a stale dialog key")).is_err());
+        c.save_key_with("custom", "https://second.example.com/v1/", |account| { assert_eq!(account, new_account); Ok(()) }).unwrap();
+        assert!(c.check_endpoint("custom", "https://first.example.com/v1").is_err());
+        assert!(c.credential_account("gemini").is_none());
+        assert!(super::AiConfig::default().credential_account("custom").is_none());
+    }
+
+    #[test]
+    fn approval_is_bound_to_the_endpoint_shown() {
+        let mut c = super::AiConfig::default();
+        assert!(c.grant_endpoint_consent("custom", "https://first.example.com/v1").is_err());
+        c.provider_mut("custom").base_url = Some("https://first.example.com/v1".into());
+        assert!(c.grant_endpoint_consent("custom", "https://first.example.com/v1").is_ok());
+        c.change_endpoint("custom", Some("https://second.example.com/v1".into()), || Ok(())).unwrap();
+        assert!(c.grant_endpoint_consent("custom", "https://first.example.com/v1").is_err());
+        assert!(!c.provider("custom").consent);
+        assert!(c.grant_endpoint_consent("gemini", "https://second.example.com/v1").is_err());
+        assert!(c.grant_endpoint_consent("custom", "https://second.example.com/v1").is_ok());
+    }
+
     use super::*;
 
     #[test]
-    fn vision_falls_back_to_text_only_when_capable() {
-        let mut c = AiConfig::default();
-        c.text = Some(Selection { provider: "ollama".into(), model: "qwen3:8b".into() });
+    fn fresh_config_has_no_network_endpoint() {
+        let c = AiConfig::default();
+        assert!(c.base_url("custom").is_none());
         assert!(c.selection(Kind::Vision).is_none());
-        c.text = Some(Selection { provider: "openai".into(), model: "gpt-4o-mini".into() });
-        assert_eq!(c.selection(Kind::Vision).unwrap().model, "gpt-4o-mini");
-        c.vision = Some(Selection { provider: "ollama".into(), model: "qwen3-vl:8b".into() });
-        assert_eq!(c.selection(Kind::Vision).unwrap().provider, "ollama");
+        assert!(c.selection(Kind::Text).map_or(true, |s| s.provider == "apple"));
+        assert!(c.providers.is_empty());
     }
 
     #[test]
-    fn custom_locality_follows_url() {
+    fn legacy_named_selections_fail_closed_without_deleting_records() {
+        for id in ["gemini", "openai", "anthropic", "deepseek", "ollama", "lmstudio"] {
+            let mut c = AiConfig::default();
+            c.text = Some(Selection { provider: id.into(), model: "saved-model".into() });
+            c.vision = c.text.clone();
+            c.provider_mut(id).base_url = Some("https://legacy.example.com/v1".into());
+            c.provider_mut(id).consent = true;
+            assert!(c.base_url(id).is_none());
+            assert!(c.selection(Kind::Text).is_none());
+            assert!(c.selection(Kind::Vision).is_none());
+            assert_eq!(c.provider(id).base_url.as_deref(), Some("https://legacy.example.com/v1"));
+        }
+    }
+
+    #[test]
+    fn custom_selection_requires_explicit_endpoint_and_model() {
         let mut c = AiConfig::default();
-        assert!(!c.is_local("custom"));
-        c.provider_mut("custom").base_url = Some("http://192.168.1.5:8000/v1".into());
+        c.text = Some(Selection { provider: "custom".into(), model: "user-model".into() });
+        assert!(c.selection(Kind::Text).is_none());
+        c.provider_mut("custom").base_url = Some("http://127.0.0.1:8000/v1".into());
         assert!(c.is_local("custom"));
-        c.provider_mut("custom").base_url = Some("https://llm.example.com/v1".into());
+        assert!(c.selection(Kind::Text).is_some());
+        c.provider_mut("custom").base_url = Some("https://user.example.com/v1".into());
         assert!(!c.is_local("custom"));
-        assert!(c.is_local("ollama"));
-        assert!(c.is_local("lmstudio"));
-        assert!(c.is_local("apple"));
-        assert!(!c.is_local("openai"));
-        // Cloud presets ignore overrides
-        c.provider_mut("openai").base_url = Some("https://evil.example.com".into());
-        assert_eq!(c.base_url("openai").unwrap(), "https://api.openai.com/v1");
+        assert!(!c.provider("custom").consent);
+        c.text.as_mut().unwrap().model.clear();
+        assert!(c.selection(Kind::Text).is_none());
+    }
+    #[test]
+    fn endpoint_change_forgets_the_old_key_and_consent_before_activation() {
+        let mut c = AiConfig::default();
+        c.provider_mut("custom").base_url = Some("https://first.example.com/v1".into());
+        c.provider_mut("custom").consent = true;
+        c.provider_mut("custom").model = Some("old-model".into());
+        c.text = Some(Selection { provider: "custom".into(), model: "old-model".into() });
+        let mut key_present = true;
+        c.change_endpoint("custom", Some("https://second.example.com/v1".into()), || { key_present = false; Ok(()) }).unwrap();
+        assert!(!key_present);
+        assert!(!c.provider("custom").consent);
+        assert!(c.provider("custom").model.is_none());
+        assert!(c.text.is_none());
+        c.change_endpoint("custom", Some("https://second.example.com/v1".into()), || panic!("same URL must retain its key")).unwrap();
+        assert!(c.change_endpoint("custom", Some("https://third.example.com/v1".into()), || Err("Keychain deletion failed".into())).is_err());
+        assert_eq!(c.base_url("custom").as_deref(), Some("https://second.example.com/v1"));
     }
 
     #[test]
-    fn local_presets_with_remote_url_need_consent() {
+    fn invalid_saved_custom_url_cannot_become_active() {
         let mut c = AiConfig::default();
-        // Preset default (localhost) and LAN/tailnet overrides stay local
-        assert!(c.is_local("ollama"));
-        c.provider_mut("ollama").base_url = Some("http://10.0.0.7:11434/v1".into());
-        assert!(c.is_local("ollama"));
-        c.provider_mut("ollama").base_url = Some("http://box.local:11434/v1".into());
-        assert!(c.is_local("ollama"));
-        // A public host behind the "local" preset is cloud: consent required
-        c.provider_mut("ollama").base_url = Some("https://ollama.example.com/v1".into());
-        assert!(!c.is_local("ollama"));
-        c.provider_mut("lmstudio").base_url = Some("https://lm.example.com/v1".into());
-        assert!(!c.is_local("lmstudio"));
-        // Back to the preset default -> local again
-        c.provider_mut("ollama").base_url = None;
-        assert!(c.is_local("ollama"));
+        c.provider_mut("custom").base_url = Some("http://public.example.com/v1".into());
+        c.provider_mut("custom").consent = true;
+        c.text = Some(Selection { provider: "custom".into(), model: "saved".into() });
+        assert!(c.selection(Kind::Text).is_none());
     }
 
-    #[test]
-    fn autodetect_never_selects_a_remote_carried_over_url() {
-        let mut c = AiConfig::default();
-        assert_eq!(autodetect_candidate(&c).as_deref(), Some("http://localhost:11434/v1"));
-        c.provider_mut("ollama").base_url = Some("http://192.168.1.20:11434/v1".into());
-        assert!(autodetect_candidate(&c).is_some());
-        // An old vlm_base_url on a public host, migrated by init()
-        c.provider_mut("ollama").base_url = Some("https://gpu.example.com/v1".into());
-        assert!(autodetect_candidate(&c).is_none());
-        assert!(!c.provider("ollama").consent);
-    }
 }

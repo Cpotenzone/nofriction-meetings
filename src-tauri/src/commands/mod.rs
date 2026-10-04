@@ -611,74 +611,7 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
     {
         // Use transcription manager
         let tm = &state.transcription_manager;
-        let mut provider_type = tm.get_provider_type();
-
-        // Local Whisper needs no API key — never fall back away from it
-        let needs_key = provider_type != ProviderType::Local;
-
-        // Check if the current provider has a stored key (already loaded at startup)
-        let has_key = tm.has_key_for_provider(provider_type);
-
-        if needs_key && !has_key {
-            log::warn!(
-                "No API key stored for {:?} — checking other providers for fallback",
-                provider_type
-            );
-
-            // Try to auto-switch to a provider that has a key
-            let fallback_providers = [
-                ProviderType::Deepgram,
-                ProviderType::Gemini,
-                ProviderType::Gladia,
-                ProviderType::GoogleSTT,
-            ];
-
-            let mut found_fallback = false;
-            for alt in &fallback_providers {
-                if *alt != provider_type && tm.has_key_for_provider(*alt) {
-                    log::info!(
-                        "Auto-switching transcription from {:?} to {:?} (has key)",
-                        provider_type,
-                        alt
-                    );
-                    tm.switch_provider(*alt);
-                    provider_type = *alt;
-                    // Also persist the switch
-                    let provider_str = match alt {
-                        ProviderType::Deepgram => "deepgram",
-                        ProviderType::Gemini => "gemini",
-                        ProviderType::Gladia => "gladia",
-                        ProviderType::GoogleSTT => "google_stt",
-                        ProviderType::Local => "local",
-                    };
-                    let _ = state
-                        .settings
-                        .set_transcription_provider(provider_str)
-                        .await;
-                    found_fallback = true;
-                    break;
-                }
-            }
-
-            if !found_fallback {
-                // Last resort: local Whisper if a model is installed (offline, keyless)
-                if crate::transcription::local_whisper::resolve_model_path().is_ok() {
-                    log::info!("No cloud API keys — falling back to Local Whisper (offline)");
-                    tm.switch_provider(ProviderType::Local);
-                    provider_type = ProviderType::Local;
-                    let _ = state.settings.set_transcription_provider("local").await;
-                } else {
-                    log::warn!(
-                        "No transcription API key configured for any provider - transcription disabled"
-                    );
-                }
-            }
-        }
-
-        log::info!(
-            "Setting up Transcription connection for {:?}...",
-            provider_type
-        );
+        // Local transcription only. Never auto-select a service from saved keys.
         tm.set_context(
             app.clone(),
             state.database.clone(),
@@ -1511,176 +1444,14 @@ pub async fn set_monitor(monitor_id: u32, state: State<'_, AppState>) -> Result<
     Ok(())
 }
 
-/// Set the Deepgram API key (persisted)
+/// Local transcription is the only supported engine. Retired cloud ids fail closed.
 #[tauri::command(rename_all = "camelCase")]
-pub async fn set_deepgram_api_key(
-    api_key: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    // Store on the per-provider key map (survives provider switches)
-    state
-        .transcription_manager
-        .set_api_key_for_provider(ProviderType::Deepgram, api_key.clone());
-
-    state
-        .settings
-        .set_deepgram_api_key(&api_key)
-        .await
-        .map_err(|e| format!("Failed to save API key: {}", e))?;
-
-    log::info!("Deepgram API key saved and applied");
-    Ok(())
-}
-
-/// Set the Deepgram Model
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_deepgram_model(model: String, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .settings
-        .set_deepgram_model(&model)
-        .await
-        .map_err(|e| format!("Failed to save settings: {}", e))?;
-    Ok(())
-}
-
-/// Get the Deepgram Model
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_deepgram_model(state: State<'_, AppState>) -> Result<Option<String>, String> {
-    state
-        .settings
-        .get_deepgram_model()
-        .await
-        .map_err(|e| format!("Failed to get settings: {}", e))
-}
-
-/// Set the Gemini API key
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_gemini_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), String> {
-    // Store on the per-provider key map (survives provider switches)
-    state
-        .transcription_manager
-        .set_api_key_for_provider(ProviderType::Gemini, api_key.clone());
-
-    state
-        .settings
-        .set_gemini_api_key(&api_key)
-        .await
-        .map_err(|e| format!("Failed to save API key: {}", e))?;
-
-    log::info!("Gemini API key saved and applied");
-    Ok(())
-}
-
-/// Get the Gemini API key (masked)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_gemini_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
-    state
-        .settings
-        .get("gemini_api_key")
-        .await
-        .map(|opt| crate::secrets::masked(opt.as_deref()))
-        .map_err(|e| format!("Failed to get settings: {}", e))
-}
-
-/// Set the Gemini Model
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_gemini_model(model: String, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .settings
-        .set_gemini_model(&model)
-        .await
-        .map_err(|e| format!("Failed to save settings: {}", e))?;
-    Ok(())
-}
-
-/// Get the Gemini Model
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_gemini_model(state: State<'_, AppState>) -> Result<Option<String>, String> {
-    state
-        .settings
-        .get_gemini_model()
-        .await
-        .map_err(|e| format!("Failed to get settings: {}", e))
-}
-
-/// Set the Gladia API key
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_gladia_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), String> {
-    // Store on the per-provider key map (survives provider switches)
-    state
-        .transcription_manager
-        .set_api_key_for_provider(ProviderType::Gladia, api_key.clone());
-
-    state
-        .settings
-        .set_gladia_api_key(&api_key)
-        .await
-        .map_err(|e| format!("Failed to save API key: {}", e))?;
-
-    log::info!("Gladia API key saved and applied");
-    Ok(())
-}
-
-/// Set the Google STT key
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_google_stt_key(
-    key_json: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    // Store on the per-provider key map (survives provider switches)
-    state
-        .transcription_manager
-        .set_api_key_for_provider(ProviderType::GoogleSTT, key_json.clone());
-
-    state
-        .settings
-        .set_google_stt_key(&key_json)
-        .await
-        .map_err(|e| format!("Failed to save API key: {}", e))?;
-
-    log::info!("Google STT key saved and applied");
-    Ok(())
-}
-
-/// Set active transcription provider
-#[tauri::command(rename_all = "camelCase")]
-pub async fn set_active_provider(
-    provider: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    use crate::transcription::ProviderType;
-
-    let p_type = match provider.as_str() {
-        "deepgram" => ProviderType::Deepgram,
-        "gemini" => ProviderType::Gemini,
-        "gladia" => ProviderType::Gladia,
-        "google_stt" => ProviderType::GoogleSTT,
-        "local" => ProviderType::Local,
-        _ => return Err("Invalid provider".to_string()),
-    };
-
-    state.transcription_manager.switch_provider(p_type);
-
-    state
-        .settings
-        .set_transcription_provider(&provider)
-        .await
-        .map_err(|e| format!("Failed to save setting: {}", e))?;
-
-    log::info!("Transcription provider set to: {}", provider);
-    Ok(())
-}
-
-/// Get the Deepgram API key (masked for display)
-#[tauri::command(rename_all = "camelCase")]
-pub async fn get_deepgram_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
-    let key = state
-        .settings
-        .get_deepgram_api_key()
-        .await
-        .map_err(|e| format!("Failed to get API key: {}", e))?;
-
-    Ok(crate::secrets::masked(key.as_deref()))
+pub async fn set_active_provider(provider: String, state: State<'_, AppState>) -> Result<(), String> {
+    if provider != "local" {
+        return Err("Only local Whisper transcription is supported. Configure AI endpoints separately.".into());
+    }
+    state.transcription_manager.switch_provider(ProviderType::Local);
+    state.settings.set_transcription_provider("local").await.map_err(|e| e.to_string())
 }
 
 /// Get all settings. Secret values are never returned; see `secret_status`.
@@ -3464,26 +3235,7 @@ pub async fn start_realtime_transcription(
     log::info!("🎤 Starting real-time transcription for: {}", meeting_id);
     let tm = state.transcription_manager.clone();
 
-    // Load API key from settings and set it on the provider
-    let provider_type = tm.get_provider_type();
-    let api_key = match provider_type {
-        ProviderType::Deepgram => state.settings.get_deepgram_api_key().await.ok().flatten(),
-        ProviderType::Gemini => state.settings.get_gemini_api_key().await.ok().flatten(),
-        ProviderType::Gladia => state.settings.get_gladia_api_key().await.ok().flatten(),
-        ProviderType::GoogleSTT => state.settings.get_google_stt_key().await.ok().flatten(),
-        ProviderType::Local => None, // no key needed — fully offline
-    };
-
-    if let Some(key) = api_key {
-        tm.set_api_key(key);
-        log::info!("Loaded API key for {:?} from settings", provider_type);
-    } else if provider_type != ProviderType::Local {
-        log::warn!(
-            "No API key found in settings for {:?} - transcription will fail",
-            provider_type
-        );
-        return Err(format!("No API key configured for {:?}", provider_type));
-    }
+    crate::transcription::local_whisper::resolve_model_path()?;
 
     // Set context so the provider has app_handle, database, meeting_id, etc.
     tm.set_context(

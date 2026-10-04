@@ -31,7 +31,7 @@ pub struct ProviderInfo {
 fn provider_info(cfg: &config::AiConfig, id: &str) -> Option<ProviderInfo> {
     let p = preset(id)?;
     let st = cfg.provider(id);
-    let key_status = secrets::status(secrets::AI_SERVICE, id);
+    let key_status = secrets::status_of(config::api_key(cfg, id).as_deref());
     let local = cfg.is_local(id);
     let apple = p.protocol == Protocol::Apple;
     let configured = match p.key {
@@ -90,107 +90,39 @@ pub struct SaveKeyResult {
     pub last4: Option<String>,
 }
 
-/// Detect → validate (list models) → store in Keychain → pick default model
-/// → make active. Errors are classed strings (AI_WRONG_KEY:, …).
+/// Save a user-supplied custom-endpoint key locally. No detection or network probe.
 #[tauri::command(rename_all = "camelCase")]
-pub async fn ai_save_key(key: String, provider: Option<String>) -> Result<SaveKeyResult, String> {
+pub async fn ai_save_key(key: String, provider: Option<String>, expected_base_url: String) -> Result<SaveKeyResult, String> {
+    if provider.as_deref() != Some("custom") {
+        return Err("AI_NO_PROVIDER: Enter your custom endpoint URL first. Keys never select a service.".into());
+    }
     let key = providers::normalize_key(&key);
     providers::validate_key_shape(&key)?;
-    let detection = providers::detect_provider(&key);
-    let explicit = provider.filter(|p| !p.is_empty());
-    let mut provider_id = explicit
-        .clone()
-        .or(detection.provider.clone())
-        .ok_or("UNKNOWN_PROVIDER: We couldn't tell which service this key is for. Pick the provider from the list.")?;
-    let p = preset(&provider_id).ok_or("Unknown provider")?;
-    if p.key == KeyNeed::None {
-        return Err(format!("{} runs locally and doesn't use an API key.", p.name));
-    }
-    let cfg = config::snapshot();
-    let base = cfg
-        .base_url(&provider_id)
-        .ok_or("AI_BAD_URL: Set the endpoint URL for the custom provider first.")?;
-
-    let mut result = client::list_models(&provider_id, &base, Some(&key)).await;
-    // A bare sk- key may be DeepSeek: try once before giving up
-    if matches!(result, Err(AiError::WrongKey(_)))
-        && explicit.is_none()
-        && detection.alternatives.iter().any(|a| a == "deepseek")
-    {
-        let ds_base = cfg.base_url("deepseek").unwrap_or_default();
-        if let Ok(models) = client::list_models("deepseek", &ds_base, Some(&key)).await {
-            provider_id = "deepseek".into();
-            result = Ok(models);
-        }
-    }
-    let models = result.map_err(String::from)?;
-    let p = preset(&provider_id).unwrap();
-
-    secrets::set(secrets::AI_SERVICE, &provider_id, &key)?;
-
-    let ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
-    let st = cfg.provider(&provider_id);
-    let model = st
-        .model
-        .clone()
-        .filter(|m| ids.contains(m))
-        .or_else(|| providers::pick_default_model(p, &ids));
-    let vision_model = st
-        .vision_model
-        .clone()
-        .filter(|m| ids.contains(m))
-        .or_else(|| {
-            let cap = |m: &str| {
-                models
-                    .iter()
-                    .find(|x| x.id == m)
-                    .and_then(|x| x.vision)
-                    .or_else(|| providers::supports_vision(&provider_id, m))
-            };
-            match model.as_deref() {
-                Some(t) if cap(t) == Some(true) => Some(t.to_string()),
-                _ => ids.iter().find(|m| providers::is_chat_model(m) && cap(m) == Some(true)).cloned(),
-            }
-        });
-
-    let pid = provider_id.clone();
-    let cfg = config::update(|c| {
-        let st = c.provider_mut(&pid);
-        st.models = models.clone();
-        st.model = model.clone();
-        st.vision_model = vision_model.clone();
-        // Connecting a provider makes it the active one
-        if let Some(m) = model.clone() {
-            c.text = Some(Selection { provider: pid.clone(), model: m });
-        }
-        match vision_model.clone() {
-            Some(v) => c.vision = Some(Selection { provider: pid.clone(), model: v }),
-            None => {
-                if c.vision.as_ref().map_or(false, |s| s.provider == pid) {
-                    c.vision = None;
-                }
-            }
-        }
-    })
-    .await?;
-
-    log::info!("AI: connected {} ({} models, default {:?})", p.name, ids.len(), model);
+    let cfg = config::with_snapshot(|cfg| {
+        cfg.save_key_with("custom", &expected_base_url, |account| secrets::set(secrets::AI_SERVICE, account, &key))?;
+        Ok::<_, String>(cfg.clone())
+    })?;
+    let st = cfg.provider("custom");
     Ok(SaveKeyResult {
-        provider: provider_id.clone(),
-        name: p.name.to_string(),
-        models: ids,
-        model,
-        vision_model,
-        needs_consent: !cfg.is_local(&provider_id) && !cfg.provider(&provider_id).consent,
-        last4: secrets::status(secrets::AI_SERVICE, &provider_id).last4,
+        provider: "custom".into(),
+        name: "Custom endpoint".into(),
+        models: st.models.iter().map(|m| m.id.clone()).collect(),
+        model: st.model,
+        vision_model: st.vision_model,
+        needs_consent: !cfg.is_local("custom") && !st.consent,
+        last4: secrets::status_of(Some(&key)).last4,
     })
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn ai_delete_key(provider: String) -> Result<AiStatus, String> {
     preset(&provider).ok_or("Unknown provider")?;
-    secrets::delete(secrets::AI_SERVICE, &provider)?;
+    let mut deleted = Ok(());
     config::update(|c| {
+        if let Some(account) = c.credential_account(&provider) {
+            deleted = secrets::delete(secrets::AI_SERVICE, &account);
+            if deleted.is_err() { return; }
+        }
         if c.text.as_ref().map_or(false, |s| s.provider == provider) {
             c.text = None;
         }
@@ -204,6 +136,7 @@ pub async fn ai_delete_key(provider: String) -> Result<AiStatus, String> {
         st.vision_model = None;
     })
     .await?;
+    deleted?;
     log::info!("AI: removed key for {}", provider);
     ai_status().await
 }
@@ -219,10 +152,10 @@ pub async fn ai_set_active(provider: String, model: Option<String>, kind: Kind) 
     let model = model
         .map(|m| m.trim().to_string())
         .filter(|m| !m.is_empty())
-        .or(match kind {
+        .or(if p.protocol == Protocol::Apple { Some(providers::APPLE_MODEL.into()) } else { match kind {
             Kind::Text => st.model.clone(),
             Kind::Vision => st.vision_model.clone().or(st.model.clone()),
-        })
+        } })
         .ok_or("Pick a model")?;
     if model.len() > 200 || model.chars().any(|c| c.is_control()) {
         return Err("That isn't a valid model name".into());
@@ -262,36 +195,29 @@ pub async fn ai_set_custom_endpoint(provider: String, base_url: String) -> Resul
         return Err(format!("{}'s endpoint is fixed.", p.name));
     }
     let url = if base_url.trim().is_empty() {
-        None // back to the preset default
+        None // no endpoint; there is no network default
     } else {
         Some(providers::check_base_url(&base_url)?)
     };
-    let changed = config::snapshot().provider(&provider).base_url != url;
+    let mut result = Ok(());
     config::update(|c| {
-        let st = c.provider_mut(&provider);
-        st.base_url = url.clone();
-        if changed {
-            // A different server: re-ask consent and refresh models
-            st.consent = false;
-            st.models.clear();
-        }
-    })
-    .await?;
+        let old_account = c.credential_account(&provider);
+        result = c.change_endpoint(&provider, url.clone(), || {
+            if let Some(account) = old_account { secrets::delete(secrets::AI_SERVICE, &account) } else { Ok(()) }
+        });
+    }).await?;
+    result?;
     provider_info(&config::snapshot(), &provider).ok_or_else(|| "Unknown provider".into())
 }
 
-fn key_for(provider: &str) -> Option<String> {
-    config::api_key(provider)
-}
-
 /// Fetch the model list (uses the saved key). Also refreshes the cache.
-/// For keyless providers (Ollama/LM Studio/custom) this is the "connect".
+/// This is an explicit user-requested model refresh, never a startup probe.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn ai_list_models(provider: String) -> Result<Vec<ModelInfo>, String> {
     let p = preset(&provider).ok_or("Unknown provider")?;
     let cfg = config::snapshot();
     let base = cfg.base_url(&provider).ok_or("AI_BAD_URL: Set the endpoint URL first.")?;
-    let key = key_for(&provider);
+    let key = config::api_key(&cfg, &provider);
     if p.key == KeyNeed::Required && key.is_none() {
         return Err(AiError::NoKey(p.name.to_string()).to_string());
     }
@@ -300,7 +226,12 @@ pub async fn ai_list_models(provider: String) -> Result<Vec<ModelInfo>, String> 
     let default = providers::pick_default_model(p, &ids);
     let vision = providers::pick_vision_model(p, &ids, default.as_deref());
     let m2 = models.clone();
+    let mut destination_unchanged = Ok(());
     config::update(|c| {
+        if provider == "custom" {
+            destination_unchanged = c.check_endpoint(&provider, &base);
+            if destination_unchanged.is_err() { return; }
+        }
         let st = c.provider_mut(&provider);
         st.models = m2;
         if st.model.as_ref().map_or(true, |m| !ids.contains(m)) {
@@ -311,6 +242,7 @@ pub async fn ai_list_models(provider: String) -> Result<Vec<ModelInfo>, String> 
         }
     })
     .await?;
+    destination_unchanged?;
     Ok(models)
 }
 
@@ -367,9 +299,11 @@ pub async fn ai_test(provider: String) -> Result<TestResult, String> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn ai_grant_consent(provider: String) -> Result<AiStatus, String> {
+pub async fn ai_grant_consent(provider: String, expected_base_url: String) -> Result<AiStatus, String> {
     preset(&provider).ok_or("Unknown provider")?;
-    config::update(|c| c.provider_mut(&provider).consent = true).await?;
+    let mut result = Ok(());
+    config::update(|c| result = c.grant_endpoint_consent(&provider, &expected_base_url)).await?;
+    result?;
     log::info!("AI: user allowed sending meeting content to {}", provider);
     ai_status().await
 }
