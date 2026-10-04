@@ -191,8 +191,10 @@ Meeting removes the file; export and People work unchanged.
 **UI:** an Apple Watch mark on the meeting in Meetings and "Recorded on Apple
 Watch" in its detail; "Transcribing…" / "Not transcribed" in the list and a
 progress card (or Retry) in the transcript section; Settings → **Apple Watch**
-shows paired / app installed / waiting to transcribe (hidden where
-WatchConnectivity isn't supported, e.g. iPad).
+shows paired / app installed / arriving from the watch (a paused recording
+with parts still on the way) / waiting to transcribe (hidden where
+WatchConnectivity isn't supported, e.g. iPad). The iPhone can't see the
+watch's own queue; the watch's Recordings page shows what it still has to send.
 
 ## Testing
 

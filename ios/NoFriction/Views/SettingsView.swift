@@ -372,6 +372,10 @@ struct AppleWatchSection: View {
                     LabeledContent("noFriction on the watch", value: link.isWatchAppInstalled ? "Installed" : "Not installed")
                         .accessibilityIdentifier("watch-app-installed")
                 }
+                if link.arrivingCount > 0 {
+                    LabeledContent("Arriving from the watch", value: "\(link.arrivingCount)")
+                        .accessibilityIdentifier("watch-arriving")
+                }
                 LabeledContent("Waiting to transcribe", value: "\(importing.count)")
                     .accessibilityIdentifier("watch-pending")
             } header: {
@@ -379,6 +383,7 @@ struct AppleWatchSection: View {
             } footer: {
                 Text(footer)
             }
+            .onAppear { link.refreshInbox() }
         }
     }
 

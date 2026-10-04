@@ -16,8 +16,9 @@ final class PhoneWatchLink: NSObject {
     private(set) var activated = false
     private(set) var isPaired = false
     private(set) var isWatchAppInstalled = false
-    /// Files the watch is still sending us (as far as this end can know: received, not yet imported)
-    private(set) var lastReceivedAt: Date?
+    /// Recordings partly received (a paused recording whose other parts are
+    /// still on their way) or not yet imported
+    private(set) var arrivingCount = 0
 
     @ObservationIgnored var importer: WatchImporter?
 
@@ -30,15 +31,19 @@ final class PhoneWatchLink: NSObject {
     /// A recording was staged in the inbox: import it, and transcribe while
     /// the system gives us time. Anything left resumes in the foreground.
     func received() {
-        lastReceivedAt = .now
         guard let importer else { return }
         importer.processInbox()
+        refreshInbox()
         let box = BackgroundTaskBox()
         box.id = UIApplication.shared.beginBackgroundTask(withName: "Import Apple Watch recording") { [weak importer] in
             importer?.cancel()
             box.end()
         }
         importer.resume { box.end() }
+    }
+
+    func refreshInbox() {
+        arrivingCount = WatchInbox.shared.recordingCount
     }
 
     private func refresh(_ state: SessionState) {
