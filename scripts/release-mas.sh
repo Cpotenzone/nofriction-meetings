@@ -10,6 +10,7 @@
 # Full guide: docs/MAC_APP_STORE_BUILD.md
 #
 # Usage:
+#   scripts/release-mas.sh --check         # validate prerequisites; no build/sign/upload
 #   scripts/release-mas.sh                 # release build → dist-mas/*.pkg
 #   scripts/release-mas.sh --upload        # ... and upload to App Store Connect
 #   scripts/release-mas.sh --local-test    # sandboxed .app for a local launch test
@@ -54,16 +55,19 @@ MAS_CONF="$TAURI_DIR/tauri.mas.conf.json"
 ENTITLEMENTS="$TAURI_DIR/entitlements.mas.plist"
 PROFILE="$TAURI_DIR/embedded.provisionprofile"
 BUILD_NUMBER_FILE="$TAURI_DIR/build_number.txt"
-OUTPUT_DIR="$PROJECT_ROOT/dist-mas"
+OUTPUT_DIR="${NF_MAS_OUTPUT_DIR:-$PROJECT_ROOT/dist-mas}"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$TAURI_DIR/target}"
 TEAM_ID="C7GCEESE2V"
+AUDIT_PYTHON="${NF_AUDIT_PYTHON:-python3}"
 
 MAS_SIGNING_IDENTITY="${MAS_SIGNING_IDENTITY:-Apple Distribution: casey potenzone (C7GCEESE2V)}"
 MAS_INSTALLER_IDENTITY="${MAS_INSTALLER_IDENTITY:-3rd Party Mac Developer Installer: casey potenzone (C7GCEESE2V)}"
 ALTOOL_KEYCHAIN_ITEM="${ALTOOL_KEYCHAIN_ITEM:-AC_PASSWORD}"
 
-LOCAL_TEST=0; UPLOAD=0; UNIVERSAL=0; SKIP_BUILD=0
+LOCAL_TEST=0; UPLOAD=0; UNIVERSAL=0; SKIP_BUILD=0; CHECK_ONLY=0
 for arg in "$@"; do
     case "$arg" in
+        --check) CHECK_ONLY=1 ;;
         --local-test) LOCAL_TEST=1 ;;
         --upload) UPLOAD=1 ;;
         --universal) UNIVERSAL=1 ;;
@@ -82,10 +86,10 @@ BUNDLE_ID=$(json "$TAURI_CONF" "['identifier']")
 
 if [[ $UNIVERSAL == 1 ]]; then
     TARGET_ARGS=(--target universal-apple-darwin)
-    BUNDLE_DIR="$TAURI_DIR/target/universal-apple-darwin/release/bundle/macos"
+    BUNDLE_DIR="$CARGO_TARGET_DIR/universal-apple-darwin/release/bundle/macos"
 else
     TARGET_ARGS=()
-    BUNDLE_DIR="$TAURI_DIR/target/release/bundle/macos"
+    BUNDLE_DIR="$CARGO_TARGET_DIR/release/bundle/macos"
 fi
 APP_PATH="$BUNDLE_DIR/$APP_NAME.app"
 TMP_DIR="$(mktemp -d -t nofriction-mas)"
@@ -95,6 +99,8 @@ have_identity() { security find-identity -v -p "$2" 2>/dev/null | grep -qF "\"$1
 
 # ---------------------------------------------------------------------------
 preflight() {
+    "$AUDIT_PYTHON" "$SCRIPT_DIR/check-ai-provider-policy.py" || log_error "AI source policy failed"
+    "$AUDIT_PYTHON" -c "import brotli" || log_error "Credential audit needs Python Brotli; set NF_AUDIT_PYTHON to an interpreter that has it"
     for tool in npx cargo codesign xcrun productbuild pkgutil python3 security /usr/libexec/PlistBuddy; do
         command -v "$tool" >/dev/null 2>&1 || log_error "$tool not found"
     done
@@ -118,6 +124,7 @@ preflight() {
         check_profile
         SIGN_IDENTITY="$MAS_SIGNING_IDENTITY"
     fi
+    if [[ $UPLOAD == 1 ]]; then upload_auth; fi
     log_success "Preflight OK ($APP_NAME $APP_VERSION, $BUNDLE_ID)"
 }
 
@@ -127,6 +134,18 @@ check_profile() {
     local app_id; app_id=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$plist" 2>/dev/null || true)
     [[ "$app_id" == "$TEAM_ID.$BUNDLE_ID" ]] || log_error "Profile is for '$app_id', expected '$TEAM_ID.$BUNDLE_ID'"
     local expires; expires=$(/usr/libexec/PlistBuddy -c "Print :ExpirationDate" "$plist")
+    python3 - "$plist" "$TEAM_ID" <<'PROFILE_CHECK' || log_error "Invalid distribution profile"
+import datetime, plistlib, sys
+with open(sys.argv[1], "rb") as stream:
+    profile = plistlib.load(stream)
+expires = profile.get("ExpirationDate")
+if not isinstance(expires, datetime.datetime) or expires.replace(tzinfo=datetime.timezone.utc) <= datetime.datetime.now(datetime.timezone.utc):
+    sys.exit("Provisioning profile is expired or has no expiration date")
+if sys.argv[2] not in profile.get("TeamIdentifier", []):
+    sys.exit("Provisioning profile team does not match the release team")
+if profile.get("Entitlements", {}).get("get-task-allow", False):
+    sys.exit("Provisioning profile permits debugging; use a distribution profile")
+PROFILE_CHECK
     if /usr/libexec/PlistBuddy -c "Print :ProvisionedDevices" "$plist" >/dev/null 2>&1; then
         log_error "Profile lists devices (development profile). Use a 'Mac App Store Connect' distribution profile."
     fi
@@ -240,41 +259,60 @@ verify() {
     if ! otool -l "$bin" | grep -A2 LC_LOAD_WEAK_DYLIB | grep -q FoundationModels; then
         log_warn "FoundationModels is not weak-linked; the app would fail to launch on macOS < 26"
     fi
+    mkdir -p "$OUTPUT_DIR"
+    local cache="$CARGO_TARGET_DIR/release/build"
+    if [[ $UNIVERSAL == 1 ]]; then
+        # Each architecture has its own Tauri compressed-asset cache.
+        audit_caches=(--asset-cache "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/build" --asset-cache "$CARGO_TARGET_DIR/x86_64-apple-darwin/release/build")
+    else
+        audit_caches=(--asset-cache "$cache")
+    fi
+    "$AUDIT_PYTHON" "$SCRIPT_DIR/scan-release-credentials.py" \
+        --artifact "$APP_PATH" --receipt "$OUTPUT_DIR/credential-audit-$BUILD_NUMBER.json" \
+        "${audit_caches[@]}" --require-tauri-assets --reject-retired-services \
+        || log_error "Artifact credential/service policy failed or was incomplete; no package/upload allowed"
     log_success "Verification passed"
 }
 
 package() {
     mkdir -p "$OUTPUT_DIR"
     PKG_PATH="$OUTPUT_DIR/${APP_NAME// /-}-${APP_VERSION}-${BUILD_NUMBER}.pkg"
-    log_info "Packaging $PKG_PATH…"
+    log_info "Packaging ${PKG_PATH}…"
     productbuild --component "$APP_PATH" /Applications --sign "$MAS_INSTALLER_IDENTITY" "$PKG_PATH"
     pkgutil --check-signature "$PKG_PATH" || log_error "pkg signature check failed"
     log_success "Package: $PKG_PATH"
 }
 
-upload() {
-    [[ -n "${ASC_APP_ID:-}" ]] || log_error "ASC_APP_ID (numeric app Apple ID from App Store Connect) is required for --upload"
-    local auth=()
+upload_auth() {
+    [[ "${ASC_APP_ID:-}" =~ ^[0-9]+$ ]] || log_error "ASC_APP_ID (numeric app Apple ID from App Store Connect) is required for --upload"
+    UPLOAD_AUTH=()
     if [[ -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER:-}" ]]; then
-        auth=(--api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER")
+        UPLOAD_AUTH=(--api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER")
     elif [[ -n "${APPLE_ID:-}" ]]; then
         security find-generic-password -s "$ALTOOL_KEYCHAIN_ITEM" >/dev/null 2>&1 \
             || log_error "Keychain item '$ALTOOL_KEYCHAIN_ITEM' not found. Create it with:
   xcrun altool --store-password-in-keychain-item $ALTOOL_KEYCHAIN_ITEM -u \"\$APPLE_ID\" -p <app-specific-password>"
-        auth=(--username "$APPLE_ID" --password "@keychain:$ALTOOL_KEYCHAIN_ITEM" --team-id "$TEAM_ID")
+        UPLOAD_AUTH=(--username "$APPLE_ID" --password "@keychain:$ALTOOL_KEYCHAIN_ITEM" --team-id "$TEAM_ID")
     else
         log_error "Set APPLE_ID (+ keychain item $ALTOOL_KEYCHAIN_ITEM) or APPLE_API_KEY_ID + APPLE_API_ISSUER for --upload"
     fi
+}
+
+upload() {
     log_info "Uploading to App Store Connect…"
     xcrun altool --upload-package "$PKG_PATH" --type macos \
         --apple-id "$ASC_APP_ID" --bundle-id "$BUNDLE_ID" \
         --bundle-version "$BUILD_NUMBER" --bundle-short-version-string "$APP_VERSION" \
-        "${auth[@]}"
+        "${UPLOAD_AUTH[@]}"
     log_success "Uploaded. Processing takes 5-30 min; then add the build to a TestFlight group."
 }
 
 # ---------------------------------------------------------------------------
 preflight
+if [[ $CHECK_ONLY == 1 ]]; then
+    log_success "Configuration OK. No build, signing, packaging or upload performed."
+    exit 0
+fi
 build_number
 build
 sign
