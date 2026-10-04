@@ -316,6 +316,41 @@ enum AudioChunks {
         return chunks
     }
 
+    /// Join recordings (the parts of a paused watch recording) into one AAC
+    /// file at `destination`, in order, with the first part's format.
+    /// Written to a temp file first; `destination` appears only when complete.
+    static func join(_ parts: [URL], to destination: URL) throws {
+        guard let first = parts.first else { throw AudioSilencer.Failure.unreadable("no audio") }
+        let firstFile = try AVAudioFile(forReading: first)
+        let format = firstFile.processingFormat
+        var settings = firstFile.fileFormat.settings
+        settings[AVFormatIDKey] = kAudioFormatMPEG4AAC
+        settings[AVSampleRateKey] = format.sampleRate
+        settings[AVNumberOfChannelsKey] = format.channelCount
+        let bitRates = AudioSilencer.bitRateCandidates(existing: settings[AVEncoderBitRateKey] as? Int, channels: Int(format.channelCount))
+        let temp = destination.deletingLastPathComponent().appending(path: ".joining-\(UUID().uuidString).\(WatchTransfer.fileExtension)")
+        defer { try? FileManager.default.removeItem(at: temp) }
+        do {
+            let output = try AudioSilencer.openWriter(temp, settings: settings, bitRates: bitRates, format: format)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 32_768) else {
+                throw AudioSilencer.Failure.unreadable("no buffer")
+            }
+            for url in parts {
+                let input = try AVAudioFile(forReading: url)
+                guard input.processingFormat.sampleRate == format.sampleRate,
+                      input.processingFormat.channelCount == format.channelCount else {
+                    throw AudioSilencer.Failure.unreadable("the parts have different formats")
+                }
+                while input.framePosition < input.length {
+                    try input.read(into: buffer, frameCount: buffer.frameCapacity)
+                    if buffer.frameLength == 0 { break }
+                    try output.write(from: buffer)
+                }
+            }
+        }
+        try FileManager.default.moveItem(at: temp, to: destination)
+    }
+
     /// Write `range` (seconds) of `source` as 16-bit PCM CAF at `destination`.
     static func export(_ source: URL, range: Range<Double>, to destination: URL) throws {
         let input = try AVAudioFile(forReading: source)

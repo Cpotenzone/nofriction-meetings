@@ -83,6 +83,9 @@ final class WatchAppModel {
         if ProcessInfo.processInfo.arguments.contains("-NFWatchSendTestRecording") {
             DemoMode.queueSyntheticRecording(self)
         }
+        if ProcessInfo.processInfo.arguments.contains("-NFWatchAutoRecord") {
+            DemoMode.autoRecord(self)
+        }
         #endif
     }
 

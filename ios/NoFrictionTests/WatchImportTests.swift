@@ -67,6 +67,29 @@ final class WatchMetadataTests: XCTestCase {
         XCTAssertEqual(meta.pauses, [])
     }
 
+    func testPartNumbersRoundTripAndAreValidated() throws {
+        let meta = sample().forPart(2, of: 3)
+        let back = try XCTUnwrap(WatchRecordingMetadata(dictionary: meta.dictionary))
+        XCTAssertEqual(back.part, 2)
+        XCTAssertEqual(back.partCount, 3)
+        XCTAssertNil(WatchRecordingMetadata(dictionary: sample().forPart(3, of: 3).dictionary), "part out of range")
+        XCTAssertNil(WatchRecordingMetadata(dictionary: sample().forPart(0, of: 0).dictionary))
+        // A single-file recording may omit them
+        var d = sample().dictionary
+        d.removeValue(forKey: WatchTransfer.Key.part)
+        d.removeValue(forKey: WatchTransfer.Key.partCount)
+        XCTAssertEqual(WatchRecordingMetadata(dictionary: d)?.partCount, 1)
+    }
+
+    func testDecodesStagedJSONWithoutNewerFields() throws {
+        let json = #"{"recordingID":"6F1C1B8E-2C8B-4E55-9C59-6E1D7C1A0B11","startedAt":0,"endedAt":60,"duration":60}"#
+        let meta = try JSONDecoder().decode(WatchRecordingMetadata.self, from: Data(json.utf8))
+        XCTAssertEqual(meta.part, 0)
+        XCTAssertEqual(meta.partCount, 1)
+        XCTAssertEqual(meta.pauses, [])
+        XCTAssertEqual(meta.appVersion, "unknown")
+    }
+
     func testWallClockAddsPausesBeforeTheOffset() {
         let meta = sample()
         XCTAssertEqual(meta.wallClock(atFileOffset: 0), start)
@@ -269,6 +292,39 @@ final class WatchImporterTests: XCTestCase {
         XCTAssertEqual(files.count, 1)
     }
 
+    func testPausedRecordingWaitsForEveryPartThenJoinsThemInOrder() async throws {
+        let id = UUID()
+        let lengths = [4.0, 6.0]
+        let meta = WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(10 + 30),
+                                          duration: 10, appVersion: "test", pauses: [.init(at: 4, length: 30)])
+        func stage(_ part: Int) throws {
+            let file = root.appending(path: "part-\(part)-\(UUID().uuidString).m4a")
+            try WatchAudioFixture.write(file, seconds: lengths[part], hz: part == 0 ? 300 : 600)
+            try inbox.stage(file, metadata: meta.forPart(part, of: 2))
+        }
+        let fake = ScriptedTranscriber(chunk: 30) { _, _ in [ScriptedTranscriber.line("Before and after the break.", at: 5)] }
+        let importer = makeImporter(fake)
+
+        try stage(1)                                     // parts can arrive in any order
+        XCTAssertTrue(importer.processInbox().isEmpty, "waits for the missing part")
+        XCTAssertTrue(meetings().isEmpty)
+        try stage(0)
+        await importer.runQueue()
+
+        let m = try XCTUnwrap(meetings().first)
+        let url = audioDir.appending(path: try XCTUnwrap(m.audioFileName))
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertEqual(Double(file.length) / file.processingFormat.sampleRate, 10, accuracy: 0.1, "one file, both parts")
+        // Part order kept: 300 Hz first, 600 Hz after second 4
+        let (samples, rate, _) = try AudioFixtures.decode(url)
+        XCTAssertEqual(WatchAudioFixture.zeroCrossingHz(samples, rate, 1.0...3.0), 300, accuracy: 15)
+        XCTAssertEqual(WatchAudioFixture.zeroCrossingHz(samples, rate, 6.0...9.0), 600, accuracy: 15)
+        XCTAssertTrue(inbox.pending().isEmpty)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.path(percentEncoded: false)), [])
+        // File second 5 is after the 30 s pause on the clock
+        XCTAssertEqual(m.orderedSegments.first?.start.timeIntervalSince(start) ?? -1, 35, accuracy: 0.01)
+    }
+
     func testCalendarMatchNamesTheMeetingAndAddsAttendees() throws {
         try stageRecording(seconds: 60)
         let importer = makeImporter(ScriptedTranscriber { _, _ in [] },
@@ -456,7 +512,7 @@ final class WatchImporterTests: XCTestCase {
 
 /// Writes audio exactly as the watch records it.
 enum WatchAudioFixture {
-    static func write(_ url: URL, seconds: Double) throws {
+    static func write(_ url: URL, seconds: Double, hz: Float = 300) throws {
         let rate = WatchTransfer.sampleRate
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate,
@@ -467,7 +523,16 @@ enum WatchAudioFixture {
         let buf = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: n))
         buf.frameLength = n
         let p = buf.floatChannelData![0]
-        for i in 0..<Int(n) { p[i] = 0.5 * sinf(2 * .pi * 300 * Float(i) / Float(rate)) }
+        for i in 0..<Int(n) { p[i] = 0.5 * sinf(2 * .pi * hz * Float(i) / Float(rate)) }
         try file.write(from: buf)
+    }
+
+    /// Rough frequency of a tone from its zero crossings.
+    static func zeroCrossingHz(_ samples: [Float], _ rate: Double, _ range: ClosedRange<Double>) -> Double {
+        let a = Int(range.lowerBound * rate), b = min(samples.count - 1, Int(range.upperBound * rate))
+        guard a < b else { return 0 }
+        var crossings = 0
+        for i in (a + 1)...b where (samples[i - 1] < 0) != (samples[i] < 0) { crossings += 1 }
+        return Double(crossings) / 2 / (Double(b - a) / rate)
     }
 }

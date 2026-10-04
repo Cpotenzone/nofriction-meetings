@@ -112,23 +112,31 @@ final class WatchTransferQueueTests: XCTestCase {
 
     final class FakeTransport: RecordingTransport {
         var canTransfer = true
-        var outstandingRecordingIDs: Set<UUID> = []
+        var outstandingTransfers: Set<String> = []
         var sent: [(URL, [String: Any])] = []
         func transferFile(_ url: URL, metadata: [String: Any]) {
             sent.append((url, metadata))
-            if let id = (metadata[WatchTransfer.Key.recordingID] as? String).flatMap(UUID.init(uuidString:)) {
-                outstandingRecordingIDs.insert(id)
+            if let meta = WatchRecordingMetadata(dictionary: metadata) {
+                outstandingTransfers.insert(WatchRecordingStore.transferKey(meta.recordingID, meta.part))
             }
         }
     }
 
-    private func finishedRecording(_ store: WatchRecordingStore, seconds: TimeInterval = 42) -> UUID {
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) }
+
+    /// A finished recording with `parts` files (one per pause, plus one).
+    private func finishedRecording(_ store: WatchRecordingStore, seconds: TimeInterval = 42, parts: Int = 1) -> UUID {
         let id = UUID()
         let start = Date(timeIntervalSince1970: 1_790_000_000)
-        let url = store.beginRecording(id: id, startedAt: start)
+        var url = store.beginRecording(id: id, startedAt: start)
         FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: Data(repeating: 1, count: 128))
-        store.finish(WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(seconds),
-                                            duration: seconds, appVersion: "test"))
+        for _ in 1..<max(1, parts) {
+            url = store.beginPart(id)!
+            FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: Data(repeating: 2, count: 128))
+        }
+        let pauses = (1..<max(1, parts)).map { WatchRecordingMetadata.Pause(at: Double($0) * 10, length: 5) }
+        store.finish(WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(seconds + Double(pauses.count) * 5),
+                                            duration: seconds, appVersion: "test", pauses: pauses))
         return id
     }
 
@@ -144,26 +152,56 @@ final class WatchTransferQueueTests: XCTestCase {
         let meta = try XCTUnwrap(WatchRecordingMetadata(dictionary: transport.sent[0].1))
         XCTAssertEqual(meta.recordingID, id)
         XCTAssertEqual(meta.duration, 42)
+        XCTAssertEqual(meta.part, 0)
+        XCTAssertEqual(meta.partCount, 1)
 
-        let file = store.fileURL(for: id)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
-        queue.didFinish(recordingID: id, errorMessage: nil)
+        let file = try XCTUnwrap(store.entry(id).map(store.partURLs)?.first)
+        XCTAssertTrue(exists(file))
+        queue.didFinish(recordingID: id, part: 0, errorMessage: nil)
         XCTAssertEqual(store.entry(id)?.status, .delivered)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path(percentEncoded: false)), "watch copy deleted once delivered")
+        XCTAssertFalse(exists(file), "watch copy deleted once delivered")
     }
 
-    func testFailureKeepsFileAndRetries() {
+    func testPausedRecordingSendsEveryPartAndDeletesEachOnDelivery() throws {
         let store = WatchRecordingStore(directory: dir)
         let transport = FakeTransport()
         let queue = WatchTransferQueue(store: store, transport: transport)
-        let id = finishedRecording(store)
+        let id = finishedRecording(store, seconds: 30, parts: 3)
+        let files = try XCTUnwrap(store.entry(id).map(store.partURLs))
+        XCTAssertEqual(files.count, 3)
+
+        XCTAssertEqual(queue.sendPending(), 3)
+        let metas = transport.sent.compactMap { WatchRecordingMetadata(dictionary: $0.1) }
+        XCTAssertEqual(metas.map(\.part), [0, 1, 2])
+        XCTAssertTrue(metas.allSatisfy { $0.partCount == 3 && $0.recordingID == id && $0.duration == 30 })
+        XCTAssertEqual(metas[0].pauses.count, 2, "every part carries the whole recording's pauses")
+        XCTAssertEqual(transport.sent.map(\.0), files)
+
+        queue.didFinish(recordingID: id, part: 1, errorMessage: nil)
+        XCTAssertFalse(exists(files[1]))
+        XCTAssertTrue(exists(files[0]) && exists(files[2]))
+        XCTAssertEqual(store.entry(id)?.status, .sending, "not delivered until every part is")
+        queue.didFinish(recordingID: id, part: 0, errorMessage: nil)
+        queue.didFinish(recordingID: id, part: 2, errorMessage: nil)
+        XCTAssertEqual(store.entry(id)?.status, .delivered)
+        XCTAssertFalse(files.contains(where: exists))
+    }
+
+    func testFailureKeepsFileAndRetriesOnlyThatPart() {
+        let store = WatchRecordingStore(directory: dir)
+        let transport = FakeTransport()
+        let queue = WatchTransferQueue(store: store, transport: transport)
+        let id = finishedRecording(store, parts: 2)
         queue.sendPending()
-        transport.outstandingRecordingIDs = []          // the system gave up on it
-        queue.didFinish(recordingID: id, errorMessage: "The companion is not reachable.")
+        queue.didFinish(recordingID: id, part: 0, errorMessage: nil)
+        // The system gave up on part 1
+        transport.outstandingTransfers.remove(WatchRecordingStore.transferKey(id, 1))
+        queue.didFinish(recordingID: id, part: 1, errorMessage: "The companion is not reachable.")
         XCTAssertEqual(store.entry(id)?.status, .failed)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: store.fileURL(for: id).path(percentEncoded: false)))
-        XCTAssertEqual(queue.sendPending(), 1, "retried")
-        XCTAssertEqual(transport.sent.count, 2)
+        XCTAssertEqual(store.entry(id)?.lastError, "The companion is not reachable.")
+        XCTAssertTrue(exists(store.url(store.entry(id)!.parts[1])), "kept on failure")
+        XCTAssertEqual(queue.sendPending(), 1, "only the failed part is sent again")
+        XCTAssertEqual(WatchRecordingMetadata(dictionary: transport.sent.last!.1)?.part, 1)
     }
 
     func testNothingSentWhileUnavailable() {
@@ -174,6 +212,14 @@ final class WatchTransferQueueTests: XCTestCase {
         let id = finishedRecording(store)
         XCTAssertEqual(queue.sendPending(), 0)
         XCTAssertEqual(store.entry(id)?.status, .saved, "kept on the watch until the iPhone is available")
+    }
+
+    func testRecordingInProgressIsNotSent() {
+        let store = WatchRecordingStore(directory: dir)
+        let transport = FakeTransport()
+        let url = store.beginRecording(id: UUID(), startedAt: .now)
+        FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: Data([1]))
+        XCTAssertEqual(WatchTransferQueue(store: store, transport: transport).sendPending(), 0)
     }
 
     func testSendingRowLostAcrossRelaunchIsResent() {
@@ -190,17 +236,28 @@ final class WatchTransferQueueTests: XCTestCase {
         XCTAssertEqual(WatchTransferQueue(store: store, transport: transport).sendPending(), 1)
     }
 
-    func testRecoverInterruptedRecording() {
+    func testRecoverKeepsReadablePartsAfterACrash() throws {
         let store = WatchRecordingStore(directory: dir)
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
         let keep = UUID(), lose = UUID()
-        let url = store.beginRecording(id: keep, startedAt: .now)
-        FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: Data([1]))
-        store.beginRecording(id: lose, startedAt: .now)
-        let result = store.recoverInterrupted(appVersion: "x") { $0 == url ? 12 : nil }
+        // Paused once (part 0 closed), then killed while recording part 1
+        let p0 = store.beginRecording(id: keep, startedAt: start)
+        FileManager.default.createFile(atPath: p0.path(percentEncoded: false), contents: Data([1]))
+        store.recordPauses(keep, [.init(at: 12, length: 30)])
+        let p1 = try XCTUnwrap(store.beginPart(keep))
+        FileManager.default.createFile(atPath: p1.path(percentEncoded: false), contents: Data([2]))
+        // Killed before anything was closed
+        store.beginRecording(id: lose, startedAt: start)
+
+        let result = store.recoverInterrupted(appVersion: "x") { $0 == p0 ? 12 : nil }
         XCTAssertEqual(result.kept, 1)
         XCTAssertEqual(result.lost, 1)
-        XCTAssertEqual(store.entry(keep)?.status, .saved)
-        XCTAssertEqual(store.entry(keep)?.duration, 12)
+        let entry = try XCTUnwrap(store.entry(keep))
+        XCTAssertEqual(entry.status, .saved)
+        XCTAssertEqual(entry.parts.count, 1, "the unreadable part is dropped")
+        XCTAssertEqual(entry.duration, 12)
+        XCTAssertEqual(entry.metadata?.pauses, [], "no audio after that pause survived")
+        XCTAssertFalse(exists(p1))
         XCTAssertNil(store.entry(lose))
     }
 
@@ -211,22 +268,22 @@ final class WatchTransferQueueTests: XCTestCase {
         let transport = FakeTransport()
         let queue = WatchTransferQueue(store: store, transport: transport)
         let old = finishedRecording(store)
-        queue.didFinish(recordingID: old, errorMessage: nil)
+        queue.didFinish(recordingID: old, part: 0, errorMessage: nil)
         now = now.addingTimeInterval(8 * 86_400)
-        let stray = dir.appending(path: "\(UUID().uuidString).m4a")
+        let stray = dir.appending(path: "\(UUID().uuidString)-p0.m4a")
         FileManager.default.createFile(atPath: stray.path(percentEncoded: false), contents: Data([1]))
-        let fresh = finishedRecording(store)
+        let fresh = finishedRecording(store, parts: 2)
         store.prune()
         XCTAssertNil(store.entry(old), "delivered rows older than a week are dropped")
         XCTAssertNotNil(store.entry(fresh))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path(percentEncoded: false)))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: store.fileURL(for: fresh).path(percentEncoded: false)))
+        XCTAssertFalse(exists(stray))
+        XCTAssertTrue(store.entry(fresh).map(store.partURLs)?.allSatisfy(exists) ?? false)
     }
 
     func testMetadataRoundTripThroughPropertyList() throws {
         let meta = WatchRecordingMetadata(recordingID: UUID(), startedAt: Date(timeIntervalSince1970: 1_790_000_000),
                                           endedAt: Date(timeIntervalSince1970: 1_790_003_600), duration: 3500,
-                                          appVersion: "1.0.0 (4)", pauses: [.init(at: 600, length: 100)])
+                                          appVersion: "1.0.0 (4)", pauses: [.init(at: 600, length: 100)], part: 1, partCount: 2)
         // WatchConnectivity requires property-list types
         let data = try PropertyListSerialization.data(fromPropertyList: meta.dictionary, format: .binary, options: 0)
         let back = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])

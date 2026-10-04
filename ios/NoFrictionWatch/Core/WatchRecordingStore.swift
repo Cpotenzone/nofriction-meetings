@@ -1,6 +1,11 @@
 import Foundation
 
 /// One recording on the watch and where it is on its way to the iPhone.
+///
+/// A recording is one or more audio files ("parts"): the watch closes the
+/// file at every pause, so everything recorded so far is a complete,
+/// readable file even if watchOS ends the app during a long pause, and
+/// continues in a new file on Resume. The iPhone joins the parts in order.
 struct WatchRecordingEntry: Codable, Equatable, Identifiable, Sendable {
     enum Status: String, Codable, Sendable {
         /// The microphone is on (or the app died while it was)
@@ -9,24 +14,31 @@ struct WatchRecordingEntry: Codable, Equatable, Identifiable, Sendable {
         case saved
         /// Handed to WatchConnectivity; the system delivers it when it can
         case sending
-        /// The iPhone has it. The watch copy is deleted.
+        /// The iPhone has every part. The watch copies are deleted.
         case delivered
-        /// The last attempt failed. The file is kept and sent again.
+        /// The last attempt failed. The files are kept and sent again.
         case failed
     }
 
     var id: UUID
     var startedAt: Date
-    var fileName: String
+    /// Audio files in order (part 0, 1, …)
+    var parts: [String]
+    /// Parts the iPhone has (their files are deleted)
+    var deliveredParts: [Int] = []
     var status: Status
     /// Set once the recording is finished
     var metadata: WatchRecordingMetadata?
+    /// Pauses so far, kept while recording so a recording recovered after a
+    /// crash still maps file time to clock time
+    var pauses: [WatchRecordingMetadata.Pause] = []
     /// Why the last transfer failed (system error text; never content)
     var lastError: String?
     var updatedAt: Date
 
     var duration: TimeInterval { metadata?.duration ?? 0 }
     var hasAudioOnWatch: Bool { status != .delivered }
+    var undeliveredParts: [Int] { parts.indices.filter { !deliveredParts.contains($0) } }
 }
 
 /// The watch's list of recordings, kept as a small JSON index next to the
@@ -61,44 +73,69 @@ final class WatchRecordingStore {
         }
     }
 
-    func fileURL(for entry: WatchRecordingEntry) -> URL { directory.appending(path: entry.fileName) }
-    func fileURL(for id: UUID) -> URL { directory.appending(path: Self.fileName(for: id)) }
-    static func fileName(for id: UUID) -> String { "\(id.uuidString).\(WatchTransfer.fileExtension)" }
+    static func partName(_ id: UUID, _ part: Int) -> String { "\(id.uuidString)-p\(part).\(WatchTransfer.fileExtension)" }
+    func url(_ name: String) -> URL { directory.appending(path: name) }
+    func partURLs(_ entry: WatchRecordingEntry) -> [URL] { entry.parts.map(url) }
 
     func entry(_ id: UUID) -> WatchRecordingEntry? { entries.first { $0.id == id } }
 
     /// Newest first
     var recent: [WatchRecordingEntry] { entries.sorted { $0.startedAt > $1.startedAt } }
 
-    /// Recordings still on the watch (not yet delivered)
+    /// Finished recordings still on the watch (not yet delivered)
     var waitingCount: Int { entries.filter { $0.status != .delivered && $0.status != .recording }.count }
 
     // MARK: Lifecycle
 
-    /// A new recording is about to start: returns where to write it.
+    /// A new recording is about to start: returns where to write part 0.
     @discardableResult
     func beginRecording(id: UUID, startedAt: Date) -> URL {
-        let entry = WatchRecordingEntry(id: id, startedAt: startedAt, fileName: Self.fileName(for: id),
+        let entry = WatchRecordingEntry(id: id, startedAt: startedAt, parts: [Self.partName(id, 0)],
                                         status: .recording, updatedAt: clock())
         entries.removeAll { $0.id == id }
         entries.append(entry)
         persist()
-        return fileURL(for: entry)
+        return url(entry.parts[0])
+    }
+
+    /// Resume after a pause: the next part's file.
+    @discardableResult
+    func beginPart(_ id: UUID) -> URL? {
+        guard let i = entries.firstIndex(where: { $0.id == id }) else { return nil }
+        let name = Self.partName(id, entries[i].parts.count)
+        entries[i].parts.append(name)
+        entries[i].updatedAt = clock()
+        persist()
+        return url(name)
+    }
+
+    /// The last part never got audio (resume failed): forget it.
+    func dropLastPart(_ id: UUID) {
+        guard let i = entries.firstIndex(where: { $0.id == id }), entries[i].parts.count > 1 else { return }
+        try? fileManager.removeItem(at: url(entries[i].parts.removeLast()))
+        persist()
+    }
+
+    func recordPauses(_ id: UUID, _ pauses: [WatchRecordingMetadata.Pause]) {
+        update(id) { $0.pauses = pauses }
     }
 
     /// Recording stopped: ready to send.
     func finish(_ metadata: WatchRecordingMetadata) {
         update(metadata.recordingID) {
-            $0.metadata = metadata
+            $0.metadata = metadata.forPart(0, of: $0.parts.count)
+            $0.pauses = metadata.pauses
             $0.status = .saved
             $0.lastError = nil
         }
     }
 
     /// Removes a recording that never became one (failed start), or one the
-    /// user deleted before it was sent. Deletes the audio.
+    /// user deleted before it was sent. Deletes its audio.
     func discard(_ id: UUID) {
-        try? fileManager.removeItem(at: fileURL(for: id))
+        if let entry = entry(id) {
+            for u in partURLs(entry) { try? fileManager.removeItem(at: u) }
+        }
         entries.removeAll { $0.id == id }
         persist()
     }
@@ -110,19 +147,23 @@ final class WatchRecordingStore {
         }
     }
 
-    /// The iPhone has the file: delete the watch copy (privacy: the audio
-    /// lives on one device), keep a small row so the list can say "Delivered".
-    func markDelivered(_ id: UUID) {
-        guard let entry = entry(id) else { return }
-        try? fileManager.removeItem(at: fileURL(for: entry))
+    /// The iPhone has this part: delete the watch copy (privacy: the audio
+    /// lives on one device). When every part is there the row says
+    /// "Delivered" and keeps no audio.
+    func markDelivered(_ id: UUID, part: Int) {
+        guard let entry = entry(id), entry.parts.indices.contains(part) else { return }
+        try? fileManager.removeItem(at: url(entry.parts[part]))
         update(id) {
-            $0.status = .delivered
-            $0.lastError = nil
+            if !$0.deliveredParts.contains(part) { $0.deliveredParts.append(part) }
+            if $0.undeliveredParts.isEmpty {
+                $0.status = .delivered
+                $0.lastError = nil
+            }
         }
         prune()
     }
 
-    /// The transfer failed: keep the file, try again later.
+    /// A transfer failed: keep the files, try again later.
     func markFailed(_ id: UUID, message: String) {
         update(id) {
             $0.status = .failed
@@ -130,38 +171,65 @@ final class WatchRecordingStore {
         }
     }
 
-    /// Recordings that should be (re)sent: finished but not yet delivered,
-    /// minus those WatchConnectivity is still working on.
-    func needingTransfer(outstanding: Set<UUID>) -> [WatchRecordingEntry] {
-        entries
-            .filter { e in
-                guard e.metadata != nil, fileManager.fileExists(atPath: fileURL(for: e).path(percentEncoded: false)) else { return false }
-                switch e.status {
-                case .saved, .failed: return !outstanding.contains(e.id)
-                case .sending: return !outstanding.contains(e.id)   // lost across a relaunch
-                case .recording, .delivered: return false
-                }
-            }
-            .sorted { $0.startedAt < $1.startedAt }
+    /// One file to (re)send.
+    struct PendingPart: Equatable {
+        var id: UUID
+        var part: Int
+        var url: URL
+        var metadata: WatchRecordingMetadata
     }
 
-    /// At launch: a row still marked `recording` means the app was killed
-    /// mid-recording. Keep the audio if the file can be read (`audioLength`
-    /// returns its seconds), otherwise delete it. Returns (kept, lost).
+    /// Parts that should be (re)sent: finished recordings not yet delivered,
+    /// minus those WatchConnectivity is still working on.
+    func needingTransfer(outstanding: Set<String>) -> [PendingPart] {
+        var out: [PendingPart] = []
+        for e in entries.sorted(by: { $0.startedAt < $1.startedAt }) {
+            guard let metadata = e.metadata, e.status != .recording, e.status != .delivered else { continue }
+            for part in e.undeliveredParts {
+                let u = url(e.parts[part])
+                guard !outstanding.contains(Self.transferKey(e.id, part)),
+                      fileManager.fileExists(atPath: u.path(percentEncoded: false)) else { continue }
+                out.append(PendingPart(id: e.id, part: part, url: u, metadata: metadata.forPart(part, of: e.parts.count)))
+            }
+        }
+        return out
+    }
+
+    /// Identifies one part's transfer ("<uuid>#<part>")
+    nonisolated static func transferKey(_ id: UUID, _ part: Int) -> String { "\(id.uuidString)#\(part)" }
+
+    /// At launch: a row still marked `recording` means the app was ended
+    /// mid-recording. Parts that can be read (`audioLength` returns their
+    /// seconds) are kept and sent; unreadable ones (normally only the part
+    /// being written) are deleted. Returns (kept recordings, lost recordings).
     @discardableResult
     func recoverInterrupted(appVersion: String, audioLength: (URL) -> TimeInterval?) -> (kept: Int, lost: Int) {
         var kept = 0, lost = 0
         for e in entries where e.status == .recording {
-            let url = fileURL(for: e)
-            if let seconds = audioLength(url), seconds > 0 {
-                finish(WatchRecordingMetadata(recordingID: e.id, startedAt: e.startedAt,
-                                              endedAt: e.startedAt.addingTimeInterval(seconds),
-                                              duration: seconds, appVersion: appVersion))
-                kept += 1
-            } else {
+            var parts: [String] = []
+            var lengths: [Double] = []
+            for name in e.parts {
+                if let seconds = audioLength(url(name)), seconds > 0 {
+                    parts.append(name)
+                    lengths.append(seconds)
+                } else {
+                    try? fileManager.removeItem(at: url(name))
+                }
+            }
+            guard !parts.isEmpty else {
                 discard(e.id)
                 lost += 1
+                continue
             }
+            let total = lengths.reduce(0, +)
+            // Pauses that still have audio after them
+            let pauses = e.pauses.filter { $0.at < total }
+            let paused = pauses.reduce(0) { $0 + $1.length }
+            update(e.id) { $0.parts = parts }
+            finish(WatchRecordingMetadata(recordingID: e.id, startedAt: e.startedAt,
+                                          endedAt: e.startedAt.addingTimeInterval(total + paused),
+                                          duration: total, appVersion: appVersion, pauses: pauses))
+            kept += 1
         }
         return (kept, lost)
     }
@@ -178,10 +246,13 @@ final class WatchRecordingStore {
             persist()
         }
         // Audio files with no row (e.g. a crash between create and index write)
-        let known = Set(entries.filter(\.hasAudioOnWatch).map(\.fileName))
-        for url in (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        where url.pathExtension == WatchTransfer.fileExtension && !known.contains(url.lastPathComponent) {
-            try? fileManager.removeItem(at: url)
+        var known = Set<String>()
+        for e in entries where e.hasAudioOnWatch {
+            for (i, name) in e.parts.enumerated() where !e.deliveredParts.contains(i) { known.insert(name) }
+        }
+        for u in (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        where u.pathExtension == WatchTransfer.fileExtension && !known.contains(u.lastPathComponent) {
+            try? fileManager.removeItem(at: u)
         }
     }
 
@@ -207,8 +278,8 @@ final class WatchRecordingStore {
 protocol RecordingTransport: AnyObject {
     /// The session is activated and the iPhone app is installed
     var canTransfer: Bool { get }
-    /// Recording ids WatchConnectivity is still delivering
-    var outstandingRecordingIDs: Set<UUID> { get }
+    /// `WatchRecordingStore.transferKey`s of parts WatchConnectivity is still delivering
+    var outstandingTransfers: Set<String> { get }
     func transferFile(_ url: URL, metadata: [String: Any])
 }
 
@@ -224,28 +295,27 @@ final class WatchTransferQueue {
         self.transport = transport
     }
 
-    /// Queue everything that still has to go. Safe to call often: recordings
+    /// Queue every part that still has to go. Safe to call often: parts
     /// already being delivered aren't queued twice, and the phone imports
-    /// each recording id once anyway.
+    /// each recording id once anyway. Returns the number of files queued.
     @discardableResult
     func sendPending() -> Int {
         guard let transport, transport.canTransfer else { return 0 }
-        let todo = store.needingTransfer(outstanding: transport.outstandingRecordingIDs)
-        for entry in todo {
-            guard let metadata = entry.metadata else { continue }
-            store.markSending(entry.id)
-            transport.transferFile(store.fileURL(for: entry), metadata: metadata.dictionary)
+        let todo = store.needingTransfer(outstanding: transport.outstandingTransfers)
+        for item in todo {
+            store.markSending(item.id)
+            transport.transferFile(item.url, metadata: item.metadata.dictionary)
         }
         return todo.count
     }
 
     /// WatchConnectivity finished a transfer (`session(_:didFinish:error:)`).
     /// `errorMessage` is nil on success.
-    func didFinish(recordingID: UUID, errorMessage: String?) {
+    func didFinish(recordingID: UUID, part: Int, errorMessage: String?) {
         if let errorMessage {
             store.markFailed(recordingID, message: errorMessage)
         } else {
-            store.markDelivered(recordingID)
+            store.markDelivered(recordingID, part: part)
         }
     }
 }

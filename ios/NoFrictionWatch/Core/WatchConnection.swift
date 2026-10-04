@@ -32,16 +32,20 @@ final class WatchConnection: NSObject, RecordingTransport {
 
     var canTransfer: Bool { activated && companionInstalled }
 
-    var outstandingRecordingIDs: Set<UUID> {
-        Set((session?.outstandingFileTransfers ?? []).compactMap { Self.recordingID($0.file.metadata) })
+    var outstandingTransfers: Set<String> {
+        Set((session?.outstandingFileTransfers ?? []).compactMap { transfer in
+            Self.part(transfer.file.metadata).map { WatchRecordingStore.transferKey($0.id, $0.part) }
+        })
     }
 
     func transferFile(_ url: URL, metadata: [String: Any]) {
         session?.transferFile(url, metadata: metadata)
     }
 
-    nonisolated static func recordingID(_ metadata: [String: Any]?) -> UUID? {
-        (metadata?[WatchTransfer.Key.recordingID] as? String).flatMap(UUID.init(uuidString:))
+    /// Recording id and part number of a transfer, from its metadata.
+    nonisolated static func part(_ metadata: [String: Any]?) -> (id: UUID, part: Int)? {
+        guard let id = (metadata?[WatchTransfer.Key.recordingID] as? String).flatMap(UUID.init(uuidString:)) else { return nil }
+        return (id, (metadata?[WatchTransfer.Key.part] as? Int) ?? 0)
     }
 }
 
@@ -59,9 +63,9 @@ extension WatchConnection: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
-        guard let id = Self.recordingID(fileTransfer.file.metadata) else { return }
+        guard let key = Self.part(fileTransfer.file.metadata) else { return }
         let message = error?.localizedDescription
-        Task { @MainActor in self.queue?.didFinish(recordingID: id, errorMessage: message) }
+        Task { @MainActor in self.queue?.didFinish(recordingID: key.id, part: key.part, errorMessage: message) }
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {

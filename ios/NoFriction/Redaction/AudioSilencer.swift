@@ -106,7 +106,7 @@ enum AudioSilencer {
         return out
     }
 
-    private static func openWriter(_ url: URL, settings: [String: Any], bitRates: [Int], format: AVAudioFormat) throws -> AVAudioFile {
+    static func openWriter(_ url: URL, settings: [String: Any], bitRates: [Int], format: AVAudioFormat) throws -> AVAudioFile {
         var lastError: Error = Failure.writeFailed("no usable bit rate")
         for rate in bitRates {
             var s = settings

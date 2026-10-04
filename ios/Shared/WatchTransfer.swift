@@ -28,8 +28,13 @@ enum WatchTransfer {
         static let duration = "duration"
         static let appVersion = "appVersion"
         static let pauses = "pauses"
+        static let part = "part"
+        static let partCount = "parts"
         static let version = "v"
     }
+
+    /// Parts a recording may be split into (one per pause, plus one)
+    static let maxParts = 500
 }
 
 /// Sent with every file in `WCSession.transferFile(_:metadata:)`. Times and
@@ -46,6 +51,13 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
     var appVersion: String
     /// Where the recording was paused, so file time maps back to wall-clock time.
     var pauses: [Pause] = []
+    /// The watch closes the audio file at every pause (so a paused recording
+    /// survives the app being ended) and continues in a new one: the
+    /// recording arrives as `partCount` files, this one being `part`
+    /// (0-based). The phone joins them in order. Times above are for the
+    /// whole recording.
+    var part: Int = 0
+    var partCount: Int = 1
     var version: Int = WatchTransfer.metadataVersion
 
     struct Pause: Codable, Equatable, Sendable {
@@ -53,6 +65,24 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
         var at: Double
         /// How long it lasted (wall-clock seconds)
         var length: Double
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case recordingID, startedAt, endedAt, duration, appVersion, pauses, part, partCount, version
+    }
+
+    /// Fields added after the first version decode with their defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        recordingID = try c.decode(UUID.self, forKey: .recordingID)
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        endedAt = try c.decode(Date.self, forKey: .endedAt)
+        duration = try c.decode(Double.self, forKey: .duration)
+        appVersion = try c.decodeIfPresent(String.self, forKey: .appVersion) ?? "unknown"
+        pauses = try c.decodeIfPresent([Pause].self, forKey: .pauses) ?? []
+        part = try c.decodeIfPresent(Int.self, forKey: .part) ?? 0
+        partCount = try c.decodeIfPresent(Int.self, forKey: .partCount) ?? 1
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? WatchTransfer.metadataVersion
     }
 
     /// Wall-clock time of a position in the audio file: the start, plus the
@@ -72,19 +102,32 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
             WatchTransfer.Key.duration: duration,
             WatchTransfer.Key.appVersion: appVersion,
             WatchTransfer.Key.pauses: pauses.map { [$0.at, $0.length] },
+            WatchTransfer.Key.part: part,
+            WatchTransfer.Key.partCount: partCount,
             WatchTransfer.Key.version: version,
         ]
     }
 
     init(recordingID: UUID, startedAt: Date, endedAt: Date, duration: TimeInterval,
-         appVersion: String, pauses: [Pause] = [], version: Int = WatchTransfer.metadataVersion) {
+         appVersion: String, pauses: [Pause] = [], part: Int = 0, partCount: Int = 1,
+         version: Int = WatchTransfer.metadataVersion) {
         self.recordingID = recordingID
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.duration = duration
         self.appVersion = appVersion
         self.pauses = pauses
+        self.part = part
+        self.partCount = partCount
         self.version = version
+    }
+
+    /// The same recording, labeled as one of its parts.
+    func forPart(_ index: Int, of count: Int) -> WatchRecordingMetadata {
+        var copy = self
+        copy.part = index
+        copy.partCount = count
+        return copy
     }
 
     /// nil when a required field is missing or out of range. Unknown keys are ignored.
@@ -103,15 +146,18 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
         self.init(recordingID: id, startedAt: start, endedAt: end, duration: duration,
                   appVersion: (d[WatchTransfer.Key.appVersion] as? String) ?? "unknown",
                   pauses: pauses,
+                  part: Self.number(d[WatchTransfer.Key.part]).map { Int($0) } ?? 0,
+                  partCount: Self.number(d[WatchTransfer.Key.partCount]).map { Int($0) } ?? 1,
                   version: (d[WatchTransfer.Key.version] as? Int) ?? WatchTransfer.metadataVersion)
         guard isValid else { return nil }
     }
 
     /// Sane times: ends after it starts, finite non-negative audio length,
-    /// at most a day long, pauses inside the recording.
+    /// at most a day long, pauses inside the recording, a real part number.
     var isValid: Bool {
         guard duration.isFinite, duration >= 0, endedAt >= startedAt,
-              endedAt.timeIntervalSince(startedAt) <= 86_400 else { return false }
+              endedAt.timeIntervalSince(startedAt) <= 86_400,
+              partCount >= 1, partCount <= WatchTransfer.maxParts, part >= 0, part < partCount else { return false }
         return pauses.allSatisfy { $0.at.isFinite && $0.length.isFinite && $0.at >= 0 && $0.length >= 0 }
     }
 

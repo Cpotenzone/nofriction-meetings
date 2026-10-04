@@ -8,6 +8,8 @@ import Foundation
 ///                                               no WatchConnectivity
 ///     -NFWatchSendTestRecording                 write a 3-second synthetic tone and
 ///                                               send it to the paired iPhone (E2E check)
+///     -NFWatchAutoRecord                        the real recorder: 2 s, pause 2 s,
+///                                               2 s more, stop and send (simulator check)
 ///
 /// The demo uses a throwaway store in tmp, never the real recordings.
 enum DemoMode: String {
@@ -59,9 +61,24 @@ enum DemoMode: String {
                                                 duration: seconds, appVersion: "demo"))
             switch status {
             case .sending: store.markSending(id)
-            case .delivered: store.markDelivered(id)
+            case .delivered: store.markDelivered(id, part: 0)
             default: break
             }
+        }
+    }
+
+    /// Simulator check of the real microphone path, with one pause (two parts).
+    @MainActor
+    static func autoRecord(_ model: WatchAppModel) {
+        model.noticeAccepted = true
+        Task { @MainActor in
+            await model.recorder.start()
+            try? await Task.sleep(for: .seconds(2))
+            model.recorder.togglePause()
+            try? await Task.sleep(for: .seconds(2))
+            model.recorder.togglePause()
+            try? await Task.sleep(for: .seconds(2))
+            model.recorder.stop()
         }
     }
 

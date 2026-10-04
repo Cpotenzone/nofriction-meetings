@@ -16,13 +16,14 @@ Apple Watch                                   iPhone
 ───────────                                   ──────
 Record ─▶ AVAudioRecorder                     PhoneWatchLink (WCSession, activated in App.init)
           AAC mono 16 kHz, 32 kbit/s            │ session(_:didReceive file:)
-          Application Support/Recordings/       │   moves the file into Documents/WatchInbox
-                 │                              │   (+ <id>.json metadata) before returning
+          one file per stretch between          │   moves each part into Documents/WatchInbox
+          pauses ("parts")                      │   (+ its .json metadata) before returning
 Stop ─▶ WatchRecordingStore (index.json)        ▼
                  │                            WatchImporter
-WatchTransferQueue ─▶ WCSession.transferFile    1. import: idempotent by recordingId; the file
-   (queued by the system while the phone           becomes Documents/Audio/watch-<id>.m4a, the
-    is away; delivered in the background)          meeting's audio file; calendar match
+WatchTransferQueue ─▶ WCSession.transferFile    1. import once every part is here: idempotent
+   (one per part; queued by the system while       by recordingId; parts joined into
+    the phone is away; background delivery)       Documents/Audio/watch-<id>.m4a, the meeting's
+                 │                                 audio file; calendar match
                  │                              2. transcribe (queued, resumable): on-device,
 session(_:didFinish:error:)                        in chunks; TranscriptFilter; segments with
    success ─▶ delete the watch copy, "Delivered"   audio offsets + word timings
@@ -58,9 +59,14 @@ with iPhones on iOS 18. Nothing needs watchOS 11.
 ## Recording
 
 - **Format:** AAC, mono, 16 kHz, 32 kbit/s (about 14 MB per hour), written
-  by `AVAudioRecorder` to `Application Support/Recordings/<recordingId>.m4a`
+  by `AVAudioRecorder` to `Application Support/Recordings/<recordingId>-p<N>.m4a`
   in the watch app's container. 16 kHz is the rate speech recognition works
   at, and the files stay small enough to transfer quickly.
+- **Parts:** an MPEG-4 audio file can only be read once the recorder closes
+  it, and watchOS may end a suspended app. So every Pause (and every
+  interruption) closes the current file, and Resume continues in a new one.
+  A paused recording is therefore always complete on disk. The iPhone joins
+  the parts in order into one file; pause positions are the part boundaries.
 - **Controls:** one large Record button, the elapsed time (pauses excluded),
   a live input meter, Pause/Resume and Stop. Haptics on start, stop, pause,
   resume and interruption. A second page (Digital Crown or swipe) lists
@@ -78,8 +84,9 @@ with iPhones on iOS 18. Nothing needs watchOS 11.
 |---|---|
 | Wrist down / screen off | **Keeps recording.** The watch app declares the `audio` background mode (`UIBackgroundModes`). A recording started in the foreground continues when the app goes to the background, and the app comes back when the wrist is raised. |
 | User presses the Digital Crown or opens another app | Keeps recording in the background; watchOS shows an indicator on the watch face. |
-| Phone call, Siri, another app takes the microphone | **The recording pauses** (interruption). watchOS doesn't let an app start or resume recording from the background, so the watch shows "Paused by a call or Siri. Tap Resume" and buzzes; nothing after that is recorded until the user taps Resume. Everything before is kept. |
-| App killed while recording (crash, low memory, force quit) | At the next launch, a file that can be read is kept and sent; one that can't (the recorder didn't finish writing it) is deleted, and the app says so. |
+| Phone call, Siri, another app takes the microphone | **The recording pauses** (interruption). watchOS doesn't let an app start or resume recording from the background, so the watch shows "Paused by a call or Siri. Tap Resume" and buzzes; nothing after that is recorded until the user taps Resume. The file is closed at the interruption, so everything before it is safe even if the user never comes back. |
+| Paused (by the user or an interruption) and the wrist goes down | The app may be suspended, and watchOS may end it during a long pause. Nothing is lost: the paused recording's files are already closed. At the next launch it is saved and sent; Resume isn't possible after that (start a new recording). |
+| App ended while actually recording (crash, low memory, force quit) | At the next launch, the parts that can be read are kept and sent. The part being written when the app ended can't be read (the recorder hadn't closed it) and is deleted, and the app says so if nothing could be kept. |
 | Battery | Continuous recording uses battery. Not yet measured on hardware; see "Not verified". |
 
 Extended runtime sessions (`WKExtendedRuntimeSession`) were considered and
@@ -105,21 +112,25 @@ It must be a user-initiated event while the app is in the foreground.
 ## Transfer and privacy
 
 - **Metadata** (property list, with each file): `recordingId` (UUID),
-  `startedAt`, `endedAt`, `duration` (seconds of audio), `appVersion`,
-  `pauses` (`[[fileSeconds, pausedSeconds]]`) and `v`. Times and ids only:
-  no transcript, title or other content. The phone ignores unknown keys and
-  rejects invalid times.
+  `startedAt`, `endedAt`, `duration` (seconds of audio, whole recording),
+  `appVersion`, `pauses` (`[[fileSeconds, pausedSeconds]]`), `part` and
+  `parts` (this file's index and the number of files; 0 and 1 for a
+  recording without pauses) and `v`. Times and ids only: no transcript,
+  title or other content. The phone ignores unknown keys and rejects invalid
+  times or part numbers.
 - **Queued delivery:** `WCSession.transferFile` hands the file to the system,
   which delivers it when the iPhone is reachable, in the background. The
   watch re-queues anything not yet delivered at launch, when the iPhone comes
   back in range, and when the app returns to the foreground.
 - **Deleted after delivery:** on `session(_:didFinish:error:)` without an
-  error the watch deletes its copy and the row shows **Delivered** (the row
-  keeps no audio; rows go after a week, or beyond 20). On an error the file
-  stays and is sent again. A recording not sent yet can be deleted from the
-  watch's list.
-- **Idempotent on the phone:** the import is keyed by `recordingId`. A file
-  delivered twice makes one meeting; the duplicate is discarded.
+  error the watch deletes that part's file; when every part is delivered the
+  row shows **Delivered** (it keeps no audio; rows go after a week, or beyond
+  20). On an error the file stays and only that part is sent again. A
+  recording not sent yet can be deleted from the watch's list.
+- **Idempotent on the phone:** the import is keyed by `recordingId` and
+  waits until every part has arrived (in any order). A part delivered twice
+  replaces the earlier copy; a recording delivered again after its import
+  is discarded.
 - **Staging:** WatchConnectivity deletes a received file when its delegate
   method returns, so the phone moves it into `Documents/WatchInbox` (with a
   `.json` of the metadata) inside that method, then imports it. Staging and
@@ -132,7 +143,9 @@ It must be a user-initiated event while the app is in the foreground.
 
 ## iPhone import
 
-1. **Meeting:** `startedAt`/`endedAt` from the watch, `source = "watch"`,
+1. **Meeting:** once every part is staged, the parts are joined in order
+   into one AAC file (`AudioChunks.join`; a single part is just moved).
+   `startedAt`/`endedAt` from the watch, `source = "watch"`,
    `sourceRecordingID`, `audioFileName = watch-<id>.m4a` in `Storage.audio`,
    `importState = "pending"`. The new `Meeting` fields are optional, so stores
    from earlier builds migrate automatically (no schema version needed).
@@ -194,22 +207,27 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
 ```
 
 - `NoFrictionTests/WatchImportTests.swift`: metadata encode/decode and
-  validation, wall-clock mapping, idempotent import (same id twice → one
-  meeting), meeting creation + calendar match with injected events, chunked
+  validation (incl. part numbers and older JSON), wall-clock mapping,
+  idempotent import (same id twice → one meeting), a paused recording's
+  parts arriving out of order and joined in order, meeting creation + calendar match with injected events, chunked
   transcription with a scripted fake transcriber (offsets, word timings,
   pauses, the filter), resume from a checkpoint after a cut-short run and a
   killed run, waiting for the foreground, failure + Retry, waiting while the
   phone records, deletion mid-run, Strike silencing a watch-format file, the
   silencer's bit-rate fallback, line splitting and chunk planning.
 - `NoFrictionWatchTests`: recorder state machine (transitions, pauses,
-  interruptions, metadata), transfer queue (send once, delete on delivery,
-  keep and retry on error, nothing sent while unavailable, resend after
-  relaunch), crash recovery, pruning, plist round trip.
+  interruptions, metadata), transfer queue (send once, every part of a
+  paused recording, delete each part on delivery, keep and retry only the
+  failed part, nothing sent while unavailable or while recording, resend
+  after relaunch), crash recovery keeping readable parts, pruning, plist
+  round trip.
 - **Simulators:** a watch simulator paired with an iPhone simulator
   (`xcrun simctl pair <watch> <phone>`). Debug launch arguments on the watch:
   `-NFWatchDemo idle|recording|paused|list` (sample states, no microphone) and
   `-NFWatchSendTestRecording` (a 3-second synthetic tone sent through the real
-  store and WatchConnectivity path).
+  store and WatchConnectivity path), `-NFWatchAutoRecord` (the real
+  microphone recorder: 2 s, pause, 2 s, stop; grant the simulator microphone
+  first with `xcrun simctl privacy <watch> grant microphone com.nofriction.meetings.watchkitapp`).
 - **Simulator limit:** in the simulator, `transferFile` from the watch
   completes on the watch (the system reports success, the watch deletes its
   copy and shows Delivered) but the iPhone simulator never calls

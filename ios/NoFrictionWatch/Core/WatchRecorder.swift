@@ -6,6 +6,10 @@ import WatchKit
 /// Records a meeting on the watch: AVAudioRecorder → AAC mono 16 kHz in the
 /// app's container, then hands the finished file to the transfer queue.
 ///
+/// Each pause (or interruption) closes the current file, and Resume starts
+/// the next one ("parts"), so a paused recording is always complete on disk
+/// even if watchOS ends the app before the user comes back.
+///
 /// What watchOS allows (docs/WATCH_APP.md, "Recording limits"):
 /// - With the `audio` background mode, a recording started in the foreground
 ///   keeps going when the wrist drops and the screen turns off, and the app
@@ -69,16 +73,7 @@ final class WatchRecorder: NSObject {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .default, options: [])
             try session.setActive(true)
-            let recorder = try AVAudioRecorder(url: url, settings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: WatchTransfer.sampleRate,
-                AVNumberOfChannelsKey: WatchTransfer.channels,
-                AVEncoderBitRateKey: WatchTransfer.bitRate,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-            ])
-            recorder.isMeteringEnabled = true
-            guard recorder.prepareToRecord(), recorder.record() else { throw RecorderError.couldNotStart }
-            self.recorder = recorder
+            recorder = try Self.makeRecorder(url)
             try machine.start(id: id, at: now)
             WKInterfaceDevice.current().play(.start)
             startMeter()
@@ -94,48 +89,75 @@ final class WatchRecorder: NSObject {
     }
 
     func togglePause() {
-        guard let recorder else { return }
+        guard let id = machine.recordingID else { return }
         if machine.isPaused {
-            // Resuming needs the app in the foreground (it is: the user tapped)
+            // Resuming needs the app in the foreground (it is: the user
+            // tapped). It continues in a new file (part).
+            guard let url = store.beginPart(id) else { return }
             do {
                 try AVAudioSession.sharedInstance().setActive(true)
-                guard recorder.record() else { throw RecorderError.couldNotStart }
+                recorder = try Self.makeRecorder(url)
                 try machine.resume(at: clock())
+                store.recordPauses(id, machine.pauses)
                 notice = nil
                 WKInterfaceDevice.current().play(.click)
             } catch {
+                recorder = nil
+                store.dropLastPart(id)
                 notice = "Couldn't resume. Stop to keep what was recorded, then start again."
                 WKInterfaceDevice.current().play(.failure)
             }
         } else if machine.phase == .recording {
-            recorder.pause()
+            closePart()
             try? machine.pause(at: clock(), reason: .user)
+            store.recordPauses(id, machine.pauses)
             level = 0
             WKInterfaceDevice.current().play(.click)
         }
     }
 
     func stop() {
-        guard machine.isActive, let recorder else { return }
-        let audioSeconds = recorder.currentTime
-        recorder.stop()
-        self.recorder = nil
+        guard machine.isActive, let id = machine.recordingID else { return }
+        closePart()
         meterTask?.cancel()
         level = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        let metadata = try? machine.stop(at: clock(), appVersion: Self.appVersion,
-                                         audioDuration: audioSeconds > 0 ? audioSeconds : nil)
-        if let metadata {
-            // Ask the file itself; the recorder's clock stops at pauses too
-            var final = metadata
-            if let seconds = Self.audioLength(of: store.fileURL(for: metadata.recordingID)), seconds > 0 {
-                final.duration = seconds
+        // The files are the truth for the audio length: each part's real
+        // length, and every pause sits where a part ends
+        let lengths = (store.entry(id).map(store.partURLs) ?? []).map { Self.audioLength(of: $0) ?? 0 }
+        let total = lengths.reduce(0, +)
+        if var metadata = try? machine.stop(at: clock(), appVersion: Self.appVersion, audioDuration: total > 0 ? total : nil) {
+            if metadata.pauses.count == lengths.count - 1 {
+                var offset = 0.0
+                for i in metadata.pauses.indices {
+                    offset += lengths[i]
+                    metadata.pauses[i].at = offset
+                }
             }
-            store.finish(final)
+            store.finish(metadata)
             queue.sendPending()
         }
         machine.reset()
         WKInterfaceDevice.current().play(.stop)
+    }
+
+    /// Finish the current file so it's complete and readable on its own.
+    private func closePart() {
+        recorder?.stop()
+        recorder = nil
+    }
+
+    private static func makeRecorder(_ url: URL) throws -> AVAudioRecorder {
+        let recorder = try AVAudioRecorder(url: url, settings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: WatchTransfer.sampleRate,
+            AVNumberOfChannelsKey: WatchTransfer.channels,
+            AVEncoderBitRateKey: WatchTransfer.bitRate,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+        ])
+        recorder.isMeteringEnabled = true
+        guard recorder.prepareToRecord(), recorder.record() else { throw RecorderError.couldNotStart }
+        return recorder
     }
 
     /// Readable audio length in seconds, nil if the file can't be opened
@@ -148,8 +170,12 @@ final class WatchRecorder: NSObject {
     // MARK: Internals
 
     private func interrupted() {
-        guard machine.phase == .recording || machine.isPaused else { return }
+        guard machine.phase == .recording || machine.isPaused, let id = machine.recordingID else { return }
+        // Close the file now: if nobody comes back, what was recorded is
+        // already complete (watchOS won't let the app resume on its own)
+        if machine.phase == .recording { closePart() }
         try? machine.pause(at: clock(), reason: .interruption)
+        store.recordPauses(id, machine.pauses)
         level = 0
         notice = "Paused by a call or Siri. Tap Resume to keep recording."
         WKInterfaceDevice.current().play(.retry)
@@ -160,9 +186,12 @@ final class WatchRecorder: NSObject {
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
-                guard let self, let recorder = self.recorder else { return }
-                // Screen off / wrist down: nobody sees the meter, save the battery
-                guard self.machine.phase == .recording, self.meterVisible else { self.level = 0; continue }
+                guard let self, self.machine.isActive else { return }
+                // Paused (no file open), or screen off / wrist down: nobody sees the meter
+                guard let recorder = self.recorder, self.machine.phase == .recording, self.meterVisible else {
+                    self.level = 0
+                    continue
+                }
                 recorder.updateMeters()
                 // Map roughly -50…0 dBFS to 0…1 (same scale as the iPhone meter)
                 let db = recorder.averagePower(forChannel: 0)

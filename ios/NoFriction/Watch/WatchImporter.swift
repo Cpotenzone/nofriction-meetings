@@ -62,7 +62,7 @@ final class WatchImporter {
         var out: [Meeting] = []
         for item in env.inbox.pending() {
             do {
-                out.append(try importRecording(item.metadata, audio: item.audioURL))
+                out.append(try importRecording(item.metadata, audio: item.audioURLs))
             } catch {
                 // Left in the inbox; tried again on the next pass
                 continue
@@ -71,16 +71,15 @@ final class WatchImporter {
         return out
     }
 
-    /// One recording → one meeting. A recording id seen before returns the
-    /// existing meeting and discards the duplicate file.
+    /// One recording → one meeting. `audio` is its parts in order (one file
+    /// unless it was paused); they become one file. A recording id seen
+    /// before returns the existing meeting and discards the duplicate files.
     @discardableResult
-    func importRecording(_ metadata: WatchRecordingMetadata, audio: URL) throws -> Meeting {
+    func importRecording(_ metadata: WatchRecordingMetadata, audio: [URL]) throws -> Meeting {
         let key = metadata.recordingID.uuidString
         if let existing = meeting(sourceRecordingID: key) {
             env.inbox.remove(metadata.recordingID)
-            if !audio.path(percentEncoded: false).hasPrefix(env.audioDirectory.path(percentEncoded: false)) {
-                try? FileManager.default.removeItem(at: audio)
-            }
+            for url in audio { try? FileManager.default.removeItem(at: url) }
             return existing
         }
 
@@ -90,10 +89,13 @@ final class WatchImporter {
         let target = env.audioDirectory.appending(path: fileName)
         try FileManager.default.createDirectory(at: env.audioDirectory, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: target.path(percentEncoded: false)) {
-            // Moved before an interrupted import; the inbox copy is a duplicate
-            if audio != target { try? FileManager.default.removeItem(at: audio) }
+            // Made before an interrupted import; the inbox copies are duplicates
+            for url in audio where url != target { try? FileManager.default.removeItem(at: url) }
+        } else if audio.count == 1, let only = audio.first {
+            try FileManager.default.moveItem(at: only, to: target)
         } else {
-            try FileManager.default.moveItem(at: audio, to: target)
+            try AudioChunks.join(audio, to: target)
+            for url in audio { try? FileManager.default.removeItem(at: url) }
         }
 
         let meeting = Meeting(title: RecordingSession.defaultTitle(for: metadata.startedAt), startedAt: metadata.startedAt)

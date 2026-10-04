@@ -220,9 +220,10 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   and Strike silence it exactly like a phone recording. The silencer
   re-encodes with a bit rate the AAC encoder accepts at the file's rate
   (16 kHz for watch audio). No other copy outlives the import: the watch
-  deletes its file once the iPhone has it, the inbox file is moved (not
-  copied) into `Audio/`, and transcription chunk files in `tmp/` are deleted
-  after each chunk. A recording not yet delivered isn't a meeting; it can be
+  deletes each file once the iPhone has it, the inbox files are moved into
+  `Audio/` (or, for a paused recording, joined into one file there and then
+  deleted), and transcription chunk files in `tmp/` are deleted after each
+  chunk. A recording not yet delivered isn't a meeting; it can be
   deleted from the watch's list.
 - **Not applicable on iOS:** FTS (in-app search scans `transcriptText`, which
   renders markers as placeholders), app DB backups, screen video chunks, and
