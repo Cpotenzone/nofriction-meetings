@@ -81,6 +81,20 @@ final class WatchMetadataTests: XCTestCase {
         XCTAssertEqual(WatchRecordingMetadata(dictionary: d)?.partCount, 1)
     }
 
+    func testARecordingPausedOvernightIsValid() {
+        let meta = WatchRecordingMetadata(recordingID: UUID(), startedAt: start, endedAt: start.addingTimeInterval(30 * 3600),
+                                          duration: 1200, appVersion: "x")
+        XCTAssertNotNil(WatchRecordingMetadata(dictionary: meta.dictionary))
+    }
+
+    func testPartKeys() {
+        let id = UUID()
+        let key = WatchTransfer.partKey(id, 3)
+        XCTAssertEqual(WatchTransfer.parsePartKey(key)?.id, id)
+        XCTAssertEqual(WatchTransfer.parsePartKey(key)?.part, 3)
+        XCTAssertNil(WatchTransfer.parsePartKey("nonsense"))
+    }
+
     func testDecodesStagedJSONWithoutNewerFields() throws {
         let json = #"{"recordingID":"6F1C1B8E-2C8B-4E55-9C59-6E1D7C1A0B11","startedAt":0,"endedAt":60,"duration":60}"#
         let meta = try JSONDecoder().decode(WatchRecordingMetadata.self, from: Data(json.utf8))
@@ -198,6 +212,9 @@ final class WatchImporterTests: XCTestCase {
     private var audioDir: URL!
     private var notified: [String] = []
     private var cleanup: [URL] = []
+    private var logSuite = ""
+    private var importLog: ImportedRecordingLog!
+    private var mayTranscribeNow = true
     private let start = Date(timeIntervalSince1970: 1_790_000_000)
 
     override func setUp() async throws {
@@ -208,12 +225,16 @@ final class WatchImporterTests: XCTestCase {
         audioDir = root.appending(path: "audio", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
         notified = []
+        logSuite = "nf-watch-import-tests-\(UUID().uuidString)"
+        importLog = ImportedRecordingLog(defaults: UserDefaults(suiteName: logSuite)!)
+        mayTranscribeNow = true
         Storage.prepare()
     }
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: root)
         for url in cleanup { try? FileManager.default.removeItem(at: url) }
+        UserDefaults().removePersistentDomain(forName: logSuite)
         container = nil
         context = nil
     }
@@ -226,8 +247,9 @@ final class WatchImporterTests: XCTestCase {
             events: { from, to in events.filter { $0.end > from && $0.start < to } },
             makeTranscriber: { transcriber },
             isForeground: { foreground },
-            mayTranscribe: { mayTranscribe },
-            notify: { [weak self] title, _, _ in self?.notified.append(title) }
+            mayTranscribe: { [weak self] in mayTranscribe && (self?.mayTranscribeNow ?? true) },
+            notify: { [weak self] title, _, _ in self?.notified.append(title) },
+            importLog: importLog
         ))
     }
 
@@ -259,11 +281,11 @@ final class WatchImporterTests: XCTestCase {
 
     // MARK: Import
 
-    func testStagingMovesTheFileAndImportCreatesAWatchMeeting() throws {
+    func testStagingMovesTheFileAndImportCreatesAWatchMeeting() async throws {
         let meta = try stageRecording(seconds: 5)
         XCTAssertEqual(inbox.pending().count, 1)
         let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
-        let imported = importer.processInbox()
+        let imported = await importer.processInbox()
         XCTAssertEqual(imported.count, 1)
         let m = try XCTUnwrap(meetings().first)
         XCTAssertTrue(m.isFromWatch)
@@ -278,14 +300,14 @@ final class WatchImporterTests: XCTestCase {
         XCTAssertEqual(inbox.pending().count, 0, "inbox cleared")
     }
 
-    func testSameRecordingTwiceMakesOneMeeting() throws {
+    func testSameRecordingTwiceMakesOneMeeting() async throws {
         let id = UUID()
         let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
         try stageRecording(seconds: 3, id: id)
-        importer.processInbox()
+        await importer.processInbox()
         // The watch sent it again (e.g. its didFinish was lost): same id
         try stageRecording(seconds: 3, id: id)
-        importer.processInbox()
+        await importer.processInbox()
         XCTAssertEqual(meetings().count, 1)
         XCTAssertEqual(inbox.pending().count, 0, "duplicate discarded")
         let files = try FileManager.default.contentsOfDirectory(atPath: audioDir.path(percentEncoded: false))
@@ -306,7 +328,8 @@ final class WatchImporterTests: XCTestCase {
         let importer = makeImporter(fake)
 
         try stage(1)                                     // parts can arrive in any order
-        XCTAssertTrue(importer.processInbox().isEmpty, "waits for the missing part")
+        let none = await importer.processInbox()
+        XCTAssertTrue(none.isEmpty, "waits for the missing part")
         XCTAssertTrue(meetings().isEmpty)
         try stage(0)
         await importer.runQueue()
@@ -325,7 +348,7 @@ final class WatchImporterTests: XCTestCase {
         XCTAssertEqual(m.orderedSegments.first?.start.timeIntervalSince(start) ?? -1, 35, accuracy: 0.01)
     }
 
-    func testFinishesAnImportInterruptedAfterSaving() throws {
+    func testFinishesAnImportInterruptedAfterSaving() async throws {
         // The app died after saving the meeting, before its audio was placed
         let meta = try stageRecording(seconds: 3)
         let key = meta.recordingID.uuidString
@@ -339,7 +362,7 @@ final class WatchImporterTests: XCTestCase {
         try context.save()
 
         let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
-        importer.processInbox()
+        await importer.processInbox()
         XCTAssertEqual(meetings().count, 1)
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioDir.appending(path: "watch-\(key).m4a").path(percentEncoded: false)))
         XCTAssertEqual(saved.importPhase, .pending, "transcription can run now")
@@ -347,12 +370,91 @@ final class WatchImporterTests: XCTestCase {
         XCTAssertTrue(inbox.pending().isEmpty)
     }
 
-    func testCalendarMatchNamesTheMeetingAndAddsAttendees() throws {
+    func testDeletedMeetingIsNotBroughtBackByARedelivery() async throws {
+        let id = UUID()
+        let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
+        try stageRecording(seconds: 3, id: id)
+        await importer.processInbox()
+        let m = try XCTUnwrap(meetings().first)
+        // The user deletes the meeting (as MeetingDetailView does)
+        try? FileManager.default.removeItem(at: audioDir.appending(path: m.audioFileName!))
+        context.delete(m)
+        try context.save()
+        // The watch sends it again (its confirmation was lost)
+        try stageRecording(seconds: 3, id: id)
+        await importer.processInbox()
+        XCTAssertTrue(meetings().isEmpty, "Delete purges everywhere: a re-delivery stays deleted")
+        XCTAssertTrue(inbox.stagedRecordingIDs().isEmpty)
+    }
+
+    func testLatePartOfAnImportedRecordingIsDiscarded() async throws {
+        let id = UUID()
+        let meta = WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(10),
+                                          duration: 4, appVersion: "test")
+        let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
+        for part in 0..<2 {
+            let file = root.appending(path: "p\(part)-\(UUID().uuidString).m4a")
+            try WatchAudioFixture.write(file, seconds: 2)
+            try inbox.stage(file, metadata: meta.forPart(part, of: 2))
+        }
+        await importer.processInbox()
+        XCTAssertEqual(meetings().count, 1)
+        // A duplicate of part 1 arrives afterwards: alone it would wait forever
+        let again = root.appending(path: "again-\(UUID().uuidString).m4a")
+        try WatchAudioFixture.write(again, seconds: 2)
+        try inbox.stage(again, metadata: meta.forPart(1, of: 2))
+        await importer.processInbox()
+        XCTAssertTrue(inbox.stagedRecordingIDs().isEmpty)
+        XCTAssertEqual(meetings().count, 1)
+    }
+
+    func testIncompleteRecordingIsGivenUpAfterTheLimit() throws {
+        final class TestClock: @unchecked Sendable { var now = Date(timeIntervalSince1970: 1_790_000_000) }
+        let clock = TestClock()
+        let clockInbox = WatchInbox(directory: inbox.directory, clock: { clock.now })
+        let meta = WatchRecordingMetadata(recordingID: UUID(), startedAt: start, endedAt: start.addingTimeInterval(10),
+                                          duration: 4, appVersion: "test")
+        let file = root.appending(path: "lonely-\(UUID().uuidString).m4a")
+        try WatchAudioFixture.write(file, seconds: 2)
+        try clockInbox.stage(file, metadata: meta.forPart(1, of: 2))
+        XCTAssertTrue(clockInbox.pending().isEmpty)
+        XCTAssertEqual(clockInbox.stagedRecordingIDs().count, 1, "waits for part 0")
+        clock.now = start.addingTimeInterval(WatchInbox.incompleteLimit + 60)
+        XCTAssertTrue(clockInbox.pending().isEmpty)
+        XCTAssertTrue(clockInbox.stagedRecordingIDs().isEmpty, "audio not kept forever")
+    }
+
+    func testYieldsToALiveRecordingBetweenChunks() async throws {
+        try stageRecording(seconds: 70)
+        let fake = ScriptedTranscriber(chunk: 30) { [unowned self] i, _ in
+            self.mayTranscribeNow = false            // the iPhone starts recording mid-import
+            return [ScriptedTranscriber.line("Chunk \(i) words here.", at: 1)]
+        }
+        let importer = makeImporter(fake)
+        await importer.runQueue()
+        let m = try XCTUnwrap(meetings().first)
+        XCTAssertEqual(fake.chunkLengths.count, 1, "stopped after the chunk in progress")
+        XCTAssertEqual(m.importPhase, .pending)
+        XCTAssertEqual(m.segments.count, 1)
+    }
+
+    func testRemovesLeftoverTemporaryFiles() throws {
+        let joining = audioDir.appending(path: ".joining-\(UUID().uuidString).m4a")
+        let silencing = audioDir.appending(path: ".silencing-\(UUID().uuidString).m4a")
+        let chunk = FileManager.default.temporaryDirectory.appending(path: "nf-chunk-\(UUID().uuidString).caf")
+        let keep = audioDir.appending(path: "watch-\(UUID().uuidString).m4a")
+        for url in [joining, silencing, chunk, keep] { FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: Data([1])) }
+        makeImporter(ScriptedTranscriber { _, _ in [] }).removeLeftoverTemporaryFiles()
+        XCTAssertFalse([joining, silencing, chunk].contains { FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keep.path(percentEncoded: false)))
+    }
+
+    func testCalendarMatchNamesTheMeetingAndAddsAttendees() async throws {
         try stageRecording(seconds: 60)
         let importer = makeImporter(ScriptedTranscriber { _, _ in [] },
                                     events: [event("Brightwater pilot kickoff", from: -120, minutes: 30),
                                              event("Unrelated later", from: 7200, minutes: 30)])
-        importer.processInbox()
+        await importer.processInbox()
         let m = try XCTUnwrap(meetings().first)
         XCTAssertEqual(m.title, "Brightwater pilot kickoff")
         XCTAssertEqual(m.calendarEventID, "evt-Brightwater pilot kickoff")

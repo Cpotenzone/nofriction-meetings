@@ -159,7 +159,13 @@ final class RecognizerFileTranscriber: FileTranscriber {
             return WordTiming(location: seg.substringRange.location, length: seg.substringRange.length,
                               start: seg.timestamp, end: seg.timestamp + seg.duration)
         }
-        return LineSplitter.split(text: transcription.formattedString, words: words)
+        let lines = LineSplitter.split(text: transcription.formattedString, words: words)
+        let text = transcription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard lines.isEmpty, !text.isEmpty else { return lines }
+        // No word timings: keep the text as one line over the whole chunk
+        // (Delete / Strike then silence that whole span)
+        let length = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.processingFormat.sampleRate } ?? 0
+        return [TranscribedLine(text: text, start: 0, end: length, words: [])]
     }
 
     /// Resume a continuation exactly once; the handler can fire again after the final result.

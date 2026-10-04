@@ -5,8 +5,9 @@ import WatchConnectivity
 /// The watch end of WatchConnectivity. Recordings go to the iPhone with
 /// `transferFile(_:metadata:)`: the system queues them while the phone is
 /// away and delivers them in the background, and reports each one back in
-/// `session(_:didFinish:error:)`, where the queue deletes the watch copy
-/// (success) or keeps it for another try (error).
+/// `session(_:didFinish:error:)` (an error keeps the file for another try).
+/// The watch copy is deleted when the iPhone app confirms it stored the part
+/// (`session(_:didReceiveUserInfo:)` with `WatchTransfer.Key.ack`).
 @MainActor
 @Observable
 final class WatchConnection: NSObject, RecordingTransport {
@@ -34,7 +35,7 @@ final class WatchConnection: NSObject, RecordingTransport {
 
     var outstandingTransfers: Set<String> {
         Set((session?.outstandingFileTransfers ?? []).compactMap { transfer in
-            Self.part(transfer.file.metadata).map { WatchRecordingStore.transferKey($0.id, $0.part) }
+            Self.part(transfer.file.metadata).map { WatchTransfer.partKey($0.id, $0.part) }
         })
     }
 
@@ -66,6 +67,12 @@ extension WatchConnection: WCSessionDelegate {
         guard let key = Self.part(fileTransfer.file.metadata) else { return }
         let message = error?.localizedDescription
         Task { @MainActor in self.queue?.didFinish(recordingID: key.id, part: key.part, errorMessage: message) }
+    }
+
+    /// The iPhone confirms parts it stored; only then is the watch copy deleted.
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        guard let keys = userInfo[WatchTransfer.Key.ack] as? [String], !keys.isEmpty else { return }
+        Task { @MainActor in self.queue?.confirmed(keys) }
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {

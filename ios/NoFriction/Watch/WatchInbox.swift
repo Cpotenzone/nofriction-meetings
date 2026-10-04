@@ -9,8 +9,25 @@ import Foundation
 /// is moved here first, synchronously; the import into the store follows.
 struct WatchInbox: Sendable {
     let directory: URL
+    /// Injectable for tests
+    var clock: @Sendable () -> Date = { Date() }
+    /// A recording still missing parts this long after its first part
+    /// arrived is given up on (the watch keeps retrying until the iPhone
+    /// confirms each part, so this only happens if the watch lost them)
+    static let incompleteLimit: TimeInterval = 30 * 86_400
+
+    /// What is written next to each staged part
+    struct StagedPart: Codable {
+        var metadata: WatchRecordingMetadata
+        var stagedAt: Date
+    }
 
     static let shared = WatchInbox(directory: Storage.watchInbox)
+
+    init(directory: URL, clock: @escaping @Sendable () -> Date = { Date() }) {
+        self.directory = directory
+        self.clock = clock
+    }
 
     /// Staging runs on WatchConnectivity's queue, listing on the main actor:
     /// one at a time, so a half-staged recording is never seen (or cleared).
@@ -32,7 +49,7 @@ struct WatchInbox: Sendable {
         defer { Self.lock.unlock() }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let id = metadata.recordingID, part = metadata.part
-        let data = try JSONEncoder().encode(metadata)
+        let data = try JSONEncoder().encode(StagedPart(metadata: metadata, stagedAt: clock()))
         try data.write(to: metadataURL(id, part: part), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         let target = audioURL(id, part: part)
         try? FileManager.default.removeItem(at: target)   // a re-delivery replaces the earlier copy
@@ -45,33 +62,48 @@ struct WatchInbox: Sendable {
     }
 
     /// Complete recordings, oldest first. Recordings still missing a part
-    /// wait; a JSON without its audio is cleared.
+    /// wait (up to `incompleteLimit`); a JSON without its audio is cleared.
     func pending() -> [Item] {
         Self.lock.lock()
         defer { Self.lock.unlock() }
-        var parts: [UUID: [Int: WatchRecordingMetadata]] = [:]
+        var parts: [UUID: [Int: StagedPart]] = [:]
         for url in contents() where url.pathExtension == "json" {
             guard let data = try? Data(contentsOf: url),
-                  let metadata = try? JSONDecoder().decode(WatchRecordingMetadata.self, from: data),
-                  metadata.isValid,
-                  url.lastPathComponent == metadataURL(metadata.recordingID, part: metadata.part).lastPathComponent else {
+                  let staged = try? JSONDecoder().decode(StagedPart.self, from: data),
+                  staged.metadata.isValid,
+                  url.lastPathComponent == metadataURL(staged.metadata.recordingID, part: staged.metadata.part).lastPathComponent else {
                 try? FileManager.default.removeItem(at: url)
                 continue
             }
-            guard exists(audioURL(metadata.recordingID, part: metadata.part)) else {
+            guard exists(audioURL(staged.metadata.recordingID, part: staged.metadata.part)) else {
                 try? FileManager.default.removeItem(at: url)
                 continue
             }
-            parts[metadata.recordingID, default: [:]][metadata.part] = metadata
+            parts[staged.metadata.recordingID, default: [:]][staged.metadata.part] = staged
         }
         var items: [Item] = []
+        let now = clock()
         for (id, byPart) in parts {
-            guard let first = byPart[0] else { continue }
-            let count = first.partCount
-            guard (0..<count).allSatisfy({ byPart[$0] != nil }) else { continue }
-            items.append(Item(metadata: first, audioURLs: (0..<count).map { audioURL(id, part: $0) }))
+            let count = byPart.values.map(\.metadata.partCount).max() ?? 1
+            guard let first = byPart[0], (0..<count).allSatisfy({ byPart[$0] != nil }) else {
+                // Still waiting for parts; given up on after the limit
+                let oldest = byPart.values.map(\.stagedAt).min() ?? now
+                if now.timeIntervalSince(oldest) > Self.incompleteLimit { removeUnlocked(id) }
+                continue
+            }
+            items.append(Item(metadata: first.metadata, audioURLs: (0..<count).map { audioURL(id, part: $0) }))
         }
         return items.sorted { $0.metadata.startedAt < $1.metadata.startedAt }
+    }
+
+    /// Every recording with something staged (complete or not)
+    func stagedRecordingIDs() -> Set<UUID> {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        return Set(contents().compactMap { url -> UUID? in
+            guard url.pathExtension == "json" || url.pathExtension == WatchTransfer.fileExtension else { return nil }
+            return url.lastPathComponent.components(separatedBy: "-p").first.flatMap(UUID.init(uuidString:))
+        })
     }
 
     /// Recordings with at least one part here (complete or not)
@@ -85,6 +117,10 @@ struct WatchInbox: Sendable {
     func remove(_ id: UUID) {
         Self.lock.lock()
         defer { Self.lock.unlock() }
+        removeUnlocked(id)
+    }
+
+    private func removeUnlocked(_ id: UUID) {
         for url in contents() where url.lastPathComponent.hasPrefix("\(id.uuidString)-p") {
             try? FileManager.default.removeItem(at: url)
         }

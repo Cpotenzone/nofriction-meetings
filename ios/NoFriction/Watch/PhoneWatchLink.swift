@@ -5,7 +5,8 @@ import WatchConnectivity
 
 /// The iPhone end of WatchConnectivity. Activated at launch (App.init),
 /// because the system may launch the app in the background to hand over a
-/// recording. Receives files only; it never sends audio or text to the watch.
+/// recording. Receives files; sends the watch only acknowledgments (part
+/// ids), never audio, text or settings.
 @MainActor
 @Observable
 final class PhoneWatchLink: NSObject {
@@ -32,14 +33,16 @@ final class PhoneWatchLink: NSObject {
     /// the system gives us time. Anything left resumes in the foreground.
     func received() {
         guard let importer else { return }
-        importer.processInbox()
-        refreshInbox()
         let box = BackgroundTaskBox()
         box.id = UIApplication.shared.beginBackgroundTask(withName: "Import Apple Watch recording") { [weak importer] in
             importer?.cancel()
             box.end()
         }
-        importer.resume { box.end() }
+        Task {
+            await importer.processInbox()
+            self.refreshInbox()
+            importer.resume { box.end() }
+        }
     }
 
     func refreshInbox() {
@@ -94,7 +97,10 @@ extension PhoneWatchLink: WCSessionDelegate {
     }
 
     /// The system deletes `file.fileURL` when this returns, so it is moved
-    /// into the inbox right here, on WatchConnectivity's queue.
+    /// into the inbox right here, on WatchConnectivity's queue. Once it is
+    /// stored, the watch is told (`WatchTransfer.Key.ack`) and only then
+    /// deletes its copy. Nothing is acknowledged that wasn't stored, so the
+    /// watch keeps anything the iPhone couldn't take and sends it again.
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard let metadata = WatchRecordingMetadata(dictionary: file.metadata ?? [:]) else { return }
         do {
@@ -102,6 +108,7 @@ extension PhoneWatchLink: WCSessionDelegate {
         } catch {
             return
         }
+        session.transferUserInfo([WatchTransfer.Key.ack: [WatchTransfer.partKey(metadata.recordingID, metadata.part)]])
         Task { @MainActor in self.received() }
     }
 }

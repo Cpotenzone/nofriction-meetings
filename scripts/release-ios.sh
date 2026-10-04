@@ -76,9 +76,11 @@ done
 
 [[ -f "$PROJECT_YML" ]] || { err "missing $PROJECT_YML"; }
 grep -q "DEVELOPMENT_TEAM: $TEAM_ID" "$PROJECT_YML" && ok "team $TEAM_ID" || err "project.yml: DEVELOPMENT_TEAM is not $TEAM_ID"
-grep -q "PRODUCT_BUNDLE_IDENTIFIER: $BUNDLE_ID" "$PROJECT_YML" && ok "bundle id $BUNDLE_ID" || err "project.yml: bundle id is not $BUNDLE_ID"
-grep -q "PRODUCT_BUNDLE_IDENTIFIER: $WATCH_BUNDLE_ID" "$PROJECT_YML" && ok "watch app bundle id $WATCH_BUNDLE_ID" || err "project.yml: watch app bundle id is not $WATCH_BUNDLE_ID"
-grep -q "WKCompanionAppBundleIdentifier: $BUNDLE_ID" "$PROJECT_YML" && ok "watch companion $BUNDLE_ID" || err "project.yml: WKCompanionAppBundleIdentifier is not $BUNDLE_ID"
+# Whole bundle ids only: "com.nofriction.meetings" must not match the watch app's id
+has_id() { grep -Eq "$1: ${2//./\\.}([[:space:]]|\$)" "$PROJECT_YML"; }
+has_id PRODUCT_BUNDLE_IDENTIFIER "$BUNDLE_ID" && ok "bundle id $BUNDLE_ID" || err "project.yml: bundle id is not $BUNDLE_ID"
+has_id PRODUCT_BUNDLE_IDENTIFIER "$WATCH_BUNDLE_ID" && ok "watch app bundle id $WATCH_BUNDLE_ID" || err "project.yml: watch app bundle id is not $WATCH_BUNDLE_ID"
+has_id WKCompanionAppBundleIdentifier "$BUNDLE_ID" && ok "watch companion $BUNDLE_ID" || err "project.yml: WKCompanionAppBundleIdentifier is not $BUNDLE_ID"
 grep -q "CODE_SIGN_STYLE: Automatic" "$PROJECT_YML" && ok "automatic signing" || err "project.yml: CODE_SIGN_STYLE is not Automatic"
 VERSION="$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\}.*/\1/p' "$PROJECT_YML" | head -1)"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] && ok "version $VERSION" || err "project.yml: can't read MARKETING_VERSION"

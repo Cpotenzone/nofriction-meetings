@@ -40,7 +40,7 @@ WATCH_BUNDLE_ID="com.nofriction.meetings.watchkitapp"
 
 # Re-encode a PNG without alpha (black background; the watch UI is black).
 flatten_png() {
-  local script; script="$(mktemp -t nf-flatten).swift"
+  local tmpdir script; tmpdir="$(mktemp -d -t nf-flatten)"; script="$tmpdir/flatten.swift"
   cat >"$script" <<'SWIFT'
 import AppKit
 let a = CommandLine.arguments
@@ -55,8 +55,9 @@ ctx.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
 guard let out = ctx.makeImage(), let data = NSBitmapImageRep(cgImage: out).representation(using: .png, properties: [:]) else { exit(1) }
 do { try data.write(to: URL(fileURLWithPath: a[2])) } catch { exit(1) }
 SWIFT
-  xcrun swift "$script" "$1" "$2"; local status=$?
-  rm -f "$script"
+  local status=0
+  xcrun swift "$script" "$1" "$2" || status=$?
+  rm -rf "$tmpdir"
   return $status
 }
 

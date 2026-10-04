@@ -26,8 +26,10 @@ WatchTransferQueue ─▶ WCSession.transferFile    1. import once every part is
                  │                                 audio file; calendar match
                  │                              2. transcribe (queued, resumable): on-device,
 session(_:didFinish:error:)                        in chunks; TranscriptFilter; segments with
-   success ─▶ delete the watch copy, "Delivered"   audio offsets + word timings
+   success ─▶ keep the file, wait for the ack      audio offsets + word timings
    error   ─▶ keep it, "will retry"            3. "Watch recording added" notification
+session(_:didReceiveUserInfo:) ["ack": parts] ◀── transferUserInfo after each part is staged
+   ─▶ delete those parts; all confirmed: "Delivered"
 ```
 
 | Piece | File |
@@ -122,29 +124,51 @@ It must be a user-initiated event while the app is in the foreground.
   which delivers it when the iPhone is reachable, in the background. The
   watch re-queues anything not yet delivered at launch, when the iPhone comes
   back in range, and when the app returns to the foreground.
-- **Deleted after delivery:** on `session(_:didFinish:error:)` without an
-  error the watch deletes that part's file; when every part is delivered the
-  row shows **Delivered** (it keeps no audio; rows go after a week, or beyond
-  20). On an error the file stays and only that part is sent again. A
-  recording not sent yet can be deleted from the watch's list.
+- **Deleted once the iPhone confirms it:** a successful
+  `session(_:didFinish:error:)` only means the system has the file, so the
+  watch keeps it. After the iPhone app has stored a part in its inbox it
+  sends an acknowledgment (`transferUserInfo(["ack": ["<id>#<part>"]])`,
+  queued and delivered by the system like the file); only then does the
+  watch delete that part. When every part is confirmed the row shows
+  **Delivered** (it keeps no audio; rows go after a week, or beyond 20). On
+  an error the file stays and that part is sent again. A part handed off
+  but not confirmed within an hour is sent again (the iPhone ignores
+  duplicates). The iPhone never acknowledges what it couldn't store (bad
+  metadata, full disk), so the watch keeps it. In the simulator this is
+  visible: transfers "finish" but the iPhone app never receives them, and
+  the watch correctly keeps the files as "Sending to iPhone".
+- **Deleting on the watch:** a recording not yet sent can be deleted from
+  the watch's list; one partly confirmed by the iPhone can't (the rest is on
+  its way).
 - **Idempotent on the phone:** the import is keyed by `recordingId` and
   waits until every part has arrived (in any order). A part delivered twice
-  replaces the earlier copy; a recording delivered again after its import
-  is discarded.
+  replaces the earlier copy. The iPhone keeps a list of imported recording
+  ids (ids only, in UserDefaults), so a part arriving after its recording
+  was imported is discarded, and a recording whose meeting the user deleted
+  is not brought back by a late re-delivery. A recording still missing parts
+  30 days after its first part arrived is dropped from the inbox.
+- **Watch index safety:** the watch's list (`index.json`) is read
+  tolerantly (missing or unknown fields take defaults). If it can't be read
+  at all, it is moved aside and the rows are rebuilt from the audio files
+  (start time from the file's creation date, declared in the watch privacy
+  manifest); audio files are never deleted because they are missing from
+  the list.
 - **Staging:** WatchConnectivity deletes a received file when its delegate
   method returns, so the phone moves it into `Documents/WatchInbox` (with a
   `.json` of the metadata) inside that method, then imports it. Staging and
   listing share a lock so a half-staged recording is never cleared.
-- **Nothing else crosses:** the watch never receives audio, transcripts or
-  settings from the phone. The watch app has no network code (the release
+- **Nothing else crosses:** the watch receives only acknowledgments (part
+  ids) from the phone, never audio, transcripts or settings. The watch app has no network code (the release
   policy check enforces this) and no keys.
 - **Data protection:** the watch index and phone inbox are written with
   `completeFileProtectionUntilFirstUserAuthentication`.
 
 ## iPhone import
 
-1. **Meeting:** once every part is staged, the parts are joined in order
-   into one AAC file (`AudioChunks.join`; a single part is just moved).
+1. **Meeting:** once every part is staged, the meeting is saved, then the
+   parts are joined in order into one AAC file off the main thread
+   (`AudioChunks.join`; a single part is just moved). If the app dies in
+   between, the next pass finds the meeting without its audio and finishes.
    `startedAt`/`endedAt` from the watch, `source = "watch"`,
    `sourceRecordingID`, `audioFileName = watch-<id>.m4a` in `Storage.audio`,
    `importState = "pending"`. The new `Meeting` fields are optional, so stores
@@ -170,7 +194,8 @@ It must be a user-initiated event while the app is in the foreground.
    together. Meetings still `pending` or `transcribing` are picked up at
    launch, when the app comes to the foreground and when a live recording on
    the phone stops (one recognizer at a time: watch imports wait while the
-   phone records). A run cut short (background time over, app closed) goes
+   phone records, and a running import stops after its current chunk when
+   the phone starts recording). A run cut short (background time over, app closed) goes
    back to `pending`; a failure in the foreground shows the error with
    **Retry**. Failed imports get one automatic retry per launch.
 6. **Background:** the system may launch the app in the background to
@@ -186,7 +211,11 @@ It must be a user-initiated event while the app is in the foreground.
 use its transcript; **Delete / Strike silence the phone's copy** of the audio
 (the imported file is the meeting's audio file, with word timings, so exactly
 the selected words plus 150 ms are zeroed; see `docs/REDACTION.md`); Delete
-Meeting removes the file; export and People work unchanged.
+Meeting removes the file and anything of that recording still in the inbox,
+and the import log keeps a late re-delivery from bringing it back; export and
+People work unchanged. At launch the app removes temporary files a killed run
+may have left (`.joining-*` / `.silencing-*` in `Audio/`, `nf-chunk-*` in
+`tmp/`).
 
 **UI:** an Apple Watch mark on the meeting in Meetings and "Recorded on Apple
 Watch" in its detail; "Transcribing…" / "Not transcribed" in the list and a
@@ -231,9 +260,9 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
   microphone recorder: 2 s, pause, 2 s, stop; grant the simulator microphone
   first with `xcrun simctl privacy <watch> grant microphone com.nofriction.meetings.watchkitapp`).
 - **Simulator limit:** in the simulator, `transferFile` from the watch
-  completes on the watch (the system reports success, the watch deletes its
-  copy and shows Delivered) but the iPhone simulator never calls
-  `session(_:didReceive:)`. This is a known simulator limitation
+  completes on the watch (the system reports success) but the iPhone
+  simulator never calls `session(_:didReceive:)`, so no acknowledgment comes
+  back and the watch keeps the files ("Sending to iPhone"). This is a known simulator limitation
   ([forum 128205](https://developer.apple.com/forums/thread/128205)). The
   phone side (staging, import, transcription) is covered by unit tests; the
   delivery itself needs real devices.
@@ -316,9 +345,10 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
   files), background launch of the iPhone app on delivery, on-device
   transcription of an imported file (the Speech framework doesn't run in the
   Simulator), battery and transfer time for long recordings.
-- Delivery confirmation: the watch deletes its copy when WatchConnectivity
-  reports the transfer finished, as the system guarantees delivery to the
-  iPhone from there. If real-device testing shows files lost between the
-  system and the app, a stronger option is an acknowledgment from the phone
-  (`transferUserInfo` after staging) before the watch deletes.
+- The acknowledgment round trip (`transferUserInfo` from the iPhone app,
+  `didReceiveUserInfo` on the watch) needs real devices for the same reason.
+- A crash while actually recording loses the part being written. Rotating
+  to a new file every few minutes would cap that, but watchOS doesn't let an
+  app start recording from the background, so a rotation with the wrist down
+  would end the recording; it isn't done.
 - Signed archive/upload with the watch app (needs the portal steps above).

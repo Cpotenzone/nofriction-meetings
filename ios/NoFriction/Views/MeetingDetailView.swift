@@ -478,6 +478,9 @@ struct MeetingDetailView: View {
     private func delete() {
         redactions.discardPending(for: meeting)
         if let name = meeting.audioFileName { try? FileManager.default.removeItem(at: Storage.audio.appending(path: name)) }
+        // An Apple Watch recording: any copy still staged from the watch goes
+        // too, and the import log keeps a re-delivery from bringing it back
+        if let id = meeting.sourceRecordingID.flatMap(UUID.init(uuidString:)) { WatchInbox.shared.remove(id) }
         for s in meeting.snapshots { try? FileManager.default.removeItem(at: s.fileURL) }
         context.delete(meeting)
         try? context.save()

@@ -21,6 +21,16 @@
 				<string>CA92.1</string>
 			</array>
 		</dict>
+		<dict>
+			<!-- File creation dates of the app's own recordings, to restore a recording's
+			     start time if the recordings list can't be read -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

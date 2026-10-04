@@ -126,8 +126,9 @@ final class WatchAppModel {
     func retryNow() { queue.sendPending() }
 
     func delete(_ entry: WatchRecordingEntry) {
-        // Never pull a file out from under an in-flight transfer or the recorder
-        guard entry.status != .sending, entry.status != .recording else { return }
+        // Never pull a file out from under an in-flight transfer or the
+        // recorder, or delete half of what the iPhone already has
+        guard entry.canDelete else { return }
         store.discard(entry.id)
     }
 

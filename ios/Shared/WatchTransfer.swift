@@ -31,6 +31,19 @@ enum WatchTransfer {
         static let part = "part"
         static let partCount = "parts"
         static let version = "v"
+        /// iPhone → watch user info: `["ack": ["<recordingId>#<part>", …]]`,
+        /// sent once a part is stored on the iPhone. Only then does the
+        /// watch delete its copy.
+        static let ack = "ack"
+    }
+
+    /// Identifies one part of one recording ("<uuid>#<part>"), in acks and transfer bookkeeping.
+    static func partKey(_ id: UUID, _ part: Int) -> String { "\(id.uuidString)#\(part)" }
+
+    static func parsePartKey(_ key: String) -> (id: UUID, part: Int)? {
+        let pieces = key.split(separator: "#")
+        guard pieces.count == 2, let id = UUID(uuidString: String(pieces[0])), let part = Int(pieces[1]) else { return nil }
+        return (id, part)
     }
 
     /// Parts a recording may be split into (one per pause, plus one)
@@ -152,11 +165,11 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
         guard isValid else { return nil }
     }
 
-    /// Sane times: ends after it starts, finite non-negative audio length,
-    /// at most a day long, pauses inside the recording, a real part number.
+    /// Sane values: ends no earlier than it starts, finite non-negative audio
+    /// length, pauses with finite non-negative times, a real part number.
+    /// (No upper limit on length: a recording paused overnight is still valid.)
     var isValid: Bool {
         guard duration.isFinite, duration >= 0, endedAt >= startedAt,
-              endedAt.timeIntervalSince(startedAt) <= 86_400,
               partCount >= 1, partCount <= WatchTransfer.maxParts, part >= 0, part < partCount else { return false }
         return pauses.allSatisfy { $0.at.isFinite && $0.length.isFinite && $0.at >= 0 && $0.length >= 0 }
     }

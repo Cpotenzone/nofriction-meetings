@@ -175,7 +175,7 @@ struct RecordingsListView: View {
             ForEach(model.recordings) { entry in
                 RecordingRow(entry: entry)
                     .swipeActions {
-                        if entry.status != .sending && entry.status != .recording {
+                        if entry.canDelete {
                             Button(role: .destructive) {
                                 model.delete(entry)
                             } label: {
@@ -190,7 +190,7 @@ struct RecordingsListView: View {
             Section {
                 EmptyView()
             } footer: {
-                Text("Each recording is deleted from your watch once your iPhone has it. noFriction on your iPhone transcribes it on the device.")
+                Text("Each recording is deleted from your watch once noFriction on your iPhone confirms it has it. The iPhone transcribes it on the device.")
             }
         }
         .navigationTitle("Recordings")
@@ -221,7 +221,10 @@ struct RecordingRow: View {
         switch entry.status {
         case .recording: return ("Recording", "record.circle", WatchTheme.recording)
         case .saved: return ("Saved on watch", "applewatch", .secondary)
-        case .sending: return ("Sending to iPhone", "arrow.up.circle", WatchTheme.accent)
+        case .sending:
+            let total = entry.parts.count
+            let done = entry.confirmedParts.count
+            return (total > 1 && done > 0 ? "Sending to iPhone (\(done)/\(total))" : "Sending to iPhone", "arrow.up.circle", WatchTheme.accent)
         case .delivered: return ("Delivered", "checkmark.circle.fill", WatchTheme.delivered)
         case .failed: return ("Saved on watch · will retry", "exclamationmark.arrow.circlepath", .orange)
         }

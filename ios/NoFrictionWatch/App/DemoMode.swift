@@ -61,7 +61,7 @@ enum DemoMode: String {
                                                 duration: seconds, appVersion: "demo"))
             switch status {
             case .sending: store.markSending(id)
-            case .delivered: store.markDelivered(id, part: 0)
+            case .delivered: store.markConfirmed(id, part: 0)
             default: break
             }
         }

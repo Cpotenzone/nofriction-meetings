@@ -34,6 +34,8 @@ final class WatchImporter {
         var mayTranscribe: @MainActor () -> Bool
         /// "Watch recording added" (title, length, meeting id)
         var notify: @MainActor (String, TimeInterval?, UUID) async -> Void
+        /// Recording ids imported before (so a re-delivery after Delete stays deleted)
+        var importLog: ImportedRecordingLog
         /// Below this level a filler-only line counts as heard on silence
         var speechLevel: Float = MeetingEndDetector.Config().speechLevel
     }
@@ -45,6 +47,9 @@ final class WatchImporter {
     private var runner: Task<Void, Never>?
     private var anotherPass = false
     private var completions: [() -> Void] = []
+    /// One inbox pass at a time (joining parts awaits off the main actor)
+    private var inboxBusy = false
+    private var inboxAgain = false
 
     init(context: ModelContext, env: Environment) {
         self.context = context
@@ -55,20 +60,45 @@ final class WatchImporter {
 
     // MARK: Import
 
-    /// Import everything staged in the inbox. Returns the new or existing meetings.
+    /// Import everything staged in the inbox. Returns the new or existing
+    /// meetings. A call while a pass is running makes that pass go again.
     @discardableResult
-    func processInbox() -> [Meeting] {
-        env.inbox.removeOrphans()
-        var out: [Meeting] = []
-        for item in env.inbox.pending() {
-            do {
-                out.append(try importRecording(item.metadata, audio: item.audioURLs))
-            } catch {
-                // Left in the inbox; tried again on the next pass
-                continue
-            }
+    func processInbox() async -> [Meeting] {
+        guard !inboxBusy else {
+            inboxAgain = true
+            return []
         }
+        inboxBusy = true
+        defer { inboxBusy = false }
+        var out: [Meeting] = []
+        repeat {
+            inboxAgain = false
+            env.inbox.removeOrphans()
+            discardAlreadyImported()
+            for item in env.inbox.pending() {
+                do {
+                    out.append(try await importRecording(item.metadata, audio: item.audioURLs))
+                } catch {
+                    // Left in the inbox; tried again on the next pass
+                    continue
+                }
+            }
+        } while inboxAgain
         return out
+    }
+
+    /// Staged files of a recording imported before: a duplicate delivery
+    /// (its meeting has its audio), or a meeting the user has since deleted
+    /// (Delete purges everywhere, so it isn't brought back).
+    private func discardAlreadyImported() {
+        for id in env.inbox.stagedRecordingIDs() where env.importLog.contains(id) {
+            if let existing = meeting(sourceRecordingID: id.uuidString) {
+                let audio = existing.audioFileName.map { env.audioDirectory.appending(path: $0) }
+                // Saved but its audio never placed: let the import finish it
+                guard let audio, FileManager.default.fileExists(atPath: audio.path(percentEncoded: false)) else { continue }
+            }
+            env.inbox.remove(id)
+        }
     }
 
     /// One recording → one meeting. `audio` is its parts in order (one file
@@ -80,7 +110,7 @@ final class WatchImporter {
     /// inbox is cleared. If the app dies in between, the next pass finds the
     /// meeting without its audio and finishes placing it.
     @discardableResult
-    func importRecording(_ metadata: WatchRecordingMetadata, audio: [URL]) throws -> Meeting {
+    func importRecording(_ metadata: WatchRecordingMetadata, audio: [URL]) async throws -> Meeting {
         let key = metadata.recordingID.uuidString
         // The imported file is the meeting's audio file: Delete / Strike
         // silence it in place, Delete Meeting removes it
@@ -114,6 +144,7 @@ final class WatchImporter {
                 MeetingLinker.link(record, to: event, in: context)
             }
             try context.save()
+            env.importLog.add(metadata.recordingID)
         }
 
         if !hasAudio {
@@ -121,7 +152,8 @@ final class WatchImporter {
             if audio.count == 1, let only = audio.first {
                 try FileManager.default.moveItem(at: only, to: target)
             } else {
-                try AudioChunks.join(audio, to: target)
+                // Decoding and re-encoding a long recording: off the main actor
+                try await Task.detached(priority: .utility) { try AudioChunks.join(audio, to: target) }.value
                 for url in audio { try? FileManager.default.removeItem(at: url) }
             }
             // A transcription attempt that ran before the audio was in place
@@ -171,7 +203,7 @@ final class WatchImporter {
 
     /// One pass: import the inbox, then transcribe each pending meeting once.
     func runQueue() async {
-        processInbox()
+        await processInbox()
         var attempted = Set<UUID>()
         while !Task.isCancelled, env.mayTranscribe(), let next = nextPending(excluding: attempted) {
             attempted.insert(next)
@@ -244,7 +276,8 @@ final class WatchImporter {
         try? context.save()
 
         for chunk in chunks {
-            if Task.isCancelled { setState(id, .pending); return }
+            // Cut short, or this iPhone started recording: wait, resume later
+            if Task.isCancelled || !env.mayTranscribe() { setState(id, .pending); return }
             let temp = FileManager.default.temporaryDirectory.appending(path: "nf-chunk-\(UUID().uuidString).caf")
             defer { try? FileManager.default.removeItem(at: temp) }
             let lines: [TranscribedLine]
@@ -287,6 +320,20 @@ final class WatchImporter {
         m.importProgress = m.audioDuration
         try? context.save()
         await env.notify(m.title, m.duration, m.id)
+    }
+
+    /// At launch: temp files a killed run may have left — a half-joined
+    /// recording, a half-silenced one, uncompressed transcription chunks.
+    func removeLeftoverTemporaryFiles() {
+        let fm = FileManager.default
+        for url in (try? fm.contentsOfDirectory(at: env.audioDirectory, includingPropertiesForKeys: nil)) ?? []
+        where url.lastPathComponent.hasPrefix(".joining-") || url.lastPathComponent.hasPrefix(".silencing-") {
+            try? fm.removeItem(at: url)
+        }
+        for url in (try? fm.contentsOfDirectory(at: fm.temporaryDirectory, includingPropertiesForKeys: nil)) ?? []
+        where url.lastPathComponent.hasPrefix("nf-chunk-") {
+            try? fm.removeItem(at: url)
+        }
     }
 
     // MARK: Helpers
@@ -378,7 +425,29 @@ extension WatchImporter.Environment {
             isForeground: { UIApplication.shared.applicationState == .active },
             // The phone's own recording comes first (one recognizer at a time)
             mayTranscribe: { [weak session] in !(session?.isActive ?? false) },
-            notify: { title, duration, id in await WatchImportNotifier.post(title: title, duration: duration, meetingID: id) }
+            notify: { title, duration, id in await WatchImportNotifier.post(title: title, duration: duration, meetingID: id) },
+            importLog: .shared
         )
+    }
+}
+
+/// Ids of Apple Watch recordings already imported (ids only, no content),
+/// so a recording delivered again after its meeting was deleted isn't
+/// brought back. Kept in UserDefaults, newest 2,000.
+struct ImportedRecordingLog: @unchecked Sendable {
+    let defaults: UserDefaults
+    static let key = "watchImportedRecordingIDs"
+    static let limit = 2000
+    static let shared = ImportedRecordingLog(defaults: .standard)
+
+    func contains(_ id: UUID) -> Bool {
+        (defaults.stringArray(forKey: Self.key) ?? []).contains(id.uuidString)
+    }
+
+    func add(_ id: UUID) {
+        var ids = defaults.stringArray(forKey: Self.key) ?? []
+        guard !ids.contains(id.uuidString) else { return }
+        ids.append(id.uuidString)
+        defaults.set(Array(ids.suffix(Self.limit)), forKey: Self.key)
     }
 }

@@ -26,6 +26,7 @@ struct NoFrictionApp: App {
         _watchImporter = State(initialValue: importer)
         self.container = container
         // Before any UI: a recording from the watch may be what launched us
+        importer.removeLeftoverTemporaryFiles()
         importer.retryFailedOnLaunch()
         PhoneWatchLink.shared.importer = importer
         PhoneWatchLink.shared.activate()

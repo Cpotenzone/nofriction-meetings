@@ -35,6 +35,7 @@ final class WatchRecorder: NSObject {
     var clock: () -> Date = Date.init
     /// False while the screen is off (scene not active)
     var meterVisible = true
+    private var starting = false
 
     init(store: WatchRecordingStore, queue: WatchTransferQueue) {
         self.store = store
@@ -59,7 +60,10 @@ final class WatchRecorder: NSObject {
     // MARK: Controls
 
     func start() async {
-        guard !machine.isActive else { return }
+        // A second tap (or the App Intent) while the permission check awaits
+        guard !machine.isActive, !starting else { return }
+        starting = true
+        defer { starting = false }
         notice = nil
         guard await AVAudioApplication.requestRecordPermission() else {
             notice = "Microphone access is off. Turn it on in the Watch app on your iPhone → Privacy → Microphone."
@@ -122,20 +126,17 @@ final class WatchRecorder: NSObject {
         meterTask?.cancel()
         level = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        // The files are the truth for the audio length: each part's real
-        // length, and every pause sits where a part ends
-        let lengths = (store.entry(id).map(store.partURLs) ?? []).map { Self.audioLength(of: $0) ?? 0 }
-        let total = lengths.reduce(0, +)
-        if var metadata = try? machine.stop(at: clock(), appVersion: Self.appVersion, audioDuration: total > 0 ? total : nil) {
-            if metadata.pauses.count == lengths.count - 1 {
-                var offset = 0.0
-                for i in metadata.pauses.indices {
-                    offset += lengths[i]
-                    metadata.pauses[i].at = offset
-                }
+        // The files are the truth: each part's real length (nil if it can't
+        // be read), every pause where a part ends. Empty parts (Resume then
+        // straight back to Pause) are dropped and their pauses merged.
+        let lengths = (store.entry(id).map(store.partURLs) ?? []).map { Self.audioLength(of: $0) }
+        let total = lengths.compactMap { $0 }.reduce(0, +)
+        if let metadata = try? machine.stop(at: clock(), appVersion: Self.appVersion, audioDuration: total > 0 ? total : nil) {
+            if store.finish(metadata, partLengths: lengths) {
+                queue.sendPending()
+            } else {
+                notice = "Nothing was recorded."
             }
-            store.finish(metadata)
-            queue.sendPending()
         }
         machine.reset()
         WKInterfaceDevice.current().play(.stop)
