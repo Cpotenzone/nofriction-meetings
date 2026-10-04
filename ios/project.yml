@@ -5,6 +5,8 @@ options:
   bundleIdPrefix: com.nofriction
   deploymentTarget:
     iOS: "18.0"
+    # Apple Watch app: @Observable, AVAudioApplication record permission (docs/WATCH_APP.md)
+    watchOS: "10.0"
   createIntermediateGroups: true
 
 settings:
@@ -21,9 +23,21 @@ targets:
     platform: iOS
     sources:
       - NoFriction
+      - Shared                                 # watch transfer contract (also in the watch app)
+    dependencies:
+      # Single-target watchOS app, embedded at noFriction.app/Watch/NoFrictionWatch.app
+      # ("Embed Watch Content"). It ships inside the iPhone app; no separate app record.
+      - target: NoFrictionWatch
+        embed: true
+        codeSign: true
+        copy:
+          destination: productsDirectory
+          subpath: "$(CONTENTS_FOLDER_PATH)/Watch"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nofriction.meetings   # same ID as the Mac app (Universal Purchase)
+        # Manual App Store signing only (scripts/release-ios.sh, NF_IOS_PROFILE_UUID); empty = automatic
+        PROVISIONING_PROFILE_SPECIFIER: "$(NF_IOS_PROFILE_SPECIFIER)"
         PRODUCT_NAME: noFriction
         INFOPLIST_KEY_CFBundleDisplayName: noFriction
         TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
@@ -56,6 +70,53 @@ targets:
         NSAppTransportSecurity:
           # http:// only to local hosts (IPs, .local, unqualified names). Never NSAllowsArbitraryLoads.
           NSAllowsLocalNetworking: true
+  # Apple Watch app (docs/WATCH_APP.md): records on the watch, sends the
+  # file to the iPhone, which imports and transcribes it on-device.
+  NoFrictionWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - NoFrictionWatch
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nofriction.meetings.watchkitapp
+        PRODUCT_NAME: NoFrictionWatch
+        INFOPLIST_KEY_CFBundleDisplayName: noFriction
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "4"
+        SKIP_INSTALL: YES                      # archived inside the iPhone app, not on its own
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.nofriction.meetings
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "noFriction records meetings on your watch and sends the audio to noFriction on your iPhone, where it is transcribed on the device. It is deleted from the watch once your iPhone has it."
+        PROVISIONING_PROFILE_SPECIFIER: "$(NF_WATCH_PROFILE_SPECIFIER)"
+    info:
+      path: NoFrictionWatch/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleDisplayName: noFriction
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.nofriction.meetings
+        WKRunsIndependentlyOfCompanionApp: false
+        # Keeps a recording started in the foreground going with the wrist down
+        UIBackgroundModes: [audio]
+        ITSAppUsesNonExemptEncryption: false
+
+  NoFrictionWatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    sources: [NoFrictionWatchTests]
+    dependencies:
+      - target: NoFrictionWatch
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/NoFrictionWatch.app/NoFrictionWatch"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
   NoFrictionTests:
     type: bundle.unit-test
     platform: iOS
@@ -96,5 +157,17 @@ schemes:
     test:
       config: Debug
       targets: [NoFrictionTests, NoFrictionUITests]
+    archive:
+      config: Release
+  NoFrictionWatch:
+    build:
+      targets:
+        NoFrictionWatch: all
+        NoFrictionWatchTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [NoFrictionWatchTests]
     archive:
       config: Release

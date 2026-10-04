@@ -1,19 +1,36 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 @main
 struct NoFrictionApp: App {
-    @State private var session = RecordingSession()
+    @State private var session: RecordingSession
     /// Created at launch so the StoreKit Transaction.updates listener starts immediately.
     @State private var store = Store()
     @State private var aiSettings = AISettings()
     /// Delete's undo window + the purge queue (docs/REDACTION.md)
     @State private var redactions = RedactionCenter()
+    /// Opened here, not by a view: Apple Watch recordings can arrive with no UI
+    private let container: ModelContainer
+    /// Apple Watch recordings → meetings (docs/WATCH_APP.md)
+    @State private var watchImporter: WatchImporter
 
     init() {
         Storage.prepare()
         // Meeting-end prompt actions can arrive while recording in the background
         MeetingEndNotifier.shared.install()
+        let session = RecordingSession()
+        let container = Storage.makeContainer()
+        let importer = WatchImporter(context: container.mainContext, env: .live(session: session))
+        _session = State(initialValue: session)
+        _watchImporter = State(initialValue: importer)
+        self.container = container
+        // Before any UI: a recording from the watch may be what launched us
+        importer.removeLeftoverTemporaryFiles()
+        importer.retryFailedOnLaunch()
+        PhoneWatchLink.shared.importer = importer
+        PhoneWatchLink.shared.activate()
+        importer.resume()
         #if DEBUG
         // UI tests: -NFResetOnboarding starts from a first launch;
         // demo / auto-record runs skip the welcome
@@ -34,10 +51,12 @@ struct NoFrictionApp: App {
                 .environment(store)
                 .environment(aiSettings)
                 .environment(redactions)
+                .environment(watchImporter)
+                .environment(PhoneWatchLink.shared)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }
-        .modelContainer(for: Storage.modelTypes)
+        .modelContainer(container)
     }
 }
 

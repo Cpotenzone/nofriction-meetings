@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Apple Watch app (iOS 1.0.0, next build).** Record a meeting on the watch
+  with one tap: elapsed time, live level, Pause/Resume, Stop. It keeps
+  recording with the wrist down; a call or Siri pauses it until you tap
+  Resume (watchOS doesn't let apps restart recording in the background). The
+  audio goes to the iPhone over Apple's watch connection and is deleted from
+  the watch once the iPhone has it. The iPhone imports it as a normal
+  meeting: transcribed on the iPhone, on the device, matched to your
+  calendar, with AI notes, follow-up email, Delete / Strike, export and
+  People. Long recordings are transcribed in chunks and continue where they
+  stopped if the app is closed. See `docs/WATCH_APP.md`.
+
+---
+
 ## [3.6.0] - 2026-10-01
 
 Prepared for TestFlight and App Store review on iPhone, iPad and Mac. AI runs

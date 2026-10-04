@@ -65,7 +65,8 @@ struct RecordingNoticeSheet: View {
     let onContinue: () -> Void
     @Environment(\.dismiss) private var dismiss
 
-    static let text = "Recording laws differ — in many places everyone in the conversation must agree to be recorded. Tell participants you're recording."
+    /// Shared with the Apple Watch app (ios/Shared/WatchTransfer.swift)
+    static let text = RecordingNotice.text
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {

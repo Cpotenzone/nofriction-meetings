@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Export options for App Store Connect / TestFlight. Used by scripts/release-ios.sh,
-     which switches `destination` to `upload` when run with the upload flag. -->
+     which switches `destination` to `upload` when run with the upload flag.
+     The Apple Watch app (Watch/NoFrictionWatch.app, com.nofriction.meetings.watchkitapp)
+     is exported and re-signed inside the iPhone app: automatic signing provisions both
+     App Store profiles; for manual signing the script adds `provisioningProfiles` entries
+     for both bundle ids (NF_IOS_PROFILE_UUID, NF_WATCH_PROFILE_UUID). -->
 <plist version="1.0">
 <dict>
 	<key>method</key>

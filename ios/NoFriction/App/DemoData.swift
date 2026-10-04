@@ -109,6 +109,35 @@ enum DemoData {
         try? context.save()
     }
 
+    /// -NFSeedWatchDemo: two Apple Watch recordings, one transcribed and one
+    /// still being transcribed (UI checks of the watch badge and import state).
+    @MainActor
+    static func seedWatchDemoIfRequested(_ context: ModelContext) {
+        guard ProcessInfo.processInfo.arguments.contains("-NFSeedWatchDemo") else { return }
+        let watch = Meeting.Source.watch
+        let existing = (try? context.fetchCount(FetchDescriptor<Meeting>(predicate: #Predicate { $0.source == watch }))) ?? 0
+        guard existing == 0 else { return }
+        let a = anchor
+        let done = meeting("Site walk with Dana", start: a.addingTimeInterval(-5 * 3600), minutes: 22,
+                           lines: [
+                               "This is the north stairwell. The fire door closes, but slowly.",
+                               "Let's log that with a photo for the report.",
+                               "And the exit sign on level two is out.",
+                           ],
+                           spacing: 40, attendees: [2, selfIndex], organizer: selfIndex, in: context)
+        done.source = watch
+        done.sourceRecordingID = UUID().uuidString
+        let pending = Meeting(title: "Hallway chat", startedAt: a.addingTimeInterval(-40 * 60))
+        pending.endedAt = pending.startedAt.addingTimeInterval(18 * 60)
+        pending.source = watch
+        pending.sourceRecordingID = UUID().uuidString
+        pending.importState = Meeting.ImportState.transcribing.rawValue
+        pending.audioDuration = 18 * 60
+        pending.importProgress = 7 * 60
+        context.insert(pending)
+        try? context.save()
+    }
+
     /// -NFDemoLive: a meeting in progress with a live transcript.
     @MainActor
     static func showLiveMeeting(session: RecordingSession, context: ModelContext) {

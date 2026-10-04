@@ -350,3 +350,43 @@ final class StoreKitLifecycleTests: XCTestCase {
         assertFree(app)
     }
 }
+
+/// Apple Watch recordings on the iPhone: badge, source line, import status,
+/// and the Settings → Apple Watch section (sample data, -NFSeedWatchDemo).
+final class WatchImportScreensTests: XCTestCase {
+    private func element(_ app: XCUIApplication, labelContains text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    func testWatchMeetingsShowBadgeStatusAndSettings() {
+        let device = UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
+        let app = XCUIApplication()
+        app.launchArguments = ["-NFResetDemo", "-NFSeedDemo", "-NFSeedWatchDemo"]
+        app.launch()
+
+        app.buttons["Meetings"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Site walk with Dana"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, labelContains: "Recorded on Apple Watch").waitForExistence(timeout: 3), "watch badge missing")
+        XCTAssertTrue(element(app, labelContains: "Transcribing…").exists, "import state missing in the list")
+        saveShot("\(device)-watch-1-meetings")
+
+        app.staticTexts["Site walk with Dana"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["watch-source"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Dana Whitfield"].firstMatch.exists)
+        saveShot("\(device)-watch-2-detail")
+
+        if device == "iphone" { app.navigationBars.buttons.firstMatch.tap() }
+        app.staticTexts["Hallway chat"].firstMatch.tap()
+        XCTAssertTrue(element(app, labelContains: "Transcribing on this iPhone").waitForExistence(timeout: 5), "import progress card missing")
+        saveShot("\(device)-watch-3-transcribing")
+
+        app.buttons["Settings"].firstMatch.tap()
+        let paired = app.descendants(matching: .any)["watch-paired"].firstMatch
+        scrollTo(paired, in: app)
+        if device == "iphone" {
+            XCTAssertTrue(paired.waitForExistence(timeout: 5), "Settings → Apple Watch section missing")
+            XCTAssertTrue(app.descendants(matching: .any)["watch-pending"].firstMatch.exists)
+            saveShot("\(device)-watch-4-settings")
+        }
+    }
+}

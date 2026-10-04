@@ -100,6 +100,12 @@ struct MeetingDetailView: View {
                 .font(.title.weight(.semibold))
                 .onSubmit { try? context.save() }
             Text(whenLine).font(.subheadline).foregroundStyle(.secondary)
+            if meeting.isFromWatch {
+                Label("Recorded on Apple Watch", systemImage: "applewatch")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("watch-source")
+            }
             if let location = meeting.location, !location.isEmpty {
                 Label(location, systemImage: "mappin").font(.subheadline).foregroundStyle(.secondary)
             }
@@ -357,8 +363,13 @@ struct MeetingDetailView: View {
 
     private var transcript: some View {
         SectionBlock(title: "Transcript") {
+            if meeting.importPhase != nil {
+                WatchImportStatus(meeting: meeting)
+            }
             if meeting.segments.isEmpty {
-                Text("Nothing was transcribed.").foregroundStyle(.secondary)
+                if meeting.importPhase == nil {
+                    Text("Nothing was transcribed.").foregroundStyle(.secondary)
+                }
             } else {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(transcriptRows) { segment in
@@ -467,10 +478,55 @@ struct MeetingDetailView: View {
     private func delete() {
         redactions.discardPending(for: meeting)
         if let name = meeting.audioFileName { try? FileManager.default.removeItem(at: Storage.audio.appending(path: name)) }
+        // An Apple Watch recording: any copy still staged from the watch goes
+        // too, and the import log keeps a re-delivery from bringing it back
+        if let id = meeting.sourceRecordingID.flatMap(UUID.init(uuidString:)) { WatchInbox.shared.remove(id) }
         for s in meeting.snapshots { try? FileManager.default.removeItem(at: s.fileURL) }
         context.delete(meeting)
         try? context.save()
         dismiss()
+    }
+}
+
+/// An Apple Watch recording still being transcribed on this iPhone (or stopped, with Retry).
+struct WatchImportStatus: View {
+    let meeting: Meeting
+    @Environment(WatchImporter.self) private var importer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch meeting.importPhase {
+            case .failed:
+                Label(meeting.importError ?? "Transcription stopped.", systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                Button("Retry transcription", systemImage: "arrow.clockwise") { importer.retry(meeting) }
+                    .font(.subheadline)
+                    .accessibilityIdentifier("watch-import-retry")
+            default:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(label).font(.footnote).foregroundStyle(.secondary)
+                }
+                if let fraction = meeting.importFraction, fraction > 0 {
+                    ProgressView(value: fraction).tint(Theme.accent)
+                        .accessibilityLabel("Transcription progress")
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("watch-import-status")
+    }
+
+    private var label: String {
+        if meeting.importPhase == .transcribing {
+            let percent = meeting.importFraction.map { " \(Int(($0 * 100).rounded()))%" } ?? ""
+            return "Transcribing on this iPhone…" + percent
+        }
+        return "Waiting to transcribe on this iPhone…"
     }
 }
 

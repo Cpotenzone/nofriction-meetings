@@ -119,6 +119,10 @@ map and test commands: [ios/README.md](../ios/README.md).
   stored for precise audio removal.
 - **Screens**: iOS can't capture other apps, so meetings get photos (camera)
   or images imported from Photos.
+- **Apple Watch** (`NoFrictionWatch/`, watchOS 10+, embedded in the iPhone
+  app): records AAC on the watch and sends the file with WatchConnectivity;
+  the iPhone (`Watch/`) imports it as a meeting and transcribes the file on
+  the device, in resumable chunks. Spec: [WATCH_APP.md](WATCH_APP.md).
 - **Store**: SwiftData (`Meeting`, `Segment`, `Snapshot`, `Person`,
   `Attendance`, `Redaction`).
 - **AI**: `AI/` mirrors the Mac provider layer; `MeetingAI` has two features:

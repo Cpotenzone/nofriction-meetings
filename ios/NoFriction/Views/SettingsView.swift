@@ -1,3 +1,4 @@
+import SwiftData
 import StoreKit
 import SwiftUI
 import UIKit
@@ -164,6 +165,7 @@ struct SettingsView: View {
                 AIEndpointSection(model: connect)
                 savedSection
                 recordingSection
+                AppleWatchSection()
                 privacySection
                 subscriptionSection
                 aboutSection
@@ -351,5 +353,48 @@ struct SettingsView: View {
             return "AI requests go to your own server at \(settings.baseURL(for: p)?.host() ?? "your network"). Nothing goes to a cloud service."
         }
         return "When you use AI, the transcript, meeting title, attendee names and invite notes go to \(settings.baseURL(for: p)?.host() ?? p.name). Audio and photos stay on this device."
+    }
+}
+
+// MARK: - Apple Watch
+
+/// Pairing / install status and recordings still on their way (docs/WATCH_APP.md).
+struct AppleWatchSection: View {
+    @Environment(PhoneWatchLink.self) private var link
+    @Query(filter: #Predicate<Meeting> { $0.importState != nil }) private var importing: [Meeting]
+
+    var body: some View {
+        if link.isSupported {
+            Section {
+                LabeledContent("Apple Watch", value: !link.activated ? "Checking…" : link.isPaired ? "Paired" : "Not paired")
+                    .accessibilityIdentifier("watch-paired")
+                if link.isPaired {
+                    LabeledContent("noFriction on the watch", value: link.isWatchAppInstalled ? "Installed" : "Not installed")
+                        .accessibilityIdentifier("watch-app-installed")
+                }
+                if link.arrivingCount > 0 {
+                    LabeledContent("Arriving from the watch", value: "\(link.arrivingCount)")
+                        .accessibilityIdentifier("watch-arriving")
+                }
+                LabeledContent("Waiting to transcribe", value: "\(importing.count)")
+                    .accessibilityIdentifier("watch-pending")
+            } header: {
+                Text("Apple Watch")
+            } footer: {
+                Text(footer)
+            }
+            .onAppear { link.refreshInbox() }
+        }
+    }
+
+    private var footer: String {
+        var text = "Record on your watch: the audio comes to this iPhone over Apple's watch connection, is transcribed here on the device, and is deleted from the watch once it arrives."
+        if link.isPaired && !link.isWatchAppInstalled {
+            text += " To install, open the Watch app on this iPhone and find noFriction under Available Apps."
+        }
+        if importing.contains(where: { $0.importPhase == .failed }) {
+            text += " Recordings that couldn't be transcribed show Retry in the meeting."
+        }
+        return text
     }
 }

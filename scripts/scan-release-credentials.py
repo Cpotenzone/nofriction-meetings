@@ -4,6 +4,9 @@
 Exit 0: no findings in inspected scope; 1: credential candidate or enabled host-policy failure; 2: incomplete/error.
 This is not proof that encrypted/fragmented/unknown-format secrets are absent.
 For Tauri, require linked and decoded JS/HTML/CSS using --require-tauri-assets.
+For the iPhone app, --require-embedded Watch/NoFrictionWatch.app=com.nofriction.meetings.watchkitapp
+fails the scan as incomplete unless that nested bundle is present, has that identity and
+its files were scanned (every file under the artifact is scanned either way).
 """
 import argparse, datetime, hashlib, importlib.util, json, re, sys, tempfile
 from pathlib import Path
@@ -35,12 +38,32 @@ def run(args):
     exact=[];host_findings=[]
     if path.suffix=='.app':
         members=((str(p.relative_to(path)),p.read_bytes()) for p in path.rglob('*') if p.is_file())
+        app_prefix=''
     else:
         import zipfile
         z=zipfile.ZipFile(path)
         members=((n,z.read(n)) for n in z.namelist() if n.startswith('Payload/') and not n.endswith('/'))
+        app_prefix=str(Path(record.get('executable_file','Payload/x.app/x')).parent)+'/'
+    # Nested bundles that must be present and scanned (e.g. the Apple Watch app)
+    wanted={}
+    for spec in getattr(args,'require_embedded',None) or []:
+        rel,_,bundle_id=spec.partition('=')
+        wanted[app_prefix+rel.strip('/')+'/']={'path':rel.strip('/'),'expected_identifier':bundle_id,'identifier':None,'files_scanned':0,'present':False}
     executable=None
     for name,data in members:
+        for prefix,info in wanted.items():
+            if name.startswith(prefix):
+                info['files_scanned']+=1
+                if name==prefix+'Info.plist':
+                    import plistlib
+                    try:
+                        plist=plistlib.loads(data)
+                        info['present']=True
+                        info['identifier']=plist.get('CFBundleIdentifier')
+                        info['version']=plist.get('CFBundleShortVersionString')
+                        info['build']=plist.get('CFBundleVersion')
+                    except Exception:
+                        info['present']=False
         if name==record.get('executable_file'):executable=data
         host_findings.extend(retired_hosts(name,data))
         for key,value in known.items():
@@ -70,13 +93,15 @@ def run(args):
                     asset_matches.extend(hits)
                     host_findings.extend(retired_hosts(str(p),data))
                     exact.extend({'file':str(p),'local_variable_name':k,'value':'REDACTED'} for k in local)
-    coverage_ok=not args.require_tauri_assets or {'.js','.html','.css'}.issubset(embedded_types)
+    embedded=list(wanted.values())
+    embedded_ok=all(e['present'] and e['files_scanned']>1 and (not e['expected_identifier'] or e['identifier']==e['expected_identifier']) for e in embedded)
+    coverage_ok=(not args.require_tauri_assets or {'.js','.html','.css'}.issubset(embedded_types)) and embedded_ok
     count=len(record['redacted_matches'])+len(asset_matches)+len(exact)
     forbidden_hosts=bool(args.reject_retired_services and host_findings)
     status='INCOMPLETE' if not coverage_ok else 'FAIL_CANDIDATES' if count else 'FAIL_RETIRED_SERVICES' if forbidden_hosts else 'PASS_STATIC_SCOPE'
-    output={'schema':'nofriction.redacted-release-credential-gate.v1','checked_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'status':status,'candidate_count':count,'reject_retired_services':args.reject_retired_services,'retired_service_host_findings':host_findings,'artifact':record,'decoded_assets':assets,'known_local_variable_names':sorted(known),'exact_local_matches':exact,'tauri_linked_types':sorted(embedded_types),'limitations':['Static pass is not proof of zero credentials: opaque, encrypted, fragmented or unrecognised secrets may escape patterns.','No credential validity requests are sent. A match is a candidate, not proof of an active credential.','For Tauri, raw executable scans do not cover compressed content unless linked assets were decoded.','Retired-host matches establish packaged strings, not execution; unknown, constructed or encrypted hosts can evade this list.','Independent credential-loading, build-environment and source-to-artifact audit remains required.']}
+    output={'schema':'nofriction.redacted-release-credential-gate.v1','checked_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'status':status,'candidate_count':count,'reject_retired_services':args.reject_retired_services,'retired_service_host_findings':host_findings,'embedded_bundles':embedded,'artifact':record,'decoded_assets':assets,'known_local_variable_names':sorted(known),'exact_local_matches':exact,'tauri_linked_types':sorted(embedded_types),'limitations':['Static pass is not proof of zero credentials: opaque, encrypted, fragmented or unrecognised secrets may escape patterns.','No credential validity requests are sent. A match is a candidate, not proof of an active credential.','For Tauri, raw executable scans do not cover compressed content unless linked assets were decoded.','Retired-host matches establish packaged strings, not execution; unknown, constructed or encrypted hosts can evade this list.','Independent credential-loading, build-environment and source-to-artifact audit remains required.']}
     Path(args.receipt).write_text(json.dumps(output,indent=2)+'\n')
-    print(json.dumps({'status':status,'candidate_count':count,'retired_service_host_count':len(host_findings),'reject_retired_services':args.reject_retired_services,'receipt':str(Path(args.receipt).resolve()),'bundle_identity':record['identity'],'executable_sha256':record.get('executable_sha256'),'tauri_linked_types':sorted(embedded_types)}))
+    print(json.dumps({'status':status,'candidate_count':count,'retired_service_host_count':len(host_findings),'reject_retired_services':args.reject_retired_services,'receipt':str(Path(args.receipt).resolve()),'bundle_identity':record['identity'],'executable_sha256':record.get('executable_sha256'),'tauri_linked_types':sorted(embedded_types),'embedded_bundles':[{k:e.get(k) for k in ('path','identifier','files_scanned','present')} for e in embedded]}))
     return 2 if not coverage_ok else 1 if count or forbidden_hosts else 0
 
 def self_test():
@@ -85,7 +110,7 @@ def self_test():
         root=Path(folder);app=root/'Test.app';app.mkdir()
         (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'com.nofriction.meetings','CFBundleExecutable':'Test','CFBundleVersion':'fixture','CFBundleShortVersionString':'fixture'}))
         (app/'.env').write_bytes(b'EXAMPLE_TOKEN=\n# unrelated comment must not become a value\n')
-        args=argparse.Namespace(artifact=str(app),receipt=str(root/'receipt.json'),known_env_file=None,asset_cache=[],require_tauri_assets=False,reject_retired_services=False)
+        args=argparse.Namespace(artifact=str(app),receipt=str(root/'receipt.json'),known_env_file=None,asset_cache=[],require_tauri_assets=False,reject_retired_services=False,require_embedded=[])
         (app/'Test').write_bytes(b'ordinary non-secret fixture')
         assert run(args)==0
         candidate=b'sk-'+b'notavalidcredential1234567890'
@@ -115,6 +140,32 @@ def self_test():
         args.reject_retired_services=True
         assert run(args)==1
         assert json.loads((root/'receipt.json').read_text())['status']=='FAIL_RETIRED_SERVICES'
+        # Embedded Apple Watch app: required, identified and scanned
+        (app/'Test').write_bytes(b'ordinary non-secret fixture')
+        args.require_embedded=['Watch/NoFrictionWatch.app=com.nofriction.meetings.watchkitapp']
+        assert run(args)==2, 'missing watch bundle must be incomplete'
+        watch=app/'Watch'/'NoFrictionWatch.app';watch.mkdir(parents=True)
+        (watch/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'com.example.other','CFBundleExecutable':'NoFrictionWatch'}))
+        (watch/'NoFrictionWatch').write_bytes(b'watch fixture')
+        assert run(args)==2, 'wrong watch identity must be incomplete'
+        (watch/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'com.nofriction.meetings.watchkitapp','CFBundleExecutable':'NoFrictionWatch'}))
+        assert run(args)==0
+        receipt=json.loads((root/'receipt.json').read_text())
+        assert receipt['artifact']['identity']['CFBundleIdentifier']=='com.nofriction.meetings', 'nested plist must not replace the app identity'
+        assert receipt['embedded_bundles'][0]['files_scanned']==2
+        (watch/'NoFrictionWatch').write_bytes(b'https://api.openai.com/v1')
+        assert run(args)==1, 'retired host inside the watch app must fail'
+        (watch/'NoFrictionWatch').write_bytes(b'sk-'+b'notavalidcredential1234567890')
+        assert run(args)==1, 'credential candidate inside the watch app must fail'
+        (watch/'NoFrictionWatch').write_bytes(b'watch fixture')
+        wipa=root/'watch.ipa'
+        with zipfile.ZipFile(wipa,'w') as z:
+            for p in app.rglob('*'):
+                if p.is_file():z.write(p,'Payload/noFriction.app/'+str(p.relative_to(app)))
+        args.artifact=str(wipa)
+        assert run(args)==0
+        assert json.loads((root/'receipt.json').read_text())['embedded_bundles'][0]['identifier']=='com.nofriction.meetings.watchkitapp'
+        args.artifact=str(app);args.require_embedded=[]
         import brotli
         cache=root/'assets';cache.mkdir()
         blobs=[]
@@ -124,7 +175,7 @@ def self_test():
         args.asset_cache=[str(cache)];args.require_tauri_assets=True
         assert run(args)==1
         assert json.loads((root/'receipt.json').read_text())['status']=='FAIL_RETIRED_SERVICES'
-    print(json.dumps({'self_test':'PASS','cases':7,'secret_values_printed':False}))
+    print(json.dumps({'self_test':'PASS','cases':13,'secret_values_printed':False}))
     return 0
 
 if __name__=='__main__':
@@ -134,6 +185,7 @@ if __name__=='__main__':
     parser.add_argument('--require-tauri-assets',action='store_true')
     parser.add_argument('--reject-retired-services',action='store_true',help='fail if named retired service hosts remain in raw or linked decoded artifact content')
     parser.add_argument('--known-env-file')
+    parser.add_argument('--require-embedded',action='append',default=[],metavar='PATH=BUNDLE_ID',help='nested bundle (relative to the .app) that must be present with this identity and scanned')
     parser.add_argument('--self-test',action='store_true')
     args=parser.parse_args()
     try:

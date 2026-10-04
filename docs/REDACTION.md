@@ -214,6 +214,21 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   length to within one packet, and calls `FileManager.replaceItemAt`. The test
   decodes the file and checks for exact zeros inside the range, away from the
   1024-sample AAC overlap at its edges.
+- **Apple Watch recordings** (`docs/WATCH_APP.md`). The imported file is the
+  meeting's audio file (`Documents/Audio/watch-<id>.m4a`), and its segments
+  carry `audioOffset` and word timings from the file transcription, so Delete
+  and Strike silence it exactly like a phone recording. The silencer
+  re-encodes with a bit rate the AAC encoder accepts at the file's rate
+  (16 kHz for watch audio). No other copy outlives the import: the watch
+  deletes each file once the iPhone confirms it stored it, the inbox files
+  are moved into `Audio/` (or, for a paused recording, joined into one file
+  there and then deleted), and transcription chunk files in `tmp/` are
+  deleted after each chunk (leftovers from a killed run, and half-joined or
+  half-silenced files, are removed at launch). Delete Meeting also removes
+  any inbox copy of that recording, and a list of imported recording ids
+  (ids only) keeps a late re-delivery from bringing a deleted meeting back.
+  A recording not yet delivered isn't a meeting; it can be deleted from the
+  watch's list.
 - **Not applicable on iOS:** FTS (in-app search scans `transcriptText`, which
   renders markers as placeholders), app DB backups, screen video chunks, and
   OCR/VLM rows. Photos imported from the Photos library stay there; the

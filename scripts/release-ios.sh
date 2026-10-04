@@ -25,8 +25,14 @@
 # NF_IOS_BUILD_ROOT / NF_IOS_DERIVED_DATA override the build locations.
 # DerivedData stays beside this checkout by default (no internal Xcode cache).
 # The build number is recorded only after a successful archive.
-# NF_IOS_PROFILE_UUID + NF_IOS_SIGNING_IDENTITY select an installed manual
-# distribution profile/certificate without portal provisioning changes.
+# NF_IOS_PROFILE_UUID + NF_WATCH_PROFILE_UUID + NF_IOS_SIGNING_IDENTITY select
+# installed manual App Store profiles (com.nofriction.meetings and
+# com.nofriction.meetings.watchkitapp) and the distribution certificate,
+# without portal provisioning changes. Automatic signing creates both profiles.
+#
+# The Apple Watch app (Watch/NoFrictionWatch.app) is built, signed and
+# exported inside the iPhone app; the script checks it is embedded with the
+# same version/build and that the credential scan covered it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,6 +46,8 @@ DERIVED_DATA="${NF_IOS_DERIVED_DATA:-$BUILD_ROOT/dd-release}"
 SCHEME="NoFriction"
 TEAM_ID="C7GCEESE2V"
 BUNDLE_ID="com.nofriction.meetings"
+WATCH_BUNDLE_ID="com.nofriction.meetings.watchkitapp"
+WATCH_APP_PATH="Watch/NoFrictionWatch.app"
 AUDIT_PYTHON="${NF_AUDIT_PYTHON:-python3}"
 
 MODE="export"
@@ -47,7 +55,7 @@ for arg in "$@"; do
   case "$arg" in
     --check) MODE="check" ;;
     --upload) [[ $MODE == check ]] || MODE="upload" ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -68,7 +76,11 @@ done
 
 [[ -f "$PROJECT_YML" ]] || { err "missing $PROJECT_YML"; }
 grep -q "DEVELOPMENT_TEAM: $TEAM_ID" "$PROJECT_YML" && ok "team $TEAM_ID" || err "project.yml: DEVELOPMENT_TEAM is not $TEAM_ID"
-grep -q "PRODUCT_BUNDLE_IDENTIFIER: $BUNDLE_ID" "$PROJECT_YML" && ok "bundle id $BUNDLE_ID" || err "project.yml: bundle id is not $BUNDLE_ID"
+# Whole bundle ids only: "com.nofriction.meetings" must not match the watch app's id
+has_id() { grep -Eq "$1: ${2//./\\.}([[:space:]]|\$)" "$PROJECT_YML"; }
+has_id PRODUCT_BUNDLE_IDENTIFIER "$BUNDLE_ID" && ok "bundle id $BUNDLE_ID" || err "project.yml: bundle id is not $BUNDLE_ID"
+has_id PRODUCT_BUNDLE_IDENTIFIER "$WATCH_BUNDLE_ID" && ok "watch app bundle id $WATCH_BUNDLE_ID" || err "project.yml: watch app bundle id is not $WATCH_BUNDLE_ID"
+has_id WKCompanionAppBundleIdentifier "$BUNDLE_ID" && ok "watch companion $BUNDLE_ID" || err "project.yml: WKCompanionAppBundleIdentifier is not $BUNDLE_ID"
 grep -q "CODE_SIGN_STYLE: Automatic" "$PROJECT_YML" && ok "automatic signing" || err "project.yml: CODE_SIGN_STYLE is not Automatic"
 VERSION="$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\}.*/\1/p' "$PROJECT_YML" | head -1)"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] && ok "version $VERSION" || err "project.yml: can't read MARKETING_VERSION"
@@ -123,7 +135,11 @@ AUTH=()
 SIGNING=(-allowProvisioningUpdates)
 if [[ -n "${NF_IOS_PROFILE_UUID:-}" ]]; then
   [[ -n "${NF_IOS_SIGNING_IDENTITY:-}" ]] || { echo "NF_IOS_SIGNING_IDENTITY required with NF_IOS_PROFILE_UUID" >&2; exit 1; }
-  SIGNING=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="$NF_IOS_PROFILE_UUID" CODE_SIGN_IDENTITY="$NF_IOS_SIGNING_IDENTITY")
+  # The watch app needs its own App Store profile (App ID $WATCH_BUNDLE_ID)
+  [[ -n "${NF_WATCH_PROFILE_UUID:-}" ]] || { echo "NF_WATCH_PROFILE_UUID required with NF_IOS_PROFILE_UUID (App Store profile for $WATCH_BUNDLE_ID)" >&2; exit 1; }
+  # Per-target profiles: project.yml maps these to each target's PROVISIONING_PROFILE_SPECIFIER
+  SIGNING=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM_ID" NF_IOS_PROFILE_SPECIFIER="$NF_IOS_PROFILE_UUID"
+           NF_WATCH_PROFILE_SPECIFIER="$NF_WATCH_PROFILE_UUID" CODE_SIGN_IDENTITY="$NF_IOS_SIGNING_IDENTITY")
 fi
 if [[ $have_asc == 1 ]]; then
   AUTH=(-authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
@@ -155,10 +171,27 @@ if [[ $status != 0 || ! -d "$ARCHIVE" ]]; then
   exit 1
 fi
 
-# Inspect the actual signed app before any export or upload. The scan prints
-# only redacted findings and fails closed on incomplete inspection.
+# The Apple Watch app must be inside the iPhone app (not a separate product),
+# with the same version and build, pointing back at the iPhone app.
+APP="$ARCHIVE/Products/Applications/noFriction.app"
+WATCH_APP="$APP/$WATCH_APP_PATH"
+apps_in_archive="$(find "$ARCHIVE/Products/Applications" -maxdepth 1 -name '*.app' | wc -l | tr -d ' ')"
+[[ "$apps_in_archive" -eq 1 ]] || { echo "==> Archive has $apps_in_archive top-level apps; the watch app must only be embedded (SKIP_INSTALL)" >&2; exit 1; }
+[[ -d "$WATCH_APP" ]] || { echo "==> Watch app missing from the archive: $WATCH_APP_PATH" >&2; exit 1; }
+wpb() { /usr/libexec/PlistBuddy -c "Print :$1" "$WATCH_APP/Info.plist" 2>/dev/null || true; }
+[[ "$(wpb CFBundleIdentifier)" == "$WATCH_BUNDLE_ID" ]] || { echo "==> Watch app bundle id is $(wpb CFBundleIdentifier)" >&2; exit 1; }
+[[ "$(wpb WKCompanionAppBundleIdentifier)" == "$BUNDLE_ID" ]] || { echo "==> Watch app companion id is $(wpb WKCompanionAppBundleIdentifier)" >&2; exit 1; }
+[[ "$(wpb CFBundleShortVersionString)" == "$VERSION" && "$(wpb CFBundleVersion)" == "$NEXT_BUILD" ]] \
+  || { echo "==> Watch app version $(wpb CFBundleShortVersionString) ($(wpb CFBundleVersion)) != $VERSION ($NEXT_BUILD)" >&2; exit 1; }
+codesign --verify --strict "$WATCH_APP" || { echo "==> Watch app signature check failed" >&2; exit 1; }
+ok "watch app embedded: $WATCH_APP_PATH ($WATCH_BUNDLE_ID $VERSION ($NEXT_BUILD)), signed"
+
+# Inspect the actual signed app (watch app included) before any export or
+# upload. The scan prints only redacted findings and fails closed on
+# incomplete inspection, including a missing or misidentified watch app.
 "$AUDIT_PYTHON" "$ROOT/scripts/scan-release-credentials.py" \
-  --artifact "$ARCHIVE/Products/Applications/noFriction.app" \
+  --artifact "$APP" \
+  --require-embedded "$WATCH_APP_PATH=$WATCH_BUNDLE_ID" \
   --receipt "$OUT/credential-audit-$NEXT_BUILD.json" --reject-retired-services
 
 # The archive carries this build number now: record it (monotonic), keep project.yml in step
@@ -175,6 +208,7 @@ if [[ -n "${NF_IOS_PROFILE_UUID:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :signingStyle manual" "$OPTIONS"
   /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$OPTIONS"
   /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$BUNDLE_ID string $NF_IOS_PROFILE_UUID" "$OPTIONS"
+  /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$WATCH_BUNDLE_ID string $NF_WATCH_PROFILE_UUID" "$OPTIONS"
   /usr/libexec/PlistBuddy -c "Add :signingCertificate string $NF_IOS_SIGNING_IDENTITY" "$OPTIONS"
   EXPORT_PROVISIONING=()
 fi
@@ -198,6 +232,7 @@ fi
 if [[ $DEST != upload ]]; then
   "$AUDIT_PYTHON" "$ROOT/scripts/scan-release-credentials.py" \
     --artifact "$EXPORT_DIR/noFriction.ipa" \
+    --require-embedded "$WATCH_APP_PATH=$WATCH_BUNDLE_ID" \
     --receipt "$OUT/credential-audit-ipa-$NEXT_BUILD.json" --reject-retired-services
 fi
 
