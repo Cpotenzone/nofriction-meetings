@@ -429,7 +429,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**2006 / 4000 characters**
+**2377 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -446,7 +446,10 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup or Settings, choose Use Apple on-device (no key), then return to Summarize or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
-Alternatively, configure your own Ollama/LM Studio or OpenAI-compatible local model in Settings. A model on another computer requires a reachable local network. Optional cloud providers use the user's own account/key; the app requests consent before sending meeting content. No provider credential is supplied in these notes.
+Alternatively, configure your own Ollama/LM Studio or OpenAI-compatible local model in Settings. A model on another computer requires a reachable local network. A custom endpoint is optional and entered by the user with their own account/key; the app requests consent before sending meeting content to a public endpoint. No provider credential is supplied in these notes.
+
+APPLE WATCH
+The Apple Watch app records a meeting and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the meeting appears in the iPhone app's Meetings tab. Delivery and transcription require a physical iPhone and Apple Watch.
 
 EDITING
 Open a meeting and select transcript text. Delete offers a brief undo period. Strike from the record is permanent and leaves a marker.

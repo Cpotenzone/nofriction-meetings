@@ -37,6 +37,7 @@ age-rating answers) is in [APP_STORE_LISTING.md](APP_STORE_LISTING.md).
 |---|---|
 | Team ID | `C7GCEESE2V` |
 | Bundle ID (iOS **and** Mac, one record = Universal Purchase) | `com.nofriction.meetings` |
+| Apple Watch app bundle ID (ships inside the iOS app) | `com.nofriction.meetings.watchkitapp` |
 | App Store Connect app (Apple ID, = `ASC_APP_ID`) | `6818838861` |
 | SKU (your own label, never shown) | `NOFRICTION-001` |
 | App name / subtitle | `noFriction: Meeting Notes` / `Record, transcribe, summarize` |
@@ -166,6 +167,22 @@ manual distribution profile (`NF_IOS_PROFILE_UUID` and
 
 **Done 2026-10-03 (see closeout).** An iOS App Store profile was created and installed for
 Xcode; expires 2027-09-22. Build 3 was archived and exported with it.
+
+### 2.5 Apple Watch app (added 2026-10-04) — **Open**
+The iOS app now embeds a watch app (`ios/NoFrictionWatch`, details in
+[WATCH_APP.md](WATCH_APP.md)). It needs its own identifier and profile:
+1. Identifiers → **+** → App IDs → App → Explicit bundle ID
+   **`com.nofriction.meetings.watchkitapp`**, description `noFriction Watch`.
+   No capabilities (background audio is an Info.plist key; WatchConnectivity
+   needs no entitlement).
+2. Profile: with automatic signing (API key from step 3) nothing to do; Xcode
+   creates it on the first archive. Manual path: Profiles → **+** →
+   Distribution → **App Store Connect** → that App ID → your Apple
+   Distribution certificate → download and install, then pass its UUID as
+   `NF_WATCH_PROFILE_UUID` together with `NF_IOS_PROFILE_UUID` and
+   `NF_IOS_SIGNING_IDENTITY`.
+3. **No separate app record.** The watch app ships inside iOS 1.0.0 (app
+   `6818838861`).
 
 ---
 
@@ -351,8 +368,9 @@ scripts/release-ios.sh --upload           # archive → sign → upload
   processing; those require the actual signing/upload flow.
 - Status 2026-10-03: build 3 was archived, signed, exported to
   `ios/build/release/export-3/noFriction.ipa` and credential-scanned. It is
-  **not uploaded**. Apple's **Transporter** app can upload that `.ipa` as is;
-  `--upload` archives a new build number instead.
+  **not uploaded**, and it is now **superseded**: it has no watch app. Upload
+  **build 4 or later** (`scripts/release-ios.sh --upload`), which embeds
+  `Watch/NoFrictionWatch.app` and scans it. Step 2.5 must be done first.
 - App Store Connect → the app → **TestFlight** shows the build as
   *Processing* (5–30 min, then you get an email).
 - No export-compliance question appears, because the app declares no
@@ -407,6 +425,11 @@ App Store Connect → the app → **TestFlight**.
    - [ ] the trial expires and the subscription renews (accelerated)
    - [ ] Delete with Undo; Strike a word and see the marker; silence in the recording
    - [ ] Mac: the same, plus screen capture permission, Snap, and follow-up email
+   - [ ] Apple Watch (needs a real paired watch; see the device checklist in WATCH_APP.md):
+     install from the Watch app → Record, lower the wrist for a few minutes, Pause/Resume,
+     Stop → the recording reaches the iPhone (even with the iPhone app closed), becomes a
+     meeting with a watch badge, is calendar-matched and transcribed; the watch deletes it
+     only after the iPhone confirms; Strike silences the imported audio
 
 TestFlight builds expire after **90 days**, so upload a fresh one before then.
 
@@ -425,6 +448,10 @@ Sidebar → **iOS App 1.0** (and **macOS App 3.6.0**):
   - Mac: 1–10 images at 16:10 (2880×1800 recommended). Capture them from demo
     data using the steps in APP_STORE_LISTING.md (separate macOS user, no real
     data). **Open:** capture them from a current Mac App Store build.
+  - Apple Watch (**required** now that the build includes a watch app): in the
+    iOS version's *Apple Watch* section upload
+    `ios/AppStore/screenshots/watch-46mm/*.png` (416×496, three images).
+    **Open.**
 - **Promotional text, description, keywords, support URL, marketing URL:**
   from APP_STORE_LISTING.md (character counts are already checked there).
   Done 2026-10-03 for the text fields and the support URL.
@@ -443,7 +470,11 @@ submission: subscriptions are reviewed together with the app.
   path: Apple on-device with its device requirements or an endpoint the
   reviewer enters, the recording-consent notice, the paywall). Never put an
   API key in the notes. Done 2026-10-03: endpoint-only notes saved; verify the
-  Apple on-device path on the submitted build.
+  Apple on-device path on the submitted build. **Open:** add the Apple Watch
+  paragraph: "The Apple Watch app records a meeting and sends the audio to the
+  iPhone app, which transcribes it on the device. Install it from the Watch app
+  on the paired iPhone; tap Record, then Stop; the meeting appears in the iPhone
+  app's Meetings tab."
 - **Attachment** (optional): a short screen recording of record → notes → strike.
 
 ### 9.4 Release option and submit

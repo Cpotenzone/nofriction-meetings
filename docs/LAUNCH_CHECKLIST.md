@@ -75,6 +75,7 @@ days.
 |---|---|---|---|
 | ☑ | App ID `com.nofriction.meetings` (explicit), iOS + macOS. Done 2026-10-03 (see closeout). ASR §5.2. | developer.apple.com → Identifiers | Owner |
 | ☑ | Provisioning profiles: iOS App Store profile installed for Xcode; Mac App Store Connect profile installed at `src-tauri/embedded.provisionprofile` (gitignored). Both expire 2027-09-22. Done 2026-10-03 (see closeout). | developer.apple.com → Profiles | Owner |
+| ☐ | **Apple Watch** App ID `com.nofriction.meetings.watchkitapp` (explicit, no capabilities) and, for manual signing, its App Store Connect profile (`NF_WATCH_PROFILE_UUID`). Added 2026-10-04; see APPLE_SETUP.md §2.5 and WATCH_APP.md. | developer.apple.com → Identifiers / Profiles | Owner |
 | ☑ | App record `6818838861`, SKU `NOFRICTION-001`, with iOS 1.0.0 and macOS 3.6.0 on the same record (Universal Purchase). Both versions in Prepare for Submission. Done 2026-10-03. ASR §5.3, §5.7. | App Store Connect → Apps | Owner |
 | ☑ | Subscription group **noFriction Pro** (`22437188`) with `com.nofriction.meetings.pro.monthly` and `.pro.yearly`; names, descriptions and both paywall review images uploaded. Done 2026-10-03 (see closeout). The products are submitted with the first app version. ASR §5.4. | App Store Connect → Monetization → Subscriptions | Owner |
 | ☑ | Categories (Productivity / Business) and the source-matched age-rating questionnaire saved. Done 2026-10-03. | App Store Connect → App Information | Owner |
@@ -87,7 +88,7 @@ days.
 
 | ✓ | Task | Where | Who |
 |---|---|---|---|
-| ☐ | iOS: upload build 3. It was archived, signed, exported and credential-scanned on 2026-10-03 (`ios/build/release/`), but **not uploaded**. Upload that exported `.ipa` (for example with Transporter); `scripts/release-ios.sh --upload` instead archives a new build number. ASR §5.5. | Transporter or `scripts/release-ios.sh` | Eng |
+| ☐ | iOS: upload **build 4 or later** with `scripts/release-ios.sh --upload` (embeds and scans the Apple Watch app). Build 3 (exported 2026-10-03) is superseded: it has no watch app. Needs the watch App ID above and the App Store Connect API key. | Terminal | Eng / Owner |
 | ☐ | Mac: upload 3.6.0 build38. The signed `.pkg` was packaged and scanned on 2026-10-03 (`dist-mas/`), but **not uploaded**. `scripts/release-mas.sh --upload` needs the profile and the `AC_PASSWORD` keychain item or an API key. | Terminal, Transporter | Eng |
 | ☐ | Wait for processing; check the build has no missing-compliance warning (both set `ITSAppUsesNonExemptEncryption=false`). | App Store Connect → TestFlight | Eng |
 
@@ -107,6 +108,7 @@ days.
 |---|---|---|---|
 | ☑ | Name, subtitle, promotional text, descriptions, keywords and endpoint-only review notes saved on both platform records. Done 2026-10-03 (see closeout). What's New isn't shown for a platform's first version. | App Store Connect → each platform's version page | Owner |
 | ☑ | iPhone 6.9" and iPad 13" screenshots (six each, from `ios/AppStore/screenshots/`) uploaded and processed; the AI-settings image shows the endpoint-only screen. Done 2026-10-03. | same | Owner / Eng |
+| ☐ | Apple Watch screenshots: upload `ios/AppStore/screenshots/watch-46mm/*.png` (416×496, three) to the iOS version's Apple Watch section; required once the build includes the watch app. | App Store Connect → iOS 1.0 | Owner |
 | ☐ | Mac screenshots (16:10, e.g. 2880×1800) from a current Mac App Store build, captured with the demo-data procedure in the listing doc. | same | Owner / Eng |
 | ☐ | Optional: app preview video (iOS 15–30 s). | same | Owner |
 | ☑ | Paywall review image attached to each subscription. Done 2026-10-03. | Subscriptions → Review Information | Owner |

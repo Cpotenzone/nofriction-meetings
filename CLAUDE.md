@@ -147,6 +147,15 @@ these rules apply.
 - **Delete and Strike must purge everywhere.** The checklist is in
   `docs/REDACTION.md`. Any new place that stores transcript or screen text must
   be added to that purge.
+- **Apple Watch app** (`ios/NoFrictionWatch`, bundle
+  `com.nofriction.meetings.watchkitapp`, embedded in the iOS app):
+  - The watch only records. The iPhone transcribes on-device from the
+    transferred file.
+  - The watch deletes a part only after the iPhone app acknowledges it, not on
+    `didFinish` success.
+  - The policy guard rejects network or speech APIs in the watch target.
+  - Simulators can't deliver WatchConnectivity files, so delivery must be
+    verified on real devices. See `docs/WATCH_APP.md`.
 - Two Mac flavors must always build: the default (Developer ID DMG) and
   `--features mas` (sandboxed Mac App Store build). In `mas`: no ffmpeg,
   Accessibility, osascript, shell plugin or `.env`; Pro gating goes through
