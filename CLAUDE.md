@@ -111,15 +111,39 @@ these rules apply.
 
 **Product invariants (don't regress):**
 - **Client-only.** No noFriction servers. Never add Supabase, Pinecone, an
-  ingest server or any owner-hosted endpoint. AI and cloud transcription go
-  straight from the client to the user's chosen provider with the user's own
-  key. Spec: `docs/AI_PROVIDERS.md`.
+  ingest server or any owner-hosted endpoint. AI requests go straight from the
+  client to the endpoint the user entered. Spec: `docs/AI_PROVIDERS.md`.
+- **AI is Apple on-device or one user-entered endpoint, nothing else.** The
+  choices are Apple Foundation Models (iOS/macOS 26+ with Apple Intelligence)
+  or one OpenAI-compatible endpoint with a user-entered base URL, model and
+  optional user-supplied key. Never add named service presets or pickers
+  (OpenAI, Anthropic, Gemini, xAI, Groq, …), key-prefix detection, a default
+  remote URL, a startup provider probe or hosted AI. The custom URL, model
+  and key start empty. A saved legacy named provider fails closed (no
+  fallback to another network service) and meetings are kept.
+  `python3 scripts/check-ai-provider-policy.py` must pass; both release
+  scripts run it and then scan the signed artifact for credentials and
+  retired service hosts.
+- **Transcription is on-device only:** local Whisper on the Mac, Apple speech
+  on iOS. The cloud transcription modules (Deepgram, Gladia, Google, Gemini)
+  were removed from the source; don't bring them back.
 - **Never ship or hardcode an API key**, and never hardcode a private host (the
-  old Castle/GX10 tailnet URL was removed). Keys live only in the Keychain
-  (`secrets.rs` on the Mac, `KeychainStore` on iOS). Never return a key to the
-  UI (only `last4`), and never log keys or transcript text.
-- **Consent before any non-local endpoint.** Whether an endpoint counts as
-  local depends on its URL, not the preset name.
+  old Castle/GX10 tailnet URL was removed). User-entered keys live only in the
+  Keychain (`secrets.rs` on the Mac, `KeychainStore` on iOS), bound to the
+  normalized endpoint: changing the endpoint deletes the old key and clears
+  its consent and model, and a key is never reused at another destination.
+  Never return a key to the UI (only `last4`), and never log keys or
+  transcript text.
+- **Consent before sending meeting content to a public endpoint.** Whether an
+  endpoint is local depends on its URL (loopback, private ranges, `.local`,
+  Tailscale), never on a name. Public endpoints need HTTPS; plain HTTP only
+  for private hosts. The consent dialog shows the actual destination.
+- **Contact and legal links:** `https://nofriction.io/privacy`,
+  `https://nofriction.io/contact`, `casey@nofriction.io`; Terms are Apple's
+  standard EULA (`src/lib/build.ts`, `ios/NoFriction/App/AppLinks.swift`).
+- **Subscriptions:** noFriction Pro, `com.nofriction.meetings.pro.monthly`
+  ($0.99/month) and `.pro.yearly` ($5.99/year), 1-week free trial each, USA
+  only, Family Sharing off. Recording and transcription stay free.
 - **Delete and Strike must purge everywhere.** The checklist is in
   `docs/REDACTION.md`. Any new place that stores transcript or screen text must
   be added to that purge.
@@ -149,6 +173,11 @@ these rules apply.
   duration and reports never ran.
 - **Before reinstalling the Mac app,** check that no recording is running
   (latest transcript timestamp). Quitting the app mid-recording loses the stop.
+- **The Mac app's DB uses WAL.** When the app has no open connections,
+  `sqlite3 -readonly` fails to open it. For the pre-reinstall recording check,
+  use a normal connection that only SELECTs:
+  `sqlite3 -cmd ".timeout 10000" "$DB" "select max(timestamp) from transcripts"`
+  (never select transcript text).
 - The bundle ID is `com.nofriction.meetings` everywhere. The Mac data folder
   migrated from `ai.nofriction.meetings`. `paths.rs` never deletes old data.
 - **Shell gotchas:** `wc -l` pads with spaces, so compare with `-gt`/`-eq` or
@@ -161,7 +190,9 @@ these rules apply.
 - `npx tsc --noEmit`
 - the iOS command: `xcodebuild test -project ios/NoFriction.xcodeproj -scheme NoFriction -only-testing:NoFrictionTests` on a simulator
 
-**Release docs:** `docs/APP_STORE_RELEASE.md` (status + owner tasks),
+**Release docs:** `docs/APPLE_SETUP.md` (portal steps) and
+`docs/APPLE_SETUP_CLOSEOUT_20261003.md` (what is configured and what remains),
+`docs/LAUNCH_CHECKLIST.md`, `docs/APP_STORE_RELEASE.md` (status + owner tasks),
 `docs/MAC_APP_STORE_BUILD.md`, `scripts/release-macos.sh` (DMG),
 `scripts/release-mas.sh` (Mac App Store), `site/` (privacy/support pages).
 

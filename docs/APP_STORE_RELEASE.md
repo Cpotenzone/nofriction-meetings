@@ -1,9 +1,8 @@
 # noFriction: shipping through the App Store (TestFlight first)
 
-Goal: distribute the iPhone/iPad app and the Mac app through Apple, start on
-TestFlight (free), and handle licensing entirely with StoreKit. We run **no
-servers**: no accounts, no license server, no hosted AI. Users bring their own
-AI provider; OpenAI is the default choice.
+**Current contract, 2026-10-03:** Apple on-device or a user-entered OpenAI-compatible endpoint and model. There is no preconfigured remote AI service, named cloud preset, automatic key detection or cloud transcription. See [AI_PROVIDERS.md](AI_PROVIDERS.md) for the current implementation and release guard. Historical design/status below is retained as background, not current release acceptance evidence.
+
+Approved launch settings: team `C7GCEESE2V`; intended website `nofriction.io`; free download with Pro at U.S. $0.99/month or $5.99/year, each with an eligible one-week trial. Runtime links use `/privacy`, `/contact` and `casey@nofriction.io`; the live website policy still needs the meeting-app supplement. No website deployment is included here. See [the dated closeout](APPLE_SETUP_CLOSEOUT_20261003.md) for actual Apple configuration and remaining gates.
 
 ## Status (2026-09-28)
 
@@ -215,8 +214,8 @@ shipping code is the Castle tailnet hostname (§2).
 
 ### 5.4 In-App Purchases (App Store Connect → your app → Monetization)
 11. **Subscriptions → Subscription Group** "noFriction Pro":
-    - Products `com.nofriction.meetings.pro.monthly` and `.pro.yearly`: pricing, **Introductory Offer** (e.g. 7- or 14-day free trial), display name, description, and a review screenshot of the paywall.
-    - Or for D2 one-time: **In-App Purchases → Non-Consumable** `com.nofriction.meetings.lifetime`.
+    - Products `com.nofriction.meetings.pro.monthly` (**US $0.99/month**) and `.pro.yearly` (**US $5.99/year**): a **1-week free introductory trial** for eligible subscribers on each, display name, description, and a review screenshot of the paywall.
+    - A lifetime product is not part of the approved launch (owner decision, 2026-10-03).
     - Optional: enable Family Sharing.
 12. The paywall must show:
     - price and billing period

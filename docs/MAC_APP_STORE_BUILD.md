@@ -1,5 +1,8 @@
 # Mac App Store build (`mas` flavor)
 
+> Current 2026-10-03 correction: owner destination is `nofriction.io` (`/privacy`, `/contact`, `casey@nofriction.io`), with Apple on-device or user-entered compatible endpoints only. Named AI services and cloud transcription were removed. Earlier setup instructions below are historical where they differ. See [AI_PROVIDERS.md](AI_PROVIDERS.md) and [dated closeout](APPLE_SETUP_CLOSEOUT_20261003.md); do not publish the website or declare app-policy completion from this source handoff.
+
+
 The Mac app ships in two flavors from one codebase:
 
 | | Developer ID (DMG) | Mac App Store (`mas`) |

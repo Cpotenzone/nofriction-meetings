@@ -23,27 +23,23 @@
 </header>
 <main class="doc" id="content">
   <h1>Support</h1>
-  <p class="lede">noFriction records and transcribes your meetings on your device. With your own AI key, it writes the notes.</p>
+  <p class="lede">noFriction records and transcribes your meetings on your device. Optional AI writes notes using Apple on-device or an endpoint and model you configure.</p>
 
   <h2>Contact</h2>
-  <p>Email <a href="mailto:support@nofriction.ai?subject=noFriction%20support">support@nofriction.ai</a>. We usually reply within two business days.
+  <p>Email <a href="mailto:casey@nofriction.io?subject=noFriction%20support">casey@nofriction.io</a>. We usually reply within two business days.
     Tell us your device, its OS version and the app version (iPhone/iPad: Settings tab → About; Mac: noFriction Meetings → About).
     Please don't send recordings or transcripts unless we ask; we never need your API key.</p>
 
-  <h2>Connecting an AI provider</h2>
+  <h2>Using AI offline</h2>
+  <p>noFriction offers no hosted AI models. Use Apple's on-device model on a compatible device with Apple Intelligence enabled (iOS 26 or macOS 26 and later), or enter the URL and model of your own local OpenAI-compatible endpoint in AI settings. Finish required model downloads before going offline. A model on another computer needs a reachable local network. AI features require noFriction Pro.</p>
+
+  <h2>Connecting your own AI endpoint</h2>
   <ol>
-    <li>Get an API key from your provider. For example: <a href="https://platform.openai.com/api-keys">OpenAI</a>,
-      <a href="https://console.anthropic.com/settings/keys">Anthropic</a>, <a href="https://aistudio.google.com/apikey">Google Gemini</a>,
-      <a href="https://console.x.ai">xAI Grok</a> or <a href="https://console.groq.com/keys">Groq</a>.</li>
-    <li>Paste the key. On iPhone and iPad: <strong>Settings tab → Connect AI</strong>. On the Mac: <strong>Settings → AI Engine</strong>.
-      The app recognizes the provider and checks that the key works.</li>
-    <li>Choose a model. The first time you use AI with a cloud provider, the app asks before it sends anything.</li>
+    <li>Choose an OpenAI-compatible server yourself and obtain its base URL, model name and any required API key. The app includes no default service or key.</li>
+    <li>On iPhone and iPad open the Settings tab. On Mac open Settings → AI Engine. Enter the endpoint, model and optional key, then save. Saving sends no test request and does not infer a service from the key.</li>
+    <li>Before meeting content is sent to a public endpoint, review the destination and consent. You can revoke consent in Settings. Changing the endpoint clears its old key and approval.</li>
   </ol>
-  <p>
-    Your provider bills you directly for what you use. noFriction never sees your key or your data; keys are stored in the system Keychain.
-    To use a model on your own computer, choose Ollama, LM Studio or Custom and enter its address.
-    On devices with Apple Intelligence (iOS 26 or macOS 26 and later), you can use Apple's on-device model with no key at all.
-  </p>
+  <p>Keys are stored in the system Keychain. Your selected endpoint operator sets any usage charges and retention policy. Public endpoints require HTTPS; approved local addresses may use HTTP. Apple on-device needs no key. Previously saved named service presets must be configured again as an explicit custom endpoint.</p>
 
   <h2>Common questions</h2>
   <h3>"Wrong key" or "no credit"</h3>

@@ -12,24 +12,39 @@ subtitle** live in *App Information* and are shared by iOS and macOS. The
 description, keywords, promotional text, What's New, screenshots and URLs are
 set **per platform** on each version page, so this doc gives both.
 
-> **Before you paste: copy that depends on code being fixed.** The facts
-> below are true of the current code, with these exceptions to resolve first
-> (all in `src/`, outside this doc's scope):
-> 1. The Mac paywall (`src/components/PaywallModal.tsx`, `PRO_FEATURES`)
->    lists **"Follow-up email drafts"**, but the Mac app has no follow-up
->    email feature. Remove that line (or build the feature) before review;
->    a paywall that sells a missing feature risks rejection (2.3.1/3.1.2).
-> 2. On the Mac, AI meeting notes (summary, decisions, action items) are
->    generated, but no mounted screen shows them
->    (`src/components/MeetingDetailView.tsx` isn't used). They reach the user
->    only through Obsidian export. The Mac copy therefore says "ready to export
->    to your Obsidian vault" and leads with Chat. If a notes view is wired up,
->    you can say "read the notes in Rewind".
-> 3. Mac Help text says "Click Generate Report", a button that isn't mounted.
-> 4. The trial: the copy says "free trial" only in the terms line ("when a
->    free trial ends"). If you launch without an introductory offer, it's
->    still accurate; don't add a trial length anywhere except App Store Connect.
+**Launch decisions (owner, 2026-10-03):** existing team `C7GCEESE2V`,
+**US $0.99/month or $5.99/year**, and a **1-week free introductory
+trial** for eligible subscribers. Prices and offers must be configured in App
+Store Connect; keep public copy localized through the store.
 
+**Domain correction from the release lane, 2026-10-03:** `nofriction.ai` belongs
+to a different product and its supposed policy paths are not valid noFriction
+meeting-app policy pages. Do not use that domain or `support@nofriction.ai` in
+store metadata. Support, marketing, privacy and contact destinations remain
+unresolved; existing source constants need a separately approved correction.
+
+**ASC metadata readback, 2026-10-03:** app `6818838861` (`NOFRICTION-001`)
+has iOS `1.0.0` and macOS `3.6.0`, both `PREPARE_FOR_SUBMISSION` with `MANUAL`
+release. The en-US descriptions, promotional text, keywords, shared subtitle,
+Productivity/Business categories and platform review notes below were accepted
+and read back through Apple's public App Store Connect API. No app login is
+required. URL fields and reviewer contact remain unset. No build was uploaded,
+attached, submitted or released by this metadata step; no legal/content-rights
+declaration or privacy questionnaire was changed. Receipts are retained in the
+release lane's `apple-setup-20261003/nofriction-metadata-verified.json`.
+
+**AI positioning:** noFriction supports fully offline operation with local or
+Apple on-device models after setup/model downloads. It offers no hosted AI
+models. Optional third-party connections use the user's own provider account.
+Sources: [AI_PROVIDERS.md](AI_PROVIDERS.md),
+[AppleOnDevice.swift](../ios/NoFriction/AI/AppleOnDevice.swift),
+[AIProvider.swift](../ios/NoFriction/AI/AIProvider.swift).
+
+**Source recheck (2026-10-03):** Mac NOTES is mounted in
+[InsightDeckView.tsx](../src/components/agency/views/InsightDeckView.tsx), and
+[MeetingNotesPanel.tsx](../src/components/MeetingNotesPanel.tsx) exposes Generate
+notes, Regenerate and Follow-up email. The previous missing-feature caveats are
+obsolete. Source inspection does not replace testing the signed store build.
 ---
 
 ## 1. App Information (shared by iOS and macOS)
@@ -141,17 +156,17 @@ Content, not linked, not tracking, App Functionality):
 | Data type | Declare? | Linked to identity | Tracking | Purpose | Why |
 |---|---|---|---|---|---|
 | **User Content → Other User Content** | Yes | No | No | App Functionality | Transcript text, meeting title, attendee names/companies and invite notes sent to the user's chosen AI provider (both platforms). |
-| **User Content → Audio Data** | Yes | No | No | App Functionality | Mac only: if the user turns on optional cloud transcription (Deepgram, Gladia, Google, Gemini), meeting audio goes to that provider. iOS never sends audio. |
+| **User Content → Audio Data** | No | — | — | — | Transcription is on-device on both platforms (cloud transcription was removed from the Mac source on 2026-10-03), so meeting audio never leaves the device. |
 | **User Content → Photos or Videos** | Yes | No | No | App Functionality | Mac only: screenshot analysis sends screenshots to the user's vision model. iOS photos never leave the device. |
 | Contact Info, Contacts, Identifiers, Usage Data, Diagnostics, Location, Financial, Health, Browsing/Search History, Purchases, Sensitive Info | No | | | | Not collected. Attendee names are part of the meeting content above, not the address book. Purchases are handled by Apple. Crash reports shared through Apple's opt-in come from Apple, not an SDK. |
 
 If you add any SDK, server, crash reporter or new destination, update this
 section, `site/privacy.html` and the privacy manifest in the same change.
 
-**Privacy Policy URL:** `https://nofriction.ai/privacy`. This is the URL
-constant in both apps (`ios/NoFriction/App/AppLinks.swift`,
-`src/lib/build.ts`). It's a placeholder until the site is live; see
-`site/README.md`.
+**Privacy Policy URL:** unresolved; leave the store field unset. The current
+`nofriction.ai` constants in `ios/NoFriction/App/AppLinks.swift` and
+`src/lib/build.ts` are known incorrect and must be corrected separately before
+release. Do not treat the presence of those constants as a verified policy URL.
 
 ---
 
@@ -169,20 +184,24 @@ constant in both apps (`ios/NoFriction/App/AppLinks.swift`,
 
 ---
 
-## 4. URLs (per platform; same values)
+## 4. URLs (blocked pending correct destinations)
 
-| Field | Value | Source |
-|---|---|---|
-| Privacy Policy URL | `https://nofriction.ai/privacy` | `AppLinks.privacyPolicy`, `PRIVACY_URL` (placeholder) |
-| Support URL | `https://nofriction.ai/support.html` | `site/support.html` |
-| Marketing URL | `https://nofriction.ai/` | `site/index.html` |
-| Terms of Use (in description) | `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/` | `AppLinks.terms`, `TERMS_URL` |
-| Support email | `support@nofriction.ai` | `AppLinks.supportEmail` |
+The release lane identified `nofriction.ai` as a different product. Its old
+privacy/support paths and `support@nofriction.ai` must not be entered into App
+Store Connect for this app. No replacement destination has been authorized.
 
-All three nofriction.ai URLs are placeholders until the domain is set up.
-If the domain changes, update the two code constants (owned outside `docs/`).
+| Field | Current action |
+|---|---|
+| Privacy Policy URL | Leave unset until the actual policy destination is approved and verified. |
+| Support URL | Leave unset until the actual support destination is approved and verified. |
+| Marketing URL | Leave unset until the actual product destination is approved and verified. |
+| Reviewer contact | Supply the owner's real name, phone and email separately; never use placeholders. |
 
-Copyright: `2026 <legal seller name>`.
+The source app links and existing website artifacts require a separate domain
+correction. This metadata update did not change their URLs, legal documents,
+content-rights declaration or privacy questionnaire.
+
+Copyright remains dependent on the confirmed legal seller name.
 
 ---
 
@@ -190,68 +209,45 @@ Copyright: `2026 <legal seller name>`.
 
 ### Promotional text (limit 170)
 
-**153 / 170 characters**
+**141 / 170 characters**
 
 ```text
-Record and transcribe meetings on your device. Bring your own AI key for notes and action items, or use Apple's on-device model. No accounts. No servers.
+Record and transcribe on your device. Create notes with Apple on-device AI or your own local model. Offline after setup on supported devices.
 ```
 
 ### Description (limit 4000)
 
-**3345 / 4000 characters**
+**2584 / 4000 characters**
 
 ```text
-noFriction writes your meetings down so you can pay attention to them. It records and transcribes on your iPhone or iPad, knows which calendar event you're in and who was there, and, when you want them, writes the notes and the follow-up email with the AI you choose.
+noFriction records and transcribes meetings on your iPhone or iPad so you can stay in the conversation. Keep the recording, transcript, people and photos together, then create notes and follow-up drafts with the AI you choose.
 
-No account. No noFriction servers. Your recordings stay on your device.
+WORK OFFLINE WITH LOCAL AI
+Recording and transcription run on your device. On supported devices, noFriction Pro can use Apple's on-device model for summaries, decisions, action items and follow-up drafts without a cloud AI account or API key. Complete setup and any required model downloads before working offline.
 
-RECORD AND TRANSCRIBE ON YOUR DEVICE
-• Live transcript as people talk, from Apple's on-device speech recognition
-• Keeps recording with the screen locked
-• Play back the audio of any meeting
-• Search every meeting by title, person or anything said
+Apple on-device AI requires iOS 26 or later, compatible Apple Intelligence hardware, Apple Intelligence enabled and its model ready. You can also connect your own local model through Ollama, LM Studio or an OpenAI-compatible endpoint. A model running on another computer needs a reachable local network.
 
-KNOWS THE MEETING AND THE PEOPLE
-• Matches each recording to your calendar event, so it gets a real title and attendee list
-• A People list across all your meetings
-• Link each person's LinkedIn profile in a couple of taps
+noFriction does not host AI models or include cloud AI usage. Connecting a third-party cloud provider is optional, uses your own provider account and may incur charges from that provider. The app asks permission before sending meeting content to a cloud AI provider.
 
-SLIDES AND WHITEBOARDS
-• Take photos during the meeting, or add screenshots from Photos
-• They appear in the meeting with the transcript
+RECORD AND FIND THE IMPORTANT PARTS
+• Live transcription with Apple's on-device speech recognition
+• Recording continues with the screen locked
+• Play back meeting audio and search saved meetings
+• Link recordings to calendar events and keep attendee information together
+• Add photos of slides and whiteboards to the meeting
 
-AI NOTES WITH YOUR OWN KEY (noFriction Pro)
-• Summary, decisions and action items. Owners and due dates only when someone actually said them
-• A follow-up email draft for the attendees
-• Paste a key and noFriction recognizes the provider and checks it: OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity or Together
-• Or use your own server (Ollama, LM Studio, any OpenAI-compatible endpoint), or Apple's on-device model with no key (iOS 26 or later with Apple Intelligence)
-• Your provider bills you directly. noFriction never sees your key or your meetings
+TURN THE TRANSCRIPT INTO USEFUL NOTES
+noFriction Pro adds AI summaries, decisions, action items and follow-up email drafts. Read and check generated notes before sharing them. Notes stay connected to the meeting that supplied their context.
 
-STOPS WHEN THE MEETING DOES
-• When the calendar event is over and the room goes quiet, or nobody has spoken for a few minutes, noFriction counts down 30 seconds and stops, unless you tap Keep recording
-• Everything said before the stop is kept
-
-DELETE, OR STRIKE FROM THE RECORD
-• Remove words, whole lines or photos
-• Delete leaves no trace, with five seconds to undo
-• Strike from the record removes it from the transcript, search and the saved audio, and leaves only a marker with the time and an optional reason. No undo, no hidden copy
-• AI notes made before the edit are marked so you can regenerate them
-
-PRIVATE BY DESIGN
-• Audio, transcripts and photos are stored only on your device
-• API keys are kept in the Keychain on this device
-• Before anything goes to a cloud AI provider, noFriction asks you and says what will be sent
-• No analytics, no ads, no tracking
+KEEP CONTROL OF THE RECORD
+Edit transcript text, remove unwanted material, or use Strike from the record to leave a visible marker. Share a meeting as text when you choose. Meetings are stored on your device; signing up for a noFriction account is not required.
 
 FREE AND PRO
-Free: recording, on-device transcription, calendar and people, photos, search, Delete and Strike, and sharing a meeting as text.
-noFriction Pro adds the AI features. One subscription also unlocks noFriction for Mac.
+Recording, on-device transcription, calendar and people, photos, search, transcript editing and text sharing are available without Pro. AI features require noFriction Pro. One subscription unlocks Pro on iPhone, iPad and Mac.
 
-Recording laws vary, and in many places everyone must agree to be recorded. noFriction reminds you to tell people.
+noFriction Pro is an auto-renewing monthly or yearly subscription. Payment is charged to your Apple Account. Subscriptions renew automatically unless canceled at least 24 hours before the current period ends. Manage or cancel in your Apple Account settings. Optional third-party AI usage is billed separately by your provider.
 
-noFriction Pro is an auto-renewing subscription (monthly or yearly). Payment is charged to your Apple Account when you confirm the purchase, or when a free trial ends. It renews automatically unless canceled at least 24 hours before the end of the current period. Manage or cancel in your Apple Account settings. Any unused part of a free trial ends when you subscribe. AI provider usage is billed by your provider, not by noFriction.
-Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
-Privacy Policy: https://nofriction.ai/privacy
+Tell participants before recording and obtain any required consent.
 ```
 
 ### Keywords (limit 100)
@@ -292,69 +288,46 @@ not 1.0; versions are per platform.
 
 ### Promotional text (limit 170)
 
-**153 / 170 characters**
+**148 / 170 characters**
 
 ```text
-Record, transcribe and capture screens on your Mac. Ask your meetings questions with your own AI key or Apple's on-device model. No accounts. No servers.
+Keep meeting recordings and transcripts on your Mac. Use local or Apple on-device AI for notes, follow-ups and questions. Offline after model setup.
 ```
 
 ### Description (limit 4000)
 
-**3432 / 4000 characters**
+**2713 / 4000 characters**
 
 ```text
-noFriction is a meeting recorder for your Mac that writes things down while you pay attention. It records your microphone and the other participants, transcribes on your Mac, keeps the screens you choose, and works with the AI you pick to answer questions across all your meetings.
+noFriction brings your Mac's meeting recordings, transcripts, screenshots and notes into one place. Record your microphone and the other participants, revisit the discussion in Rewind, and use the AI you choose to turn the transcript into useful work.
 
-No account. No noFriction servers. Your recordings stay on your Mac.
+WORK OFFLINE WITH LOCAL MODELS
+Choose local transcription and download a speech model once. After setup, transcription runs on your Mac without an internet connection. noFriction Pro can also use a local model for notes, follow-up drafts, questions and other text AI features.
 
-RECORD EVERYONE, TRANSCRIBE ON YOUR MAC
-• Captures your microphone and your Mac's audio, so the other people on the call are transcribed too
-• Live transcript from a Whisper speech model that runs on your Mac. One-time model download, then it works offline
-• Optional cloud transcription with your own key (Deepgram, Gladia or Google)
-• Search every meeting's transcript
+Apple on-device AI is available on compatible Apple Intelligence Macs running macOS 26 or later, with Apple Intelligence enabled and its model ready. You can also connect your own installed Ollama, LM Studio or OpenAI-compatible model. A model on another computer needs a reachable local network. Complete model downloads and setup before working offline.
 
-KEEP THE SCREENS THAT MATTER
-• Pick the displays or windows to capture. noFriction saves a screenshot when they change
-• Snap saves one on demand
-• Review the transcript and screenshots together in Rewind
+noFriction does not host AI models or include cloud AI usage. An optional custom AI endpoint uses your own account and may incur charges from its operator. When used, the relevant meeting content goes directly to the endpoint you entered; transcription always stays on your Mac.
 
-KNOWS THE MEETING AND THE PEOPLE
-• Matches each recording to your calendar event and its attendees
-• A People directory with search, invite notes and LinkedIn links
+RECORD AND REVIEW
+• Capture your microphone and your Mac's audio
+• See a live transcript using local speech recognition
+• Search meeting transcripts and revisit saved recordings
+• Choose displays or windows to capture, and use Snap for an on-demand screenshot
+• Review screenshots and transcript together in Rewind
+• Connect meetings with calendar events and attendee information
 
-ASK YOUR MEETINGS (noFriction Pro)
-• Chat: ask a question and get an answer drawn from your own transcripts
-• Live insights while you talk: action items, decisions, risks and deadlines
-• A report after each meeting: summary, decisions and action items, ready to export to your Obsidian vault
-• Paste a key and noFriction recognizes the provider and checks it: OpenAI (default), Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Mistral, DeepSeek, Perplexity or Together
-• Or use a local model (Ollama, LM Studio, any OpenAI-compatible server), or Apple's on-device model with no key (macOS 26 or later with Apple Intelligence)
+NOTES, FOLLOW-UPS AND QUESTIONS
+noFriction Pro adds AI notes with summaries, decisions and action items; follow-up email drafts; questions over your transcripts in Chat; and live insights during a recording. Review generated answers against the meeting before relying on or sharing them.
 
-STOPS WHEN THE MEETING DOES
-• Notices when the call app lets go of the microphone (macOS 14.2 or later), the meeting window closes, the calendar event ends, or nobody has spoken for a few minutes
-• A 30-second banner lets you keep recording
-
-DELETE, OR STRIKE FROM THE RECORD
-• Remove words, whole lines or screenshots
-• Delete leaves no trace, with five seconds to undo
-• Strike from the record removes it from the transcript, search, screenshots and the app's backups, and leaves only a marker with the time and an optional reason. No undo
-
-PRIVATE BY DESIGN
-• Meetings are stored only on your Mac
-• API keys are kept in the Keychain
-• Before anything goes to a cloud AI provider, noFriction asks you and says what will be sent
-• No analytics, no ads, no tracking
+YOUR MEETING RECORDS
+Keep meetings on your Mac, edit transcript text, remove unwanted material or use Strike from the record to leave a visible marker. Export meeting material to your Obsidian vault. No noFriction account is required.
 
 FREE AND PRO
-Free: recording, transcription, screenshots and Snap, calendar and people, search, Delete and Strike, and export to Obsidian.
-noFriction Pro adds the AI features. One subscription also unlocks noFriction for iPhone and iPad.
+Recording, transcription, screenshots, calendar and people, search, editing and export are available without Pro. AI features require noFriction Pro. One subscription unlocks Pro on Mac, iPhone and iPad.
 
-Recording laws vary, and in many places everyone must agree to be recorded. Tell people when you record.
+noFriction Pro is an auto-renewing monthly or yearly subscription. Payment is charged to your Apple Account. Subscriptions renew automatically unless canceled at least 24 hours before the current period ends. Manage or cancel in your Apple Account settings. Optional third-party AI usage is billed separately by your provider.
 
-Requires macOS 12.3 or later.
-
-noFriction Pro is an auto-renewing subscription (monthly or yearly). Payment is charged to your Apple Account when you confirm the purchase, or when a free trial ends. It renews automatically unless canceled at least 24 hours before the end of the current period. Manage or cancel in your Apple Account settings. Any unused part of a free trial ends when you subscribe. AI provider usage is billed by your provider, not by noFriction.
-Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
-Privacy Policy: https://nofriction.ai/privacy
+Tell participants before recording and obtain any required consent.
 ```
 
 ### Keywords (limit 100)
@@ -373,7 +346,7 @@ Not shown for the first macOS version either; use it for TestFlight.
 
 ```text
 noFriction is now on the Mac App Store.
-• Bring your own AI: paste a key from OpenAI, Anthropic, Google Gemini and more, or use Apple's on-device model
+• Choose where AI runs: Apple's on-device model, or your own compatible AI endpoint
 • Delete, or Strike from the record: remove words, lines or screenshots everywhere
 • Recordings stop when the meeting ends, with a 30-second banner to keep going
 • Local transcription is the default
@@ -386,8 +359,9 @@ noFriction is now on the Mac App Store.
 
 Group reference name: `noFriction Pro`. Products:
 `com.nofriction.meetings.pro.monthly`, `com.nofriction.meetings.pro.yearly`.
-Prices and the introductory offer are the owner's call (see
-LAUNCH_CHECKLIST.md §3). These display names and descriptions show on both
+The owner approved US $0.99/month, $5.99/year and a 1-week free introductory
+trial for eligible subscribers on 2026-10-03 (see LAUNCH_CHECKLIST.md §3).
+These display names and descriptions show on both
 platforms, so they avoid platform-specific features.
 
 Subscription group display name (localization):
@@ -446,70 +420,64 @@ Subscription (Mac)."
 ## 8. App Review notes
 
 Sign-in required: **No**. Paste the platform's notes into *App Review
-Information → Notes* (limit 4000). Replace `<OPENAI_TEST_KEY>`, `<NAME>`,
-`<PHONE>`. Create the key as a separate OpenAI project key with a low monthly
-budget; never put it in the app or the repo, and revoke it after review.
+Information → Notes* (limit 4000). Reviewer contact fields remain unset until
+the owner supplies the actual name, phone and email. Verify the
+on-device/local-model path on the submitted build and state compatible hardware
+and model setup. noFriction supplies no hosted model or provider account. If
+review requires an optional cloud-provider test, arrange a separate, restricted
+review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**1791 / 4000 characters**
+**2006 / 4000 characters**
 
 ```text
-No account or sign-in is needed. Everything is stored on the device; we run no servers.
+No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
 
-RECORD
-1. Record tab → tap Record. A one-time notice reminds the user that recording laws vary → "I understand".
-2. Allow Microphone, Speech Recognition and Calendars. Speak for a minute; the transcript appears live (on-device speech recognition; it doesn't run in the Simulator).
-3. Optional: Take Photo / Choose from Photos adds images to the meeting.
-4. Tap Stop. The meeting is in the Meetings tab. Auto-stop: Settings → Recording.
+RECORD AND TRANSCRIBE
+1. Open Record and tap Record. Review the recording notice.
+2. Allow Microphone and Speech Recognition. Calendar access enables calendar matching. On a physical device with on-device speech recognition available, speak for a minute and check the live transcript. Speech recognition is not supported by this test path in the Simulator.
+3. Optionally add a photo. Stop, then open the meeting in Meetings.
 
-PAYWALL (noFriction Pro, AI only)
-5. Meetings → open the meeting → "Summarize" (or "Follow-up email"). Without Pro this opens the paywall: price, period, trial, Restore Purchases, Terms (Apple standard EULA) and Privacy Policy. Also: Settings → Subscription → Upgrade to Pro.
-6. Buy with the sandbox account. Products: com.nofriction.meetings.pro.monthly and .pro.yearly (group "noFriction Pro").
+PRO AND RESTORE
+4. Open the meeting and choose Summarize or Follow-up email. Without Pro, the paywall opens. Settings → Subscription also offers the subscription and Restore Purchases.
+5. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require the Pro entitlement.
 
-AI (bring your own key)
-AI runs on the user's own provider account. After subscribing, Summarize asks to set up AI:
-• Paste this spending-capped test key: <OPENAI_TEST_KEY> (OpenAI is detected automatically), or
-• On a device with Apple Intelligence (iOS 26+), tap "Use Apple on-device (no key)"; nothing leaves the device.
-Before the first request to a cloud provider, a consent sheet names the provider and what is sent (transcript, title, attendee names, invite notes). Tap Allow. Notes and an email draft appear in the meeting.
+OFFLINE AI PATH
+Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup or Settings, choose Use Apple on-device (no key), then return to Summarize or Follow-up email. This text-generation path runs on the device without a provider account or API key.
+
+Alternatively, configure your own Ollama/LM Studio or OpenAI-compatible local model in Settings. A model on another computer requires a reachable local network. Optional cloud providers use the user's own account/key; the app requests consent before sending meeting content. No provider credential is supplied in these notes.
 
 EDITING
-In a meeting, select transcript text → Delete (5-second undo) or "Strike from the record…" (permanent; leaves a marker).
+Open a meeting and select transcript text. Delete offers a brief undo period. Strike from the record is permanent and leaves a marker.
 
-Privacy: no analytics or tracking. Transcription is on-device. AI requests go directly from the device to the provider the user chose, using the user's key.
-Contact: <NAME>, <PHONE>, support@nofriction.ai
+The local-model path requires its setup, compatible hardware and Pro entitlement; it is not a hosted fallback. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 ### macOS
 
-**1941 / 4000 characters**
+**2109 / 4000 characters**
 
 ```text
-No account or sign-in is needed. Everything is stored on the Mac; we run no servers.
+No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
 
-SETUP
-1. First launch: the setup wizard. Choose "Private & Offline" transcription (downloads a 547 MB speech model once; needs internet for that one download).
-2. Grant Microphone, Screen & System Audio Recording and Calendars when asked (System Settings → Privacy & Security).
+SETUP AND RECORDING
+1. In setup, choose the Recommended (or Smaller) speech model and complete the download while online. Model size depends on the selected model. Subsequent local transcription works offline.
+2. Grant Microphone, Screen & System Audio Recording and Calendar permissions as needed for the features being tested.
+3. Open LIVE and start recording. Speak or use a call to check the transcript. Choose displays/windows with Change and use Snap to save a screenshot.
+4. Stop, then open REWIND → RECORDINGS and select the meeting to inspect the transcript and screenshots.
 
-RECORD
-3. LIVE → Record. Speak or play a video call; the transcript appears live. Screenshots of the chosen screens appear in the timeline; "Snap" saves one now; "Change" picks displays/windows.
-4. Stop. The meeting is in REWIND → RECORDINGS with transcript and screenshots. Auto-stop: Settings → General → Recording.
+PRO AND RESTORE
+5. Settings → Subscription offers plans and Restore Purchases. An AI action without Pro opens the paywall. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require Pro.
 
-PAYWALL (noFriction Pro, AI only)
-5. Settings → Subscription shows the plans, Restore Purchases, Terms (Apple standard EULA) and Privacy Policy. Any AI action without Pro (for example asking a question in CHAT) opens the same paywall.
-6. Buy with the sandbox account. Products: com.nofriction.meetings.pro.monthly and .pro.yearly (group "noFriction Pro", shared with the iOS app via Universal Purchase).
+OFFLINE AI PATH
+Use an Apple Intelligence-compatible Mac running macOS 26 or later, with Apple Intelligence enabled and its model download complete. With no text provider configured, the app uses the available Apple on-device model automatically for text AI. No cloud account or API key is required for that path.
 
-AI (bring your own key)
-• Settings → AI Engine → paste this spending-capped test key: <OPENAI_TEST_KEY>. OpenAI is detected and validated.
-• Or, on macOS 26 with Apple Intelligence, the Apple on-device model is used automatically with no key; nothing leaves the Mac.
-Before the first request to a cloud provider, a consent dialog names the provider and what is sent. Allow it.
-Then: CHAT → ask "What did we decide?" The answer comes from the recorded transcripts. During a recording, LIVE shows AI insights.
+Alternatively configure an installed Ollama/LM Studio or OpenAI-compatible local model in Settings → AI Engine. Complete model downloads before offline testing. A model on another computer requires a reachable local network.
 
-EDITING
-REWIND → a meeting → select transcript words or a screenshot → Delete (5-second undo) or Strike from the record (permanent; leaves a marker).
+Open CHAT and ask What did we decide? Or use REWIND → RECORDINGS → select a meeting → NOTES → Generate notes / Follow-up email. LIVE provides insights during a recording. Apple on-device is text-only; screenshot capture and review do not require image analysis.
 
-Privacy: no analytics or tracking. The app is sandboxed; AI requests go directly from the Mac to the user's chosen provider with the user's key.
-Contact: <NAME>, <PHONE>, support@nofriction.ai
+A custom AI endpoint is optional, is entered by the user with their own account/key, and requires consent before meeting content is sent to a public endpoint. No provider credential is supplied in these notes. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Summarize →
@@ -519,28 +487,29 @@ paywall → notes, if review asks how to reach a feature.
 
 Beta app description (limit 4000):
 
-**233 / 4000 characters**
+**281 / 4000 characters**
 
 ```text
-noFriction records and transcribes your meetings on your device, matches them to your calendar, and writes notes and follow-ups with the AI you choose (your own key, a local model or Apple's on-device model). No accounts, no servers.
+noFriction records and transcribes meetings on your device. Create notes and follow-ups with Apple on-device AI or your own local model after setup on supported devices. AI features require Pro. Optional cloud providers use your own account. No noFriction login or hosted AI model.
 ```
 
 What to Test (limit 4000):
 
-**478 / 4000 characters**
+**470 / 4000 characters**
 
 ```text
 Please test:
 • A real meeting from start to finish: recording, live transcript, calendar match and attendees
 • Leaving the phone locked during a long meeting
 • Auto-stop when the meeting ends (and "Keep recording")
-• AI notes and follow-up email with your own key or Apple on-device
+• AI notes and follow-up email with Apple on-device or your own local model, after setup
 • Delete and Strike from the record
 • Subscribing, restoring and the free trial (purchases are free in TestFlight)
-Send feedback with a screenshot from TestFlight, or email support@nofriction.ai.
+Send feedback with a screenshot through TestFlight.
 ```
 
-Feedback email: `support@nofriction.ai`. Beta review notes: the same as the
+Feedback email: unresolved; do not use the old `support@nofriction.ai` placeholder.
+Beta review notes: the same as the
 App Review notes above.
 
 ---
@@ -602,12 +571,12 @@ can appear.
 4. Make a 3-slide Keynote deck ("Cutover plan", "Rollback", "Owners") with
    invented text, for the screen capture.
 5. Install the TestFlight or App Store build of noFriction for Mac in the Demo
-   user. In the setup wizard choose "Private & Offline" and let the model
+   user. In the setup wizard choose the Recommended speech model and let it
    download. Grant Microphone, Screen & System Audio Recording and Calendars.
-6. Settings → Subscription: subscribe with a **Sandbox** Apple Account
-   (TestFlight purchases are free). Settings → AI Engine: paste a test key
-   (a capped project key). After the screenshots, delete the key and the
-   Demo user.
+6. Settings → Subscription: subscribe in Apple's sandbox (TestFlight purchases
+   are free). Use Apple on-device on a compatible Mac or connect your own local
+   Ollama/LM Studio model in Settings → AI Engine. Finish model downloads first.
+   Remove the demo profile after capturing the screenshots.
 7. Turn on Do Not Disturb; hide the Dock (System Settings → Desktop & Dock →
    Automatically hide); use the default wallpaper; set Appearance to Dark.
 8. Display: set the built-in display to "Default" scaling (1440 × 900 points
@@ -647,12 +616,12 @@ can appear.
 | Name alt 2 | 28 | 30 |
 | Subtitle | 29 | 30 |
 | Subtitle alt | 30 | 30 |
-| iOS promotional text | 153 | 170 |
-| iOS description | 3345 | 4000 |
+| iOS promotional text | 141 | 170 |
+| iOS description | 2584 | 4000 |
 | iOS keywords | 95 | 100 |
 | iOS What's New 1.0 | 365 | 4000 |
-| Mac promotional text | 153 | 170 |
-| Mac description | 3432 | 4000 |
+| Mac promotional text | 148 | 170 |
+| Mac description | 2713 | 4000 |
 | Mac keywords | 96 | 100 |
 | Mac What's New 3.6.0 | 409 | 4000 |
 | Group display name | 14 | 30 |
@@ -660,7 +629,7 @@ can appear.
 | Monthly description | 38 | 45 |
 | Yearly display name | 10 | 30 |
 | Yearly description | 37 | 45 |
-| iOS review notes | 1791 | 4000 |
-| Mac review notes | 1941 | 4000 |
-| Beta description | 233 | 4000 |
-| What to Test | 478 | 4000 |
+| iOS review notes | 2006 | 4000 |
+| Mac review notes | 2109 | 4000 |
+| Beta description | 281 | 4000 |
+| What to Test | 470 | 4000 |

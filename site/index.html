@@ -112,7 +112,7 @@
         <div class="card accent">
           <h3>On your device</h3>
           <ul>
-            <li>Audio, transcripts, photos and screenshots are stored only on your device.</li>
+            <li>Audio, transcripts, photos and screenshots are stored on your device.</li>
             <li>Transcription runs on the device.</li>
             <li>No accounts, no analytics, no tracking.</li>
             <li>API keys are kept in the system Keychain.</li>
@@ -120,11 +120,10 @@
         </div>
         <div class="card">
           <h3>Bring your own AI</h3>
-          <p>Paste a key and noFriction recognizes the provider and checks it. Before it first sends a meeting to a cloud provider, it asks you, and says what will be sent.
-             The provider bills you directly, under its own terms. Prefer nothing leaves? Use a local model or Apple's on-device model.</p>
-          <ul class="providers" aria-label="Supported AI providers">
-            <li>OpenAI (default)</li><li>Anthropic</li><li>Google Gemini</li><li>xAI Grok</li><li>Groq</li><li>OpenRouter</li>
-            <li>Mistral</li><li>DeepSeek</li><li>Perplexity</li><li>Together</li><li>Ollama</li><li>LM Studio</li><li>Any OpenAI-compatible server</li><li>Apple on-device</li>
+          <p>Use your own local model or Apple's on-device model to keep AI offline after setup. noFriction does not host AI models or include hosted AI usage.
+             You can also enter your own compatible endpoint, model and optional key. No service is preconfigured. The app asks before sending meeting content to a public endpoint; its operator sets any usage charges and retention policy.</p>
+          <ul class="providers" aria-label="AI execution choices">
+            <li>Apple on-device</li><li>Your local compatible endpoint</li><li>Your HTTPS compatible endpoint</li>
           </ul>
         </div>
       </div>
@@ -177,15 +176,15 @@
       </details>
       <details>
         <summary>Do I need an AI key?</summary>
-        <p>Not to record and transcribe. For AI notes you need noFriction Pro plus one of: an API key from a provider such as OpenAI, a local model (Ollama, LM Studio), or Apple's on-device model on a device that supports Apple Intelligence.</p>
+        <p>No key is needed for recording, transcription or AI with Apple's on-device model on a compatible device. AI features require noFriction Pro and your chosen model: Apple on-device, a local or HTTPS OpenAI-compatible endpoint and model you configure yourself, with an optional key. No AI service or credential is included.</p>
       </details>
       <details>
         <summary>What does the AI provider see?</summary>
-        <p>The transcript and the meeting's title, attendee names and invite notes (and on the Mac, screenshots for screen features), when an AI feature runs. On the Mac, once you've connected a provider, live insights and the after-meeting report use it automatically (you can turn either off in Settings). It goes straight from your device to that provider. noFriction never sees it.</p>
+        <p>The transcript and the meeting's title, attendee names, email/company details and invite notes (and on the Mac, screenshots for screen features), when an AI feature runs. On the Mac, once you've configured and approved an endpoint, live insights and the after-meeting report use it automatically (you can turn either off in Settings). It goes straight from your device to that provider. noFriction never sees it.</p>
       </details>
       <details>
         <summary>Does it work offline?</summary>
-        <p>Recording and transcription do. On the Mac, the speech model downloads once on first use. AI features need your provider, unless you use a local or on-device model.</p>
+        <p>Yes. Recording, transcription and AI can work fully offline with local or Apple on-device models after setup and any required model downloads. A model running on another computer needs a reachable local network. Public custom endpoints need internet access; noFriction offers no hosted models.</p>
       </details>
       <details>
         <summary>Is recording people legal?</summary>
@@ -205,7 +204,7 @@
   <section id="contact" aria-labelledby="contact-title">
     <div class="wrap">
       <h2 id="contact-title">Need help?</h2>
-      <p>Read the <a href="support.html">support page</a> or email <a href="mailto:support@nofriction.ai">support@nofriction.ai</a>.</p>
+      <p>Read the <a href="support.html">support page</a> or email <a href="mailto:casey@nofriction.io">casey@nofriction.io</a>.</p>
     </div>
   </section>
 </main>
