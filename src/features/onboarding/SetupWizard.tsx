@@ -1,7 +1,7 @@
 // noFriction Meetings - first-run setup assistant
 //
 // Welcome & consent → macOS permissions → on-device transcription model →
-// AI provider (paste a key / Apple on-device / skip) → noFriction Pro (Mac
+// AI (Apple on-device / your own endpoint / skip) → noFriction Pro (Mac
 // App Store build only, informational) → done. Every step can be skipped,
 // and the whole assistant can be run again from Settings → General.
 // Each step shows the live state, so re-running never resets anything.
