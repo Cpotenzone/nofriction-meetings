@@ -31,7 +31,7 @@ def audit(root):
     need(re.findall(r'\b[A-Z]\w*\b',enum)==['Local'], 'Mac transcription must expose only local execution')
     need(not re.search(r'pub mod (deepgram|gemini|gladia|google_stt)\s*;',trans), 'Retired cloud transcription modules must not compile')
     paths=[]
-    for folder in ('src','src-tauri/src','ios/NoFriction'):
+    for folder in ('src','src-tauri/src','ios/NoFriction','ios/Shared','ios/NoFrictionWatch'):
         paths.extend(p for p in (root/folder).rglob('*') if p.is_file() and p.suffix in {'.rs','.ts','.tsx','.swift'})
     paths.extend(root/'src-tauri'/name for name in ('tauri.conf.json','tauri.mas.conf.json','build.rs'))
     for path in paths:
@@ -48,6 +48,10 @@ def audit(root):
                 need(not any(p.name.startswith('.env') for p in (root/'src-tauri').glob(value)),f'Resource glob includes an environment file in {name}')
     project=(root/'ios/project.yml').read_text()
     need(not re.search(r'path:\s*[\"\']?[^\n]*\.env',project), 'iOS resources must not include an environment file')
+    # The Apple Watch app records and hands audio to the iPhone only: no network AI or speech service in it
+    for path in (root/'ios/NoFrictionWatch').rglob('*.swift'):
+        text=path.read_text()
+        need(not re.search(r'\b(?:URLSession|URLRequest|NWConnection|SFSpeechRecognizer|SpeechAnalyzer)\b',text), f'Watch app must not make network or speech requests: {path.relative_to(root)}')
     return errors
 
 def main():
