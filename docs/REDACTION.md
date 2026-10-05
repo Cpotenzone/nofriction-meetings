@@ -19,7 +19,15 @@ is no hidden copy, no "reveal", and no admin override.
 - **Words**: any run of words inside one transcript line, or one or more whole
   lines. Word selection uses tappable/clickable word tokens, which is reliable
   on both platforms and maps cleanly to character offsets. A drag-select of
-  the text is a bonus on the Mac.
+  the text is a bonus on the Mac. On the Mac the word picker opens by
+  double-clicking a line (or **Edit words**); Esc or **Done** closes it.
+- **Transcript lines** (Mac): the same selection as screens. A click selects
+  a line (and shows that moment), Shift-click selects every line from the
+  last clicked one, ⌘-click adds or removes one, ⌘A selects all while the
+  transcript has focus, plus **Select all**, **From here to the end** and
+  **Last N minutes**. Delete/Backspace deletes the selection (with the undo
+  toast), Esc clears it. A line holding only strike markers can't be
+  selected (nothing in it is left to remove).
 - **Screens**: one screenshot/photo/frame, or several selected in the
   timeline/gallery. On the Mac: click views a screen, ⌘-click toggles one,
   Shift-click selects every screen from the last clicked (or the one being
@@ -31,6 +39,33 @@ is no hidden copy, no "reveal", and no admin override.
 - **A block of time** (Mac): "delete everything from 10:41 to 10:53", from a
   screen selection or typed start/end times. See [Time ranges](#time-ranges).
 - Actions appear in a context menu / toolbar: **Delete** · **Strike from the record…**
+
+### Linked selection (Mac)
+
+Screens and transcript lines are selected together by time: deleting
+screens must not leave behind what was said while they were shown. It is on
+by default; the **Linked** switch in the selection bar turns it off, and the
+choice is remembered (per user, in the app's local storage).
+
+- A linked selection is a set of time spans: each run of adjacent picks
+  (screens or lines) is one span, gaps inside it included. A screen's span
+  runs until just before the next screen (or until its recorded end, when
+  the next screen comes more than 5 s later). **Last N minutes**, **From
+  here to the end** and **Select all** pick that exact span. ⌘-click on a
+  highlighted item takes its time out of the selection.
+- Both panes then highlight what those spans remove, by the
+  [time range](#time-ranges) rules: the screens captured inside, and the
+  lines inside (a line only partly inside, by its word timings, is marked as
+  split). The bar says so: "17 screens · 42 lines (3 split) · 10:41–10:53 ·
+  2 groups". The scrubber shows the spans.
+- **Delete** is a time-range delete of every span at once, with one undo.
+  It first previews the spans; if the preview would remove anything other
+  than what is highlighted, the preview is shown instead of deleting.
+  **Strike** shows that preview as its confirmation and leaves markers for
+  each span.
+- Not linked, Delete and Strike act only on the pane the user selected in,
+  and the bar says "screens only" or "transcript only". Several transcript
+  lines are deleted as one action (one undo toast).
 
 ## "Removed everywhere": the purge checklist
 
@@ -177,6 +212,17 @@ Delete keeps the 5-second undo. **Strike time range** leaves one marker for the
 span in the transcript (in its first line; the rest closes up) and one in the
 screen strip, both with the span's times and the reason.
 
+**Several ranges** (a linked selection) are one action. Overlapping or
+touching ranges merge, and the preview gives exact totals for all of them
+together. A Delete is one pending row with one undo. A Strike leaves, for
+each range, a transcript marker (in the first line that range touches) if it
+removed words, and a screen-strip marker if it removed screens or no words.
+A line cut by two ranges keeps the words between them, and a line without
+word timings counts the overlap of every range toward its 50%. Range times
+from the UI are whole milliseconds, as the timeline shows them, and an end
+covers its whole millisecond, so the UI and the backend agree on every item
+at an edge.
+
 ## Tests (both platforms)
 
 - Word-range delete and strike update the text exactly and keep word boundaries clean.
@@ -191,8 +237,12 @@ screen strip, both with the span's times and the reason.
   parking, resume at launch, never holding the redaction lock); partial
   blanking (same length and frame count, black only in the range, everything
   else stream-copied), no second re-encode of a blanked range, per-chunk
-  offsets, and chunk rotation without gaps. The screen selection logic has
-  its own tests (`npm test`).
+  offsets, and chunk rotation without gaps. Several ranges in one action:
+  exact totals, one undo, a line cut twice, the 50% rule across ranges,
+  markers and video jobs per range, and pending deletes from older builds.
+  The screen, line and linked selection logic has its own tests (`npm test`:
+  Shift ranges, linking both ways, Last N minutes, From here to the end,
+  span merging, and counts that equal what is sent).
 - AI outputs: occurrences are redacted and the flag is set.
 - Markers render in exports, and prompts use the placeholder.
 - A Strike can't be undone or edited, and no API returns the removed content.
@@ -235,7 +285,12 @@ UI in `src/components/redaction/Redaction.tsx`.
   chunk's own start.
 - **Time ranges** are `redaction/time_range.rs`: `preview_time_range`,
   `delete_time_range`, `strike_time_range` (offsets in ms from the meeting
-  start).
+  start), and `preview_time_ranges`, `delete_time_ranges` and
+  `strike_time_ranges` for several at once (a list of `{start_ms, end_ms}`).
+  The timeline gives each transcript line its span as these read it
+  (`end_ms`, and `word_mids_ms` when word timings are stored; times only),
+  so the linked selection (`src/lib/timelineSelection.ts`) highlights
+  exactly what they remove.
 - **Schema drift.** Columns added to a table after it first shipped go through
   `database::ensure_columns` (checks `pragma_table_info`), never only into a
   `CREATE TABLE IF NOT EXISTS`, which doesn't alter a table an older build
