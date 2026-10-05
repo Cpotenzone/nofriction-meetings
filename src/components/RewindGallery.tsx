@@ -569,9 +569,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                 return;
             }
             if (!matchesPreview(link, p)) {
-                ask(
-                    "What a Delete removes at the edges of the selection differs a little from what's highlighted (word timings and the half-a-line rule decide). This is exactly what will be removed:",
-                );
+                ask("Deleting this time removes something other than what's highlighted. This is exactly what will be removed:");
                 return;
             }
         }
