@@ -702,12 +702,15 @@ async fn exports_and_prompts_render_placeholders() {
 /// A screen state with a keyframe file, OCR snapshot, VLM queue + activity
 /// (+ entity), a timeline event and an episode. Returns its state_id.
 async fn add_screen(f: &Fixture, name: &str, secs: i64) -> String {
+    add_screen_at(f, name, Utc::now() - chrono::Duration::seconds(600 - secs)).await
+}
+
+async fn add_screen_at(f: &Fixture, name: &str, ts: DateTime<Utc>) -> String {
     let frames = f.env.app_data_dir.join("frames").join("m1");
     std::fs::create_dir_all(&frames).unwrap();
     let state_id = format!("{}-{}", name, uuid::Uuid::new_v4());
     let path = frames.join(format!("state_{}.jpg", state_id));
     std::fs::write(&path, b"jpeg").unwrap();
-    let ts = Utc::now() - chrono::Duration::seconds(600 - secs);
     let p = path.to_string_lossy().to_string();
     f.db.add_screen_state(&state_id, "m1", ts, Some(ts), "", 0.0, Some(&p), "other", "{}").await.unwrap();
     let ep = format!("ep-{}", state_id);
@@ -961,17 +964,46 @@ async fn screen_strike_blanks_the_screen_video_range() {
     let before = luma_at(&chunk, 4.5).unwrap();
     assert!(before > 200.0);
     let out = strike_screens(f.db.pool(), &f.env, "m1", &[state_id], None).await.unwrap();
-    assert_eq!(out.video_chunks_blanked, 1);
+    // The database content is gone at once; the video is queued
+    assert_eq!(out.video_jobs_queued, 1);
+    assert!(out.record.as_ref().unwrap().video_pending, "the marker says the video is pending");
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM screen_states").await, 0);
+    assert!(luma_at(&chunk, 4.5).unwrap() > 200.0, "not blanked inline (outside the action)");
+    let tl = f.db.get_synced_timeline("m1").await.unwrap().unwrap();
+    assert!(tl.redactions[0].video_pending);
+    // The background job blanks it (mpeg4 source: whole-chunk fallback)
+    let s = run_jobs(&f).await;
+    assert_eq!(s.jobs_done, 1, "{:?} {:?}", s, video_jobs::list(f.db.pool(), None).await);
     assert!(luma_at(&chunk, 4.5).unwrap() < 30.0, "covered moment is black");
+    let tl = f.db.get_synced_timeline("m1").await.unwrap().unwrap();
+    assert!(!tl.redactions[0].video_pending, "marker no longer pending");
     assert!(luma_at(&chunk, 0.5).unwrap() > 200.0, "outside the range is untouched");
     assert!(luma_at(&chunk, 7.5).unwrap() > 200.0);
     let dur = video_blank::probe_duration(&chunk).unwrap();
     assert!((dur - 8.0).abs() < 0.6, "duration unchanged: {}", dur);
 }
 
+/// Run the screen video jobs due now with real ffmpeg (DMG).
+#[cfg(not(feature = "mas"))]
+async fn run_jobs(f: &Fixture) -> video_jobs::RunSummary {
+    video_jobs::run_due(
+        f.db.pool(),
+        &f.env,
+        std::sync::Arc::new(video_blank::FfmpegOps),
+        Utc::now(),
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        std::sync::Arc::new(|_| {}),
+    )
+    .await
+    .unwrap()
+}
+
+/// The screen video can't be read: the screens are still removed from the
+/// database at once (never left behind because of the video), and the
+/// video job fails loudly, stays queued and is retried with backoff.
 #[cfg(not(feature = "mas"))]
 #[tokio::test]
-async fn screen_action_fails_loudly_and_changes_nothing_if_video_cant_be_checked() {
+async fn unreadable_video_still_purges_screens_and_keeps_a_failed_video_job() {
     let mut f = setup().await;
     f.env.video_enabled = true;
     let vdir = video_blank::video_dir(&f.env, "m1");
@@ -979,11 +1011,23 @@ async fn screen_action_fails_loudly_and_changes_nothing_if_video_cant_be_checked
     // Not a real video: ffprobe can't read its length
     std::fs::write(vdir.join("chunk_001.mov"), b"garbage").unwrap();
     let a = add_screen(&f, "a", 10).await;
-    let e = strike_screens(f.db.pool(), &f.env, "m1", &[a.clone()], None).await.unwrap_err();
-    assert!(!e.is_empty());
-    assert_eq!(count(&f, "SELECT COUNT(*) FROM screen_states").await, 1);
-    assert_eq!(count(&f, "SELECT COUNT(*) FROM redactions").await, 0);
-    assert!(f.env.app_data_dir.join("frames/m1").join(format!("state_{}.jpg", a)).exists());
+    let out = strike_screens(f.db.pool(), &f.env, "m1", &[a.clone()], None).await.unwrap();
+    assert_eq!(out.video_jobs_queued, 1);
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM screen_states").await, 0);
+    assert!(!f.env.app_data_dir.join("frames/m1").join(format!("state_{}.jpg", a)).exists());
+    if crate::video_recorder::find_tool("ffprobe").is_none() {
+        return;
+    }
+    let s = run_jobs(&f).await;
+    assert_eq!(s.meetings_failed, 1);
+    let jobs = video_jobs::list(f.db.pool(), Some("m1")).await.unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].status, "failed");
+    assert!(jobs[0].last_error.as_deref().map_or(false, |e| !e.is_empty()));
+    assert!(jobs[0].next_attempt_at.is_some(), "retried later, with backoff");
+    // Not due again immediately: no tight retry loop
+    assert_eq!(run_jobs(&f).await, video_jobs::RunSummary::default());
+    assert_eq!(std::fs::read(vdir.join("chunk_001.mov")).unwrap(), b"garbage", "left as it was");
 }
 
 // ─── Audio ───────────────────────────────────────────────────────────────
@@ -1014,3 +1058,6 @@ fn mac_stores_no_meeting_audio() {
     }
     assert!(offenders.is_empty(), "audio is written to disk; implement the silence step: {:?}", offenders);
 }
+
+mod range_tests;
+mod video_tests;

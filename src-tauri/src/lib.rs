@@ -154,6 +154,8 @@ impl AppState {
 
         // A Delete still inside its undo window when the app quit or crashed
         // is committed now: it is never silently dropped (docs/REDACTION.md).
+        // Database work only (fast): any screen video blanking it queues runs
+        // in the background worker once the app is up.
         for e in redaction::commit_all_pending(database.pool(), &redaction::RedactionEnv::for_app()).await {
             log::error!("Pending delete could not be applied: {}", e);
         }
@@ -483,6 +485,9 @@ pub fn run() {
                                         handle_clone.emit("init-step", "Finalizing App State...");
                                     log::info!("AppState created, managing state...");
                                     handle_clone.manage(state);
+                                    // Screen video blanking left over from a
+                                    // previous run (resumed in the background)
+                                    redaction::commands::start_video_worker(&handle_clone);
                                     // "Live insights during meetings" switch
                                     {
                                         let h = handle_clone.clone();
@@ -828,6 +833,11 @@ pub fn run() {
             redaction::commands::list_redactions,
             redaction::commands::preview_strike_words,
             redaction::commands::preview_strike_screens,
+            redaction::commands::preview_time_range,
+            redaction::commands::delete_time_range,
+            redaction::commands::strike_time_range,
+            redaction::commands::list_video_blank_jobs,
+            redaction::commands::retry_video_blank_jobs,
             redaction::commands::get_meeting_ai_status,
             // Build flavor / capabilities (UI hides features the build lacks)
             build_info::get_build_capabilities,
@@ -875,6 +885,8 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
             tauri::RunEvent::Exit => {
+                // A running screen video job stops here and resumes at launch
+                redaction::video_jobs::shutdown();
                 // Deletes still in their 5s undo window are committed on quit
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     let db = state.database.clone();
