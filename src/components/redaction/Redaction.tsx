@@ -11,12 +11,13 @@ import {
     redactionApi,
     tokenizeLine,
     type FailedDelete,
+    type MsRange,
     type RedactionRecord,
     type TimeRangePreview,
     type VideoJob,
     type VideoJobEvent,
 } from "../../lib/redaction";
-import { clockAt, durationLabel, parseClock, spanLabel } from "../../lib/screenSelection";
+import { clockAt, durationLabel, parseClock, spanLabel } from "../../lib/timelineSelection";
 import "./Redaction.css";
 
 // ── Markers ─────────────────────────────────────────────────────────────
@@ -139,6 +140,13 @@ export function useWordSelection() {
         setFocus({ li, wi: nWords - 1 });
     }, []);
 
+    /** Select one word (not a drag: moving the pointer doesn't extend it) */
+    const selectWord = useCallback((pos: SelPos) => {
+        dragging.current = false;
+        setAnchor(pos);
+        setFocus(pos);
+    }, []);
+
     /** Selected [first, last] word indexes in line `li`, if any */
     const wordRangeForLine = useCallback(
         (li: number, nWords: number): [number, number] | null => {
@@ -150,7 +158,7 @@ export function useWordSelection() {
         [range],
     );
 
-    return { range, begin, extend, clear, selectLine, wordRangeForLine };
+    return { range, begin, extend, clear, selectLine, selectWord, wordRangeForLine };
 }
 
 export interface WordSegment {
@@ -216,6 +224,7 @@ export function RedactableLine({
                 return (
                     <span
                         key={i}
+                        data-wi={t.index}
                         className={`rd-word${sel ? " rd-sel" : ""}`}
                         onMouseDown={(e) => {
                             if (!editable || e.button !== 0) return;
@@ -270,7 +279,26 @@ export function RedactionActionBar({
 
 type StrikeRequest =
     | { type: "words"; segments: WordSegment[] }
-    | { type: "screens"; ids: string[] };
+    | { type: "screens"; ids: string[] }
+    /** Whole transcript lines (the transcript pane, not linked to screens) */
+    | { type: "lines"; ids: number[]; words: number };
+
+/** Delete or Strike a fixed set of time ranges (a linked selection of
+ *  screens and transcript lines), with the exact preview. */
+export interface RangesRequest {
+    mode: "delete" | "strike";
+    ranges: MsRange[];
+    /** Selected lines with no recorded time: removed whole, by id, in the
+     *  same action */
+    lineIds: number[];
+    startedAt: string;
+    /** Shown above the preview (e.g. why a Delete asks first) */
+    note?: string;
+    /** A Delete was queued: hide what it removes during the undo window */
+    onDeleted?: (p: TimeRangePreview | null, lineIds: number[]) => void;
+    /** A Strike finished */
+    onStruck?: () => void;
+}
 
 /** Opens the time-range dialog (Delete or Strike a block of meeting time). */
 export interface TimeRangeRequest {
@@ -307,6 +335,7 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
     const [failed, setFailed] = useState<FailedDelete[]>([]);
     const [retrying, setRetrying] = useState(false);
     const [range, setRange] = useState<TimeRangeRequest | null>(null);
+    const [ranges, setRanges] = useState<RangesRequest | null>(null);
     // Screen video blanking runs in the background after a delete/strike
     const [videoJobs, setVideoJobs] = useState<VideoJob[]>([]);
     const [videoPercent, setVideoPercent] = useState<number | null>(null);
@@ -471,6 +500,74 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
         [meetingId, showToast],
     );
 
+    /** Whole transcript lines as one grouped action: one toast, one undo
+     *  (all or nothing). */
+    const deleteLines = useCallback(
+        async (lineIds: number[]): Promise<boolean> => {
+            if (!meetingId || lineIds.length === 0) return false;
+            const ids: string[] = [];
+            let seconds = 5;
+            try {
+                for (const id of lineIds) {
+                    const p = await redactionApi.deleteLine(meetingId, id);
+                    ids.push(p.id);
+                    seconds = p.undo_seconds;
+                }
+            } catch (e) {
+                await Promise.all(ids.map((id) => redactionApi.undo(id).catch(() => undefined)));
+                setMessage({ text: `Couldn't delete: ${e}`, error: true });
+                changedRef.current();
+                return false;
+            }
+            showToast(ids, `Deleted ${plural(lineIds.length, "line", "lines")}`, seconds);
+            return true;
+        },
+        [meetingId, showToast],
+    );
+
+    /** A linked selection: every range (one pending delete for all of them)
+     *  plus any lines with no recorded time, under one toast and one undo. */
+    const deleteRanges = useCallback(
+        async (p: TimeRangePreview | null, lineIds: number[], startedAt: string): Promise<boolean> => {
+            if (!meetingId) return false;
+            const doRanges = !!p && !p.nothing && p.ranges.length > 0;
+            if (!doRanges && lineIds.length === 0) {
+                setMessage({ text: "Nothing was captured in that span.", error: false });
+                return false;
+            }
+            const ids: string[] = [];
+            let seconds = 5;
+            try {
+                if (doRanges && p) {
+                    const pending = await redactionApi.deleteTimeRanges(meetingId, p.ranges, p.counts);
+                    ids.push(pending.id);
+                    seconds = pending.undo_seconds;
+                }
+                for (const id of lineIds) {
+                    const pd = await redactionApi.deleteLine(meetingId, id);
+                    ids.push(pd.id);
+                    seconds = pd.undo_seconds;
+                }
+            } catch (e) {
+                await Promise.all(ids.map((id) => redactionApi.undo(id).catch(() => undefined)));
+                setMessage({ text: `Couldn't delete: ${e}`, error: true });
+                changedRef.current();
+                return false;
+            }
+            const what: string[] = [];
+            if (doRanges && p?.counts.screens) what.push(plural(p.counts.screens, "screen", "screens"));
+            const nLines = (doRanges && p ? p.counts.lines_whole + p.counts.lines_split : 0) + lineIds.length;
+            if (nLines) what.push(plural(nLines, "line", "lines"));
+            const when =
+                doRanges && p
+                    ? `${spanLabel(startedAt, p.start_ms, p.end_ms)}${p.ranges.length > 1 ? `, ${p.ranges.length} spans` : ""}`
+                    : "";
+            showToast(ids, `Deleted ${[when, what.length ? `(${what.join(", ")})` : ""].filter(Boolean).join(" ")}`, seconds);
+            return true;
+        },
+        [meetingId, showToast],
+    );
+
     const undo = useCallback(async () => {
         if (!toast) return;
         const ids = toast.ids;
@@ -604,6 +701,30 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
                     }}
                 />
             )}
+            {ranges && meetingId && (
+                <RangesModal
+                    meetingId={meetingId}
+                    request={ranges}
+                    onClose={() => setRanges(null)}
+                    onDelete={async (p) => {
+                        if (await deleteRanges(p, ranges.lineIds, ranges.startedAt)) {
+                            ranges.onDeleted?.(p, ranges.lineIds);
+                            setRanges(null);
+                        }
+                    }}
+                    onStruck={(warnings) => {
+                        setRanges(null);
+                        setMessage(
+                            warnings.length
+                                ? { text: `Stricken from the record. ${warnings.join(" ")}`, error: true }
+                                : { text: "Stricken from the record.", error: false },
+                        );
+                        ranges.onStruck?.();
+                        refreshVideo();
+                        changedRef.current();
+                    }}
+                />
+            )}
             {failed.length > 0 && (
                 <div className="rd-failed" role="alert">
                     <span>
@@ -660,12 +781,17 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
         ui,
         deleteWords,
         deleteScreens,
+        deleteLines,
+        deleteRanges,
         strikeWords: (segments: WordSegment[]) => segments.length && setStrike({ type: "words", segments }),
         strikeScreens: (ids: string[]) => ids.length && setStrike({ type: "screens", ids }),
+        strikeLines: (ids: number[], words: number) => ids.length && setStrike({ type: "lines", ids, words }),
         /** Open the Delete / Strike a time range dialog */
         openTimeRange: (r: TimeRangeRequest) => setRange(r),
+        /** Delete / Strike fixed ranges (a linked selection), with the preview */
+        openRanges: (r: RangesRequest) => setRanges(r),
         /** A modal of this controller is open (keyboard shortcuts pause) */
-        busy: !!strike || !!range,
+        busy: !!strike || !!range || !!ranges,
     };
 }
 
@@ -901,6 +1027,14 @@ function StrikeConfirmModal({
                     } else {
                         list = preview;
                     }
+                } else if (request.type === "lines") {
+                    // The shared lines (AI outputs, logs, backups…) from one
+                    // line's preview; the first line counts the whole selection
+                    const preview = await redactionApi.previewWords(meetingId, request.ids[0]);
+                    list = [
+                        `${plural(request.ids.length, "transcript line", "transcript lines")} (${plural(request.words, "word", "words")}), and from search`,
+                        ...preview.slice(1),
+                    ];
                 } else {
                     list = await redactionApi.previewScreens(meetingId, request.ids);
                 }
@@ -936,11 +1070,26 @@ function StrikeConfirmModal({
                         : await redactionApi.strikeWords(meetingId, s.transcriptId, s.start, s.end, r, s.lineText);
                     warnings.push(...out.warnings);
                 }
+            } else if (request.type === "lines") {
+                let done = 0;
+                for (const id of request.ids) {
+                    try {
+                        const out = await redactionApi.strikeLine(meetingId, id, r);
+                        warnings.push(...out.warnings);
+                        done++;
+                    } catch (e) {
+                        // Strikes can't be undone: report the ones that were
+                        // made and refresh the view instead of hiding them
+                        if (done === 0) throw e;
+                        warnings.push(`Stopped after ${done} of ${request.ids.length} lines: ${e}`);
+                        break;
+                    }
+                }
             } else {
                 const out = await redactionApi.strikeScreens(meetingId, request.ids, r);
                 warnings.push(...out.warnings);
             }
-            onDone(warnings);
+            onDone([...new Set(warnings)]);
         } catch (e) {
             setError(String(e));
             setBusy(false);
@@ -997,6 +1146,176 @@ function StrikeConfirmModal({
                     <button className="rd-btn rd-btn-strike" onClick={confirm} disabled={busy || !items}>
                         {busy ? "Striking…" : "Strike from the record"}
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Fixed ranges: a linked selection of screens and transcript lines ───
+
+function RangesModal({
+    meetingId,
+    request,
+    onClose,
+    onDelete,
+    onStruck,
+}: {
+    meetingId: string;
+    request: RangesRequest;
+    onClose: () => void;
+    onDelete: (p: TimeRangePreview | null) => Promise<void>;
+    onStruck: (warnings: string[]) => void;
+}) {
+    const { startedAt, ranges, lineIds } = request;
+    const [preview, setPreview] = useState<TimeRangePreview | null>(null);
+    const [loading, setLoading] = useState(ranges.length > 0);
+    const [error, setError] = useState<string | null>(null);
+    const [mode, setMode] = useState(request.mode);
+    const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    // Exact totals per kind for all the ranges together
+    useEffect(() => {
+        if (ranges.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const p = await redactionApi.previewTimeRanges(meetingId, ranges);
+                if (!cancelled) setPreview(p);
+            } catch (e) {
+                if (!cancelled) setError(String(e));
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [meetingId, ranges]);
+
+    useEffect(() => {
+        const key = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && !busy) onClose();
+        };
+        window.addEventListener("keydown", key);
+        return () => window.removeEventListener("keydown", key);
+    }, [busy, onClose]);
+
+    const shown = preview?.ranges ?? ranges;
+    const hasRanges = !!preview && !preview.nothing;
+    const ready = !loading && !error && (hasRanges || lineIds.length > 0);
+    const isNote = (s: string) =>
+        s.startsWith("Files already exported") || s.startsWith("Time Machine") || s.startsWith("No meeting audio");
+
+    const doDelete = async () => {
+        setBusy(true);
+        await onDelete(hasRanges ? preview : null);
+        setBusy(false);
+    };
+    const doStrike = async () => {
+        setBusy(true);
+        setError(null);
+        const r = reason.trim() || null;
+        const warnings: string[] = [];
+        let started = false;
+        try {
+            if (hasRanges && preview) {
+                const out = await redactionApi.strikeTimeRanges(meetingId, preview.ranges, r, preview.counts);
+                warnings.push(...out.warnings);
+                started = true;
+            }
+            for (const id of lineIds) {
+                const out = await redactionApi.strikeLine(meetingId, id, r);
+                warnings.push(...out.warnings);
+                started = true;
+            }
+            onStruck([...new Set(warnings)]);
+        } catch (e) {
+            // Whatever was already stricken stays stricken (no undo): say so
+            if (started) onStruck([...new Set([...warnings, `Not everything was stricken: ${e}`])]);
+            else {
+                setError(String(e));
+                setBusy(false);
+            }
+        }
+    };
+
+    const spans = shown.map((r) => spanLabel(startedAt, r.start_ms, r.end_ms)).filter(Boolean);
+    return (
+        <div className="rd-overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+            <div className="rd-modal" role="dialog" aria-modal="true" aria-labelledby="rd-ranges-title">
+                <h2 id="rd-ranges-title">
+                    {mode === "strike" ? "Strike the selection from the record?" : "Delete the selection?"}
+                </h2>
+                <p className="rd-modal-lead">
+                    {mode === "strike"
+                        ? 'Permanently destroys everything captured in the selected time (screens, screen text, transcript and screen video) and leaves a "Stricken from the record" marker for each span, with its time and your reason. It can\'t be undone.'
+                        : "Removes everything captured in the selected time: screens, screen text, transcript lines and the screen video. You can undo for 5 seconds."}
+                </p>
+                {request.note && <p className="rd-hint">{request.note}</p>}
+                {spans.length > 0 && (
+                    <p className="rd-hint rd-range-spans">
+                        {spans.length === 1 ? "Span" : `${spans.length} spans`}: {spans.slice(0, 6).join(", ")}
+                        {spans.length > 6 ? `, and ${spans.length - 6} more` : ""}
+                    </p>
+                )}
+                <h3>What will be {mode === "strike" ? "destroyed" : "removed"}</h3>
+                {loading ? (
+                    !error && <p className="rd-hint">Checking…</p>
+                ) : (
+                    <ul className="rd-list">
+                        {lineIds.length > 0 && (
+                            <li>
+                                {plural(lineIds.length, "transcript line", "transcript lines")} with no recorded time,
+                                removed whole
+                            </li>
+                        )}
+                        {preview && preview.nothing && lineIds.length === 0 && (
+                            <li className="rd-note">Nothing was captured in that time.</li>
+                        )}
+                        {hasRanges &&
+                            preview?.items.map((it, i) => (
+                                <li key={i} className={isNote(it) ? "rd-note" : undefined}>
+                                    {it}
+                                </li>
+                            ))}
+                    </ul>
+                )}
+                {mode === "strike" && (
+                    <label className="rd-field">
+                        Reason (optional)
+                        <input
+                            value={reason}
+                            maxLength={120}
+                            placeholder="e.g. privileged"
+                            onChange={(e) => setReason(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && ready && !busy && doStrike()}
+                            disabled={busy}
+                            autoFocus
+                        />
+                        <span className="rd-hint">Shown on the markers. Don't include the words being removed.</span>
+                    </label>
+                )}
+                {error && <p className="rd-error">{error}</p>}
+                <div className="rd-modal-actions">
+                    <button className="rd-btn" onClick={onClose} disabled={busy}>
+                        Cancel
+                    </button>
+                    {mode === "delete" ? (
+                        <>
+                            <button className="rd-btn" onClick={() => setMode("strike")} disabled={busy || !ready}>
+                                Strike from the record…
+                            </button>
+                            <button className="rd-btn rd-btn-strike" onClick={doDelete} disabled={busy || !ready}>
+                                {busy ? "Deleting…" : "Delete"}
+                            </button>
+                        </>
+                    ) : (
+                        <button className="rd-btn rd-btn-strike" onClick={doStrike} disabled={busy || !ready}>
+                            {busy ? "Striking…" : "Strike from the record"}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

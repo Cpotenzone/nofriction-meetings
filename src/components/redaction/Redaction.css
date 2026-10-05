@@ -488,3 +488,82 @@
     width: 3px;
     opacity: 0.9;
 }
+
+/* ── Transcript line selection (Recordings timeline) ─────────── */
+.transcript-entries:focus-visible {
+    outline: 2px solid rgba(250, 204, 21, 0.5);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.transcript-entries .transcript-entry.rd-line-selectable {
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.transcript-entries .transcript-entry.rd-line-selectable .rd-word {
+    cursor: pointer;
+}
+
+/* Selected: inside the selected time, removed whole */
+.transcript-entries .transcript-entry.rd-line-selected {
+    background: rgba(250, 204, 21, 0.1);
+    border-left-color: var(--hazard-yellow, #facc15);
+    box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.45);
+}
+
+/* Split: only the words spoken inside the selected time are removed */
+.transcript-entries .transcript-entry.rd-line-selected.rd-line-split {
+    background: rgba(250, 204, 21, 0.05);
+    border-left-style: dashed;
+    box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.25);
+}
+
+.rd-line-check {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--hazard-yellow, #facc15);
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.rd-lines-toolbar {
+    margin: -8px 0 8px;
+}
+
+/* Linked / not linked (screens and transcript selected together by time) */
+.rd-link-toggle.rd-on {
+    color: var(--hazard-yellow, #facc15);
+    border-color: rgba(250, 204, 21, 0.45);
+}
+
+/* Selected time on the scrubber */
+.rd-scrub-span {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 22px;
+    border-radius: 3px;
+    background: rgba(250, 204, 21, 0.18);
+    border: 1px solid rgba(250, 204, 21, 0.6);
+    box-sizing: border-box;
+}
+
+.timeline-marker.transcript-marker.rd-marker-selected {
+    width: 2px;
+    height: 18px;
+}
+
+.rd-range-spans {
+    font-family: var(--ds-font-mono, monospace);
+}

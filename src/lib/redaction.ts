@@ -52,16 +52,25 @@ export interface RangeCounts {
     lines_split: number;
 }
 
-/** Exactly what deleting/striking a block of time removes. Counts and
- *  offsets only, never content. */
+/** A block of meeting time: ms from the meeting start, both ends included. */
+export interface MsRange {
+    start_ms: number;
+    end_ms: number;
+}
+
+/** Exactly what deleting/striking a block of time (or several) removes.
+ *  Counts and offsets only, never content. */
 export interface TimeRangePreview {
     start: string;
     end: string;
     start_ms: number;
     end_ms: number;
+    /** The ranges after merging (disjoint, in time order) */
+    ranges: MsRange[];
     counts: RangeCounts;
     screen_ids: string[];
     image_files: number;
+    /** A line cut by two ranges appears once per cut */
     lines: { transcript_id: number; start: number; end: number; whole: boolean }[];
     words_removed: number;
     estimated_included: number;
@@ -148,6 +157,29 @@ export function lineWords(text: string) {
     return tokenizeLine(text).filter((t): t is Extract<LineToken, { kind: "word" }> => t.kind === "word");
 }
 
+/** Hide what a time-range preview removes from a transcript list during
+ *  the undo window: each line's cuts are applied from its end backwards (so
+ *  earlier offsets stay valid), and lines left empty are dropped. */
+export function applyPreviewLines<T extends { id: string; text: string }>(
+    transcripts: readonly T[],
+    lines: readonly { transcript_id: number; start: number; end: number }[],
+): T[] {
+    const cuts = new Map<string, { start: number; end: number }[]>();
+    for (const l of lines) {
+        const k = String(l.transcript_id);
+        cuts.set(k, [...(cuts.get(k) ?? []), l]);
+    }
+    return transcripts
+        .map((t) => {
+            const c = cuts.get(t.id);
+            if (!c) return t;
+            let text = t.text;
+            for (const x of [...c].sort((a, b) => b.start - a.start)) text = applyLocalDelete(text, x.start, x.end);
+            return { ...t, text };
+        })
+        .filter((t) => t.text.trim() !== "");
+}
+
 /** Mirror of the backend Delete edit, used to hide words during the undo
  *  window (the backend applies the real edit when the window ends). */
 export function applyLocalDelete(text: string, start: number, end: number): string {
@@ -218,6 +250,14 @@ export const redactionApi = {
         invoke<PendingDelete>("delete_time_range", { meetingId, startMs, endMs, expected }),
     strikeTimeRange: (meetingId: string, startMs: number, endMs: number, reason: string | null, expected: RangeCounts) =>
         invoke<ActionOutcome>("strike_time_range", { meetingId, startMs, endMs, reason, expected }),
+    /** Several blocks of time as one action (a linked selection): exact
+     *  totals per kind, one pending delete (one undo), markers per range */
+    previewTimeRanges: (meetingId: string, ranges: MsRange[]) =>
+        invoke<TimeRangePreview>("preview_time_ranges", { meetingId, ranges }),
+    deleteTimeRanges: (meetingId: string, ranges: MsRange[], expected: RangeCounts) =>
+        invoke<PendingDelete>("delete_time_ranges", { meetingId, ranges, expected }),
+    strikeTimeRanges: (meetingId: string, ranges: MsRange[], reason: string | null, expected: RangeCounts) =>
+        invoke<ActionOutcome>("strike_time_ranges", { meetingId, ranges, reason, expected }),
     listVideoJobs: (meetingId: string) => invoke<VideoJob[]>("list_video_blank_jobs", { meetingId }),
     retryVideoJobs: (meetingId: string) => invoke<VideoJob[]>("retry_video_blank_jobs", { meetingId }),
     aiStatus: (meetingId: string) =>

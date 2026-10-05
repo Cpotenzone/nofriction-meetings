@@ -179,6 +179,12 @@ export interface TimelineTranscript {
     speaker: string | null;
     is_final: boolean;
     duration_seconds: number;
+    /** End of the line's time span (ms from the start) as a time-range
+     *  Delete reads it; null when its time can't be read */
+    end_ms?: number | null;
+    /** Middle of each word's time (ms from the start), when word timings
+     *  are stored (a time range removes exactly those words) */
+    word_mids_ms?: number[] | null;
 }
 
 export interface SyncedTimeline {

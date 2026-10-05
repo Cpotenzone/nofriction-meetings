@@ -1,7 +1,7 @@
 //! Time-range Delete / Strike (docs/REDACTION.md "Time ranges").
 
 use super::*;
-use crate::redaction::time_range::{self, line_cut, LineCut, RangeCounts};
+use crate::redaction::time_range::{self, line_cut, line_cuts, line_extent, merge_spans, Cut, LineCut, LineCuts, MsRange, RangeCounts};
 
 fn at(t0: DateTime<Utc>, ms: i64) -> DateTime<Utc> {
     t0 + chrono::Duration::milliseconds(ms)
@@ -306,4 +306,321 @@ async fn range_delete_flushes_overlapping_pending_deletes_first() {
     assert!(!is_pending(f.db.pool(), &p1.id).await, "committed first");
     commit_pending(f.db.pool(), &f.env, &p2.id).await.unwrap().unwrap();
     assert_eq!(line_text(&f, sc.l2).await.unwrap(), "epsilon");
+}
+
+// ─── Several ranges in one action (linked selection) ─────────────────────
+
+#[test]
+fn spans_merge_when_they_overlap_or_touch() {
+    let t0 = Utc::now();
+    let s = |a: i64, b: i64| (at(t0, a), at(t0, b));
+    assert_eq!(
+        merge_spans(&[s(5_000, 6_000), s(0, 1_000), s(1_001, 2_000), s(500, 800), s(9_000, 9_500)]),
+        vec![s(0, 2_000), s(5_000, 6_000), s(9_000, 9_500)],
+        "sorted, overlapping and adjacent (1 ms apart) merged, disjoint kept"
+    );
+    assert_eq!(merge_spans(&[]), vec![]);
+}
+
+#[test]
+fn line_cuts_across_several_ranges() {
+    let t0 = Utc::now();
+    let text = "one two three four five";
+    let tj = timings(&[(0, 3, 0, 400), (4, 7, 500, 900), (8, 13, 1000, 1400), (14, 18, 1500, 1900), (19, 23, 2000, 2400)]);
+    // one + two in the first range, five in the second: the words between stay
+    let r = [(at(t0, 0), at(t0, 950)), (at(t0, 2100), at(t0, 3000))];
+    assert_eq!(
+        line_cuts(text, Some(&tj), t0, None, &r),
+        LineCuts::Words(vec![Cut { start: 0, end: 7, ranges: vec![0] }, Cut { start: 19, end: 23, ranges: vec![1] }])
+    );
+    // Every word inside one of them: whole, and both ranges recorded
+    let r = [(at(t0, 0), at(t0, 1300)), (at(t0, 1500), at(t0, 3000))];
+    assert_eq!(line_cuts(text, Some(&tj), t0, None, &r), LineCuts::Whole { estimated: false, ranges: vec![0, 1] });
+    // A run that spans two ranges with no kept word between is one cut
+    let r = [(at(t0, 0), at(t0, 500)), (at(t0, 600), at(t0, 1300))];
+    assert_eq!(
+        line_cuts(text, Some(&tj), t0, None, &r),
+        LineCuts::Words(vec![Cut { start: 0, end: 13, ranges: vec![0, 1] }])
+    );
+    // The single-range form agrees with the old behavior
+    assert_eq!(line_cut(text, Some(&tj), t0, None, at(t0, 0), at(t0, 950)), LineCut::Words { start: 0, end: 7 });
+}
+
+#[test]
+fn half_rule_adds_up_the_overlap_of_every_range() {
+    let t0 = Utc::now();
+    let text = "one two three four five"; // no timings: estimated 2.0 s
+    let alone = [(at(t0, 0), at(t0, 600))];
+    assert_eq!(line_cuts(text, None, t0, None, &alone), LineCuts::KeptEstimate);
+    // 600 + 500 ms of 2000 ms is over half
+    let both = [(at(t0, 0), at(t0, 600)), (at(t0, 1000), at(t0, 1500))];
+    assert_eq!(line_cuts(text, None, t0, None, &both), LineCuts::Whole { estimated: true, ranges: vec![0, 1] });
+    // 400 + 500 ms isn't
+    let short = [(at(t0, 0), at(t0, 400)), (at(t0, 1000), at(t0, 1500))];
+    assert_eq!(line_cuts(text, None, t0, None, &short), LineCuts::KeptEstimate);
+}
+
+#[test]
+fn line_extent_matches_what_a_range_removes() {
+    let m0 = Utc::now();
+    let ts = at(m0, 58_000);
+    let tj = timings(&[(0, 5, 0, 500), (6, 13, 600, 1100)]);
+    let e = line_extent("delta epsilon", Some(&tj), m0, ts, None);
+    assert_eq!(e.end_ms, 59_100);
+    assert_eq!(e.word_mids_ms, Some(vec![58_250, 58_850]));
+    // No timings: 4 words ≈ 1.6 s, bounded by the next line
+    let e = line_extent("a b c d", None, m0, ts, Some(at(m0, 58_800)));
+    assert_eq!((e.end_ms, e.word_mids_ms), (58_800, None));
+    let e = line_extent("a b c d", None, m0, ts, None);
+    assert_eq!(e.end_ms, 59_600);
+    // Selecting a line's own span removes it whole
+    assert_eq!(
+        line_cut("a b c d", None, ts, None, ts, at(m0, e.end_ms)),
+        LineCut::Whole { estimated: true }
+    );
+}
+
+#[tokio::test]
+async fn timeline_lines_carry_their_span_for_linking() {
+    let f = setup().await;
+    let sc = scene(&f).await;
+    let tl = f.db.get_synced_timeline("m1").await.unwrap().unwrap();
+    let line = |id: i64| tl.transcripts.iter().find(|t| t.id == id.to_string()).unwrap().clone();
+    let l2 = line(sc.l2);
+    assert_eq!(l2.timestamp_ms, 58_000);
+    assert_eq!(l2.end_ms, Some(61_200));
+    assert_eq!(l2.word_mids_ms, Some(vec![58_250, 58_850, 60_350, 60_950]));
+    let l4 = line(sc.l4);
+    assert_eq!((l4.end_ms, l4.word_mids_ms), (Some(118_800), None), "estimate bounded by the next line");
+}
+
+/// Range A: [60 s, 75 s] (l2's tail, l3, screen in1). Range B: [95 s, 101 s]
+/// (screen in2, the AI activity summary and the timeline entry; not the
+/// loose snapshot at 90 s).
+const RA: MsRange = MsRange { start_ms: 60_000, end_ms: 75_000 };
+const RB: MsRange = MsRange { start_ms: 95_000, end_ms: 101_000 };
+
+#[tokio::test]
+async fn several_ranges_preview_exact_totals_and_delete_with_one_undo() {
+    let f = setup().await;
+    let sc = scene(&f).await;
+    let p = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[RB, RA]).await.unwrap();
+    assert_eq!(p.ranges, vec![RA, RB], "sorted");
+    assert_eq!(p.counts, RangeCounts { screens: 2, lines_whole: 1, lines_split: 1 });
+    assert_eq!(p.words_removed, 2 + 4);
+    assert_eq!((p.start_ms, p.end_ms), (RA.start_ms, RB.end_ms));
+    assert_eq!(p.screen_text_snapshots, 0, "the loose snapshot at 90 s is between the ranges");
+    assert_eq!(p.activity_summaries, 1);
+    assert_eq!(p.timeline_entries, 1);
+    assert!(p.items[0].contains("2 separate time spans"), "{:?}", p.items);
+
+    // One pending delete for both ranges; one undo restores everything
+    let pending = time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &[RA, RB], Some(p.counts))
+        .await
+        .unwrap();
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM redactions").await, 1);
+    undo_delete(f.db.pool(), &pending.id).await.unwrap();
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM transcripts").await, 6);
+    assert!(screen_left(&f, &sc.s_in1).await && screen_left(&f, &sc.s_in2).await);
+
+    let pending = time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &[RA, RB], Some(p.counts))
+        .await
+        .unwrap();
+    commit_pending(f.db.pool(), &f.env, &pending.id).await.unwrap().unwrap();
+    assert_eq!(line_text(&f, sc.l2).await.unwrap(), "delta epsilon");
+    assert_eq!(line_text(&f, sc.l3).await, None);
+    for l in [sc.l1, sc.l4, sc.l5, sc.l6] {
+        assert!(line_text(&f, l).await.is_some(), "outside both ranges");
+    }
+    assert!(screen_left(&f, &sc.s_before).await);
+    assert!(!screen_left(&f, &sc.s_in1).await);
+    assert!(!screen_left(&f, &sc.s_in2).await);
+    assert!(screen_left(&f, &sc.s_after).await);
+    assert_eq!(fts_hits(&f, "quokka").await, 0);
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM activity_log").await, 2, "the in-range summary went; the screens' own went with them");
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM meeting_timeline_events WHERE event_id = 'ev-loose'").await, 0);
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM text_snapshots WHERE snapshot_id = 'loose'").await, 1, "between the ranges: kept");
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM redactions").await, 0, "Delete leaves no trace");
+}
+
+#[tokio::test]
+async fn several_ranges_are_refused_when_the_preview_is_stale_or_a_range_is_empty() {
+    let f = setup().await;
+    let _ = scene(&f).await;
+    let p = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[RA, RB]).await.unwrap();
+    let stale = RangeCounts { lines_split: 0, ..p.counts };
+    assert!(time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &[RA, RB], Some(stale)).await.is_err());
+    let backwards = MsRange { start_ms: 75_000, end_ms: 60_000 };
+    assert!(time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[RB, backwards]).await.is_err());
+    assert!(time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[]).await.is_err());
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM redactions").await, 0);
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM transcripts").await, 6);
+}
+
+#[tokio::test]
+async fn overlapping_ranges_count_each_line_and_screen_once() {
+    let f = setup().await;
+    let sc = scene(&f).await;
+    let a = MsRange { start_ms: 60_000, end_ms: 72_000 };
+    let b = MsRange { start_ms: 71_000, end_ms: 75_000 };
+    let p = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[a, b]).await.unwrap();
+    assert_eq!(p.ranges, vec![RA], "merged into one");
+    let single = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[RA]).await.unwrap();
+    assert_eq!(p.counts, single.counts);
+    assert_eq!(p.screen_ids, vec![sc.s_in1.clone()]);
+}
+
+#[tokio::test]
+async fn a_line_cut_by_two_ranges_keeps_the_words_between_them() {
+    let f = setup().await;
+    let t0: DateTime<Utc> = parse_ts(
+        &sqlx::query_scalar::<_, String>("SELECT started_at FROM meetings WHERE id = 'm1'")
+            .fetch_one(f.db.pool())
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let tj = timings(&[(0, 3, 0, 400), (4, 7, 500, 900), (8, 13, 1000, 1400), (14, 18, 1500, 1900), (19, 23, 2000, 2400)]);
+    let id = f
+        .db
+        .add_transcript_full("m1", "one two three four five", Some("Alice"), true, 0.9, at(t0, 200_000), Some(&tj))
+        .await
+        .unwrap();
+    let r = [MsRange { start_ms: 200_000, end_ms: 200_950 }, MsRange { start_ms: 202_100, end_ms: 203_000 }];
+    let p = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &r).await.unwrap();
+    assert_eq!(p.counts, RangeCounts { screens: 0, lines_whole: 0, lines_split: 1 }, "one line, cut twice");
+    assert_eq!(p.lines.len(), 2);
+    assert_eq!(p.words_removed, 3);
+    let pending = time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &r, Some(p.counts)).await.unwrap();
+    commit_pending(f.db.pool(), &f.env, &pending.id).await.unwrap().unwrap();
+    assert_eq!(line_text(&f, id).await.unwrap(), "three four");
+    let left: String = sqlx::query_scalar("SELECT word_timings FROM transcripts WHERE id = ?")
+        .bind(id)
+        .fetch_one(f.db.pool())
+        .await
+        .unwrap();
+    let left: Vec<WordTiming> = serde_json::from_str(&left).unwrap();
+    assert_eq!(left.iter().map(|w| (w.s, w.e, w.t0)).collect::<Vec<_>>(), vec![(0, 5, 1000), (6, 10, 1500)]);
+
+    // Strike: a marker for each range, where each range's words were
+    let id2 = f
+        .db
+        .add_transcript_full("m1", "one two three four five", Some("Alice"), true, 0.9, at(t0, 300_000), Some(&tj))
+        .await
+        .unwrap();
+    let r = [MsRange { start_ms: 300_000, end_ms: 300_950 }, MsRange { start_ms: 302_100, end_ms: 303_000 }];
+    let out = time_range::strike_time_ranges(f.db.pool(), &f.env, "m1", &r, Some("privileged"), None).await.unwrap();
+    assert_eq!(out.records.len(), 2, "{:?}", out.records);
+    assert!(out.records.iter().all(|r| r.kind == "words" && r.transcript_id == Some(id2)));
+    assert_eq!(
+        line_text(&f, id2).await.unwrap(),
+        format!("{} three four {}", marker_token(&out.records[0].id), marker_token(&out.records[1].id))
+    );
+    assert_eq!(out.records[0].media_start.as_deref().and_then(parse_ts), Some(at(t0, 300_000)));
+    assert_eq!(out.records[1].media_end.as_deref().and_then(parse_ts), Some(at(t0, 303_000)));
+}
+
+#[tokio::test]
+async fn striking_several_ranges_leaves_markers_for_each() {
+    let f = setup().await;
+    let sc = scene(&f).await;
+    let out = time_range::strike_time_ranges(f.db.pool(), &f.env, "m1", &[RA, RB], Some("privileged"), None)
+        .await
+        .unwrap();
+    // A: a transcript marker (l2 split, l3 whole) and a screen marker (in1);
+    // B: no lines, so its screen marker (in2) stands for it
+    let kinds: Vec<(&str, i64)> = out.records.iter().map(|r| (r.kind.as_str(), r.item_count)).collect();
+    assert_eq!(kinds, vec![("words", 2), ("screen", 1), ("screen", 1)]);
+    let span = |r: &RedactionRecord| {
+        (r.media_start.as_deref().and_then(parse_ts).unwrap(), r.media_end.as_deref().and_then(parse_ts).unwrap())
+    };
+    assert_eq!(span(&out.records[0]), (at(sc.t0, RA.start_ms), at(sc.t0, RA.end_ms)));
+    assert_eq!(span(&out.records[2]), (at(sc.t0, RB.start_ms), at(sc.t0, RB.end_ms)));
+    assert_eq!(line_text(&f, sc.l2).await.unwrap(), format!("delta epsilon {}", marker_token(&out.records[0].id)));
+    assert_eq!(line_text(&f, sc.l3).await, None);
+    assert!(out.records.iter().all(|r| r.reason.as_deref() == Some("privileged")));
+    let tl = f.db.get_synced_timeline("m1").await.unwrap().unwrap();
+    assert_eq!(tl.redactions.len(), 3);
+    assert_eq!(tl.frames.len(), 2);
+    assert!(undo_delete(f.db.pool(), &out.records[0].id).await.is_err(), "no undo");
+    for needle in ["zeta", "quokka"] {
+        assert_eq!(content_anywhere(&f, needle).await, Vec::<String>::new(), "{}", needle);
+    }
+}
+
+#[tokio::test]
+async fn a_pending_range_delete_from_an_older_build_still_commits() {
+    let f = setup().await;
+    let sc = scene(&f).await;
+    // A pending row written before multi-range: no `ranges`, anywhere
+    let plan = {
+        let mut conn = f.db.pool().acquire().await.unwrap();
+        time_range::plan_range(&mut conn, "m1", at(sc.t0, R0), at(sc.t0, R1)).await.unwrap()
+    };
+    let mut v = serde_json::to_value(PendingPayload::TimeRange {
+        start: plan.start.to_rfc3339(),
+        end: plan.end.to_rfc3339(),
+        screen_ids: plan.screen_ids.clone(),
+        lines: plan.lines.clone(),
+        ranges: Vec::new(),
+    })
+    .unwrap();
+    v.as_object_mut().unwrap().remove("ranges");
+    for l in v["lines"].as_array_mut().unwrap() {
+        l.as_object_mut().unwrap().remove("ranges");
+    }
+    let rec = RedactionRecord {
+        id: new_id(),
+        meeting_id: "m1".into(),
+        kind: "screen".into(),
+        action: "delete".into(),
+        media_start: None,
+        media_end: None,
+        created_at: Utc::now().to_rfc3339(),
+        reason: None,
+        transcript_id: None,
+        item_count: 5,
+        video_pending: false,
+    };
+    {
+        let mut conn = f.db.pool().acquire().await.unwrap();
+        insert_record(&mut conn, &rec, Some(&v.to_string())).await.unwrap();
+    }
+    commit_pending(f.db.pool(), &f.env, &rec.id).await.unwrap().unwrap();
+    assert_eq!(line_text(&f, sc.l2).await.unwrap(), "delta epsilon");
+    assert_eq!(line_text(&f, sc.l3).await, None);
+    assert!(!screen_left(&f, &sc.s_in2).await);
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM redactions").await, 0);
+}
+
+/// DMG: one screen video job per range, each owned by that range's marker.
+#[cfg(not(feature = "mas"))]
+#[tokio::test]
+async fn several_ranges_queue_screen_video_jobs_per_range() {
+    let f = setup().await;
+    let _ = scene(&f).await;
+    let dir = f.env.app_data_dir.join("m1").join("video");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("chunk_0000.mov"), b"not really a movie").unwrap();
+    let env = RedactionEnv { video_enabled: true, ..f.env.clone() };
+
+    let p = time_range::request_delete_time_ranges(f.db.pool(), &env, "m1", &[RA, RB], None).await.unwrap();
+    commit_pending(f.db.pool(), &env, &p.id).await.unwrap().unwrap();
+    assert_eq!(count(&f, "SELECT COUNT(*) FROM video_blank_jobs WHERE redaction_id IS NULL").await, 2);
+
+    let f = setup().await;
+    let _ = scene(&f).await;
+    let dir = f.env.app_data_dir.join("m1").join("video");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("chunk_0000.mov"), b"not really a movie").unwrap();
+    let env = RedactionEnv { video_enabled: true, ..f.env.clone() };
+    let out = time_range::strike_time_ranges(f.db.pool(), &env, "m1", &[RA, RB], None, None).await.unwrap();
+    assert_eq!(out.video_jobs_queued, 2);
+    let owners: Vec<String> = sqlx::query_scalar("SELECT redaction_id FROM video_blank_jobs ORDER BY start_at")
+        .fetch_all(f.db.pool())
+        .await
+        .unwrap();
+    // Each range's screen marker says "screen video still being blanked"
+    assert_eq!(owners, vec![out.records[1].id.clone(), out.records[2].id.clone()]);
+    assert!(!out.records[0].video_pending && out.records[1].video_pending && out.records[2].video_pending);
 }
