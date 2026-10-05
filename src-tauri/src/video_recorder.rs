@@ -1,18 +1,26 @@
-// Video Recorder Module
-// Continuous screen recording using macOS ScreenCaptureKit
-// Records as video chunks, not individual frames
+// Video Recorder Module (DMG build only)
+// Continuous screen recording with ffmpeg (AVFoundation main display),
+// written as chunks of CHUNK_DURATION_SECS so a later screen delete/strike
+// re-encodes a few minutes of video, not the whole meeting.
 
 use chrono::{DateTime, Utc};
-use parking_lot::RwLock;
+use parking_lot::{Condvar, Mutex, RwLock};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 /// Duration for each video chunk (5 minutes in seconds)
-const CHUNK_DURATION_SECS: u64 = 300;
+pub const CHUNK_DURATION_SECS: u64 = 300;
+/// How long rotation waits for the next chunk's first frame before it stops
+/// the previous one (so the two overlap instead of leaving a gap).
+const FIRST_FRAME_WAIT: Duration = Duration::from_secs(5);
+/// How long a stopping chunk may take to finish writing before it's killed.
+const STOP_WAIT: Duration = Duration::from_secs(15);
 
 /// Video chunk metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,147 +52,171 @@ pub struct RecordingSession {
     pub is_active: bool,
 }
 
-/// Video recorder using screencapture/ffmpeg
-pub struct VideoRecorder {
-    /// Output directory for video files  
-    output_dir: PathBuf,
-    /// Current meeting ID
-    meeting_id: Arc<RwLock<Option<String>>>,
-    /// Current chunk number
-    current_chunk: AtomicU32,
-    /// Recording start time
-    start_time: Arc<RwLock<Option<DateTime<Utc>>>>,
-    /// Is recording active
+/// One running ffmpeg process writing one chunk.
+struct ChunkProc {
+    number: u32,
+    path: PathBuf,
+    child: Child,
+    /// Wall-clock time of the chunk's first frame, once ffmpeg reports it
+    first_frame: Arc<(Mutex<Option<DateTime<Utc>>>, Condvar)>,
+    reader: Option<JoinHandle<()>>,
+}
+
+impl ChunkProc {
+    fn wait_first_frame(&self, timeout: Duration) -> Option<DateTime<Utc>> {
+        let (lock, cv) = &*self.first_frame;
+        let deadline = Instant::now() + timeout;
+        let mut v = lock.lock();
+        while v.is_none() {
+            if cv.wait_until(&mut v, deadline).timed_out() {
+                break;
+            }
+        }
+        *v
+    }
+}
+
+/// State shared with the rotation thread and the progress readers.
+struct Shared {
+    meeting_id: RwLock<Option<String>>,
+    start_time: RwLock<Option<DateTime<Utc>>>,
     is_recording: AtomicBool,
-    /// Current ffmpeg process
-    ffmpeg_process: Arc<RwLock<Option<Child>>>,
-    /// Recorded chunks
-    chunks: Arc<RwLock<Vec<VideoChunk>>>,
-    /// Pin moments
-    pin_moments: Arc<RwLock<Vec<PinMoment>>>,
-    /// Chunk rotation handle
-    chunk_rotation_running: AtomicBool,
+    current_chunk: AtomicU32,
+    current: Mutex<Option<ChunkProc>>,
+    chunks: RwLock<Vec<VideoChunk>>,
+    pin_moments: RwLock<Vec<PinMoment>>,
+    stop: (Mutex<bool>, Condvar),
+    rotation: Mutex<Option<JoinHandle<()>>>,
+}
+
+/// Video recorder using ffmpeg
+pub struct VideoRecorder {
+    /// Output directory for video files (`<dir>/<meeting>/video/`)
+    output_dir: PathBuf,
+    /// ffmpeg input arguments (the main display; tests use a test pattern)
+    input_args: Vec<String>,
+    chunk_secs: u64,
+    shared: Arc<Shared>,
 }
 
 impl VideoRecorder {
     pub fn new(output_dir: PathBuf) -> Self {
+        // AVFoundation numbers cameras before screens, so a fixed index like
+        // "1" can open a webcam. Address the main display by name instead.
+        let input = ["-f", "avfoundation", "-capture_cursor", "1", "-framerate", "15", "-i", "Capture screen 0:none"];
+        Self::with_input(output_dir, input.iter().map(|s| s.to_string()).collect(), CHUNK_DURATION_SECS)
+    }
+
+    /// A recorder with a custom ffmpeg input and chunk length (tests).
+    pub fn with_input(output_dir: PathBuf, input_args: Vec<String>, chunk_secs: u64) -> Self {
         Self {
             output_dir,
-            meeting_id: Arc::new(RwLock::new(None)),
-            current_chunk: AtomicU32::new(0),
-            start_time: Arc::new(RwLock::new(None)),
-            is_recording: AtomicBool::new(false),
-            ffmpeg_process: Arc::new(RwLock::new(None)),
-            chunks: Arc::new(RwLock::new(Vec::new())),
-            pin_moments: Arc::new(RwLock::new(Vec::new())),
-            chunk_rotation_running: AtomicBool::new(false),
+            input_args,
+            chunk_secs: chunk_secs.max(1),
+            shared: Arc::new(Shared {
+                meeting_id: RwLock::new(None),
+                start_time: RwLock::new(None),
+                is_recording: AtomicBool::new(false),
+                current_chunk: AtomicU32::new(0),
+                current: Mutex::new(None),
+                chunks: RwLock::new(Vec::new()),
+                pin_moments: RwLock::new(Vec::new()),
+                stop: (Mutex::new(false), Condvar::new()),
+                rotation: Mutex::new(None),
+            }),
         }
     }
 
     /// Start recording for a meeting
     pub fn start(&self, meeting_id: &str) -> Result<(), String> {
-        if self.is_recording.load(Ordering::SeqCst) {
+        if self.shared.is_recording.load(Ordering::SeqCst) {
             return Err("Recording already in progress".to_string());
         }
-
-        // Create output directory
         let video_dir = self.output_dir.join(meeting_id).join("video");
-        std::fs::create_dir_all(&video_dir)
-            .map_err(|e| format!("Failed to create video directory: {}", e))?;
+        std::fs::create_dir_all(&video_dir).map_err(|e| format!("Failed to create video directory: {}", e))?;
+        // A meeting can be recorded again: continue after its last chunk
+        let first = crate::redaction::video_blank::list_chunks(&video_dir)
+            .iter()
+            .filter_map(|p| chunk_number(p))
+            .max()
+            .unwrap_or(0)
+            + 1;
 
-        // Set state
-        *self.meeting_id.write() = Some(meeting_id.to_string());
-        *self.start_time.write() = Some(Utc::now());
-        self.current_chunk.store(1, Ordering::SeqCst);
-        self.is_recording.store(true, Ordering::SeqCst);
-        self.chunks.write().clear();
-        self.pin_moments.write().clear();
+        *self.shared.meeting_id.write() = Some(meeting_id.to_string());
+        *self.shared.start_time.write() = Some(Utc::now());
+        self.shared.chunks.write().clear();
+        self.shared.pin_moments.write().clear();
+        *self.shared.stop.0.lock() = false;
 
-        // Start first chunk
-        self.start_chunk(1, &video_dir)?;
+        let proc = spawn_chunk(&self.shared, &self.input_args, first, &video_dir)?;
+        *self.shared.current.lock() = Some(proc);
+        self.shared.current_chunk.store(first, Ordering::SeqCst);
+        self.shared.is_recording.store(true, Ordering::SeqCst);
 
-        // Start chunk rotation timer
-        self.start_chunk_rotation(video_dir);
+        let shared = self.shared.clone();
+        let input = self.input_args.clone();
+        let secs = self.chunk_secs;
+        let handle = std::thread::Builder::new()
+            .name("video-chunk-rotation".into())
+            .spawn(move || rotation_loop(shared, input, video_dir, secs))
+            .map_err(|e| format!("Failed to start chunk rotation: {}", e))?;
+        *self.shared.rotation.lock() = Some(handle);
 
-        log::info!("Started video recording for meeting: {}", meeting_id);
+        log::info!("Started video recording for meeting: {} ({}s chunks)", meeting_id, self.chunk_secs);
         Ok(())
     }
 
     /// Stop recording
     pub fn stop(&self) -> Result<RecordingSession, String> {
-        if !self.is_recording.load(Ordering::SeqCst) {
+        if !self.shared.is_recording.load(Ordering::SeqCst) {
             return Err("No recording in progress".to_string());
         }
+        {
+            let (lock, cv) = &self.shared.stop;
+            *lock.lock() = true;
+            cv.notify_all();
+        }
+        if let Some(h) = self.shared.rotation.lock().take() {
+            let _ = h.join();
+        }
+        if let Some(p) = self.shared.current.lock().take() {
+            stop_chunk(&self.shared, p);
+        }
+        self.shared.is_recording.store(false, Ordering::SeqCst);
 
-        // Stop chunk rotation
-        self.chunk_rotation_running.store(false, Ordering::SeqCst);
-
-        // Stop current ffmpeg process
-        self.stop_current_chunk()?;
-
-        // Mark as not recording
-        self.is_recording.store(false, Ordering::SeqCst);
-
-        // Build session result
-        let meeting_id = self.meeting_id.read().clone().unwrap_or_default();
-        let started_at = self.start_time.read().unwrap_or_else(Utc::now);
-        let chunks = self.chunks.read().clone();
-        let pin_moments = self.pin_moments.read().clone();
-
-        log::info!(
-            "Stopped video recording. {} chunks, {} pins",
-            chunks.len(),
-            pin_moments.len()
-        );
-
-        Ok(RecordingSession {
-            meeting_id,
-            started_at,
-            chunks,
-            pin_moments,
-            is_active: false,
-        })
+        let meeting_id = self.shared.meeting_id.read().clone().unwrap_or_default();
+        let started_at = self.shared.start_time.read().unwrap_or_else(Utc::now);
+        let chunks = self.shared.chunks.read().clone();
+        let pin_moments = self.shared.pin_moments.read().clone();
+        log::info!("Stopped video recording. {} chunks, {} pins", chunks.len(), pin_moments.len());
+        Ok(RecordingSession { meeting_id, started_at, chunks, pin_moments, is_active: false })
     }
 
     /// Pin the current moment
     pub fn pin_moment(&self, label: Option<String>) -> Result<PinMoment, String> {
-        if !self.is_recording.load(Ordering::SeqCst) {
+        if !self.shared.is_recording.load(Ordering::SeqCst) {
             return Err("No recording in progress".to_string());
         }
-
         let now = Utc::now();
-        let start = self.start_time.read().unwrap_or(now);
+        let start = self.shared.start_time.read().unwrap_or(now);
         let offset_secs = (now - start).num_milliseconds() as f64 / 1000.0;
-        let chunk_number = self.current_chunk.load(Ordering::SeqCst);
-
-        let pin = PinMoment {
-            timestamp: now,
-            offset_secs,
-            label,
-            chunk_number,
-        };
-
-        self.pin_moments.write().push(pin.clone());
-        log::info!(
-            "Pinned moment at {}s in chunk {}",
-            offset_secs,
-            chunk_number
-        );
-
+        let chunk_number = self.shared.current_chunk.load(Ordering::SeqCst);
+        let pin = PinMoment { timestamp: now, offset_secs, label, chunk_number };
+        self.shared.pin_moments.write().push(pin.clone());
+        log::info!("Pinned moment at {}s in chunk {}", offset_secs, chunk_number);
         Ok(pin)
     }
 
     /// Get current recording status
     pub fn get_status(&self) -> Option<RecordingSession> {
-        if !self.is_recording.load(Ordering::SeqCst) {
+        if !self.shared.is_recording.load(Ordering::SeqCst) {
             return None;
         }
-
         Some(RecordingSession {
-            meeting_id: self.meeting_id.read().clone().unwrap_or_default(),
-            started_at: self.start_time.read().unwrap_or_else(Utc::now),
-            chunks: self.chunks.read().clone(),
-            pin_moments: self.pin_moments.read().clone(),
+            meeting_id: self.shared.meeting_id.read().clone().unwrap_or_default(),
+            started_at: self.shared.start_time.read().unwrap_or_else(Utc::now),
+            chunks: self.shared.chunks.read().clone(),
+            pin_moments: self.shared.pin_moments.read().clone(),
             is_active: true,
         })
     }
@@ -193,139 +225,187 @@ impl VideoRecorder {
     pub fn get_video_dir(&self, meeting_id: &str) -> PathBuf {
         self.output_dir.join(meeting_id).join("video")
     }
+}
 
-    /// Start recording a new chunk
-    fn start_chunk(&self, chunk_num: u32, video_dir: &PathBuf) -> Result<(), String> {
-        let chunk_path = video_dir.join(format!("chunk_{:03}.mov", chunk_num));
-        // Persist the wall-clock start so a later screen delete/strike can
-        // find (and blank) the right moment in this chunk.
-        if let Err(e) = crate::redaction::video_blank::set_chunk_start(video_dir, &chunk_path, Utc::now()) {
-            log::warn!("{}", e);
+fn chunk_number(p: &Path) -> Option<u32> {
+    p.file_stem()?.to_str()?.strip_prefix("chunk_")?.parse().ok()
+}
+
+/// Start ffmpeg for one chunk. Its start time is saved twice: now (an
+/// estimate) and again when ffmpeg reports the first frame (precise: the
+/// moment minus the time already written), so blanking math uses each
+/// chunk's real offset.
+fn spawn_chunk(shared: &Arc<Shared>, input_args: &[String], number: u32, video_dir: &Path) -> Result<ChunkProc, String> {
+    let path = video_dir.join(format!("chunk_{:03}.mov", number));
+    let ffmpeg = find_tool("ffmpeg")
+        .ok_or("ffmpeg not found — install with `brew install ffmpeg` to enable screen video")?;
+    if let Err(e) = crate::redaction::video_blank::set_chunk_start(video_dir, &path, Utc::now()) {
+        log::warn!("{}", e);
+    }
+    let mut child = Command::new(ffmpeg)
+        .args(input_args)
+        .args([
+            "-c:v",
+            "h264_videotoolbox", // Hardware H.264 encoder
+            "-b:v",
+            "3M",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-y",
+        ])
+        .arg(&path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to start ffmpeg: {}", e))?;
+
+    let first_frame: Arc<(Mutex<Option<DateTime<Utc>>>, Condvar)> = Arc::new((Mutex::new(None), Condvar::new()));
+    let reader = child.stdout.take().map(|out| {
+        let ff = first_frame.clone();
+        let shared = shared.clone();
+        let dir = video_dir.to_path_buf();
+        let p = path.clone();
+        std::thread::spawn(move || read_progress(out, ff, shared, dir, p, number))
+    });
+    shared.chunks.write().push(VideoChunk {
+        chunk_number: number,
+        path: path.clone(),
+        start_time: Utc::now(),
+        end_time: None,
+        size_bytes: 0,
+        duration_secs: 0.0,
+    });
+    log::info!("Started chunk {} recording", number);
+    Ok(ChunkProc { number, path, child, first_frame, reader })
+}
+
+/// Drain ffmpeg's `-progress` output (it must be read, or ffmpeg blocks) and
+/// record the first frame's wall-clock time.
+fn read_progress(
+    out: std::process::ChildStdout,
+    first_frame: Arc<(Mutex<Option<DateTime<Utc>>>, Condvar)>,
+    shared: Arc<Shared>,
+    dir: PathBuf,
+    path: PathBuf,
+    number: u32,
+) {
+    let mut frame = 0i64;
+    let mut out_us = 0i64;
+    for line in BufReader::new(out).lines() {
+        let Ok(line) = line else { break };
+        if let Some(v) = line.strip_prefix("frame=") {
+            frame = v.trim().parse().unwrap_or(frame);
+        } else if let Some(v) = line.strip_prefix("out_time_us=") {
+            out_us = v.trim().parse().unwrap_or(out_us);
+        } else if line.starts_with("progress=") && frame > 0 {
+            let (lock, cv) = &*first_frame;
+            let mut ff = lock.lock();
+            if ff.is_none() {
+                let start = Utc::now() - chrono::Duration::microseconds(out_us.max(0));
+                *ff = Some(start);
+                cv.notify_all();
+                if let Err(e) = crate::redaction::video_blank::set_chunk_start(&dir, &path, start) {
+                    log::warn!("{}", e);
+                }
+                if let Some(c) = shared.chunks.write().iter_mut().find(|c| c.chunk_number == number) {
+                    c.start_time = start;
+                }
+            }
         }
+    }
+}
 
-        // Use screencapture for macOS native recording
-        // Falls back to ffmpeg if screencapture isn't suitable
-        let process = self.start_ffmpeg_recording(&chunk_path)?;
+/// Ask ffmpeg to finish the chunk ('q'), wait (bounded), then record its
+/// end time and size.
+fn stop_chunk(shared: &Arc<Shared>, mut p: ChunkProc) {
+    if let Some(stdin) = p.child.stdin.as_mut() {
+        let _ = stdin.write_all(b"q");
+        let _ = stdin.flush();
+    }
+    let deadline = Instant::now() + STOP_WAIT;
+    loop {
+        match p.child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    log::warn!("ffmpeg exited with status: {}", status);
+                }
+                break;
+            }
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                log::error!("ffmpeg didn't finish chunk {} in time; stopping it", p.number);
+                let _ = p.child.kill();
+                let _ = p.child.wait();
+                break;
+            }
+        }
+    }
+    if let Some(r) = p.reader.take() {
+        let _ = r.join();
+    }
+    let now = Utc::now();
+    if let Some(c) = shared.chunks.write().iter_mut().find(|c| c.chunk_number == p.number) {
+        c.end_time = Some(now);
+        c.size_bytes = std::fs::metadata(&p.path).map(|m| m.len()).unwrap_or(0);
+        c.duration_secs = (now - c.start_time).num_milliseconds() as f64 / 1000.0;
+    }
+}
 
-        *self.ffmpeg_process.write() = Some(process);
-
-        // Record chunk metadata
-        let chunk = VideoChunk {
-            chunk_number: chunk_num,
-            path: chunk_path,
-            start_time: Utc::now(),
-            end_time: None,
-            size_bytes: 0,
-            duration_secs: 0.0,
+/// Every `chunk_secs`: start the next chunk, wait for its first frame, then
+/// stop the previous one, so consecutive chunks overlap slightly instead of
+/// leaving a gap. If the next chunk can't start, the current one keeps
+/// recording and rotation is tried again next interval.
+fn rotation_loop(shared: Arc<Shared>, input_args: Vec<String>, video_dir: PathBuf, chunk_secs: u64) {
+    log::info!("Chunk rotation started ({}s intervals)", chunk_secs);
+    loop {
+        let deadline = Instant::now() + Duration::from_secs(chunk_secs);
+        {
+            let (lock, cv) = &shared.stop;
+            let mut stopped = lock.lock();
+            while !*stopped {
+                if cv.wait_until(&mut stopped, deadline).timed_out() {
+                    break;
+                }
+            }
+            if *stopped {
+                break;
+            }
+        }
+        let next = shared.current_chunk.load(Ordering::SeqCst) + 1;
+        let mut newp = match spawn_chunk(&shared, &input_args, next, &video_dir) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Couldn't start screen video chunk {}: {}", next, e);
+                continue;
+            }
         };
-        self.chunks.write().push(chunk);
-
-        log::info!("Started chunk {} recording", chunk_num);
-        Ok(())
-    }
-
-    /// Start ffmpeg recording process
-    fn start_ffmpeg_recording(&self, output_path: &PathBuf) -> Result<Child, String> {
-        // Use ffmpeg with AVFoundation for screen capture
-        // -f avfoundation captures screen and/or audio on macOS
-        // -capture_cursor 1 includes mouse cursor
-        // -framerate 30 for smooth video
-        // -c:v h264_videotoolbox uses hardware encoder
-        let ffmpeg = find_tool("ffmpeg").ok_or(
-            "ffmpeg not found — install with `brew install ffmpeg` to enable screen video",
-        )?;
-        // AVFoundation numbers cameras before screens, so a fixed index like
-        // "1" can open a webcam. Address the main display by name instead.
-        let screen = "Capture screen 0:none";
-        let child = Command::new(ffmpeg)
-            .args([
-                "-f",
-                "avfoundation",
-                "-capture_cursor",
-                "1",
-                "-framerate",
-                "15",
-                "-i",
-                screen, // main display, no audio (audio handled separately)
-                "-c:v",
-                "h264_videotoolbox", // Hardware H.264 encoder
-                "-b:v",
-                "3M",
-                "-pix_fmt",
-                "yuv420p",
-                "-movflags",
-                "+faststart",
-                "-y", // Overwrite
-                output_path.to_str().unwrap(),
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to start ffmpeg: {}", e))?;
-
-        Ok(child)
-    }
-
-    /// Stop current chunk recording
-    fn stop_current_chunk(&self) -> Result<(), String> {
-        let mut process_guard = self.ffmpeg_process.write();
-
-        if let Some(ref mut process) = *process_guard {
-            // Send 'q' to ffmpeg stdin to gracefully stop
-            if let Some(ref mut stdin) = process.stdin {
-                let _ = stdin.write_all(b"q");
+        let got = newp.wait_first_frame(FIRST_FRAME_WAIT);
+        if got.is_none() {
+            if let Ok(Some(status)) = newp.child.try_wait() {
+                // The new process died: keep recording into the current chunk
+                log::error!("Screen video chunk {} failed to start ({}); retrying next interval", next, status);
+                if let Some(r) = newp.reader.take() {
+                    let _ = r.join();
+                }
+                shared.chunks.write().retain(|c| c.chunk_number != next);
+                let _ = std::fs::remove_file(&newp.path);
+                continue;
             }
-
-            // Wait for process to finish (with timeout)
-            match process.wait() {
-                Ok(status) => {
-                    if !status.success() {
-                        log::warn!("ffmpeg exited with status: {}", status);
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to wait for ffmpeg: {}", e);
-                    // Force kill
-                    let _ = process.kill();
-                }
-            }
-
-            // Update chunk metadata
-            let mut chunks = self.chunks.write();
-            if let Some(chunk) = chunks.last_mut() {
-                chunk.end_time = Some(Utc::now());
-                if let Ok(meta) = std::fs::metadata(&chunk.path) {
-                    chunk.size_bytes = meta.len();
-                }
-                if let Some(start) = chunk.end_time {
-                    chunk.duration_secs =
-                        (start - chunk.start_time).num_milliseconds() as f64 / 1000.0;
-                }
-            }
+            log::warn!("Screen video chunk {} hasn't reported a frame yet; rotating anyway", next);
         }
-
-        *process_guard = None;
-        Ok(())
-    }
-
-    /// Start background chunk rotation
-    fn start_chunk_rotation(&self, _video_dir: PathBuf) {
-        if self.chunk_rotation_running.load(Ordering::SeqCst) {
-            return;
+        let old = shared.current.lock().replace(newp);
+        shared.current_chunk.store(next, Ordering::SeqCst);
+        if let Some(old) = old {
+            stop_chunk(&shared, old);
         }
-
-        self.chunk_rotation_running.store(true, Ordering::SeqCst);
-
-        // Note: Chunk rotation is simplified for now.
-        // In production, we would use Arc<AtomicBool> for the running flag
-        // and spawn a proper rotation thread that handles overlapping recordings.
-        // For this implementation, we rely on the 5-minute timer and manual rotation.
-        log::info!(
-            "Chunk rotation timer started ({}s intervals)",
-            CHUNK_DURATION_SECS
-        );
     }
+    log::info!("Chunk rotation stopped");
 }
 
 impl Default for VideoRecorder {
@@ -350,6 +430,51 @@ mod tests {
             duration_secs: 0.0,
         };
         assert_eq!(chunk.chunk_number, 1);
+    }
+
+    /// Real ffmpeg, a test pattern instead of the screen, 2-second chunks:
+    /// rotation makes several chunks, each with a precise recorded start,
+    /// back to back (overlapping slightly, never a real gap).
+    #[test]
+    fn chunks_rotate_with_precise_start_times_and_no_gap() {
+        if find_tool("ffmpeg").is_none() || find_tool("ffprobe").is_none() {
+            eprintln!("ffmpeg not installed; skipping rotation test");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("nf-rot-{}", uuid::Uuid::new_v4()));
+        let input = ["-re", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=15"];
+        let rec = VideoRecorder::with_input(dir.clone(), input.iter().map(|s| s.to_string()).collect(), 2);
+        if rec.start("m1").is_err() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5600));
+        let session = rec.stop().unwrap();
+        let vdir = dir.join("m1").join("video");
+        let chunks = crate::redaction::video_blank::list_chunks(&vdir);
+        if chunks.is_empty() || crate::redaction::video_blank::probe_duration(&chunks[0]).is_err() {
+            eprintln!("this machine's ffmpeg can't encode with VideoToolbox; skipping");
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        assert!(chunks.len() >= 2, "rotated into {} chunks", chunks.len());
+        assert_eq!(session.chunks.len(), chunks.len());
+        let mut prev_end: Option<DateTime<Utc>> = None;
+        let mut prev_start: Option<DateTime<Utc>> = None;
+        for c in &chunks {
+            let start = crate::redaction::video_blank::chunk_start(&vdir, c).expect("recorded start");
+            let dur = crate::redaction::video_blank::probe_duration(c).unwrap();
+            assert!(dur > 0.5, "{} is {}s", c.display(), dur);
+            if let (Some(pe), Some(ps)) = (prev_end, prev_start) {
+                let gap = (start - pe).num_milliseconds();
+                assert!(gap < 400, "gap between chunks: {} ms", gap);
+                let step = (start - ps).num_milliseconds();
+                eprintln!("{}: starts {} ms after the previous one; gap {} ms", c.display(), step, gap);
+                assert!((1500..=4500).contains(&step), "chunk starts {} ms apart", step);
+            }
+            prev_start = Some(start);
+            prev_end = Some(start + chrono::Duration::milliseconds((dur * 1000.0) as i64));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
