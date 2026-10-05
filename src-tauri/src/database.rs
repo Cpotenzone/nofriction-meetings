@@ -2582,6 +2582,18 @@ pub struct TimelineTranscript {
     pub speaker: Option<String>,
     pub is_final: bool,
     pub duration_seconds: f64,
+    /// End of the line's time span (ms from the start), as a time-range
+    /// Delete/Strike reads it: its last word's end (word timings), else its
+    /// length estimated from the word count (bounded by the next line).
+    /// `None` when its timestamp can't be read (no time range reaches it).
+    /// Lets the UI link a transcript selection to screens by time.
+    #[serde(default)]
+    pub end_ms: Option<i64>,
+    /// Middle of each word's time (ms from the start), in text order, when
+    /// word timings are stored: a time range removes exactly the words whose
+    /// middle is inside it. Times only, no content.
+    #[serde(default)]
+    pub word_mids_ms: Option<Vec<i64>>,
 }
 
 impl DatabaseManager {
@@ -2678,10 +2690,14 @@ impl DatabaseManager {
         // Get transcripts (UI view: keep strike-marker tokens for the bar)
         let transcripts = self.get_transcripts_marked(meeting_id).await?;
         let redactions = crate::redaction::list_strikes(&self.pool, meeting_id).await?;
+        let mut extents = crate::redaction::time_range::line_extents(&self.pool, meeting_id, start_time).await?;
         let timeline_transcripts: Vec<TimelineTranscript> = transcripts
             .into_iter()
             .map(|t| {
                 let ms = (t.timestamp - start_time).num_milliseconds();
+                // A line before the meeting start shows at 0:00, where no
+                // time range from the timeline can reach it: no span
+                let extent = extents.remove(&t.id).filter(|_| ms >= 0);
                 TimelineTranscript {
                     id: t.id.to_string(),
                     timestamp_ms: ms.max(0),
@@ -2689,6 +2705,8 @@ impl DatabaseManager {
                     speaker: t.speaker,
                     is_final: t.is_final,
                     duration_seconds: 0.0, // TODO: Store actual duration from Deepgram
+                    end_ms: extent.as_ref().map(|e| e.end_ms.max(ms)),
+                    word_mids_ms: extent.and_then(|e| e.word_mids_ms),
                 }
             })
             .collect();

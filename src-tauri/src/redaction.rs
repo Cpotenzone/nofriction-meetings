@@ -27,8 +27,8 @@
 //! (minutes of ffmpeg for a long meeting) runs in the job worker outside it,
 //! so a video job never makes another delete, undo or strike wait.
 //!
-//! Time ranges ("delete everything from 10:41 to 10:53") are in
-//! [`time_range`].
+//! Time ranges ("delete everything from 10:41 to 10:53", or several at
+//! once from a linked selection of screens and lines) are in [`time_range`].
 
 #[cfg(not(feature = "mas"))]
 pub mod video_blank;
@@ -578,9 +578,18 @@ pub struct PendingDelete {
 enum PendingPayload {
     Words { transcript_id: i64, start: usize, end: usize, text_hash: String },
     Screens { ids: Vec<String> },
-    /// A block of meeting time, resolved when requested (ids/offsets/hashes,
+    /// Blocks of meeting time, resolved when requested (ids/offsets/hashes,
     /// never content) so exactly what the preview counted is removed.
-    TimeRange { start: String, end: String, screen_ids: Vec<String>, lines: Vec<time_range::RangeLine> },
+    /// `start`/`end` span them all; `ranges` lists each one (empty in rows
+    /// from before multi-range: the one range is `start`–`end`).
+    TimeRange {
+        start: String,
+        end: String,
+        screen_ids: Vec<String>,
+        lines: Vec<time_range::RangeLine>,
+        #[serde(default)]
+        ranges: Vec<(String, String)>,
+    },
 }
 
 fn err<E: std::fmt::Display>(ctx: &str) -> impl Fn(E) -> String + '_ {
@@ -1157,8 +1166,8 @@ enum BackupJob {
     },
     Screens { ids: Vec<String> },
     /// Screen text, AI screen-activity summaries and timeline entries
-    /// captured inside a time range (no screen id ties them to a screen)
-    RangeExtras { start: DateTime<Utc>, end: DateTime<Utc> },
+    /// captured inside time ranges (no screen id ties them to a screen)
+    RangeExtras { ranges: Vec<(DateTime<Utc>, DateTime<Utc>)> },
 }
 
 #[derive(Default)]
@@ -1301,10 +1310,10 @@ async fn purge_one_backup(path: &Path, meeting_id: &str, jobs: &[BackupJob]) -> 
                     return Err("screens still present after purge".into());
                 }
             }
-            BackupJob::RangeExtras { start, end } => {
-                let found = time_range::find_range_extras(&mut tx, meeting_id, *start, *end).await.map_err(err("range"))?;
+            BackupJob::RangeExtras { ranges } => {
+                let found = time_range::find_range_extras(&mut tx, meeting_id, ranges).await.map_err(err("range"))?;
                 time_range::purge_range_extras(&mut tx, &found).await.map_err(err("range"))?;
-                let left = time_range::find_range_extras(&mut tx, meeting_id, *start, *end).await.map_err(err("range"))?;
+                let left = time_range::find_range_extras(&mut tx, meeting_id, ranges).await.map_err(err("range"))?;
                 if !left.is_empty() {
                     return Err("screen text still present after purge".into());
                 }
@@ -1864,13 +1873,16 @@ async fn commit_locked(pool: &Pool<Sqlite>, env: &RedactionEnv, id: &str) -> Res
                         .await
                         .map_err(CommitFailure::Transient)
                 }
-                PendingPayload::TimeRange { start, end, screen_ids, lines } => {
-                    match (parse_ts(&start), parse_ts(&end)) {
-                        (Some(a), Some(b)) => time_range::apply_range_locked(
+                PendingPayload::TimeRange { start, end, screen_ids, lines, ranges } => {
+                    let raw = if ranges.is_empty() { vec![(start, end)] } else { ranges };
+                    let spans: Option<Vec<(DateTime<Utc>, DateTime<Utc>)>> =
+                        raw.iter().map(|(a, b)| Some((parse_ts(a)?, parse_ts(b)?))).collect();
+                    match spans {
+                        Some(spans) if !spans.is_empty() => time_range::apply_range_locked(
                             pool,
                             env,
                             &meeting_id,
-                            (a, b),
+                            &spans,
                             &screen_ids,
                             &lines,
                             Action::Delete,
@@ -2598,6 +2610,63 @@ pub mod commands {
             &meeting_id,
             start_ms,
             end_ms,
+            reason.as_deref(),
+            expected,
+        )
+        .await;
+        kick_video_jobs(&app);
+        out
+    }
+
+    /// What deleting/striking several blocks of time removes, together
+    /// (a linked selection of screens and transcript lines): exact totals.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn preview_time_ranges(
+        state: State<'_, AppState>,
+        meeting_id: String,
+        ranges: Vec<time_range::MsRange>,
+    ) -> Result<time_range::TimeRangePreview, String> {
+        time_range::preview_time_ranges(state.database.pool(), &env_for(&state), &meeting_id, &ranges).await
+    }
+
+    /// Delete several blocks of time as one action: one pending delete, one
+    /// 5-second undo. `expected` is the preview's counts.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn delete_time_ranges(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        meeting_id: String,
+        ranges: Vec<time_range::MsRange>,
+        expected: Option<time_range::RangeCounts>,
+    ) -> Result<PendingDelete, String> {
+        let pending = time_range::request_delete_time_ranges(
+            state.database.pool(),
+            &env_for(&state),
+            &meeting_id,
+            &ranges,
+            expected,
+        )
+        .await?;
+        schedule_commit(app, &state, &pending);
+        Ok(pending)
+    }
+
+    /// Strike several blocks of time as one action (no undo); markers for
+    /// each range.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn strike_time_ranges(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        meeting_id: String,
+        ranges: Vec<time_range::MsRange>,
+        reason: Option<String>,
+        expected: Option<time_range::RangeCounts>,
+    ) -> Result<ActionOutcome, String> {
+        let out = time_range::strike_time_ranges(
+            state.database.pool(),
+            &env_for(&state),
+            &meeting_id,
+            &ranges,
             reason.as_deref(),
             expected,
         )
