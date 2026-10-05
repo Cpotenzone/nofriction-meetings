@@ -17,10 +17,23 @@
 //! transcript text + word timings, FTS (update trigger + `optimize`), screens
 //! (image files, OCR/accessibility snapshots, VLM activity rows, timeline
 //! rows, cached video frames/thumbnails), DMG screen video (blanked with black
-//! frames via ffmpeg), AI outputs (redacted + "made before an edit" flag),
-//! app log files, app `backups/` databases (purged or deleted), and freed
-//! space (`secure_delete` + `wal_checkpoint(TRUNCATE)`). The Mac stores no
-//! meeting audio, so there is nothing to silence.
+//! frames via ffmpeg by a durable background job, see [`video_jobs`]), AI
+//! outputs (redacted + "made before an edit" flag), app log files, app
+//! `backups/` databases (purged or deleted), and freed space
+//! (`secure_delete` + `wal_checkpoint(TRUNCATE)`). The Mac stores no meeting
+//! audio, so there is nothing to silence.
+//!
+//! The app-wide [`LOCK`] covers database work only. Screen video blanking
+//! (minutes of ffmpeg for a long meeting) runs in the job worker outside it,
+//! so a video job never makes another delete, undo or strike wait.
+//!
+//! Time ranges ("delete everything from 10:41 to 10:53") are in
+//! [`time_range`].
+
+#[cfg(not(feature = "mas"))]
+pub mod video_blank;
+pub mod time_range;
+pub mod video_jobs;
 
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
@@ -135,22 +148,15 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
     .execute(&mut *conn)
     .await?;
     // A pending Delete that failed for a transient reason (database busy,
-    // ffmpeg missing, video blanking failed) stays pending, marked failed
-    // with a reason, and is retried on the next commit and at launch.
-    for col in ["failed_at TEXT", "failure TEXT"] {
-        let _ = sqlx::query(&format!("ALTER TABLE redactions ADD COLUMN {}", col))
-            .execute(&mut *conn)
-            .await;
-    }
+    // the meeting is recording) stays pending, marked failed with a reason,
+    // and is retried on the next commit and at launch.
+    crate::database::ensure_columns(conn, "redactions", &[("failed_at", "TEXT"), ("failure", "TEXT")]).await?;
     // "Made before an edit, regenerate?" flag on saved AI outputs
     for table in ["meeting_notes", "study_materials", "assistant_conversations"] {
-        let _ = sqlx::query(&format!(
-            "ALTER TABLE {} ADD COLUMN stale_after_edit INTEGER NOT NULL DEFAULT 0",
-            table
-        ))
-        .execute(&mut *conn)
-        .await;
+        crate::database::ensure_columns(conn, table, &[("stale_after_edit", "INTEGER NOT NULL DEFAULT 0")]).await?;
     }
+    // Screen video blanking queue (runs after the database purge)
+    video_jobs::ensure_schema(conn).await?;
     Ok(())
 }
 
@@ -171,6 +177,11 @@ pub struct RedactionRecord {
     pub reason: Option<String>,
     pub transcript_id: Option<i64>,
     pub item_count: i64,
+    /// The screen video for this span is still being blanked in the
+    /// background (derived from `video_blank_jobs`; strike records
+    /// themselves are immutable).
+    #[serde(default)]
+    pub video_pending: bool,
 }
 
 fn record_from_row(r: &sqlx::sqlite::SqliteRow) -> RedactionRecord {
@@ -185,6 +196,7 @@ fn record_from_row(r: &sqlx::sqlite::SqliteRow) -> RedactionRecord {
         reason: r.get("reason"),
         transcript_id: r.get("transcript_id"),
         item_count: r.get("item_count"),
+        video_pending: r.try_get::<i64, _>("video_pending").map(|v| v != 0).unwrap_or(false),
     }
 }
 
@@ -196,8 +208,9 @@ pub async fn list_strikes(
 ) -> Result<Vec<RedactionRecord>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT id, meeting_id, kind, action, media_start, media_end, created_at, reason, \
-         transcript_id, item_count FROM redactions \
-         WHERE meeting_id = ? AND action = 'strike' ORDER BY created_at ASC",
+         transcript_id, item_count, \
+         EXISTS (SELECT 1 FROM video_blank_jobs j WHERE j.redaction_id = redactions.id) AS video_pending \
+         FROM redactions WHERE meeting_id = ? AND action = 'strike' ORDER BY created_at ASC",
     )
     .bind(meeting_id)
     .fetch_all(pool)
@@ -538,11 +551,18 @@ impl RedactionEnv {
 /// could not fully complete (shown to the user, never swallowed).
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ActionOutcome {
+    /// The Strike marker (for a time range: the transcript marker if any
+    /// lines were stricken, else the screen marker)
     pub record: Option<RedactionRecord>,
+    /// Every marker the action created (a time range can make two: one in
+    /// the transcript, one in the screen strip)
+    pub records: Vec<RedactionRecord>,
     pub warnings: Vec<String>,
     pub backups_purged: usize,
     pub backups_deleted: usize,
-    pub video_chunks_blanked: usize,
+    /// Screen video ranges queued for background blanking (DMG). The
+    /// database content is already gone; the video follows.
+    pub video_jobs_queued: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -558,6 +578,9 @@ pub struct PendingDelete {
 enum PendingPayload {
     Words { transcript_id: i64, start: usize, end: usize, text_hash: String },
     Screens { ids: Vec<String> },
+    /// A block of meeting time, resolved when requested (ids/offsets/hashes,
+    /// never content) so exactly what the preview counted is removed.
+    TimeRange { start: String, end: String, screen_ids: Vec<String>, lines: Vec<time_range::RangeLine> },
 }
 
 fn err<E: std::fmt::Display>(ctx: &str) -> impl Fn(E) -> String + '_ {
@@ -808,6 +831,16 @@ async fn purge_screen_rows(
 ) -> Result<Vec<String>, sqlx::Error> {
     let tables = table_names(conn).await?;
     let has = |t: &str| tables.contains(t);
+    // App backups can predate text_snapshots.meeting_id: find a meeting's
+    // loose snapshots through their episode there.
+    let snapshots_have_meeting = has("text_snapshots") && has_column(conn, "text_snapshots", "meeting_id").await;
+    let loose_snapshots_sql = if snapshots_have_meeting {
+        "SELECT snapshot_id, ts FROM text_snapshots WHERE state_id IS NULL AND (meeting_id = ?1 \
+         OR episode_id IN (SELECT episode_id FROM document_episodes WHERE meeting_id = ?1))"
+    } else {
+        "SELECT snapshot_id, ts FROM text_snapshots WHERE state_id IS NULL \
+         AND episode_id IN (SELECT episode_id FROM document_episodes WHERE meeting_id = ?1)"
+    };
     let mut removed_snapshots = Vec::new();
     // data_versions keys (the data editor's history of these rows holds
     // the old text): ids and rowids of removed snapshots and episodes.
@@ -881,12 +914,7 @@ async fn purge_screen_rows(
                     snap_ids.extend(rows.iter().map(|r| r.get::<String, _>("snapshot_id")));
                     if let Some(start) = sc.start {
                         let end = sc.end.unwrap_or(start).max(start);
-                        let rows = sqlx::query(
-                            "SELECT snapshot_id, ts FROM text_snapshots WHERE meeting_id = ? AND state_id IS NULL",
-                        )
-                        .bind(meeting_id)
-                        .fetch_all(&mut *conn)
-                        .await?;
+                        let rows = sqlx::query(loose_snapshots_sql).bind(meeting_id).fetch_all(&mut *conn).await?;
                         for r in rows {
                             if let Some(ts) = parse_ts(&r.get::<String, _>("ts")) {
                                 if ts >= start && ts <= end {
@@ -1116,18 +1144,21 @@ fn delete_db_files(path: &Path) -> Result<(), String> {
     first_err.map_or(Ok(()), Err)
 }
 
-enum BackupJob<'a> {
+enum BackupJob {
     Words {
         transcript_id: i64,
-        original: &'a str,
-        new_text: &'a str,
-        removed: &'a str,
-        replacement: &'a str,
+        original: String,
+        new_text: String,
+        removed: String,
+        replacement: &'static str,
         /// Lines in the live meeting still matching the removed phrase;
         /// `None` when the removal isn't distinctive (no meeting-wide check).
         live_count: Option<usize>,
     },
-    Screens { ids: &'a [String] },
+    Screens { ids: Vec<String> },
+    /// Screen text, AI screen-activity summaries and timeline entries
+    /// captured inside a time range (no screen id ties them to a screen)
+    RangeExtras { start: DateTime<Utc>, end: DateTime<Utc> },
 }
 
 #[derive(Default)]
@@ -1138,11 +1169,15 @@ struct BackupReport {
 }
 
 /// Purge step 7: purge the content from every app backup database, or
-/// delete the backup if it can't be purged and verified.
-async fn purge_backups(env: &RedactionEnv, meeting_id: &str, job: &BackupJob<'_>) -> BackupReport {
+/// delete the backup if it can't be purged and verified. All of an
+/// action's jobs run in one transaction (and one VACUUM) per backup.
+async fn purge_backups(env: &RedactionEnv, meeting_id: &str, jobs: &[BackupJob]) -> BackupReport {
     let mut report = BackupReport::default();
+    if jobs.is_empty() {
+        return report;
+    }
     for path in find_backup_dbs(&env.backups_dir()) {
-        match purge_one_backup(&path, meeting_id, job).await {
+        match purge_one_backup(&path, meeting_id, jobs).await {
             Ok(true) => report.purged += 1,
             Ok(false) => {}
             Err(e) => {
@@ -1162,7 +1197,7 @@ async fn purge_backups(env: &RedactionEnv, meeting_id: &str, job: &BackupJob<'_>
 
 /// Ok(false): backup doesn't contain the meeting. Ok(true): purged and
 /// verified. Err: caller deletes the backup.
-async fn purge_one_backup(path: &Path, meeting_id: &str, job: &BackupJob<'_>) -> Result<bool, String> {
+async fn purge_one_backup(path: &Path, meeting_id: &str, jobs: &[BackupJob]) -> Result<bool, String> {
     let opts = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(false)
@@ -1197,72 +1232,82 @@ async fn purge_one_backup(path: &Path, meeting_id: &str, job: &BackupJob<'_>) ->
     }
 
     let mut tx = conn.begin().await.map_err(err("begin"))?;
-    match job {
-        BackupJob::Words { transcript_id, original, new_text, removed, replacement, live_count } => {
-            if tables.contains("transcripts") {
-                let row = sqlx::query("SELECT text FROM transcripts WHERE id = ? AND meeting_id = ?")
-                    .bind(transcript_id)
-                    .bind(meeting_id)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .map_err(err("read"))?;
-                if let Some(r) = row {
-                    if r.get::<String, _>("text") == *original {
-                        if new_text.trim().is_empty() {
-                            sqlx::query("DELETE FROM transcripts WHERE id = ?")
-                                .bind(transcript_id)
-                                .execute(&mut *tx)
-                                .await
-                                .map_err(err("write"))?;
-                        } else {
-                            sqlx::query("UPDATE transcripts SET text = ? WHERE id = ?")
-                                .bind(new_text)
-                                .bind(transcript_id)
-                                .execute(&mut *tx)
-                                .await
-                                .map_err(err("write"))?;
-                            if has_column(&mut tx, "transcripts", "word_timings").await {
-                                sqlx::query("UPDATE transcripts SET word_timings = NULL WHERE id = ?")
-                                    .bind(transcript_id)
-                                    .execute(&mut *tx)
-                                    .await
-                                    .map_err(err("write"))?;
-                            }
-                        }
-                    }
-                }
-            }
-            redact_ai_outputs(&mut tx, meeting_id, removed, replacement).await.map_err(err("ai outputs"))?;
-            if tables.contains("transcripts") {
-                // The edited line itself: if the backup holds a different
-                // version of it that still has the words, it can't be purged.
-                if let Some(re) = phrase_regex(removed) {
-                    let row: Option<String> = sqlx::query_scalar("SELECT text FROM transcripts WHERE id = ? AND meeting_id = ?")
+    for job in jobs {
+        match job {
+            BackupJob::Words { transcript_id, original, new_text, removed, replacement, live_count } => {
+                if tables.contains("transcripts") {
+                    let row = sqlx::query("SELECT text FROM transcripts WHERE id = ? AND meeting_id = ?")
                         .bind(transcript_id)
                         .bind(meeting_id)
                         .fetch_optional(&mut *tx)
                         .await
-                        .map_err(err("verify"))?;
-                    if row.map_or(false, |t| t != *new_text && re.is_match(&t)) {
-                        return Err("backup holds another version of the edited line".into());
+                        .map_err(err("read"))?;
+                    if let Some(r) = row {
+                        if r.get::<String, _>("text") == *original {
+                            if new_text.trim().is_empty() {
+                                sqlx::query("DELETE FROM transcripts WHERE id = ?")
+                                    .bind(transcript_id)
+                                    .execute(&mut *tx)
+                                    .await
+                                    .map_err(err("write"))?;
+                            } else {
+                                sqlx::query("UPDATE transcripts SET text = ? WHERE id = ?")
+                                    .bind(new_text)
+                                    .bind(transcript_id)
+                                    .execute(&mut *tx)
+                                    .await
+                                    .map_err(err("write"))?;
+                                if has_column(&mut tx, "transcripts", "word_timings").await {
+                                    sqlx::query("UPDATE transcripts SET word_timings = NULL WHERE id = ?")
+                                        .bind(transcript_id)
+                                        .execute(&mut *tx)
+                                        .await
+                                        .map_err(err("write"))?;
+                                }
+                            }
+                        }
                     }
                 }
-                // Meeting-wide copies: only checkable for distinctive phrases
-                // (a common word legitimately appears in other lines).
-                if let (Some(re), Some(live)) = (distinctive_phrase_regex(removed), live_count) {
-                    let n = count_phrase_in_meeting(&mut tx, meeting_id, &re).await.map_err(err("verify"))?;
-                    if n > *live {
-                        return Err("backup holds other copies of the removed words".into());
+                redact_ai_outputs(&mut tx, meeting_id, removed, replacement).await.map_err(err("ai outputs"))?;
+                if tables.contains("transcripts") {
+                    // The edited line itself: if the backup holds a different
+                    // version of it that still has the words, it can't be purged.
+                    if let Some(re) = phrase_regex(removed) {
+                        let row: Option<String> = sqlx::query_scalar("SELECT text FROM transcripts WHERE id = ? AND meeting_id = ?")
+                            .bind(transcript_id)
+                            .bind(meeting_id)
+                            .fetch_optional(&mut *tx)
+                            .await
+                            .map_err(err("verify"))?;
+                        if row.map_or(false, |t| t != *new_text && re.is_match(&t)) {
+                            return Err("backup holds another version of the edited line".into());
+                        }
+                    }
+                    // Meeting-wide copies: only checkable for distinctive phrases
+                    // (a common word legitimately appears in other lines).
+                    if let (Some(re), Some(live)) = (distinctive_phrase_regex(removed), live_count) {
+                        let n = count_phrase_in_meeting(&mut tx, meeting_id, &re).await.map_err(err("verify"))?;
+                        if n > *live {
+                            return Err("backup holds other copies of the removed words".into());
+                        }
                     }
                 }
             }
-        }
-        BackupJob::Screens { ids } => {
-            let screens = resolve_screens(&mut tx, meeting_id, ids, true).await?;
-            purge_screen_rows(&mut tx, meeting_id, &screens).await.map_err(err("screens"))?;
-            let left = resolve_screens(&mut tx, meeting_id, ids, true).await?;
-            if !left.is_empty() {
-                return Err("screens still present after purge".into());
+            BackupJob::Screens { ids } => {
+                let screens = resolve_screens(&mut tx, meeting_id, ids, true).await?;
+                purge_screen_rows(&mut tx, meeting_id, &screens).await.map_err(err("screens"))?;
+                let left = resolve_screens(&mut tx, meeting_id, ids, true).await?;
+                if !left.is_empty() {
+                    return Err("screens still present after purge".into());
+                }
+            }
+            BackupJob::RangeExtras { start, end } => {
+                let found = time_range::find_range_extras(&mut tx, meeting_id, *start, *end).await.map_err(err("range"))?;
+                time_range::purge_range_extras(&mut tx, &found).await.map_err(err("range"))?;
+                let left = time_range::find_range_extras(&mut tx, meeting_id, *start, *end).await.map_err(err("range"))?;
+                if !left.is_empty() {
+                    return Err("screen text still present after purge".into());
+                }
             }
         }
     }
@@ -1304,193 +1349,19 @@ fn remove_screen_files(env: &RedactionEnv, meeting_id: &str, screens: &[ScreenIn
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DMG screen video: blank time ranges with black frames (ffmpeg)
+// DMG screen video: blanked by the background job worker (video_jobs.rs,
+// video_blank.rs), never inline and never under LOCK
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(not(feature = "mas"))]
-pub mod video_blank {
-    use super::*;
-    use std::process::Command;
-
-    /// Chunk start times are approximate (file creation), so pad generously.
-    pub const PAD_SECS: f64 = 1.5;
-    const SIDECAR: &str = "chunk_times.json";
-
-    pub fn video_dir(env: &RedactionEnv, meeting_id: &str) -> PathBuf {
-        env.app_data_dir.join(meeting_id).join("video")
+/// Does this meeting have screen video that a purge must blank? (DMG only;
+/// the Mac App Store build records screenshots, not video.)
+fn has_screen_video(env: &RedactionEnv, meeting_id: &str) -> bool {
+    #[cfg(not(feature = "mas"))]
+    if env.video_enabled {
+        return !video_blank::list_chunks(&video_blank::video_dir(env, meeting_id)).is_empty();
     }
-
-    pub fn list_chunks(dir: &Path) -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
-            .map(|rd| {
-                rd.flatten()
-                    .map(|e| e.path())
-                    .filter(|p| {
-                        p.extension().map_or(false, |e| e == "mov")
-                            && !p.file_name().and_then(|n| n.to_str()).unwrap_or("").starts_with('.')
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        v.sort();
-        v
-    }
-
-    fn load_sidecar(dir: &Path) -> serde_json::Map<String, serde_json::Value> {
-        std::fs::read_to_string(dir.join(SIDECAR))
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default()
-    }
-
-    /// Record a chunk's wall-clock start (used by tests and by blanking, so
-    /// re-encoding — which resets file times — can't lose it).
-    pub fn set_chunk_start(dir: &Path, chunk: &Path, start: DateTime<Utc>) -> Result<(), String> {
-        let mut map = load_sidecar(dir);
-        let name = chunk.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
-        map.insert(name, serde_json::Value::String(start.to_rfc3339()));
-        std::fs::write(dir.join(SIDECAR), serde_json::Value::Object(map).to_string())
-            .map_err(|e| format!("Couldn't save video chunk times: {}", e))
-    }
-
-    fn chunk_start(dir: &Path, chunk: &Path) -> Option<DateTime<Utc>> {
-        let name = chunk.file_name()?.to_str()?;
-        if let Some(s) = load_sidecar(dir).get(name).and_then(|v| v.as_str()) {
-            return parse_ts(s);
-        }
-        let meta = std::fs::metadata(chunk).ok()?;
-        meta.created().ok().map(DateTime::<Utc>::from)
-    }
-
-    pub fn probe_duration(path: &Path) -> Result<f64, String> {
-        let ffprobe = crate::video_recorder::find_tool("ffprobe")
-            .ok_or("ffprobe isn't installed, so the screen video can't be checked")?;
-        let out = Command::new(ffprobe)
-            .args(["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1"])
-            .arg(path)
-            .output()
-            .map_err(|e| format!("ffprobe failed: {}", e))?;
-        String::from_utf8_lossy(&out.stdout)
-            .trim()
-            .parse::<f64>()
-            .map_err(|_| format!("Couldn't read the length of {}", path.display()))
-    }
-
-    /// Which chunks cover the given wall-clock ranges, as (chunk, relative
-    /// [a,b] seconds) — padded and clamped.
-    pub fn plan(
-        env: &RedactionEnv,
-        meeting_id: &str,
-        ranges: &[(DateTime<Utc>, DateTime<Utc>)],
-    ) -> Result<Vec<(PathBuf, DateTime<Utc>, f64, Vec<(f64, f64)>)>, String> {
-        let dir = video_dir(env, meeting_id);
-        let chunks = list_chunks(&dir);
-        if chunks.is_empty() || ranges.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut out = Vec::new();
-        for chunk in chunks {
-            let start = chunk_start(&dir, &chunk).ok_or_else(|| {
-                format!("Couldn't tell when video {} started, so it can't be blanked safely", chunk.display())
-            })?;
-            let dur = probe_duration(&chunk)?;
-            let mut rel = Vec::new();
-            for (a, b) in ranges {
-                let ra = (*a - start).num_milliseconds() as f64 / 1000.0 - PAD_SECS;
-                let rb = (*b - start).num_milliseconds() as f64 / 1000.0 + PAD_SECS;
-                if rb > 0.0 && ra < dur {
-                    rel.push((ra.max(0.0), rb.min(dur)));
-                }
-            }
-            if !rel.is_empty() {
-                out.push((chunk, start, dur, rel));
-            }
-        }
-        Ok(out)
-    }
-
-    fn encode(ffmpeg: &Path, input: &Path, output: &Path, filter: &str, codec: &[&str]) -> Result<(), String> {
-        let out = Command::new(ffmpeg)
-            .args(["-v", "error", "-y", "-i"])
-            .arg(input)
-            .args(["-vf", filter])
-            .args(codec)
-            .args(["-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an"])
-            .arg(output)
-            .output()
-            .map_err(|e| format!("ffmpeg failed to start: {}", e))?;
-        if out.status.success() && output.exists() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        }
-    }
-
-    /// Re-encode each covering chunk with the ranges painted black, then
-    /// atomically replace it. Any failure aborts before the original is
-    /// touched. Returns how many chunks were rewritten.
-    pub fn blank(
-        env: &RedactionEnv,
-        meeting_id: &str,
-        ranges: &[(DateTime<Utc>, DateTime<Utc>)],
-    ) -> Result<usize, String> {
-        let plan = plan(env, meeting_id, ranges)?;
-        if plan.is_empty() {
-            return Ok(0);
-        }
-        let ffmpeg = crate::video_recorder::find_tool("ffmpeg")
-            .ok_or("ffmpeg isn't installed, so this moment can't be blanked from the screen video")?;
-        let dir = video_dir(env, meeting_id);
-        let mut done = 0;
-        for (chunk, start, dur, rel) in plan {
-            set_chunk_start(&dir, &chunk, start)?;
-            let enable = rel
-                .iter()
-                .map(|(a, b)| format!("between(t,{:.3},{:.3})", a, b))
-                .collect::<Vec<_>>()
-                .join("+");
-            let filter = format!("drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='{}'", enable);
-            let tmp = dir.join(format!(
-                ".{}.blanking.mov",
-                chunk.file_stem().and_then(|s| s.to_str()).unwrap_or("chunk")
-            ));
-            let attempts: [&[&str]; 3] = [
-                &["-c:v", "h264_videotoolbox", "-b:v", "3M"],
-                &["-c:v", "libx264", "-crf", "23"],
-                &["-c:v", "mpeg4", "-q:v", "4"],
-            ];
-            let mut last_err = String::new();
-            let mut ok = false;
-            for codec in attempts {
-                match encode(&ffmpeg, &chunk, &tmp, &filter, codec) {
-                    Ok(()) => {
-                        ok = true;
-                        break;
-                    }
-                    Err(e) => last_err = e,
-                }
-            }
-            let verified = ok
-                && probe_duration(&tmp)
-                    .map(|d| (d - dur).abs() <= 1.0)
-                    .unwrap_or(false);
-            if !verified {
-                let _ = std::fs::remove_file(&tmp);
-                return Err(format!(
-                    "Couldn't blank the screen video {} ({}). Nothing was removed.",
-                    chunk.display(),
-                    if last_err.is_empty() { "re-encoded file didn't verify".to_string() } else { last_err }
-                ));
-            }
-            std::fs::rename(&tmp, &chunk).map_err(|e| {
-                let _ = std::fs::remove_file(&tmp);
-                format!("Couldn't replace the screen video {}: {}", chunk.display(), e)
-            })?;
-            done += 1;
-        }
-        Ok(done)
-    }
+    let _ = (env, meeting_id);
+    false
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1547,6 +1418,96 @@ async fn resolve_target(conn: &mut SqliteConnection, t: &WordTarget) -> Result<W
     Ok(WordTarget { start: 0, end: utf16_len(&line.text), whole_line: false, ..t.clone() })
 }
 
+/// One transcript line changed by an action: what the post-commit purge
+/// needs. Held in memory only for the duration of the action.
+struct LineChange {
+    transcript_id: i64,
+    original: String,
+    new_text: String,
+    removed: String,
+}
+
+/// Write one line edit inside the action's transaction: text + FTS (the
+/// transcripts_au / transcripts_ad triggers) and AI outputs (purge steps
+/// 1, 2 and 5). A line left with no text is removed.
+async fn write_line_edit(
+    tx: &mut SqliteConnection,
+    meeting_id: &str,
+    transcript_id: i64,
+    edit: &TextEdit,
+    replacement: &str,
+) -> Result<(), String> {
+    if edit.new_text.trim().is_empty() {
+        sqlx::query("DELETE FROM transcripts WHERE id = ?")
+            .bind(transcript_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(err("Failed to remove the line"))?;
+    } else {
+        sqlx::query("UPDATE transcripts SET text = ?, text_hash = ?, word_timings = ? WHERE id = ?")
+            .bind(&edit.new_text)
+            .bind(crate::database::transcript_text_hash(&edit.new_text))
+            .bind(&edit.new_timings)
+            .bind(transcript_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(err("Failed to update the line"))?;
+    }
+    redact_ai_outputs(tx, meeting_id, &edit.removed_plain, replacement)
+        .await
+        .map_err(err("Failed to redact AI outputs"))?;
+    Ok(())
+}
+
+/// Post-commit purge shared by every action: search index, app logs, app
+/// backups (one pass per backup for all of the action's jobs), freed space.
+/// Failures become warnings, shown to the user, never swallowed.
+async fn post_commit_purge(
+    pool: &Pool<Sqlite>,
+    env: &RedactionEnv,
+    meeting_id: &str,
+    lines: &[LineChange],
+    mut jobs: Vec<BackupJob>,
+    replacement: &'static str,
+    out: &mut ActionOutcome,
+) {
+    if !lines.is_empty() {
+        if let Err(e) = fts_optimize(pool).await {
+            out.warnings.push(e);
+        }
+    }
+    for l in lines {
+        // Logs and the meeting-wide backup check only for distinctive
+        // removals (a common word would rewrite unrelated log lines).
+        let re = distinctive_phrase_regex(&l.removed);
+        let mut live_count = None;
+        if let Some(re) = &re {
+            if let Err(e) = redact_logs(&env.logs_dir(), re, replacement) {
+                out.warnings.push(e);
+            }
+            live_count = Some(match pool.acquire().await {
+                Ok(mut conn) => count_phrase_in_meeting(&mut conn, meeting_id, re).await.unwrap_or(usize::MAX),
+                Err(_) => usize::MAX,
+            });
+        }
+        jobs.push(BackupJob::Words {
+            transcript_id: l.transcript_id,
+            original: l.original.clone(),
+            new_text: l.new_text.clone(),
+            removed: l.removed.clone(),
+            replacement,
+            live_count,
+        });
+    }
+    let report = purge_backups(env, meeting_id, &jobs).await;
+    out.backups_purged = report.purged;
+    out.backups_deleted = report.deleted;
+    out.warnings.extend(report.errors);
+    if let Err(e) = wal_checkpoint_truncate(pool).await {
+        out.warnings.push(e);
+    }
+}
+
 async fn apply_words_locked(
     pool: &Pool<Sqlite>,
     env: &RedactionEnv,
@@ -1577,28 +1538,7 @@ async fn apply_words_locked(
         None
     };
 
-    // 1–2: transcript text + FTS (transcripts_au / transcripts_ad triggers)
-    if edit.new_text.trim().is_empty() {
-        sqlx::query("DELETE FROM transcripts WHERE id = ?")
-            .bind(target.transcript_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(err("Failed to remove the line"))?;
-    } else {
-        sqlx::query("UPDATE transcripts SET text = ?, text_hash = ?, word_timings = ? WHERE id = ?")
-            .bind(&edit.new_text)
-            .bind(crate::database::transcript_text_hash(&edit.new_text))
-            .bind(&edit.new_timings)
-            .bind(target.transcript_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(err("Failed to update the line"))?;
-    }
-
-    // 5: AI outputs
-    redact_ai_outputs(&mut tx, &target.meeting_id, &edit.removed_plain, action.replacement())
-        .await
-        .map_err(err("Failed to redact AI outputs"))?;
+    write_line_edit(&mut tx, &target.meeting_id, target.transcript_id, &edit, action.replacement()).await?;
 
     let (media_start, media_end) = match (line.timestamp, edit.removed_ms) {
         (Some(ts), Some((a, b))) => (
@@ -1610,7 +1550,7 @@ async fn apply_words_locked(
     };
     let kind = if edit.whole_line { "line" } else { "words" };
 
-    let mut record = None;
+    let mut out = ActionOutcome::default();
     match action {
         Action::Strike => {
             let rec = RedactionRecord {
@@ -1624,9 +1564,11 @@ async fn apply_words_locked(
                 reason,
                 transcript_id: Some(target.transcript_id),
                 item_count: 1,
+                video_pending: false,
             };
             insert_record(&mut tx, &rec, None).await?;
-            record = Some(rec);
+            out.record = Some(rec.clone());
+            out.records.push(rec);
         }
         Action::Delete => {
             // The pending row (if any) goes away: Delete leaves no trace
@@ -1639,45 +1581,13 @@ async fn apply_words_locked(
     }
     tx.commit().await.map_err(err("Failed to save the edit"))?;
 
-    // Post-commit purge
-    let mut out = ActionOutcome { record, ..Default::default() };
-    if let Err(e) = fts_optimize(pool).await {
-        out.warnings.push(e);
-    }
-    {
-        // Logs and the meeting-wide backup check only for distinctive
-        // removals (a common word would rewrite unrelated log lines).
-        let re = distinctive_phrase_regex(&edit.removed_plain);
-        let mut live_count = None;
-        if let Some(re) = &re {
-            if let Err(e) = redact_logs(&env.logs_dir(), re, action.replacement()) {
-                out.warnings.push(e);
-            }
-            live_count = Some(match pool.acquire().await {
-                Ok(mut conn) => count_phrase_in_meeting(&mut conn, &target.meeting_id, re).await.unwrap_or(usize::MAX),
-                Err(_) => usize::MAX,
-            });
-        }
-        let report = purge_backups(
-            env,
-            &target.meeting_id,
-            &BackupJob::Words {
-                transcript_id: target.transcript_id,
-                original: &line.text,
-                new_text: &edit.new_text,
-                removed: &edit.removed_plain,
-                replacement: action.replacement(),
-                live_count,
-            },
-        )
-        .await;
-        out.backups_purged = report.purged;
-        out.backups_deleted = report.deleted;
-        out.warnings.extend(report.errors);
-    }
-    if let Err(e) = wal_checkpoint_truncate(pool).await {
-        out.warnings.push(e);
-    }
+    let change = LineChange {
+        transcript_id: target.transcript_id,
+        original: line.text,
+        new_text: edit.new_text,
+        removed: edit.removed_plain,
+    };
+    post_commit_purge(pool, env, &target.meeting_id, &[change], Vec::new(), action.replacement(), &mut out).await;
     Ok(out)
 }
 
@@ -1707,6 +1617,10 @@ async fn insert_record(
     Ok(())
 }
 
+/// Screens: the database purge (rows, derived rows) commits first, so the
+/// screens are gone at once and for good. On the DMG build the screen video
+/// for those moments is queued for blanking in the same transaction and
+/// blanked by the background worker afterwards, outside the lock.
 async fn apply_screens_locked(
     pool: &Pool<Sqlite>,
     env: &RedactionEnv,
@@ -1721,29 +1635,23 @@ async fn apply_screens_locked(
     }
     env.ensure_not_recording(meeting_id)?;
     let reason = if action == Action::Strike { validate_reason(reason, None)? } else { None };
-    let screens = {
-        let mut conn = pool.acquire().await.map_err(err("Database busy"))?;
-        resolve_screens(&mut conn, meeting_id, ids, false).await?
-    };
-    let ranges: Vec<(DateTime<Utc>, DateTime<Utc>)> = screens.iter().filter_map(screen_range).collect();
-
-    // DMG: blank the screen video first. If it fails nothing has changed,
-    // and the action fails loudly instead of claiming success.
-    let mut out = ActionOutcome::default();
-    #[cfg(not(feature = "mas"))]
-    if env.video_enabled {
-        let env2 = env.clone();
-        let mid = meeting_id.to_string();
-        let r2 = ranges.clone();
-        out.video_chunks_blanked = tokio::task::spawn_blocking(move || video_blank::blank(&env2, &mid, &r2))
-            .await
-            .map_err(err("Video blanking crashed"))??;
-    }
 
     let mut tx = pool.begin().await.map_err(err("Database busy"))?;
-    // Re-resolve inside the transaction (a concurrent purge could race us)
-    let screens_tx = resolve_screens(&mut tx, meeting_id, ids, false).await?;
-    purge_screen_rows(&mut tx, meeting_id, &screens_tx).await.map_err(err("Failed to remove screens"))?;
+    let screens = resolve_screens(&mut tx, meeting_id, ids, false).await?;
+    let ranges: Vec<(DateTime<Utc>, DateTime<Utc>)> = screens.iter().filter_map(screen_range).collect();
+    purge_screen_rows(&mut tx, meeting_id, &screens).await.map_err(err("Failed to remove screens"))?;
+
+    let mut out = ActionOutcome::default();
+    if has_screen_video(env, meeting_id) && !ranges.is_empty() {
+        out.video_jobs_queued = video_jobs::enqueue(
+            &mut tx,
+            meeting_id,
+            &ranges,
+            (action == Action::Strike).then_some(record_id),
+        )
+        .await
+        .map_err(err("Failed to queue the screen video blanking"))?;
+    }
 
     let media_start = ranges.iter().map(|r| r.0).min();
     let media_end = ranges.iter().map(|r| r.1).max();
@@ -1759,10 +1667,12 @@ async fn apply_screens_locked(
                 created_at: Utc::now().to_rfc3339(),
                 reason,
                 transcript_id: None,
-                item_count: screens_tx.len() as i64,
+                item_count: screens.len() as i64,
+                video_pending: out.video_jobs_queued > 0,
             };
             insert_record(&mut tx, &rec, None).await?;
-            out.record = Some(rec);
+            out.record = Some(rec.clone());
+            out.records.push(rec);
         }
         Action::Delete => {
             sqlx::query("DELETE FROM redactions WHERE id = ? AND action = 'delete'")
@@ -1775,13 +1685,16 @@ async fn apply_screens_locked(
     tx.commit().await.map_err(err("Failed to save the edit"))?;
 
     let file_errors = remove_screen_files(env, meeting_id, &screens);
-    let report = purge_backups(env, meeting_id, &BackupJob::Screens { ids }).await;
-    out.backups_purged = report.purged;
-    out.backups_deleted = report.deleted;
-    out.warnings.extend(report.errors);
-    if let Err(e) = wal_checkpoint_truncate(pool).await {
-        out.warnings.push(e);
-    }
+    post_commit_purge(
+        pool,
+        env,
+        meeting_id,
+        &[],
+        vec![BackupJob::Screens { ids: ids.to_vec() }],
+        action.replacement(),
+        &mut out,
+    )
+    .await;
     if !file_errors.is_empty() {
         // Loud: the rows are gone but an image file is still on disk
         return Err(format!(
@@ -1798,12 +1711,15 @@ enum Scope {
     Line(i64),
     /// Screens: a pending screen delete could hold the same ids
     Screens,
+    /// A block of time: anything pending in the meeting may overlap it
+    All,
 }
 
 /// Commit pending deletes that overlap a new action (same line, or any
 /// screens of the meeting), so offsets and ids stay valid. Other pending
 /// deletes keep their undo window (e.g. several lines deleted at once).
-/// Errors are returned, never swallowed.
+/// Errors are returned, never swallowed. Database work only: screen video
+/// is blanked later by the job worker, so this never waits on ffmpeg.
 async fn flush_overlapping_locked(
     pool: &Pool<Sqlite>,
     env: &RedactionEnv,
@@ -1811,7 +1727,7 @@ async fn flush_overlapping_locked(
     scope: Scope,
 ) -> Result<(), String> {
     let rows = sqlx::query(
-        "SELECT id, kind, transcript_id FROM redactions WHERE meeting_id = ? AND action = 'delete' \
+        "SELECT id, pending_payload FROM redactions WHERE meeting_id = ? AND action = 'delete' \
          AND pending_payload IS NOT NULL ORDER BY created_at ASC",
     )
     .bind(meeting_id)
@@ -1819,11 +1735,16 @@ async fn flush_overlapping_locked(
     .await
     .map_err(err("Database busy"))?;
     for r in rows {
-        let kind: String = r.get("kind");
-        let tid: Option<i64> = r.get("transcript_id");
-        let overlaps = match scope {
-            Scope::Line(id) => kind != "screen" && tid == Some(id),
-            Scope::Screens => kind == "screen",
+        let payload = serde_json::from_str::<PendingPayload>(&r.get::<String, _>("pending_payload")).ok();
+        let overlaps = match (&scope, &payload) {
+            (Scope::All, _) | (_, None) => true,
+            (Scope::Line(id), Some(PendingPayload::Words { transcript_id, .. })) => transcript_id == id,
+            (Scope::Line(id), Some(PendingPayload::TimeRange { lines, .. })) => {
+                lines.iter().any(|l| l.transcript_id == *id)
+            }
+            (Scope::Line(_), Some(PendingPayload::Screens { .. })) => false,
+            (Scope::Screens, Some(PendingPayload::Words { .. })) => false,
+            (Scope::Screens, Some(_)) => true,
         };
         if overlaps {
             commit_locked(pool, env, &r.get::<String, _>("id")).await?;
@@ -1834,9 +1755,8 @@ async fn flush_overlapping_locked(
 
 /// Why a pending Delete didn't apply.
 enum CommitFailure {
-    /// Nothing about the target changed (database busy, ffmpeg missing,
-    /// blanking failed, recording in progress): keep the pending row, mark
-    /// it failed, retry later.
+    /// Nothing about the target changed (database busy, recording in
+    /// progress): keep the pending row, mark it failed, retry later.
     Transient(String),
     /// The target itself changed (line edited/removed, screens gone): the
     /// stored offsets/ids no longer mean the same content, so it can never
@@ -1852,6 +1772,7 @@ async fn check_target_unchanged(
     payload: &PendingPayload,
 ) -> Result<(), CommitFailure> {
     let mut conn = pool.acquire().await.map_err(|e| CommitFailure::Transient(format!("Database busy: {}", e)))?;
+    let busy = |e: sqlx::Error| CommitFailure::Transient(format!("Database busy: {}", e));
     match payload {
         PendingPayload::Words { transcript_id, text_hash, .. } => {
             let text: Option<String> = sqlx::query_scalar("SELECT text FROM transcripts WHERE id = ? AND meeting_id = ?")
@@ -1859,7 +1780,7 @@ async fn check_target_unchanged(
                 .bind(meeting_id)
                 .fetch_optional(&mut *conn)
                 .await
-                .map_err(|e| CommitFailure::Transient(format!("Database busy: {}", e)))?;
+                .map_err(busy)?;
             match text {
                 None => Err(CommitFailure::Permanent("That transcript line no longer exists".into())),
                 Some(t) if crate::database::transcript_text_hash(&t) != *text_hash => Err(CommitFailure::Permanent(
@@ -1878,6 +1799,33 @@ async fn check_target_unchanged(
             } else {
                 Ok(())
             }
+        }
+        PendingPayload::TimeRange { screen_ids, lines, .. } => {
+            for l in lines {
+                let text: Option<String> =
+                    sqlx::query_scalar("SELECT text FROM transcripts WHERE id = ? AND meeting_id = ?")
+                        .bind(l.transcript_id)
+                        .bind(meeting_id)
+                        .fetch_optional(&mut *conn)
+                        .await
+                        .map_err(busy)?;
+                if text.map_or(true, |t| crate::database::transcript_text_hash(&t) != l.text_hash) {
+                    return Err(CommitFailure::Permanent(
+                        "The transcript in that time range changed during the undo window, so the delete was not applied."
+                            .into(),
+                    ));
+                }
+            }
+            let wanted: HashSet<&String> = screen_ids.iter().collect();
+            let found = resolve_screens(&mut conn, meeting_id, screen_ids, true)
+                .await
+                .map_err(CommitFailure::Transient)?;
+            if found.len() < wanted.len() {
+                return Err(CommitFailure::Permanent(
+                    "Some screens in that time range were already removed, so the delete was not applied.".into(),
+                ));
+            }
+            Ok(())
         }
     }
 }
@@ -1916,6 +1864,24 @@ async fn commit_locked(pool: &Pool<Sqlite>, env: &RedactionEnv, id: &str) -> Res
                         .await
                         .map_err(CommitFailure::Transient)
                 }
+                PendingPayload::TimeRange { start, end, screen_ids, lines } => {
+                    match (parse_ts(&start), parse_ts(&end)) {
+                        (Some(a), Some(b)) => time_range::apply_range_locked(
+                            pool,
+                            env,
+                            &meeting_id,
+                            (a, b),
+                            &screen_ids,
+                            &lines,
+                            Action::Delete,
+                            None,
+                            id,
+                        )
+                        .await
+                        .map_err(CommitFailure::Transient),
+                        _ => Err(CommitFailure::Permanent("Unreadable pending delete".into())),
+                    }
+                }
             },
         },
     };
@@ -1933,7 +1899,8 @@ async fn commit_locked(pool: &Pool<Sqlite>, env: &RedactionEnv, id: &str) -> Res
             // reason so the meeting view can show it. If the row is already
             // gone the delete itself applied and only a later step failed.
             let _ = sqlx::query(
-                "UPDATE redactions SET failed_at = ?, failure = ?                  WHERE id = ? AND action = 'delete' AND pending_payload IS NOT NULL",
+                "UPDATE redactions SET failed_at = ?, failure = ? \
+                 WHERE id = ? AND action = 'delete' AND pending_payload IS NOT NULL",
             )
             .bind(Utc::now().to_rfc3339())
             .bind(&msg)
@@ -2067,6 +2034,7 @@ pub async fn request_delete_words(
         reason: None,
         transcript_id: Some(target.transcript_id),
         item_count: 1,
+        video_pending: false,
     };
     insert_record(&mut conn, &rec, Some(&payload)).await?;
     Ok(PendingDelete { id, meeting_id: target.meeting_id.clone(), kind: kind.into(), undo_seconds: UNDO_WINDOW_SECS })
@@ -2100,6 +2068,7 @@ pub async fn request_delete_screens(
         reason: None,
         transcript_id: None,
         item_count: screens.len() as i64,
+        video_pending: false,
     };
     insert_record(&mut conn, &rec, Some(&payload)).await?;
     Ok(PendingDelete { id, meeting_id: meeting_id.to_string(), kind: "screen".into(), undo_seconds: UNDO_WINDOW_SECS })
@@ -2264,23 +2233,8 @@ pub async fn preview_screens(
     }
     items.push("AI (VLM) analysis of these screens and timeline entries built from them".into());
     items.push("Cached video frames and thumbnails for this meeting".into());
-    #[cfg(not(feature = "mas"))]
-    if env.video_enabled {
-        let ranges: Vec<_> = screens.iter().filter_map(screen_range).collect();
-        let video_dir = video_blank::video_dir(env, meeting_id);
-        let chunks = video_blank::list_chunks(&video_dir).len();
-        if chunks > 0 {
-            match video_blank::plan(env, meeting_id, &ranges) {
-                Ok(p) if !p.is_empty() => items.push(format!(
-                    "That moment in the screen video ({} chunk{}), replaced with black frames",
-                    p.len(),
-                    if p.len() == 1 { "" } else { "s" }
-                )),
-                Ok(_) => {}
-                Err(e) => items.push(format!("Screen video: {} (the action will fail rather than leave it)", e)),
-            }
-        }
-    }
+    let ranges: Vec<_> = screens.iter().filter_map(screen_range).collect();
+    items.extend(video_preview(env, meeting_id, &ranges));
     items.extend(common_preview(env, meeting_id));
     Ok(items)
 }
@@ -2311,6 +2265,36 @@ async fn ai_preview(conn: &mut SqliteConnection, meeting_id: &str) -> Vec<String
         ));
     }
     items.push("Mentions in timeline entries for this meeting (comments you wrote are left as they are)".into());
+    items
+}
+
+/// The screen video line of a preview (DMG): which chunks cover the span,
+/// and that the black frames are written in the background afterwards.
+#[cfg(feature = "mas")]
+fn video_preview(_env: &RedactionEnv, _meeting_id: &str, _ranges: &[(DateTime<Utc>, DateTime<Utc>)]) -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(not(feature = "mas"))]
+fn video_preview(env: &RedactionEnv, meeting_id: &str, ranges: &[(DateTime<Utc>, DateTime<Utc>)]) -> Vec<String> {
+    if ranges.is_empty() || !has_screen_video(env, meeting_id) {
+        return Vec::new();
+    }
+    let mut items = Vec::new();
+    match video_blank::plan(env, meeting_id, ranges) {
+        Ok(p) if !p.is_empty() => items.push(format!(
+            "That span of the screen video ({} chunk{}): replaced with black frames in the background \
+             right after (the database content goes first; the meeting view shows progress)",
+            p.len(),
+            if p.len() == 1 { "" } else { "s" }
+        )),
+        Ok(_) => {}
+        Err(e) => items.push(format!(
+            "Screen video: {} (the video is blanked in the background once it can be read; until then it \
+             still holds that span, and the meeting view says so)",
+            e
+        )),
+    }
     items
 }
 
@@ -2384,6 +2368,42 @@ pub mod commands {
             tokio::time::sleep(std::time::Duration::from_millis(UNDO_WINDOW_SECS * 1000 + 250)).await;
             let result = commit_pending(db.pool(), &env_from(&app), &id).await;
             emit_commit_result(&app, db.pool(), &id, &meeting_id, result).await;
+            kick_video_jobs(&app);
+        });
+    }
+
+    /// Start or wake the screen video worker (DMG; a no-op in the Mac App
+    /// Store build, which records no video). It runs outside the redaction
+    /// lock and reports `video_blank_progress` events to the UI.
+    pub fn kick_video_jobs(app: &AppHandle) {
+        #[cfg(not(feature = "mas"))]
+        {
+            let Some(state) = app.try_state::<AppState>() else { return };
+            let pool = state.database.pool().clone();
+            let app_env = app.clone();
+            let env: std::sync::Arc<dyn Fn() -> RedactionEnv + Send + Sync> =
+                std::sync::Arc::new(move || env_from(&app_env));
+            let app_ev = app.clone();
+            let report: video_jobs::Reporter = std::sync::Arc::new(move |ev: video_jobs::JobEvent| {
+                let _ = app_ev.emit("video_blank_progress", ev);
+            });
+            video_jobs::kick(pool, env, std::sync::Arc::new(video_blank::FfmpegOps), report);
+        }
+        #[cfg(feature = "mas")]
+        let _ = app;
+    }
+
+    /// At launch, once the app state is managed: resume interrupted jobs,
+    /// give failed ones a fresh attempt, and start the worker.
+    pub fn start_video_worker(app: &AppHandle) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Some(state) = app.try_state::<AppState>() {
+                if let Err(e) = video_jobs::prepare_for_launch(state.database.pool()).await {
+                    log::warn!("{}", e);
+                }
+            }
+            kick_video_jobs(&app);
         });
     }
 
@@ -2458,6 +2478,7 @@ pub mod commands {
 
     #[tauri::command(rename_all = "camelCase")]
     pub async fn strike_transcript_words(
+        app: AppHandle,
         state: State<'_, AppState>,
         meeting_id: String,
         transcript_id: i64,
@@ -2467,7 +2488,9 @@ pub mod commands {
         expected_text: Option<String>,
     ) -> Result<ActionOutcome, String> {
         let t = target(meeting_id, transcript_id, start_char, end_char, expected_text);
-        strike_words(state.database.pool(), &env_for(&state), &t, reason.as_deref()).await
+        let out = strike_words(state.database.pool(), &env_for(&state), &t, reason.as_deref()).await;
+        kick_video_jobs(&app);
+        out
     }
 
     #[tauri::command(rename_all = "camelCase")]
@@ -2485,13 +2508,16 @@ pub mod commands {
 
     #[tauri::command(rename_all = "camelCase")]
     pub async fn strike_transcript_line(
+        app: AppHandle,
         state: State<'_, AppState>,
         meeting_id: String,
         transcript_id: i64,
         reason: Option<String>,
     ) -> Result<ActionOutcome, String> {
         let t = whole_line(&meeting_id, transcript_id);
-        strike_words(state.database.pool(), &env_for(&state), &t, reason.as_deref()).await
+        let out = strike_words(state.database.pool(), &env_for(&state), &t, reason.as_deref()).await;
+        kick_video_jobs(&app);
+        out
     }
 
     #[tauri::command(rename_all = "camelCase")]
@@ -2501,19 +2527,105 @@ pub mod commands {
         meeting_id: String,
         ids: Vec<String>,
     ) -> Result<PendingDelete, String> {
-                let pending = request_delete_screens(state.database.pool(), &env_for(&state), &meeting_id, &ids).await?;
+        let pending = request_delete_screens(state.database.pool(), &env_for(&state), &meeting_id, &ids).await?;
         schedule_commit(app, &state, &pending);
         Ok(pending)
     }
 
     #[tauri::command(rename_all = "camelCase")]
     pub async fn strike_screens(
+        app: AppHandle,
         state: State<'_, AppState>,
         meeting_id: String,
         ids: Vec<String>,
         reason: Option<String>,
     ) -> Result<ActionOutcome, String> {
-                super::strike_screens(state.database.pool(), &env_for(&state), &meeting_id, &ids, reason.as_deref()).await
+        let out =
+            super::strike_screens(state.database.pool(), &env_for(&state), &meeting_id, &ids, reason.as_deref()).await;
+        kick_video_jobs(&app);
+        out
+    }
+
+    /// What deleting/striking a block of time removes (exact counts).
+    /// `startMs`/`endMs` are offsets from the meeting start.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn preview_time_range(
+        state: State<'_, AppState>,
+        meeting_id: String,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<time_range::TimeRangePreview, String> {
+        time_range::preview_time_range(state.database.pool(), &env_for(&state), &meeting_id, start_ms, end_ms).await
+    }
+
+    /// Delete a block of time (5-second undo, like every Delete). `expected`
+    /// is the preview's counts; the delete is refused if they changed.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn delete_time_range(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        meeting_id: String,
+        start_ms: i64,
+        end_ms: i64,
+        expected: Option<time_range::RangeCounts>,
+    ) -> Result<PendingDelete, String> {
+        let pending = time_range::request_delete_time_range(
+            state.database.pool(),
+            &env_for(&state),
+            &meeting_id,
+            start_ms,
+            end_ms,
+            expected,
+        )
+        .await?;
+        schedule_commit(app, &state, &pending);
+        Ok(pending)
+    }
+
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn strike_time_range(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        meeting_id: String,
+        start_ms: i64,
+        end_ms: i64,
+        reason: Option<String>,
+        expected: Option<time_range::RangeCounts>,
+    ) -> Result<ActionOutcome, String> {
+        let out = time_range::strike_time_range(
+            state.database.pool(),
+            &env_for(&state),
+            &meeting_id,
+            start_ms,
+            end_ms,
+            reason.as_deref(),
+            expected,
+        )
+        .await;
+        kick_video_jobs(&app);
+        out
+    }
+
+    /// Screen video ranges still being blanked (or failed) for a meeting.
+    /// Times only.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn list_video_blank_jobs(
+        state: State<'_, AppState>,
+        meeting_id: String,
+    ) -> Result<Vec<video_jobs::VideoJobInfo>, String> {
+        video_jobs::list(state.database.pool(), Some(&meeting_id)).await
+    }
+
+    /// Retry button for the screen video banner.
+    #[tauri::command(rename_all = "camelCase")]
+    pub async fn retry_video_blank_jobs(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        meeting_id: String,
+    ) -> Result<Vec<video_jobs::VideoJobInfo>, String> {
+        video_jobs::retry_now(state.database.pool(), Some(&meeting_id)).await?;
+        kick_video_jobs(&app);
+        video_jobs::list(state.database.pool(), Some(&meeting_id)).await
     }
 
     #[tauri::command(rename_all = "camelCase")]
@@ -2523,8 +2635,14 @@ pub mod commands {
 
     /// Apply a pending Delete now instead of waiting out the undo window.
     #[tauri::command(rename_all = "camelCase")]
-    pub async fn commit_redaction(state: State<'_, AppState>, id: String) -> Result<Option<ActionOutcome>, String> {
-        commit_pending(state.database.pool(), &env_for(&state), &id).await
+    pub async fn commit_redaction(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        id: String,
+    ) -> Result<Option<ActionOutcome>, String> {
+        let out = commit_pending(state.database.pool(), &env_for(&state), &id).await;
+        kick_video_jobs(&app);
+        out
     }
 
     /// Deletes whose undo window ended but that couldn't be applied yet
@@ -2536,8 +2654,13 @@ pub mod commands {
 
     /// Retry this meeting's failed deletes. Returns the ones still failing.
     #[tauri::command(rename_all = "camelCase")]
-    pub async fn retry_failed_redactions(state: State<'_, AppState>, meeting_id: String) -> Result<Vec<FailedDelete>, String> {
+    pub async fn retry_failed_redactions(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        meeting_id: String,
+    ) -> Result<Vec<FailedDelete>, String> {
         let errors = retry_failed_deletes(state.database.pool(), &env_for(&state), &meeting_id).await;
+        kick_video_jobs(&app);
         for e in &errors {
             log::warn!("Delete retry failed: {}", e);
         }

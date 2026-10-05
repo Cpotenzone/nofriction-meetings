@@ -325,34 +325,26 @@ impl ChunkManager {
 
         let mut chunks = Vec::new();
 
-        if let Ok(entries) = std::fs::read_dir(&video_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |e| e == "mov") {
-                    let filename = path.file_stem().and_then(|n| n.to_str()).unwrap_or("");
-
-                    let chunk_number = filename
-                        .strip_prefix("chunk_")
-                        .and_then(|n| n.parse::<u32>().ok())
-                        .unwrap_or(0);
-
-                    let meta = entry.metadata().ok();
-                    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                    let created = meta
-                        .and_then(|m| m.created().ok())
-                        .map(|t| t.into())
-                        .unwrap_or_else(Utc::now);
-
-                    chunks.push(VideoChunk {
-                        chunk_number,
-                        path,
-                        start_time: created,
-                        end_time: None,
-                        size_bytes: size,
-                        duration_secs: 0.0,
-                    });
-                }
-            }
+        // Chunks only (not a blanking job's temporary files); each chunk's
+        // start is the recorded first-frame time (chunk_times.json), which
+        // survives re-encoding, falling back to the file's creation time.
+        for path in crate::redaction::video_blank::list_chunks(&video_dir) {
+            let filename = path.file_stem().and_then(|n| n.to_str()).unwrap_or("");
+            let chunk_number = filename
+                .strip_prefix("chunk_")
+                .and_then(|n| n.parse::<u32>().ok())
+                .unwrap_or(0);
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let start_time =
+                crate::redaction::video_blank::chunk_start(&video_dir, &path).unwrap_or_else(Utc::now);
+            chunks.push(VideoChunk {
+                chunk_number,
+                path,
+                start_time,
+                end_time: None,
+                size_bytes: size,
+                duration_secs: 0.0,
+            });
         }
 
         chunks.sort_by_key(|c| c.chunk_number);

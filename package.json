@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "TZ=UTC node --test src/lib/*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "prebuild": "node increment-version.js"

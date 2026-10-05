@@ -12,7 +12,11 @@ import {
     tokenizeLine,
     type FailedDelete,
     type RedactionRecord,
+    type TimeRangePreview,
+    type VideoJob,
+    type VideoJobEvent,
 } from "../../lib/redaction";
+import { clockAt, durationLabel, parseClock, spanLabel } from "../../lib/screenSelection";
 import "./Redaction.css";
 
 // ── Markers ─────────────────────────────────────────────────────────────
@@ -268,6 +272,19 @@ type StrikeRequest =
     | { type: "words"; segments: WordSegment[] }
     | { type: "screens"; ids: string[] };
 
+/** Opens the time-range dialog (Delete or Strike a block of meeting time). */
+export interface TimeRangeRequest {
+    startMs: number;
+    endMs: number;
+    /** RFC3339 meeting start: times are shown and typed as wall-clock */
+    startedAt: string;
+    /** End of the meeting (ms from the start), to bound the inputs */
+    maxMs: number;
+    /** Called when a Delete is queued, to hide what it removes during the
+     *  undo window */
+    onDeleted?: (p: TimeRangePreview) => void;
+}
+
 interface ToastState {
     ids: string[];
     label: string;
@@ -289,8 +306,30 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
     const [strike, setStrike] = useState<StrikeRequest | null>(null);
     const [failed, setFailed] = useState<FailedDelete[]>([]);
     const [retrying, setRetrying] = useState(false);
+    const [range, setRange] = useState<TimeRangeRequest | null>(null);
+    // Screen video blanking runs in the background after a delete/strike
+    const [videoJobs, setVideoJobs] = useState<VideoJob[]>([]);
+    const [videoPercent, setVideoPercent] = useState<number | null>(null);
     const changedRef = useRef(onChanged);
     changedRef.current = onChanged;
+
+    const refreshVideo = useCallback(async () => {
+        if (!meetingId) {
+            setVideoJobs([]);
+            return;
+        }
+        try {
+            setVideoJobs(await redactionApi.listVideoJobs(meetingId));
+        } catch {
+            /* not running inside Tauri */
+        }
+    }, [meetingId]);
+    const refreshVideoRef = useRef(refreshVideo);
+    refreshVideoRef.current = refreshVideo;
+    useEffect(() => {
+        setVideoPercent(null);
+        refreshVideo();
+    }, [refreshVideo]);
 
     // Deletes that couldn't be applied yet (kept pending by the backend,
     // retried at launch / next commit, or now via Retry)
@@ -322,8 +361,22 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
                     setMessage({ text: e.payload.warnings.join(" "), error: true });
                 }
                 refreshFailedRef.current();
+                refreshVideoRef.current();
                 changedRef.current();
             });
+            const v = await listen<VideoJobEvent>("video_blank_progress", (e) => {
+                if (e.payload.meeting_id !== meetingId) return;
+                if (e.payload.status === "running") {
+                    setVideoPercent(e.payload.percent ?? 0);
+                    return;
+                }
+                setVideoPercent(null);
+                refreshVideoRef.current();
+                // A strike marker stops saying "video pending"
+                if (e.payload.status === "done") changedRef.current();
+            });
+            if (disposed) v();
+            else offs.push(v);
             const b = await listen<{ meeting_id: string; error: string; retryable?: boolean }>("redaction_failed", (e) => {
                 if (e.payload.meeting_id !== meetingId) return;
                 setMessage({
@@ -455,14 +508,102 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
         }
     }, [meetingId]);
 
+    const retryVideo = useCallback(async () => {
+        if (!meetingId) return;
+        try {
+            setVideoJobs(await redactionApi.retryVideoJobs(meetingId));
+        } catch (e) {
+            setMessage({ text: String(e), error: true });
+        }
+    }, [meetingId]);
+
+    /** Queue a time-range Delete (5-second undo, like every Delete). */
+    const deleteTimeRange = useCallback(
+        async (p: TimeRangePreview, startedAt: string): Promise<boolean> => {
+            if (!meetingId) return false;
+            try {
+                const pending = await redactionApi.deleteTimeRange(meetingId, p.start_ms, p.end_ms, p.counts);
+                const what: string[] = [];
+                if (p.counts.screens) what.push(plural(p.counts.screens, "screen", "screens"));
+                const lines = p.counts.lines_whole + p.counts.lines_split;
+                if (lines) what.push(plural(lines, "line", "lines"));
+                showToast(
+                    [pending.id],
+                    `Deleted ${spanLabel(startedAt, p.start_ms, p.end_ms)}${what.length ? ` (${what.join(", ")})` : ""}`,
+                    pending.undo_seconds,
+                );
+                return true;
+            } catch (e) {
+                setMessage({ text: `Couldn't delete: ${e}`, error: true });
+                return false;
+            }
+        },
+        [meetingId, showToast],
+    );
+
     const cancelFailed = useCallback(async () => {
         await Promise.allSettled(failed.map((f) => redactionApi.undo(f.id)));
         refreshFailed();
         changedRef.current();
     }, [failed, refreshFailed]);
 
+    const videoFailed = videoJobs.filter((j) => j.status === "failed");
+    const toolMissing = videoFailed.some((j) => j.tool_missing);
     const ui = (
         <>
+            {(videoPercent !== null || videoJobs.length > 0) && (
+                <div className={`rd-video${videoFailed.length && videoPercent === null ? " rd-video-failed" : ""}`} role="status" aria-live="polite">
+                    {videoPercent !== null ? (
+                        <>
+                            <span>Removing from screen video… {videoPercent}%</span>
+                            <span className="rd-video-bar" aria-hidden="true">
+                                <span style={{ width: `${videoPercent}%` }} />
+                            </span>
+                        </>
+                    ) : videoFailed.length > 0 ? (
+                        <>
+                            <span>
+                                {toolMissing
+                                    ? `ffmpeg isn't installed, so ${plural(videoFailed.length, "removed moment is", "removed moments are")} still in the screen video. Install it (brew install ffmpeg), then Retry.`
+                                    : `The screen video still contains ${plural(videoFailed.length, "removed moment", "removed moments")}; blanking failed and will be retried.`}
+                                {!toolMissing && videoFailed[videoFailed.length - 1].last_error && (
+                                    <span className="rd-failed-reason"> — {videoFailed[videoFailed.length - 1].last_error}</span>
+                                )}
+                            </span>
+                            <button className="rd-btn" onClick={retryVideo}>
+                                Retry
+                            </button>
+                        </>
+                    ) : (
+                        <span>
+                            Screen video: {plural(videoJobs.length, "removed moment", "removed moments")} waiting to be blanked…
+                        </span>
+                    )}
+                </div>
+            )}
+            {range && meetingId && (
+                <TimeRangeModal
+                    meetingId={meetingId}
+                    request={range}
+                    onClose={() => setRange(null)}
+                    onDelete={async (p) => {
+                        if (await deleteTimeRange(p, range.startedAt)) {
+                            range.onDeleted?.(p);
+                            setRange(null);
+                        }
+                    }}
+                    onStruck={(warnings) => {
+                        setRange(null);
+                        setMessage(
+                            warnings.length
+                                ? { text: `Stricken from the record. ${warnings.join(" ")}`, error: true }
+                                : { text: "Stricken from the record.", error: false },
+                        );
+                        refreshVideo();
+                        changedRef.current();
+                    }}
+                />
+            )}
             {failed.length > 0 && (
                 <div className="rd-failed" role="alert">
                     <span>
@@ -489,6 +630,7 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
                                 ? { text: `Stricken from the record. ${warnings.join(" ")}`, error: true }
                                 : { text: "Stricken from the record.", error: false },
                         );
+                        refreshVideo();
                         changedRef.current();
                     }}
                 />
@@ -520,7 +662,206 @@ export function useRedaction(meetingId: string | null, onChanged: () => void) {
         deleteScreens,
         strikeWords: (segments: WordSegment[]) => segments.length && setStrike({ type: "words", segments }),
         strikeScreens: (ids: string[]) => ids.length && setStrike({ type: "screens", ids }),
+        /** Open the Delete / Strike a time range dialog */
+        openTimeRange: (r: TimeRangeRequest) => setRange(r),
+        /** A modal of this controller is open (keyboard shortcuts pause) */
+        busy: !!strike || !!range,
     };
+}
+
+// ── Time range: Delete / Strike a block of meeting time ────────────────
+
+function TimeRangeModal({
+    meetingId,
+    request,
+    onClose,
+    onDelete,
+    onStruck,
+}: {
+    meetingId: string;
+    request: TimeRangeRequest;
+    onClose: () => void;
+    onDelete: (p: TimeRangePreview) => Promise<void>;
+    onStruck: (warnings: string[]) => void;
+}) {
+    const { startedAt } = request;
+    const [startStr, setStartStr] = useState(clockAt(startedAt, request.startMs));
+    const [endStr, setEndStr] = useState(clockAt(startedAt, request.endMs));
+    const [preview, setPreview] = useState<TimeRangePreview | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [mode, setMode] = useState<"delete" | "strike">("delete");
+    const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    const startMs = parseClock(startedAt, startStr, request.startMs);
+    const endMs = parseClock(startedAt, endStr, request.endMs);
+    const invalid =
+        startMs === null || endMs === null
+            ? "Enter times as HH:MM or HH:MM:SS"
+            : endMs <= startMs
+              ? "The end must be after the start"
+              : null;
+
+    // Exact counts for the range as typed (refreshed as the times change)
+    useEffect(() => {
+        if (invalid || startMs === null || endMs === null) {
+            setPreview(null);
+            return;
+        }
+        let cancelled = false;
+        setLoading(true);
+        const t = setTimeout(async () => {
+            try {
+                const p = await redactionApi.previewTimeRange(meetingId, startMs, endMs);
+                if (!cancelled) {
+                    setPreview(p);
+                    setError(null);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    setPreview(null);
+                    setError(String(e));
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }, 200);
+        return () => {
+            cancelled = true;
+            clearTimeout(t);
+        };
+    }, [meetingId, startMs, endMs, invalid]);
+
+    useEffect(() => {
+        const key = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && !busy) onClose();
+        };
+        window.addEventListener("keydown", key);
+        return () => window.removeEventListener("keydown", key);
+    }, [busy, onClose]);
+
+    const ready = !!preview && !preview.nothing && !loading && !invalid;
+    const span = preview ? spanLabel(startedAt, preview.start_ms, preview.end_ms) : "";
+
+    const doDelete = async () => {
+        if (!preview) return;
+        setBusy(true);
+        await onDelete(preview);
+        setBusy(false);
+    };
+    const doStrike = async () => {
+        if (!preview) return;
+        setBusy(true);
+        setError(null);
+        try {
+            const out = await redactionApi.strikeTimeRange(
+                meetingId,
+                preview.start_ms,
+                preview.end_ms,
+                reason.trim() || null,
+                preview.counts,
+            );
+            onStruck(out.warnings);
+        } catch (e) {
+            setError(String(e));
+            setBusy(false);
+        }
+    };
+    const isNote = (s: string) =>
+        s.startsWith("Files already exported") || s.startsWith("Time Machine") || s.startsWith("No meeting audio");
+
+    return (
+        <div className="rd-overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+            <div className="rd-modal" role="dialog" aria-modal="true" aria-labelledby="rd-range-title">
+                <h2 id="rd-range-title">
+                    {mode === "strike" ? "Strike this time range from the record?" : "Delete a time range"}
+                </h2>
+                <p className="rd-modal-lead">
+                    {mode === "strike"
+                        ? 'Permanently destroys everything captured in this span and leaves a "Stricken from the record" marker with the time and your reason. It can\'t be undone.'
+                        : "Removes everything captured in this span: screens, screen text, transcript lines and the screen video. You can undo for 5 seconds."}
+                </p>
+                <div className="rd-range-times">
+                    <label className="rd-field">
+                        From
+                        <input
+                            value={startStr}
+                            onChange={(e) => setStartStr(e.target.value)}
+                            placeholder="10:41:00"
+                            aria-label="Start time"
+                            disabled={busy}
+                        />
+                    </label>
+                    <label className="rd-field">
+                        To
+                        <input
+                            value={endStr}
+                            onChange={(e) => setEndStr(e.target.value)}
+                            placeholder="10:53:00"
+                            aria-label="End time"
+                            disabled={busy}
+                        />
+                    </label>
+                    {startMs !== null && endMs !== null && !invalid && (
+                        <span className="rd-hint rd-range-len">{durationLabel(endMs - startMs)}</span>
+                    )}
+                </div>
+                {invalid && <p className="rd-error">{invalid}</p>}
+                <h3>What will be {mode === "strike" ? "destroyed" : "removed"}</h3>
+                {preview ? (
+                    preview.nothing ? (
+                        <p className="rd-hint">Nothing was captured in that span.</p>
+                    ) : (
+                        <ul className="rd-list">
+                            {preview.items.map((it, i) => (
+                                <li key={i} className={isNote(it) ? "rd-note" : undefined}>
+                                    {it}
+                                </li>
+                            ))}
+                        </ul>
+                    )
+                ) : (
+                    !error && !invalid && <p className="rd-hint">Checking…</p>
+                )}
+                {mode === "strike" && (
+                    <label className="rd-field">
+                        Reason (optional)
+                        <input
+                            value={reason}
+                            maxLength={120}
+                            placeholder="e.g. privileged"
+                            onChange={(e) => setReason(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && ready && !busy && doStrike()}
+                            disabled={busy}
+                            autoFocus
+                        />
+                        <span className="rd-hint">Shown on the marker. Don't include the words being removed.</span>
+                    </label>
+                )}
+                {error && <p className="rd-error">{error}</p>}
+                <div className="rd-modal-actions">
+                    <button className="rd-btn" onClick={mode === "strike" ? () => setMode("delete") : onClose} disabled={busy}>
+                        {mode === "strike" ? "Back" : "Cancel"}
+                    </button>
+                    {mode === "delete" ? (
+                        <>
+                            <button className="rd-btn" onClick={() => setMode("strike")} disabled={busy || !ready}>
+                                Strike from the record…
+                            </button>
+                            <button className="rd-btn rd-btn-strike" onClick={doDelete} disabled={busy || !ready}>
+                                {busy ? "Deleting…" : `Delete ${span}`}
+                            </button>
+                        </>
+                    ) : (
+                        <button className="rd-btn rd-btn-strike" onClick={doStrike} disabled={busy || !ready}>
+                            {busy ? "Striking…" : `Strike ${span} from the record`}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function StrikeConfirmModal({

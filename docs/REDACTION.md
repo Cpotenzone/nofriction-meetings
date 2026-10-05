@@ -21,7 +21,15 @@ is no hidden copy, no "reveal", and no admin override.
   on both platforms and maps cleanly to character offsets. A drag-select of
   the text is a bonus on the Mac.
 - **Screens**: one screenshot/photo/frame, or several selected in the
-  timeline/gallery.
+  timeline/gallery. On the Mac: click views a screen, ⌘-click toggles one,
+  Shift-click selects every screen from the last clicked (or the one being
+  viewed) to this one, ⌘A selects all while the screen strip has focus,
+  plus **Select all**, **From here to the end** and **Last N minutes**. The
+  selection bar shows the exact count and span ("5 screens · 10:41–10:53"),
+  and that count is computed from the same list of ids that is sent.
+  Delete/Backspace in the strip deletes the selection (with the undo toast).
+- **A block of time** (Mac): "delete everything from 10:41 to 10:53", from a
+  screen selection or typed start/end times. See [Time ranges](#time-ranges).
 - Actions appear in a context menu / toolbar: **Delete** · **Strike from the record…**
 
 ## "Removed everywhere": the purge checklist
@@ -53,10 +61,27 @@ exist on the platform:
    screen states, text snapshots, activity entries that quote that screen's
    text, and VLM/AI analysis of that frame.
    - Mac DMG flavor: if a **screen video chunk** covers that moment, blank that
-     time range in the video (re-encode with black frames via the existing
-     ffmpeg path).
-   - If blanking fails, the action fails loudly, rolls back, and tells the user.
-     Never claim success while the content still exists.
+     time range in the video with black frames. The order is:
+     1. The database purge commits first, so the screens disappear at once
+        and for good, and in the same transaction a durable job is queued
+        for each covered time range (`video_blank_jobs`: times only).
+     2. A background worker blanks the video afterwards, **outside** the
+        app-wide redaction lock (no other edit waits on ffmpeg), with
+        progress in the meeting view ("Removing from screen video… 40%").
+     3. Until a job finishes, that span is **still in the screen video**.
+        The meeting view says so, and a Strike marker shows "screen video
+        still being blanked". If ffmpeg is missing or blanking fails, the job
+        is kept, shown as a persistent warning with Retry, retried with
+        backoff (30 s doubling to 1 h, then at each launch), and resumed
+        after a quit or crash. Never claim the video is clean before it is.
+   - Blanking re-encodes only the keyframe-bounded pieces around the range
+     and stream-copies the rest (cost scales with the removed span, not the
+     meeting); a chunk whose codec configuration can't be matched is
+     re-encoded whole instead. The result is verified (same frame count and
+     length, black inside the range) before it replaces the chunk.
+   - Blanked ranges are recorded per chunk (`blanked.json`, times only) and
+     never re-encoded again; a range with no record that is already black
+     (blanked by an older build) is detected and recorded, not redone.
 5. **AI outputs derived from it.** Saved notes, summaries, reports, action
    items, insights, catch-ups, assistant chat history and briefings for that
    meeting:
@@ -121,12 +146,36 @@ Hold the change in memory for 5 seconds with an Undo toast, then commit and
 purge. If the app quits in that window, the delete is committed; it is never
 silently dropped. Strike has no undo.
 
-If the commit fails for a transient reason (database busy, ffmpeg missing,
-blanking failed, the meeting is recording), the pending delete is kept, marked
-failed with a reason, retried at the next launch and on the next commit, and
-shown in the meeting view ("1 deletion couldn't be completed — Retry"). It is
-only dropped when it can never apply (the target line changed or the screens
-are already gone), and the user is told.
+If the commit fails for a transient reason (database busy, the meeting is
+recording), the pending delete is kept, marked failed with a reason, retried
+at the next launch and on the next commit, and shown in the meeting view ("1
+deletion couldn't be completed — Retry"). It is only dropped when it can never
+apply (the target line changed or the screens are already gone), and the user
+is told. Screen video blanking is not part of the commit (it's the background
+job above), so a video problem never keeps a delete pending.
+
+## Time ranges
+
+"Delete everything from 10:41 to 10:53" (Mac). Within `[start, end]` it removes,
+with every step of the purge checklist:
+
+- **Screens** captured in the span (and everything derived from them), plus
+  screen text (OCR/accessibility snapshots), AI screen-activity summaries and
+  timeline entries captured in the span that no removed screen owns.
+- **Transcript lines.** With stored word timings a line is split exactly: a
+  word goes when the middle of its time is inside the range. A line without
+  word timings goes whole only if at least half of it falls inside (its length
+  is estimated from its word count, 0.4 s a word, 1–30 s, bounded by the next
+  line), and the preview says how many lines that rule included or kept.
+- **Screen video** for the whole span (DMG), via the background job.
+
+The preview shows exact counts first, and the action is refused if the range
+now resolves to different counts. The plan (ids, offsets, line hashes; never
+content) is stored with a pending Delete, so the undo window and the commit
+remove exactly what was previewed; a line edited in between drops the delete.
+Delete keeps the 5-second undo. **Strike time range** leaves one marker for the
+span in the transcript (in its first line; the rest closes up) and one in the
+screen strip, both with the span's times and the reason.
 
 ## Tests (both platforms)
 
@@ -135,6 +184,15 @@ are already gone), and the user is told.
   the new update trigger.
 - Audio: the silenced range is all zeros (decode and check the samples) and the duration is unchanged.
 - Screen delete removes the file, derived files and rows. A strike leaves a marker and nothing else.
+- Mac: a database created by an older build migrates to every current column
+  and screen/transcript deletes work on it.
+- Mac: time ranges (word-timing split, the 50% rule, preview counts = what is
+  removed, undo, strike markers); screen video jobs (retry with backoff,
+  parking, resume at launch, never holding the redaction lock); partial
+  blanking (same length and frame count, black only in the range, everything
+  else stream-copied), no second re-encode of a blanked range, per-chunk
+  offsets, and chunk rotation without gaps. The screen selection logic has
+  its own tests (`npm test`).
 - AI outputs: occurrences are redacted and the flag is set.
 - Markers render in exports, and prompts use the placeholder.
 - A Strike can't be undone or edited, and no API returns the removed content.
@@ -165,6 +223,26 @@ UI in `src/components/redaction/Redaction.tsx`.
   screens.").
 - **Screen purge** also deletes the data editor's history (`data_versions`
   rows for the removed text snapshots and episodes).
+- **Lock scope.** `LOCK` covers database work only. Screen video blanking is
+  `redaction/video_jobs.rs` (durable queue, single worker, backoff, resume at
+  launch, `video_blank_progress` events, `list_video_blank_jobs` /
+  `retry_video_blank_jobs`) and `redaction/video_blank.rs` (ffmpeg). The
+  worker skips meetings being recorded and stops ffmpeg on quit.
+- **Screen video chunks** rotate every 5 minutes (`video_recorder.rs`): the
+  next chunk starts and records its first frame before the previous one
+  stops, so chunks overlap slightly instead of leaving a gap. Each chunk's
+  first-frame time is saved in `chunk_times.json`, and blanking uses each
+  chunk's own start.
+- **Time ranges** are `redaction/time_range.rs`: `preview_time_range`,
+  `delete_time_range`, `strike_time_range` (offsets in ms from the meeting
+  start).
+- **Schema drift.** Columns added to a table after it first shipped go through
+  `database::ensure_columns` (checks `pragma_table_info`), never only into a
+  `CREATE TABLE IF NOT EXISTS`, which doesn't alter a table an older build
+  created. Databases from before `text_snapshots.meeting_id` existed failed
+  every screen delete ("no such column: meeting_id"); the migration adds and
+  backfills it. `database/schema_drift_tests.rs` migrates a real old schema
+  and checks every current column exists.
 
 ## iOS implementation notes
 

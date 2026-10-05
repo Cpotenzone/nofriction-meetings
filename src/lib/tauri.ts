@@ -168,6 +168,8 @@ export interface TimelineFrame {
     frame_number: number;
     timestamp_ms: number;
     thumbnail_path: string | null;
+    /** When the screen stopped being shown (ms from the start), if known */
+    end_ms?: number | null;
 }
 
 export interface TimelineTranscript {
