@@ -162,6 +162,44 @@ pub fn transcript_text_hash(text: &str) -> String {
     format!("{:016x}", hasher.finish())
 }
 
+/// Add each column a table is missing. SQLite has no
+/// `ADD COLUMN IF NOT EXISTS`, and `CREATE TABLE IF NOT EXISTS` never alters
+/// a table an older version created, so every column added after a table
+/// first shipped must go through here (checked with `pragma_table_info`).
+/// Unlike the old `let _ = ALTER ...` pattern, a real failure is returned,
+/// not swallowed. `columns` are `(name, declaration)` pairs. Returns the
+/// names that were added. Runs on the caller's connection (migrations use
+/// exactly one, see [`DatabaseManager::run_migrations`]).
+pub async fn ensure_columns(
+    conn: &mut sqlx::SqliteConnection,
+    table: &str,
+    columns: &[(&str, &str)],
+) -> Result<Vec<String>, sqlx::Error> {
+    let existing: std::collections::HashSet<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info(?)")
+            .bind(table)
+            .fetch_all(&mut *conn)
+            .await?
+            .into_iter()
+            .collect();
+    if existing.is_empty() {
+        return Err(sqlx::Error::Protocol(format!(
+            "ensure_columns: table {} does not exist",
+            table
+        )));
+    }
+    let mut added = Vec::new();
+    for (name, decl) in columns {
+        if !existing.contains(*name) {
+            sqlx::query(&format!("ALTER TABLE {} ADD COLUMN {} {}", table, name, decl))
+                .execute(&mut *conn)
+                .await?;
+            added.push(name.to_string());
+        }
+    }
+    Ok(added)
+}
+
 /// Database manager
 pub struct DatabaseManager {
     pool: Pool<Sqlite>,
@@ -257,16 +295,14 @@ impl DatabaseManager {
         .execute(&mut *conn)
         .await?;
 
-        // Add columns if they don't exist (for migration from old schema)
-        let _ = sqlx::query("ALTER TABLE transcripts ADD COLUMN text_hash TEXT")
-            .execute(&mut *conn)
-            .await;
-        let _ = sqlx::query("ALTER TABLE frames ADD COLUMN frame_number INTEGER DEFAULT 0")
-            .execute(&mut *conn)
-            .await;
-        let _ = sqlx::query("ALTER TABLE frames ADD COLUMN file_path TEXT")
-            .execute(&mut *conn)
-            .await;
+        // Columns added after these tables first shipped
+        ensure_columns(&mut conn, "transcripts", &[("text_hash", "TEXT")]).await?;
+        ensure_columns(
+            &mut conn,
+            "frames",
+            &[("frame_number", "INTEGER DEFAULT 0"), ("file_path", "TEXT")],
+        )
+        .await?;
 
         // Lookup index for the 30s echo-dedupe window in add_transcript_at.
         // Deliberately NOT unique: people legitimately repeat short phrases
@@ -332,9 +368,7 @@ impl DatabaseManager {
 
         // Word timings (JSON, nullable): [{"s":utf16_start,"e":utf16_end,"t0":ms,"t1":ms}]
         // relative to the line's text and timestamp. Offsets only, never words.
-        let _ = sqlx::query("ALTER TABLE transcripts ADD COLUMN word_timings TEXT")
-            .execute(&mut *conn)
-            .await;
+        ensure_columns(&mut conn, "transcripts", &[("word_timings", "TEXT")]).await?;
 
         // Create indexes
         sqlx::query(
@@ -509,9 +543,7 @@ impl DatabaseManager {
         .execute(&mut *conn)
         .await;
         // Which display/window a state came from (multi-source capture)
-        let _ = sqlx::query("ALTER TABLE screen_states ADD COLUMN source_key TEXT")
-            .execute(&mut *conn)
-            .await;
+        ensure_columns(&mut conn, "screen_states", &[("source_key", "TEXT")]).await?;
 
         // ═══════════════════════════════════════════════════════════════════════
         // Phase 2: Stateful Screen Ingest - Episodes & Text Snapshots
@@ -590,6 +622,56 @@ impl DatabaseManager {
         )
         .execute(&mut *conn)
         .await?;
+
+        // meeting_id / app_name / window_title were added after text_snapshots
+        // first shipped. Databases created before that kept the old table
+        // (CREATE TABLE IF NOT EXISTS never alters it), so every snapshot
+        // insert and the screen purge failed there with "no such column:
+        // meeting_id". Add them and backfill what the old rows imply, in one
+        // transaction so a crash can't leave the columns half-filled.
+        {
+            let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+            let added = ensure_columns(
+                &mut tx,
+                "text_snapshots",
+                &[
+                    ("meeting_id", "TEXT REFERENCES meetings(id) ON DELETE CASCADE"),
+                    ("app_name", "TEXT"),
+                    ("window_title", "TEXT"),
+                ],
+            )
+            .await?;
+            if added.iter().any(|c| c == "meeting_id") {
+                sqlx::query(
+                    "UPDATE text_snapshots SET meeting_id = \
+                     (SELECT s.meeting_id FROM screen_states s WHERE s.state_id = text_snapshots.state_id) \
+                     WHERE meeting_id IS NULL AND state_id IS NOT NULL",
+                )
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query(
+                    "UPDATE text_snapshots SET meeting_id = \
+                     (SELECT e.meeting_id FROM document_episodes e WHERE e.episode_id = text_snapshots.episode_id) \
+                     WHERE meeting_id IS NULL AND episode_id IS NOT NULL",
+                )
+                .execute(&mut *tx)
+                .await?;
+            }
+            if added.iter().any(|c| c == "app_name" || c == "window_title") {
+                for col in ["app_name", "window_title"] {
+                    sqlx::query(&format!(
+                        "UPDATE text_snapshots SET {0} = COALESCE(\
+                         (SELECT s.{0} FROM screen_states s WHERE s.state_id = text_snapshots.state_id), \
+                         (SELECT e.{0} FROM document_episodes e WHERE e.episode_id = text_snapshots.episode_id)) \
+                         WHERE {0} IS NULL",
+                        col
+                    ))
+                    .execute(&mut *tx)
+                    .await?;
+                }
+            }
+            tx.commit().await?;
+        }
 
         let _ = sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_snapshots_episode ON text_snapshots(episode_id)",
@@ -878,9 +960,7 @@ impl DatabaseManager {
         // ═══════════════════════════════════════════════════════════════════════
 
         // Add calendar_event_id to meetings table
-        let _ = sqlx::query("ALTER TABLE meetings ADD COLUMN calendar_event_id TEXT")
-            .execute(&mut *conn)
-            .await;
+        ensure_columns(&mut conn, "meetings", &[("calendar_event_id", "TEXT")]).await?;
 
         // Meeting attendees table
         sqlx::query(
@@ -3506,6 +3586,9 @@ impl DatabaseManager {
 // ═══════════════════════════════════════════════════════════════════════════
 // Tests
 // ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod schema_drift_tests;
 
 #[cfg(test)]
 mod tests {
