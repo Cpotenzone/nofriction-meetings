@@ -2567,6 +2567,10 @@ pub struct TimelineFrame {
     pub frame_number: i64,
     pub timestamp_ms: i64, // Milliseconds from start of meeting
     pub thumbnail_path: Option<String>,
+    /// When the screen stopped being shown (ms from the start), if known.
+    /// Lets the UI turn a screen selection into a time range.
+    #[serde(default)]
+    pub end_ms: Option<i64>,
 }
 
 /// Transcript on the timeline
@@ -2624,6 +2628,7 @@ impl DatabaseManager {
                         frame_number: f.frame_number,
                         timestamp_ms: ms.max(0),
                         thumbnail_path: f.file_path,
+                        end_ms: None,
                     }
                 })
                 .collect()
@@ -2649,11 +2654,17 @@ impl DatabaseManager {
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or(start_time);
                     let ms = (state_ts - start_time).num_milliseconds();
+                    let end_ms = s
+                        .end_ts
+                        .as_deref()
+                        .and_then(|e| DateTime::parse_from_rfc3339(e).ok())
+                        .map(|e| (e.with_timezone(&Utc) - start_time).num_milliseconds().max(ms.max(0)));
                     TimelineFrame {
                         id: s.state_id,
                         frame_number: idx as i64,
                         timestamp_ms: ms.max(0),
                         thumbnail_path: s.keyframe_path,
+                        end_ms,
                     }
                 })
                 .collect();

@@ -2,7 +2,21 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as tauri from "../lib/tauri";
 import { friendlyAiError, isNoProviderError } from "../lib/ai";
 import { AiSetupNotice } from "./AiSetupNotice";
-import { applyLocalDelete, lineWords, redactionApi, renderPlain, type RedactionRecord } from "../lib/redaction";
+import { applyLocalDelete, lineWords, redactionApi, renderPlain, type RedactionRecord, type TimeRangePreview } from "../lib/redaction";
+import {
+    EMPTY_SELECTION,
+    clickScreen,
+    clockAt,
+    orderedIds,
+    pruneSelection,
+    rangeOfScreens,
+    selectAll,
+    selectLastMinutes,
+    selectToEnd,
+    spanLabel,
+    summarize,
+    type Selection,
+} from "../lib/screenSelection";
 import {
     RedactableLine,
     RedactionActionBar,
@@ -30,9 +44,13 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
     const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [reloadKey, setReloadKey] = useState(0);
-    // Screen multi-select (⌘/Shift-click, or "Select screens" mode)
-    const [selectedScreens, setSelectedScreens] = useState<Set<string>>(new Set());
+    // Screen multi-select: ⌘-click toggles, Shift-click selects a range,
+    // ⌘A selects all (lib/screenSelection.ts), or "Select screens" mode
+    const [sel, setSel] = useState<Selection>(EMPTY_SELECTION);
     const [selectMode, setSelectMode] = useState(false);
+    // "Last N minutes": the span itself, for "Delete time range"
+    const [lastMinutes, setLastMinutes] = useState(12);
+    const [rangeHint, setRangeHint] = useState<{ range: [number, number]; minutes: number } | null>(null);
     const [notesStale, setNotesStale] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
     const [regenError, setRegenError] = useState<string | null>(null);
@@ -53,8 +71,9 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
         setSelectedFrame(null);
         setFrameImage(null);
         setThumbnails(new Map());
-        setSelectedScreens(new Set());
+        setSel(EMPTY_SELECTION);
         setSelectMode(false);
+        setRangeHint(null);
         clearWords();
     }, [meetingId, clearWords]);
 
@@ -79,7 +98,7 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                     }
                     return null;
                 });
-                setSelectedScreens((prev) => new Set([...prev].filter((id) => data.frames.some((f) => f.id === id))));
+                setSel((prev) => pruneSelection(data.frames, prev));
             } catch (err) {
                 console.error("Failed to load timeline:", err);
             } finally {
@@ -226,21 +245,74 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
         }
     };
 
-    const toggleScreen = (id: string) =>
-        setSelectedScreens((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
+    // What is selected, in timeline order. The selection bar's count and
+    // the ids sent to the backend are both exactly this list.
+    const frames = useMemo(() => timeline?.frames ?? [], [timeline?.frames]);
+    const selectedIds = useMemo(() => orderedIds(frames, sel), [frames, sel]);
+    const summary = useMemo(() => summarize(frames, sel), [frames, sel]);
+
+    const viewFrame = (frame: tauri.TimelineFrame) => {
+        setSelectedFrame(frame);
+        setCurrentTime(frame.timestamp_ms);
+    };
+
+    const onThumbClick = (e: React.MouseEvent, frame: tauri.TimelineFrame) => {
+        // Keyboard shortcuts (⌘A, Delete) act on the grid once it's used
+        galleryRef.current?.focus({ preventScroll: true });
+        if (!editable) {
+            viewFrame(frame);
+            return;
+        }
+        const r = clickScreen(
+            sel,
+            frames,
+            frame.id,
+            { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey, selectMode },
+            selectedFrame?.id ?? null,
+        );
+        setSel(r.sel);
+        if (!r.view) setRangeHint(null);
+        if (r.view) viewFrame(frame);
+    };
+
+    const clearSelection = () => {
+        setSel(EMPTY_SELECTION);
+        setSelectMode(false);
+        setRangeHint(null);
+    };
 
     const deleteSelectedScreens = async () => {
-        const ids = [...selectedScreens];
+        const ids = selectedIds;
+        if (ids.length === 0) return;
         if (await redaction.deleteScreens(ids)) {
-            setTimeline((tl) => (tl ? { ...tl, frames: tl.frames.filter((f) => !selectedScreens.has(f.id)) } : tl));
-            setSelectedFrame((f) => (f && selectedScreens.has(f.id) ? null : f));
-            setSelectedScreens(new Set());
+            const gone = new Set(ids);
+            setTimeline((tl) => (tl ? { ...tl, frames: tl.frames.filter((f) => !gone.has(f.id)) } : tl));
+            setSelectedFrame((f) => (f && gone.has(f.id) ? null : f));
+            clearSelection();
         }
+    };
+
+    // Hide what a time-range Delete removes during its undo window
+    const hideRange = (p: TimeRangePreview) => {
+        const screens = new Set(p.screen_ids);
+        const lines = new Map(p.lines.map((l) => [String(l.transcript_id), l] as const));
+        setTimeline((tl) =>
+            tl
+                ? {
+                      ...tl,
+                      frames: tl.frames.filter((f) => !screens.has(f.id)),
+                      transcripts: tl.transcripts
+                          .map((t) => {
+                              const l = lines.get(t.id);
+                              return l ? { ...t, text: applyLocalDelete(t.text, l.start, l.end) } : t;
+                          })
+                          .filter((t) => t.text.trim() !== ""),
+                  }
+                : tl,
+        );
+        setSelectedFrame((f) => (f && screens.has(f.id) ? null : f));
+        words.clear();
+        clearSelection();
     };
 
     const regenerateNotes = async () => {
@@ -286,6 +358,57 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
         ...timeline.transcripts.map((t: tauri.TimelineTranscript) => t.timestamp_ms + t.duration_seconds * 1000),
         1000
     ) : 1000;
+    const meetingEndMs = Math.max(maxTime, (timeline?.duration_seconds ?? 0) * 1000);
+    const startedAt = timeline?.started_at ?? "";
+
+    const openTimeRange = () => {
+        if (!startedAt) return;
+        const r =
+            rangeHint?.range ??
+            (selectedIds.length ? rangeOfScreens(frames, selectedIds, meetingEndMs) : null) ??
+            [currentTime, meetingEndMs];
+        redaction.openTimeRange({
+            startMs: r[0],
+            endMs: r[1] > r[0] ? r[1] : r[0] + 60_000,
+            startedAt,
+            maxMs: meetingEndMs,
+            onDeleted: hideRange,
+        });
+    };
+
+    const selectLast = () => {
+        const { sel: s, range } = selectLastMinutes(frames, meetingEndMs, lastMinutes);
+        setSel(s);
+        setRangeHint({ range, minutes: lastMinutes });
+    };
+
+    const onGridKey = (e: React.KeyboardEvent) => {
+        if (!editable || redaction.busy) return;
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            setSel(selectAll(frames));
+            setRangeHint(null);
+        } else if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
+            e.preventDefault();
+            deleteSelectedScreens();
+        } else if (e.key === "Escape" && selectedIds.length > 0) {
+            clearSelection();
+        }
+    };
+
+    // "5 screens · 10:41–10:53" (exactly the screens that will be sent)
+    const selectionLabel = (() => {
+        if (!summary) return "";
+        const n = `${summary.count} ${summary.count === 1 ? "screen" : "screens"}`;
+        if (!startedAt) return n;
+        const when =
+            rangeHint
+                ? `last ${rangeHint.minutes} min (${spanLabel(startedAt, rangeHint.range[0], rangeHint.range[1])})`
+                : summary.firstMs === summary.lastMs
+                  ? clockAt(startedAt, summary.firstMs)
+                  : spanLabel(startedAt, summary.firstMs, summary.lastMs);
+        return `${n} · ${when}${summary.groups > 1 && !rangeHint ? ` · ${summary.groups} separate groups` : ""}`;
+    })();
 
     if (!meetingId) {
         return (
@@ -421,14 +544,15 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                         onChange={handleScrub}
                         className="timeline-slider"
                     />
-                    {/* Frame markers */}
+                    {/* Frame markers (selected screens in yellow, so a pick
+                        scrolled out of the strip is still visible) */}
                     <div className="timeline-markers">
                         {timeline?.frames.map((f: tauri.TimelineFrame) => (
                             <div
                                 key={f.id}
-                                className="timeline-marker frame-marker"
+                                className={`timeline-marker frame-marker${sel.ids.has(f.id) ? " rd-marker-selected" : ""}`}
                                 style={{ left: `${(f.timestamp_ms / maxTime) * 100}%` }}
-                                title={`Frame at ${formatTime(f.timestamp_ms)}`}
+                                title={`Frame at ${formatTime(f.timestamp_ms)}${sel.ids.has(f.id) ? " (selected)" : ""}`}
                             />
                         ))}
                         {/* Transcript markers */}
@@ -445,8 +569,16 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                 <span className="timeline-time">{formatTime(maxTime)}</span>
             </div>
 
-            {/* Thumbnail gallery */}
-            <div className="rewind-thumbnails scrollable" ref={galleryRef}>
+            {/* Thumbnail gallery (focusable: ⌘A selects all, Delete deletes) */}
+            <div
+                className="rewind-thumbnails scrollable"
+                ref={galleryRef}
+                tabIndex={0}
+                onKeyDown={onGridKey}
+                aria-label="Screens. Click to view, ⌘-click to pick, Shift-click to pick a range, ⌘A to pick all, Delete to delete"
+                aria-multiselectable={editable}
+                role="listbox"
+            >
                 {strip.map((item) =>
                     item.kind === "stricken" ? (
                         <ScreenStrickenCard key={`s-${item.record.id}`} record={item.record} className="thumbnail" />
@@ -454,16 +586,14 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                         <div
                             key={item.frame.id}
                             data-frame-id={item.frame.id}
-                            className={`thumbnail ${item.frame.id === selectedFrame?.id ? "selected" : ""} ${selectedScreens.has(item.frame.id) ? "rd-selected" : ""}`}
-                            aria-pressed={selectedScreens.has(item.frame.id)}
-                            onClick={(e) => {
-                                if (editable && (selectMode || e.metaKey || e.ctrlKey || e.shiftKey)) {
-                                    toggleScreen(item.frame.id);
-                                    return;
-                                }
-                                setSelectedFrame(item.frame);
-                                setCurrentTime(item.frame.timestamp_ms);
+                            role="option"
+                            className={`thumbnail ${item.frame.id === selectedFrame?.id ? "selected" : ""} ${sel.ids.has(item.frame.id) ? "rd-selected" : ""}`}
+                            aria-selected={sel.ids.has(item.frame.id)}
+                            onMouseDown={(e) => {
+                                // Shift-click selects screens, not page text
+                                if (e.shiftKey) e.preventDefault();
                             }}
+                            onClick={(e) => onThumbClick(e, item.frame)}
                         >
                             {thumbnails.has(item.frame.id) ? (
                                 <img src={thumbnails.get(item.frame.id)} alt={`Frame ${item.frame.frame_number}`} />
@@ -472,23 +602,30 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                                     <span>🖼️</span>
                                 </div>
                             )}
-                            {selectedScreens.has(item.frame.id) && <span className="rd-check">✓</span>}
+                            {sel.ids.has(item.frame.id) && <span className="rd-check">✓</span>}
                             <span className="thumbnail-time">{formatTime(item.frame.timestamp_ms)}</span>
                         </div>
                     )
                 )}
             </div>
 
-            {editable && selectedScreens.size > 0 && (
+            {editable && summary && (
                 <div style={{ padding: "0 12px 8px" }}>
                     <RedactionActionBar
-                        label={`${selectedScreens.size} ${selectedScreens.size === 1 ? "screen" : "screens"} selected`}
+                        label={selectionLabel}
+                        extra={
+                            <button
+                                className="rd-btn rd-btn-ghost"
+                                onClick={openTimeRange}
+                                disabled={!startedAt}
+                                title="Delete or strike everything in this span: screens, screen text, transcript and screen video"
+                            >
+                                Time range…
+                            </button>
+                        }
                         onDelete={deleteSelectedScreens}
-                        onStrike={() => redaction.strikeScreens([...selectedScreens])}
-                        onClear={() => {
-                            setSelectedScreens(new Set());
-                            setSelectMode(false);
-                        }}
+                        onStrike={() => redaction.strikeScreens(selectedIds)}
+                        onClear={clearSelection}
                     />
                 </div>
             )}
@@ -499,17 +636,66 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                 <span>💬 {timeline?.transcripts.length || 0} transcripts</span>
                 <span>⏱️ {formatTime(maxTime)} duration</span>
                 {editable && (timeline?.frames.length ?? 0) > 0 && (
-                    <button
-                        className={`rd-btn rd-btn-ghost`}
-                        style={{ marginLeft: "auto", padding: "0 6px" }}
-                        onClick={() => {
-                            setSelectMode((m) => !m);
-                            if (selectMode) setSelectedScreens(new Set());
-                        }}
-                        title="Or ⌘-click thumbnails"
-                    >
-                        {selectMode ? "Done selecting" : "Select screens"}
-                    </button>
+                    <span className="rd-selectbar" style={{ marginLeft: "auto" }}>
+                        <button
+                            className="rd-btn rd-btn-ghost"
+                            style={{ padding: "0 6px" }}
+                            onClick={() => {
+                                if (selectMode) clearSelection();
+                                else setSelectMode(true);
+                            }}
+                            title="Or ⌘-click thumbnails; Shift-click picks a range"
+                        >
+                            {selectMode ? "Done selecting" : "Select screens"}
+                        </button>
+                        <button
+                            className="rd-btn rd-btn-ghost"
+                            style={{ padding: "0 6px" }}
+                            onClick={() => {
+                                setSel(selectAll(frames));
+                                setRangeHint(null);
+                            }}
+                            title="⌘A in the screen strip"
+                        >
+                            Select all
+                        </button>
+                        <button
+                            className="rd-btn rd-btn-ghost"
+                            style={{ padding: "0 6px" }}
+                            onClick={() => {
+                                setSel(selectToEnd(frames, selectedFrame?.id ?? sel.anchor));
+                                setRangeHint(null);
+                            }}
+                            disabled={!selectedFrame && !sel.anchor}
+                            title="From the screen you're viewing to the end of the meeting"
+                        >
+                            From here to the end
+                        </button>
+                        <label className="rd-hint" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            Last
+                            <input
+                                type="number"
+                                min={1}
+                                max={600}
+                                value={lastMinutes}
+                                onChange={(e) => setLastMinutes(Math.max(1, Math.min(600, Number(e.target.value) || 1)))}
+                                aria-label="Minutes"
+                            />
+                            min
+                        </label>
+                        <button className="rd-btn rd-btn-ghost" style={{ padding: "0 6px" }} onClick={selectLast}>
+                            Select
+                        </button>
+                        <button
+                            className="rd-btn rd-btn-ghost"
+                            style={{ padding: "0 6px" }}
+                            onClick={openTimeRange}
+                            disabled={!startedAt}
+                            title="Delete or strike a block of time (picks its start and end)"
+                        >
+                            Time range…
+                        </button>
+                    </span>
                 )}
             </div>
 

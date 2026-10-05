@@ -22,6 +22,8 @@ export interface RedactionRecord {
     reason: string | null;
     transcript_id: number | null;
     item_count: number;
+    /** The screen video for this span is still being blanked in the background */
+    video_pending?: boolean;
 }
 
 export interface PendingDelete {
@@ -33,10 +35,66 @@ export interface PendingDelete {
 
 export interface ActionOutcome {
     record: RedactionRecord | null;
+    /** Every marker the action made (a time range can make two) */
+    records: RedactionRecord[];
     warnings: string[];
     backups_purged: number;
     backups_deleted: number;
-    video_chunks_blanked: number;
+    /** Screen video ranges queued for background blanking (the database
+     *  content is already gone; the video follows) */
+    video_jobs_queued: number;
+}
+
+/** What a time range resolves to; the delete is refused if this changed. */
+export interface RangeCounts {
+    screens: number;
+    lines_whole: number;
+    lines_split: number;
+}
+
+/** Exactly what deleting/striking a block of time removes. Counts and
+ *  offsets only, never content. */
+export interface TimeRangePreview {
+    start: string;
+    end: string;
+    start_ms: number;
+    end_ms: number;
+    counts: RangeCounts;
+    screen_ids: string[];
+    image_files: number;
+    lines: { transcript_id: number; start: number; end: number; whole: boolean }[];
+    words_removed: number;
+    estimated_included: number;
+    estimated_excluded: number;
+    screen_text_snapshots: number;
+    activity_summaries: number;
+    timeline_entries: number;
+    nothing: boolean;
+    items: string[];
+}
+
+/** A screen video range still being blanked, or failed (times only). */
+export interface VideoJob {
+    id: string;
+    meeting_id: string;
+    start_at: string;
+    end_at: string;
+    status: "pending" | "running" | "failed";
+    attempts: number;
+    last_error: string | null;
+    tool_missing: boolean;
+    next_attempt_at: string | null;
+    strike: boolean;
+}
+
+/** `video_blank_progress` event */
+export interface VideoJobEvent {
+    meeting_id: string;
+    status: "running" | "done" | "failed";
+    percent: number | null;
+    error: string | null;
+    tool_missing: boolean;
+    remaining: number;
 }
 
 /** A Delete whose undo window ended but that couldn't be applied yet (kept
@@ -125,6 +183,7 @@ export function markerCaption(r: RedactionRecord): string {
     }
     if (r.kind === "screen" && r.item_count > 1) parts.push(`${r.item_count} screens`);
     if (r.reason) parts.push(`"${r.reason}"`);
+    if (r.video_pending) parts.push("screen video still being blanked");
     return parts.join(" · ");
 }
 
@@ -152,6 +211,15 @@ export const redactionApi = {
         invoke<string[]>("preview_strike_words", { meetingId, transcriptId, startChar, endChar }),
     previewScreens: (meetingId: string, ids: string[]) =>
         invoke<string[]>("preview_strike_screens", { meetingId, ids }),
+    /** `startMs`/`endMs`: offsets from the meeting start (timeline ms) */
+    previewTimeRange: (meetingId: string, startMs: number, endMs: number) =>
+        invoke<TimeRangePreview>("preview_time_range", { meetingId, startMs, endMs }),
+    deleteTimeRange: (meetingId: string, startMs: number, endMs: number, expected: RangeCounts) =>
+        invoke<PendingDelete>("delete_time_range", { meetingId, startMs, endMs, expected }),
+    strikeTimeRange: (meetingId: string, startMs: number, endMs: number, reason: string | null, expected: RangeCounts) =>
+        invoke<ActionOutcome>("strike_time_range", { meetingId, startMs, endMs, reason, expected }),
+    listVideoJobs: (meetingId: string) => invoke<VideoJob[]>("list_video_blank_jobs", { meetingId }),
+    retryVideoJobs: (meetingId: string) => invoke<VideoJob[]>("retry_video_blank_jobs", { meetingId }),
     aiStatus: (meetingId: string) =>
         invoke<{ has_notes: boolean; notes_stale: boolean; has_study: boolean; study_stale: boolean }>(
             "get_meeting_ai_status",
