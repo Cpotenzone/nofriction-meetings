@@ -349,6 +349,21 @@ final class WatchRecorder: NSObject {
         self.level = paused ? 0 : level
         clock = { now }
     }
+
+    /// Film footage (-NFWatchFilm): the demo's clock runs and its meter moves
+    /// (screenshots freeze both). Still no microphone.
+    func filmDemoMotion() {
+        clock = Date.init
+        meterTask?.cancel()
+        meterTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(120))
+                guard let self else { return }
+                guard self.machine.isActive, !self.machine.isPaused else { continue }
+                self.level = Float.random(in: 0.25...0.8)
+            }
+        }
+    }
     #endif
 }
 

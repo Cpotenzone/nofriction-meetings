@@ -30,7 +30,7 @@ enum DemoData {
         DemoPerson(email: "sofia.moreno@alder-studio.example", name: "Sofia Moreno", linkedIn: "https://www.linkedin.com/in/nofriction-demo-sofia"),
         DemoPerson(email: "alex.rivera@lumen-labs.example", name: "Alex Rivera", linkedIn: nil),   // "you"
     ]
-    private static let selfIndex = 5
+    static let selfIndex = 5
 
     @MainActor
     static func seedIfRequested(_ context: ModelContext) {
@@ -177,6 +177,8 @@ enum DemoData {
         context.insert(remember)
         remember.meeting = physio
         try? context.save()
+        // -NFFilm: more lectures and a stored study guide (FilmDemo)
+        FilmDemo.seed(context)
     }
 
     /// -NFSeedWatchDemo: two Apple Watch recordings, one transcribed and one
@@ -211,6 +213,9 @@ enum DemoData {
     /// -NFDemoLive: a meeting in progress with a live transcript.
     @MainActor
     static func showLiveMeeting(session: RecordingSession, context: ModelContext) {
+        // Film footage: a live class, or this meeting with its lines arriving one by one
+        if FilmDemo.liveClass { return FilmDemo.showLiveClass(session: session, context: context) }
+        if FilmDemo.liveFeed { return FilmDemo.showLiveMeetingFeed(session: session, context: context) }
         let title = liveTitle
         let existing = try? context.fetch(FetchDescriptor<Meeting>(predicate: #Predicate { $0.title == title && $0.endedAt == nil })).first
         let start = anchor.addingTimeInterval(-25 * 60)   // 9:16
@@ -238,7 +243,7 @@ enum DemoData {
     }
 
     @MainActor @discardableResult
-    private static func meeting(_ title: String, start: Date, minutes: Double?, lines: [String], spacing: TimeInterval = 14,
+    static func meeting(_ title: String, start: Date, minutes: Double?, lines: [String], spacing: TimeInterval = 14,
                                 attendees: [Int], organizer: Int, calendar: Bool = true, in context: ModelContext) -> Meeting {
         let m = Meeting(title: title, startedAt: start)
         m.endedAt = minutes.map { start.addingTimeInterval($0 * 60) }

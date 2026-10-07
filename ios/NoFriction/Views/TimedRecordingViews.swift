@@ -299,7 +299,7 @@ struct TimeLimitRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Label("Stops at \(deadline.formatted(date: .omitted, time: .shortened))", systemImage: "timer")
+            Label("Stops at \(shownDeadline.formatted(date: .omitted, time: .shortened))", systemImage: "timer")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -315,6 +315,15 @@ struct TimeLimitRow: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .font(.footnote.weight(.medium))
+    }
+
+    private var shownDeadline: Date {
+        #if DEBUG
+        // Film footage: on the 9:41 status-bar clock (FilmDemo); zero shift otherwise
+        return deadline.addingTimeInterval(FilmDemo.displayShift)
+        #else
+        return deadline
+        #endif
     }
 }
 

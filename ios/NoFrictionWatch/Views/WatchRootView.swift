@@ -31,6 +31,9 @@ struct WatchRootView: View {
         .sheet(isPresented: $model.showStartFlow) {
             StartFlowView()
         }
+        #if DEBUG
+        .onAppear { DemoMode.noteAppeared() }   // demo states only (film footage timing)
+        #endif
     }
 }
 
@@ -390,6 +393,8 @@ struct StartFlowView: View {
         .onChange(of: discreet) { _, on in DiscreetSetting.set(on) }
         #if DEBUG
         .onAppear { path = model.demoStartPath }
+        // -NFWatchDemo flow steps through the flow by itself (film footage)
+        .onChange(of: model.demoStartPath) { _, steps in path = steps }
         #endif
     }
 
