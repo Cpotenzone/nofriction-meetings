@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "noFriction Meetings",
+  "productName": "noFriction",
   "version": "3.6.0",
   "identifier": "com.nofriction.meetings",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "noFriction Meetings",
+        "title": "noFriction",
         "width": 1400,
         "height": 900,
         "minWidth": 1200,
@@ -49,7 +49,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Live meeting transcription for macOS",
-    "longDescription": "noFriction Meetings captures your screen and audio to provide real-time meeting transcription — with local Whisper transcription. Optional AI uses Apple on-device or an OpenAI-compatible endpoint and model explicitly configured by the user; no remote AI service is preconfigured.",
+    "longDescription": "noFriction captures your screen and audio to provide real-time meeting transcription — with local Whisper transcription. Optional AI uses Apple on-device or an OpenAI-compatible endpoint and model explicitly configured by the user; no remote AI service is preconfigured.",
     "macOS": {
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "12.3",

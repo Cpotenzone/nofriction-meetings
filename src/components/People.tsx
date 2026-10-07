@@ -160,7 +160,7 @@ function ConnectCalendar({ access, onSynced }: { access: CalendarAccess | null; 
         try {
             const r = await syncCalendar();
             if (r.access !== "authorized") {
-                setMsg("Calendar access is off. Turn on noFriction Meetings in System Settings → Privacy & Security → Calendars, then try again.");
+                setMsg("Calendar access is off. Turn on noFriction in System Settings → Privacy & Security → Calendars, then try again.");
                 open("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars");
             } else {
                 setMsg(r.report ? `Linked ${r.report.meetings_linked} of ${r.report.meetings_checked} recordings to your calendar.` : null);

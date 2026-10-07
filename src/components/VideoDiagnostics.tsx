@@ -192,7 +192,7 @@ export const VideoDiagnostics: React.FC = () => {
                             </p>
                             <ol>
                                 <li>Open <strong>System Settings → Privacy & Security → Screen Recording</strong></li>
-                                <li>Find "noFriction Meetings" and toggle it OFF, then ON</li>
+                                <li>Find "noFriction" and toggle it OFF, then ON</li>
                                 <li>Quit and relaunch the app completely</li>
                                 <li>Run this test again to verify</li>
                             </ol>

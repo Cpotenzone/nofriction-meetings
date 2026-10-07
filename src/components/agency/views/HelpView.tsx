@@ -435,7 +435,7 @@ const TechSpec: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Overview</h3>
             <p>
-                noFriction Meetings is a native Mac app. Everything is stored in a local SQLite database on this Mac,
+                noFriction is a native Mac app. Everything is stored in a local SQLite database on this Mac,
                 with full-text search. There is no noFriction account and no noFriction server.
             </p>
             <div className="help-code">

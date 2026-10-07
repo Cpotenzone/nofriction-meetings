@@ -40,9 +40,9 @@ export function HelpSection() {
                 {activeSection === 'start' && (
                     <div className="space-y-6">
                         <section>
-                            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#fff', marginBottom: '12px' }}>Welcome to noFriction Meetings</h3>
+                            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#fff', marginBottom: '12px' }}>Welcome to noFriction</h3>
                             <p style={{ lineHeight: '1.6', color: '#d1d5db' }}>
-                                noFriction Meetings records and transcribes meetings, classes and everyday conversations on this Mac, with Whisper running locally by default. Add your own AI key (or use a local or Apple on-device model) for notes and chat. Your data stays on this Mac; there is no noFriction server. For the full guide, open HELP from the MORE menu.
+                                noFriction records and transcribes meetings, classes and everyday conversations on this Mac, with Whisper running locally by default. Add your own AI key (or use a local or Apple on-device model) for notes and chat. Your data stays on this Mac; there is no noFriction server. For the full guide, open HELP from the MORE menu.
                             </p>
                         </section>
 
@@ -137,8 +137,8 @@ export function HelpSection() {
                                     <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--accent-primary-hover, #818cf8)', marginBottom: '8px' }}>Fix Steps</summary>
                                     <ol style={{ marginLeft: '20px', marginTop: '8px', lineHeight: '1.8', color: '#d1d5db' }}>
                                         <li>Open System Settings → Privacy & Security → Screen Recording</li>
-                                        <li>Remove noFriction Meetings from the list</li>
-                                        <li>Quit and reopen noFriction Meetings, then allow Screen Recording when asked</li>
+                                        <li>Remove noFriction from the list</li>
+                                        <li>Quit and reopen noFriction, then allow Screen Recording when asked</li>
                                     </ol>
                                 </details>
                             </div>

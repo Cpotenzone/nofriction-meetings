@@ -212,7 +212,7 @@ impl VaultManager {
         let index_path = root.join("_index.md");
         if !index_path.exists() {
             let index_content = format!(
-                "---\ntitle: noFriction Vault\ncreated: {}\ntype: index\n---\n\n# noFriction Meeting Vault\n\nThis folder is managed by [noFriction Meetings](https://nofriction.io).\n\n## Topics\n\nBrowse the `topics/` folder to see your organized meetings and notes.\n",
+                "---\ntitle: noFriction Vault\ncreated: {}\ntype: index\n---\n\n# noFriction Vault\n\nThis folder is managed by [noFriction](https://nofriction.io).\n\n## Topics\n\nBrowse the `topics/` folder to see your organized meetings and notes.\n",
                 Utc::now().to_rfc3339()
             );
             fs::write(&index_path, index_content)

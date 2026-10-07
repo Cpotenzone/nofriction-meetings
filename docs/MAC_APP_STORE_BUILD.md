@@ -39,7 +39,7 @@ ASC_APP_ID=1234567890 APPLE_ID=you@example.com scripts/release-mas.sh --upload
 # Local sandbox test: no profile, signed with your Apple Development identity,
 # not packaged. Launch from the build folder, never /Applications.
 scripts/release-mas.sh --local-test
-open "src-tauri/target/release/bundle/macos/noFriction Meetings.app"
+open "src-tauri/target/release/bundle/macos/noFriction.app"
 ```
 
 Or by hand:
