@@ -95,6 +95,11 @@ exist on the platform:
    OCR text, extracted frames, cached previews. Delete the DB rows: frames,
    screen states, text snapshots, activity entries that quote that screen's
    text, and VLM/AI analysis of that frame.
+   - Text snapshots include browser addresses captured while recording
+     (`source = 'browser_url'`, DMG only; [docs/LINKS.md](LINKS.md)). They are
+     loose screen text: a screen purge removes those captured while that
+     screen was shown, a time range those inside it. No purge may filter
+     `text_snapshots` by `source`.
    - Mac DMG flavor: if a **screen video chunk** covers that moment, blank that
      time range in the video with black frames. The order is:
      1. The database purge commits first, so the screens disappear at once
@@ -148,6 +153,24 @@ exist on the platform:
      allows (e.g. NSPersistentStore pragmas `secure_delete`, or a store
      checkpoint/vacuum after Strike). If something can't be guaranteed, say so
      in the confirmation instead of overclaiming.
+
+9. **Links** ([docs/LINKS.md](LINKS.md)).
+   - "Said" and "On screen" links are derived from the transcript and screen
+     text whenever the list is shown, never stored, so steps 1 and 4 remove
+     them. A strike marker is a boundary: no link is built across one.
+   - Hidden links are stored only as a salted hash per meeting
+     (`meeting_link_hidden`). After every Delete, Strike or time range, hashes
+     whose link no longer appears in the meeting are deleted
+     (`meeting_links::prune_hidden`, in the Mac's post-commit purge).
+   - Added references (`meeting_references` on the Mac, `MeetingReference` on
+     iOS) are the user's own words, like comments: a Delete or Strike of
+     transcript words never rewrites them.
+
+**Deleting a whole meeting** removes, besides its transcript, screens and AI
+outputs: its browser-address rows (`text_snapshots.meeting_id` cascade), its
+added references and its hidden-link hashes (Mac: deleted explicitly in
+`DatabaseManager::delete_meeting` and by `ON DELETE CASCADE`; iOS: cascade
+from `Meeting`).
 
 Device backups (Time Machine, iCloud backup) are outside the app's control.
 The Strike confirmation mentions it in one line.
@@ -301,6 +324,13 @@ UI in `src/components/redaction/Redaction.tsx`.
   (`end_ms`, and `word_mids_ms` when word timings are stored; times only),
   so the linked selection (`src/lib/timelineSelection.ts`) highlights
   exactly what they remove.
+- **Links in app backups.** A backup's browser-address rows are screen text,
+  so the screen and time-range backup jobs purge them like OCR text. Added
+  references and hidden-link hashes aren't transcript or screen content, so
+  no word or screen job touches them. Deleting a whole meeting doesn't purge
+  app backups (as before this feature). Today the app itself writes only the
+  archived pre-3.6 ingest queue there (`paths::archive_removed_ingest_queue`),
+  which has none of these tables.
 - **Schema drift.** Columns added to a table after it first shipped go through
   `database::ensure_columns` (checks `pragma_table_info`), never only into a
   `CREATE TABLE IF NOT EXISTS`, which doesn't alter a table an older build
@@ -372,6 +402,9 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   (ids only) keeps a late re-delivery from bringing a deleted meeting back.
   A recording not yet delivered isn't a meeting; it can be deleted from the
   watch's list.
+- **Links.** "Said" links are derived from `Segment.text` each time the
+  meeting is shown (`MeetingLinks.items`), so Delete and Strike remove them
+  with the words. `MeetingReference` rows cascade with their `Meeting`.
 - **Not applicable on iOS:** FTS (in-app search scans `transcriptText`, which
   renders markers as placeholders), app DB backups, screen video chunks, and
   OCR/VLM rows. Photos imported from the Photos library stay there; the
