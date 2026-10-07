@@ -151,7 +151,7 @@ struct LiveView: View {
 
     private var subtitle: String {
         switch session.phase {
-        case .idle: return "Audio and transcripts stay on this device."
+        case .idle: return "Works offline. Stays on this \(DeviceName.current)."
         case .starting: return "Starting…"
         case .paused: return "Paused — nothing is being recorded"
         case .stopping: return "Saving…"
@@ -301,12 +301,60 @@ private struct EmptyTranscript: View {
                 .accessibilityHidden(true)
             Text(phase == .recording ? "Listening" : "Tap to record")
                 .font(.headline)
-            Text(phase == .recording ? "Words appear as they're spoken." : "Your calendar names the meeting and who's in it.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            if phase == .recording {
+                Text("Words appear as they're spoken.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                PrivacyPromise()
+                    .padding(.top, 6)
+                Text("Your calendar names the meeting and who's in it.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 32)
+    }
+}
+
+/// "iPhone" / "iPad", for copy that names this device.
+enum DeviceName {
+    static var current: String {
+        UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+    }
+}
+
+/// The home screen's promise: recording and on-device transcription work
+/// offline, and nothing leaves the device unless the user sends it (AI
+/// through a server they set up, exporting, sharing).
+struct PrivacyPromise: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.fill")
+                .font(.subheadline)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 30, height: 30)
+                .background(Theme.accent.opacity(0.12), in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Recording and transcription work offline.")
+                    .font(.subheadline.weight(.semibold))
+                Text("Nothing leaves this \(DeviceName.current) unless you want it to.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 420, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Something leaves only when you choose: AI through a server you set up, or exporting and sharing.")
+        .accessibilityIdentifier("privacy-promise")
     }
 }
 

@@ -9,6 +9,7 @@ import { LiveInsightEvent } from '../../../lib/tauri';
 import { AiSetupNotice, useAiStatus } from '../../AiSetupNotice';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRecordPicker } from '../../RecordPicker';
+import { PrivacyPromiseBadge } from '../../PrivacyPromise';
 import {
     CheckSquareIcon,
     CheckIcon,
@@ -108,6 +109,9 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
                         // A Record button: ask "how long?" first (App starts it)
                         onStartRecording={recordPicker.open}
                     />
+                    {/* The empty home screen shows the promise in full; with a
+                        transcript on screen it stays as a small badge */}
+                    {transcripts.liveTranscripts.length > 0 && <PrivacyPromiseBadge />}
                 </div>
 
                 {/* Right Panel: Real-time Intelligence */}
