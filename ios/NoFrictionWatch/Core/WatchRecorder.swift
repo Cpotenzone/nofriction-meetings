@@ -1,14 +1,21 @@
 import AVFoundation
 import Foundation
 import Observation
+import UserNotifications
 import WatchKit
 
-/// Records a meeting on the watch: AVAudioRecorder → AAC mono 16 kHz in the
-/// app's container, then hands the finished file to the transfer queue.
+/// Records on the watch: AVAudioRecorder → AAC mono 16 kHz in the app's
+/// container, then hands the finished file to the transfer queue.
 ///
 /// Each pause (or interruption) closes the current file, and Resume starts
 /// the next one ("parts"), so a paused recording is always complete on disk
 /// even if watchOS ends the app before the user comes back.
+///
+/// A recording starts with the Record flow's choices (`WatchStartOptions`):
+/// what it is, how long, which notebook, and the Discreet display. "How
+/// long?" is enforced here on wall-clock time from the start (pausing
+/// doesn't move it): a warning 5 minutes before the end (2 for 15 minutes),
+/// then `stop()` at the deadline, the same path as the Stop button.
 ///
 /// What watchOS allows (docs/WATCH_APP.md, "Recording limits"):
 /// - With the `audio` background mode, a recording started in the foreground
@@ -23,13 +30,20 @@ final class WatchRecorder: NSObject {
     private(set) var machine = RecorderStateMachine()
     /// Input level 0…1 for the meter
     private(set) var level: Float = 0
-    /// Something the user should know (permission, failure)
+    /// Something the user should know (permission, failure, a stop at the limit)
     private(set) var notice: String?
+    /// The recording in progress uses the Discreet display
+    private(set) var discreet = false
+    /// "5 minutes left" is showing (cleared by +15 min, No limit, dismiss or stop)
+    private(set) var timeWarningVisible = false
+    /// The most recent mark, for its brief confirmation
+    private(set) var lastMark: WatchMarker?
 
     private let store: WatchRecordingStore
     private let queue: WatchTransferQueue
     private var recorder: AVAudioRecorder?
     private var meterTask: Task<Void, Never>?
+    private var limitTask: Task<Void, Never>?
     private var interruptionObserver: NSObjectProtocol?
     /// Injectable for tests and demo screenshots
     var clock: () -> Date = Date.init
@@ -56,10 +70,13 @@ final class WatchRecorder: NSObject {
     }
 
     var elapsed: TimeInterval { machine.elapsed(at: clock()) }
+    /// Seconds left with a time limit; nil without one
+    var timeLeft: TimeInterval? { machine.timeLeft(at: clock()) }
 
     // MARK: Controls
 
-    func start() async {
+    /// `options` default: the remembered choices (the App Intent).
+    func start(_ options: WatchStartOptions = .remembered()) async {
         // A second tap (or the App Intent) while the permission check awaits
         guard !machine.isActive, !starting else { return }
         starting = true
@@ -67,28 +84,34 @@ final class WatchRecorder: NSObject {
         notice = nil
         guard await AVAudioApplication.requestRecordPermission() else {
             notice = "Microphone access is off. Turn it on in the Watch app on your iPhone → Privacy → Microphone."
-            WKInterfaceDevice.current().play(.failure)
+            WatchHaptics.play(.failure, discreet: options.discreet)
             return
         }
         let id = UUID()
         let now = clock()
-        let url = store.beginRecording(id: id, startedAt: now)
+        let url = store.beginRecording(id: id, startedAt: now, kind: options.kind, notebook: options.notebook,
+                                       plannedMinutes: options.limit.minutes)
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .default, options: [])
             try session.setActive(true)
             recorder = try Self.makeRecorder(url)
-            try machine.start(id: id, at: now)
-            WKInterfaceDevice.current().play(.start)
+            try machine.start(id: id, at: now, kind: options.kind, notebook: options.notebook, limit: options.limit)
+            discreet = options.discreet
+            timeWarningVisible = false
+            lastMark = nil
+            WatchHaptics.play(.start, discreet: discreet)
             startMeter()
+            startLimitTimer()
         } catch {
             recorder?.stop()
             recorder = nil
             store.discard(id)
             try? AVAudioSession.sharedInstance().setActive(false)
             machine.reset()
+            discreet = false
             notice = "Couldn't start recording. \(error.localizedDescription)"
-            WKInterfaceDevice.current().play(.failure)
+            WatchHaptics.play(.failure, discreet: options.discreet)
         }
     }
 
@@ -104,26 +127,118 @@ final class WatchRecorder: NSObject {
                 try machine.resume(at: clock())
                 store.recordPauses(id, machine.pauses)
                 notice = nil
-                WKInterfaceDevice.current().play(.click)
+                WatchHaptics.play(.pauseResume, discreet: discreet)
             } catch {
                 recorder = nil
                 store.dropLastPart(id)
                 notice = "Couldn't resume. Stop to keep what was recorded, then start again."
-                WKInterfaceDevice.current().play(.failure)
+                WatchHaptics.play(.failure, discreet: discreet)
             }
         } else if machine.phase == .recording {
             closePart()
             try? machine.pause(at: clock(), reason: .user)
             store.recordPauses(id, machine.pauses)
             level = 0
-            WKInterfaceDevice.current().play(.click)
+            WatchHaptics.play(.pauseResume, discreet: discreet)
         }
     }
 
-    func stop() {
+    /// The Stop button (and the Discreet stop control).
+    func stop() { finish(atLimit: false) }
+
+    /// Mark this moment (★ with one tap; ? or ✎ from the follow-up choice).
+    /// Saved at once with the recording, so a crash keeps it.
+    @discardableResult
+    func mark(_ kind: MarkerKind = .default) -> WatchMarker? {
+        guard let id = machine.recordingID, let marker = machine.mark(kind, at: clock()) else { return nil }
+        store.recordMarkers(id, machine.markers)
+        lastMark = marker
+        WatchHaptics.play(.mark, discreet: discreet)
+        return marker
+    }
+
+    // MARK: Time limit
+
+    /// "+15 min" (screen or notification)
+    func extendLimit() {
+        guard let id = machine.recordingID, machine.extendLimit(at: clock()) else { return }
+        store.recordPlan(id, plannedMinutes: machine.plannedMinutes)
+        timeWarningVisible = machine.warned
+        if limitTask == nil { startLimitTimer() } else { scheduleWarningNotification() }
+        WatchHaptics.play(.pauseResume, discreet: discreet)
+    }
+
+    /// "No limit" (screen or notification)
+    func removeLimit() {
+        guard let id = machine.recordingID, machine.removeLimit() else { return }
+        store.recordPlan(id, plannedMinutes: nil)
+        timeWarningVisible = false
+        limitTask?.cancel()
+        limitTask = nil
+        WatchTimeLimitNotifier.cancel()
+        WatchHaptics.play(.pauseResume, discreet: discreet)
+    }
+
+    func dismissWarning() { timeWarningVisible = false }
+
+    /// One tick of the time limit. Runs every second while recording or
+    /// paused, and when the app comes back to the foreground (a paused,
+    /// suspended app catches up: past the deadline it stops right away).
+    func tickLimit() {
+        switch machine.tickLimit(at: clock()) {
+        case .none:
+            break
+        case .warn:
+            timeWarningVisible = true
+            WatchHaptics.play(.warning, discreet: discreet)
+        case .stop:
+            finish(atLimit: true)
+        }
+    }
+
+    private func startLimitTimer() {
+        limitTask?.cancel()
+        limitTask = nil
+        guard machine.deadline != nil else { return }
+        scheduleWarningNotification()
+        limitTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                self.tickLimit()
+            }
+        }
+    }
+
+    /// The warning also as a local notification, for when the app is in the
+    /// background at that moment (the watch face is showing). Asked for in
+    /// context, at the first timed recording; never at launch.
+    private func scheduleWarningNotification() {
+        guard let plan = machine.limit, plan.deadline != nil, !plan.warned, let id = machine.recordingID else {
+            WatchTimeLimitNotifier.cancel()
+            return
+        }
+        Task { [weak self] in
+            await WatchTimeLimitNotifier.requestAuthorizationIfNeeded()
+            // Still the same plan of the same recording
+            guard let self, self.machine.recordingID == id, let current = self.machine.limit, current == plan else { return }
+            await WatchTimeLimitNotifier.schedule(for: plan)
+        }
+    }
+
+    // MARK: Stop
+
+    /// Every stop goes through here: Stop, the Discreet stop control, and
+    /// the deadline. The parts are finalized and queued for the iPhone.
+    private func finish(atLimit: Bool) {
         guard machine.isActive, let id = machine.recordingID else { return }
+        let planned = machine.plannedMinutes
+        let wasDiscreet = discreet
         closePart()
         meterTask?.cancel()
+        limitTask?.cancel()
+        limitTask = nil
+        WatchTimeLimitNotifier.cancel()
         level = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         // The files are the truth: each part's real length (nil if it can't
@@ -134,12 +249,19 @@ final class WatchRecorder: NSObject {
         if let metadata = try? machine.stop(at: clock(), appVersion: Self.appVersion, audioDuration: total > 0 ? total : nil) {
             if store.finish(metadata, partLengths: lengths) {
                 queue.sendPending()
+                if atLimit {
+                    notice = planned.map { "Stopped at its \($0)-minute limit. It's on its way to your iPhone." }
+                        ?? "Stopped at its time limit. It's on its way to your iPhone."
+                }
             } else {
                 notice = "Nothing was recorded."
             }
         }
         machine.reset()
-        WKInterfaceDevice.current().play(.stop)
+        discreet = false
+        timeWarningVisible = false
+        lastMark = nil
+        WatchHaptics.play(.stop, discreet: wasDiscreet)
     }
 
     /// Finish the current file so it's complete and readable on its own.
@@ -179,7 +301,7 @@ final class WatchRecorder: NSObject {
         store.recordPauses(id, machine.pauses)
         level = 0
         notice = "Paused by a call or Siri. Tap Resume to keep recording."
-        WKInterfaceDevice.current().play(.retry)
+        WatchHaptics.play(.interrupted, discreet: discreet)
     }
 
     private func startMeter() {
@@ -188,8 +310,9 @@ final class WatchRecorder: NSObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self, self.machine.isActive else { return }
-                // Paused (no file open), or screen off / wrist down: nobody sees the meter
-                guard let recorder = self.recorder, self.machine.phase == .recording, self.meterVisible else {
+                // Paused (no file open), Discreet (no meter shown), or screen
+                // off / wrist down: nobody sees the meter
+                guard let recorder = self.recorder, self.machine.phase == .recording, self.meterVisible, !self.discreet else {
                     self.level = 0
                     continue
                 }
@@ -209,12 +332,72 @@ final class WatchRecorder: NSObject {
 
     #if DEBUG
     /// Screenshots: show a recording in progress without the microphone.
-    func showDemo(elapsed: TimeInterval, paused: Bool = false, level: Float = 0.55) {
+    func showDemo(elapsed: TimeInterval, paused: Bool = false, level: Float = 0.55,
+                  options: WatchStartOptions = WatchStartOptions(), marks: [MarkerKind] = [], warning: Bool = false) {
         let now = Date()
-        try? machine.start(id: UUID(), at: now.addingTimeInterval(-elapsed))
+        let start = now.addingTimeInterval(-elapsed)
+        try? machine.start(id: UUID(), at: start, kind: options.kind, notebook: options.notebook, limit: options.limit)
+        for (i, kind) in marks.enumerated() {
+            // Spread over the recording so far
+            machine.mark(kind, at: start.addingTimeInterval(elapsed * Double(i + 1) / Double(marks.count + 1)))
+        }
+        lastMark = machine.markers.last
         if paused { try? machine.pause(at: now, reason: .user) }
+        if warning { _ = machine.tickLimit(at: now) }
+        discreet = options.discreet
+        timeWarningVisible = warning
         self.level = paused ? 0 : level
         clock = { now }
     }
     #endif
+}
+
+/// The "5 minutes left" warning as a watch notification with +15 min and
+/// No limit, scheduled ahead so it still arrives while the app is in the
+/// background. Only when notification permission is granted; asked for at
+/// the first timed recording. Generic text: no title or notebook name.
+@MainActor
+enum WatchTimeLimitNotifier {
+    nonisolated static let category = "WATCH_TIME_LIMIT"
+    nonisolated static let extendAction = "WATCH_TIME_LIMIT_EXTEND"
+    nonisolated static let noLimitAction = "WATCH_TIME_LIMIT_REMOVE"
+    nonisolated static let requestID = "watch-time-limit-warning"
+
+    nonisolated static var notificationCategory: UNNotificationCategory {
+        let extend = UNNotificationAction(identifier: extendAction, title: "+15 min", options: [])
+        let noLimit = UNNotificationAction(identifier: noLimitAction, title: "No limit", options: [])
+        return UNNotificationCategory(identifier: category, actions: [extend, noLimit], intentIdentifiers: [], options: [])
+    }
+
+    nonisolated static func title(secondsLeft: Int) -> String {
+        let minutes = max(1, Int((Double(secondsLeft) / 60).rounded(.up)))
+        return minutes == 1 ? "1 minute left in this recording" : "\(minutes) minutes left in this recording"
+    }
+
+    static func requestAuthorizationIfNeeded() async {
+        let center = UNUserNotificationCenter.current()
+        guard await center.notificationSettings().authorizationStatus == .notDetermined else { return }
+        _ = try? await center.requestAuthorization(options: [.alert, .sound])
+    }
+
+    static func schedule(for plan: TimeLimitPlan) async {
+        cancel()
+        guard let warnAt = plan.warnAt, let deadline = plan.deadline, !plan.warned else { return }
+        let center = UNUserNotificationCenter.current()
+        let status = await center.notificationSettings().authorizationStatus
+        guard status == .authorized || status == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title(secondsLeft: Int(deadline.timeIntervalSince(warnAt)))
+        content.body = "It stops at \(deadline.formatted(date: .omitted, time: .shortened)). Add 15 minutes or remove the limit."
+        content.categoryIdentifier = category
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, warnAt.timeIntervalSinceNow), repeats: false)
+        try? await center.add(UNNotificationRequest(identifier: requestID, content: content, trigger: trigger))
+    }
+
+    static func cancel() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [requestID])
+        center.removeDeliveredNotifications(withIdentifiers: [requestID])
+    }
 }

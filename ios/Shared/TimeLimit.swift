@@ -1,6 +1,6 @@
 import Foundation
 
-// "How long?" (docs/TIMED_RECORDING_AND_CLASSES.md): the choices, the
+// "How long?" (docs/TIMED_RECORDING_AND_NOTEBOOKS.md): the choices, the
 // remembered one, and the wall-clock deadline of one recording. Shared by
 // the iPhone app (RecordingSession) and the Apple Watch app
 // (RecorderStateMachine), so both follow the same rules. Pure logic,

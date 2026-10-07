@@ -13,7 +13,7 @@
 # status bar override), and runs NoFrictionUITests/AppStoreScreenshots with
 # the -NFSeedDemo sample data (invented people and companies; no real
 # personal data). The watch app is launched in its debug demo states
-# (-NFWatchDemo recording|idle|list: no microphone, sample rows only) and
+# (-NFWatchDemo recording|idle|list|class|discreet: no microphone, sample rows only) and
 # captured with simctl, then flattened to opaque PNGs (the App Store rejects
 # alpha). PNGs land in ios/AppStore/screenshots/<device>/NN-name.png and are
 # checked against the App Store sizes (6.9": 1320x2868 or 1290x2796; 13" iPad:
@@ -35,7 +35,7 @@ DEVICES=(
   "NF Apple Watch Series 11 (46mm)|com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-11-46mm|watch-46mm|416x496"
 )
 # Watch scenes: launch argument | output name
-WATCH_SCENES=("recording|01-recording" "idle|02-record" "list|03-recordings")
+WATCH_SCENES=("recording|01-recording" "idle|02-record" "list|03-recordings" "class|04-class" "discreet|05-discreet")
 WATCH_BUNDLE_ID="com.nofriction.meetings.watchkitapp"
 
 # Re-encode a PNG without alpha (black background; the watch UI is black).

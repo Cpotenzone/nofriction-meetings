@@ -471,10 +471,12 @@ submission: subscriptions are reviewed together with the app.
   reviewer enters, the recording-consent notice, the paywall). Never put an
   API key in the notes. Done 2026-10-03: endpoint-only notes saved; verify the
   Apple on-device path on the submitted build. **Open:** add the Apple Watch
-  paragraph: "The Apple Watch app records a meeting and sends the audio to the
-  iPhone app, which transcribes it on the device. Install it from the Watch app
-  on the paired iPhone; tap Record, then Stop; the meeting appears in the iPhone
-  app's Meetings tab."
+  paragraph: "The Apple Watch app records a meeting, a class or anything else
+  and sends the audio to the iPhone app, which transcribes it on the device.
+  Install it from the Watch app on the paired iPhone; tap Record, choose what
+  it is and how long, then Stop; the recording appears in the iPhone app's
+  Recordings tab. Discreet dims the watch screen while recording; the system
+  microphone indicator still shows."
 - **Attachment** (optional): a short screen recording of record → notes → strike.
 
 ### 9.4 Release option and submit

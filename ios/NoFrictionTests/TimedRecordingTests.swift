@@ -2,7 +2,7 @@ import SwiftData
 import XCTest
 @testable import noFriction
 
-// Timed recording and classes (docs/TIMED_RECORDING_AND_CLASSES.md)
+// Timed recording, types and notebooks (docs/TIMED_RECORDING_AND_NOTEBOOKS.md)
 
 final class RecordingLimitTests: XCTestCase {
     func testChoicesAndStorage() {
@@ -212,7 +212,12 @@ final class NotebookTests: XCTestCase {
         XCTAssertEqual(Notebook.label, "Notebook")
         XCTAssertEqual(Notebook.filterTitle, "Notebooks")
         XCTAssertTrue(RecordingSession.isDefaultTitle(RecordingSession.defaultTitle(for: .now, kind: .personal)))
-        XCTAssertTrue(RecordingSession.defaultTitle(for: .now, kind: .class).hasPrefix("Class · "))
+        let oct7 = DateComponents(calendar: .current, year: 2026, month: 10, day: 7, hour: 10).date!
+        XCTAssertEqual(RecordingSession.defaultTitle(for: oct7, kind: .class), "Class — \(oct7.formatted(.dateTime.month(.abbreviated).day()))")
+        XCTAssertTrue(RecordingSession.defaultTitle(for: oct7, kind: .personal).hasPrefix("Personal — "))
+        XCTAssertTrue(RecordingSession.defaultTitle(for: oct7).hasPrefix("Meeting — "))
+        XCTAssertTrue(RecordingSession.notebookTitle("BIO 101", at: oct7).hasPrefix("BIO 101 — "))
+        XCTAssertTrue(RecordingSession.isDefaultTitle("Meeting · Tue, Oct 6, 10:00 AM"), "titles from before types still count")
         XCTAssertFalse(RecordingSession.isDefaultTitle(RecordingSession.notebookTitle("BIO 101", at: .now)))
     }
 

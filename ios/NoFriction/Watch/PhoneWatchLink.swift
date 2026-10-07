@@ -1,12 +1,15 @@
 import Foundation
 import Observation
+import SwiftData
+import SwiftUI
 import UIKit
 import WatchConnectivity
 
 /// The iPhone end of WatchConnectivity. Activated at launch (App.init),
 /// because the system may launch the app in the background to hand over a
 /// recording. Receives files; sends the watch only acknowledgments (part
-/// ids), never audio, text or settings.
+/// ids) and the names of the recent notebooks (application context, latest
+/// wins), never audio, transcripts, titles or settings.
 @MainActor
 @Observable
 final class PhoneWatchLink: NSObject {
@@ -22,6 +25,26 @@ final class PhoneWatchLink: NSObject {
     private(set) var arrivingCount = 0
 
     @ObservationIgnored var importer: WatchImporter?
+    /// The newest recent-notebooks list, sent once the watch app can take it
+    @ObservationIgnored private var notebooks: [String]?
+
+    /// The watch's notebook picker offers these (names only; `WatchTransfer`
+    /// cleans and caps them). Sent with `updateApplicationContext`, so only
+    /// the latest list is delivered, also while the watch app isn't running.
+    /// An empty list is sent too: a notebook whose last recording was deleted
+    /// leaves the watch as well.
+    func sendRecentNotebooks(_ names: [String]) {
+        notebooks = names
+        flushNotebooks()
+    }
+
+    private func flushNotebooks() {
+        guard isSupported, activated, isPaired, isWatchAppInstalled, let notebooks else { return }
+        let context = WatchTransfer.notebookContext(notebooks)
+        let current = WCSession.default.applicationContext[WatchTransfer.Key.recentNotebooks] as? [String]
+        guard current != context[WatchTransfer.Key.recentNotebooks] as? [String] else { return }
+        try? WCSession.default.updateApplicationContext(context)
+    }
 
     func activate() {
         guard isSupported, WCSession.default.delegate == nil else { return }
@@ -53,6 +76,7 @@ final class PhoneWatchLink: NSObject {
         activated = state.activated
         isPaired = state.paired
         isWatchAppInstalled = state.installed
+        flushNotebooks()
     }
 
     fileprivate struct SessionState: Sendable {
@@ -110,5 +134,23 @@ extension PhoneWatchLink: WCSessionDelegate {
         }
         session.transferUserInfo([WatchTransfer.Key.ack: [WatchTransfer.partKey(metadata.recordingID, metadata.part)]])
         Task { @MainActor in self.received() }
+    }
+}
+
+/// Keeps the watch's notebook picker in step with this iPhone's recent
+/// notebooks: derived from the saved recordings (like the Record sheet's
+/// chips), so adding, renaming or deleting one updates the watch.
+struct WatchNotebookSync: ViewModifier {
+    @Query(filter: #Predicate<Meeting> { $0.courseName != nil }, sort: \Meeting.startedAt, order: .reverse)
+    private var notebookMeetings: [Meeting]
+
+    private var recents: [String] {
+        Notebook.recent(notebookMeetings.map { ($0.courseName, $0.startedAt) }, limit: WatchTransfer.maxRecentNotebooks)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { PhoneWatchLink.shared.sendRecentNotebooks(recents) }
+            .onChange(of: recents) { _, names in PhoneWatchLink.shared.sendRecentNotebooks(names) }
     }
 }

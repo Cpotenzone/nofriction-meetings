@@ -35,6 +35,52 @@ enum WatchTransfer {
         /// sent once a part is stored on the iPhone. Only then does the
         /// watch delete its copy.
         static let ack = "ack"
+
+        // Optional, added with recording types (all additive: an iPhone app
+        // without them ignores them, and a watch app without them still
+        // imports, as a meeting with no notebook, limit or markers).
+        /// "What is it?": `meeting` / `class` / `personal`
+        static let kind = "kind"
+        /// The notebook picked on the watch (one of the iPhone's recent notebooks)
+        static let notebook = "notebook"
+        /// "How long?" in minutes when the recording ended (after any +15 min);
+        /// absent = no limit
+        static let plannedMinutes = "plannedMinutes"
+        /// Moments marked on the watch: `[["id": uuid, "kind": "important" |
+        /// "question" | "test", "at": Date, "offset": seconds]]`. Every part
+        /// carries the list; the iPhone merges them by id.
+        static let markers = "markers"
+        /// iPhone → watch application context (latest wins):
+        /// `["recentNotebooks": ["Acme project", "BIO 101", …]]`. Names only.
+        static let recentNotebooks = "recentNotebooks"
+    }
+
+    /// Markers per recording (each one is a few dozen bytes of metadata)
+    static let maxMarkers = 500
+    /// Notebook names the iPhone sends the watch
+    static let maxRecentNotebooks = 8
+
+    /// The application context the iPhone sends: the recent notebook names
+    /// (cleaned, one per name ignoring case, at most `maxRecentNotebooks`)
+    /// and nothing else.
+    static func notebookContext(_ names: [String]) -> [String: Any] {
+        [Key.recentNotebooks: cleanNotebooks(names)]
+    }
+
+    /// The names in a received application context (cleaned again: the
+    /// watch never trusts the shape of what arrives).
+    static func notebooks(fromContext context: [String: Any]) -> [String] {
+        cleanNotebooks((context[Key.recentNotebooks] as? [Any])?.compactMap { $0 as? String } ?? [])
+    }
+
+    private static func cleanNotebooks(_ names: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for case let name? in names.map(Notebook.normalize) where seen.insert(name.lowercased()).inserted {
+            out.append(name)
+            if out.count == maxRecentNotebooks { break }
+        }
+        return out
     }
 
     /// Identifies one part of one recording ("<uuid>#<part>"), in acks and transfer bookkeeping.
@@ -50,8 +96,9 @@ enum WatchTransfer {
     static let maxParts = 500
 }
 
-/// Sent with every file in `WCSession.transferFile(_:metadata:)`. Times and
-/// ids only; never transcript or audio content.
+/// Sent with every file in `WCSession.transferFile(_:metadata:)`. Times,
+/// ids, the recording's type, the notebook name the user picked, the
+/// planned length and marker times; never transcript or audio content.
 struct WatchRecordingMetadata: Codable, Equatable, Sendable {
     /// One per recording, made on the watch. The phone imports each id once.
     var recordingID: UUID
@@ -72,6 +119,15 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
     var part: Int = 0
     var partCount: Int = 1
     var version: Int = WatchTransfer.metadataVersion
+    /// What the recording is; nil from a watch app before recording types
+    /// (the iPhone then treats it as a meeting).
+    var kind: RecordingKind?
+    /// The notebook picked on the watch; nil = none.
+    var notebook: String?
+    /// "How long?" in minutes when it ended; nil = no limit (or an older watch app).
+    var plannedMinutes: Int?
+    /// Moments marked on the watch, in time order.
+    var markers: [WatchMarker] = []
 
     struct Pause: Codable, Equatable, Sendable {
         /// Seconds into the audio file where the pause happened
@@ -82,6 +138,7 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case recordingID, startedAt, endedAt, duration, appVersion, pauses, part, partCount, version
+        case kind, notebook, plannedMinutes, markers
     }
 
     /// Fields added after the first version decode with their defaults.
@@ -96,6 +153,15 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
         part = try c.decodeIfPresent(Int.self, forKey: .part) ?? 0
         partCount = try c.decodeIfPresent(Int.self, forKey: .partCount) ?? 1
         version = try c.decodeIfPresent(Int.self, forKey: .version) ?? WatchTransfer.metadataVersion
+        // Never fail a recording over these: a bad value is dropped
+        let kind: String? = try? c.decodeIfPresent(String.self, forKey: .kind)
+        self.kind = kind.flatMap(RecordingKind.init(rawValue:))
+        let notebook: String? = try? c.decodeIfPresent(String.self, forKey: .notebook)
+        self.notebook = Notebook.normalize(notebook)
+        let planned: Int? = try? c.decodeIfPresent(Int.self, forKey: .plannedMinutes)
+        plannedMinutes = Self.validMinutes(planned.map(Double.init))
+        let markers: [WatchMarker]? = try? c.decodeIfPresent([WatchMarker].self, forKey: .markers)
+        self.markers = WatchMarker.merged([markers ?? []])
     }
 
     /// Wall-clock time of a position in the audio file: the start, plus the
@@ -107,8 +173,10 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
 
     // MARK: Property-list form (WCSession metadata allows only plist types)
 
+    /// The first-version keys keep their names and types. The optional keys
+    /// are added only when set (a property list has no null).
     var dictionary: [String: Any] {
-        [
+        var d: [String: Any] = [
             WatchTransfer.Key.recordingID: recordingID.uuidString,
             WatchTransfer.Key.startedAt: startedAt,
             WatchTransfer.Key.endedAt: endedAt,
@@ -119,11 +187,17 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
             WatchTransfer.Key.partCount: partCount,
             WatchTransfer.Key.version: version,
         ]
+        if let kind { d[WatchTransfer.Key.kind] = kind.rawValue }
+        if let notebook { d[WatchTransfer.Key.notebook] = notebook }
+        if let plannedMinutes { d[WatchTransfer.Key.plannedMinutes] = plannedMinutes }
+        if !markers.isEmpty { d[WatchTransfer.Key.markers] = markers.map(\.dictionary) }
+        return d
     }
 
     init(recordingID: UUID, startedAt: Date, endedAt: Date, duration: TimeInterval,
          appVersion: String, pauses: [Pause] = [], part: Int = 0, partCount: Int = 1,
-         version: Int = WatchTransfer.metadataVersion) {
+         version: Int = WatchTransfer.metadataVersion, kind: RecordingKind? = nil,
+         notebook: String? = nil, plannedMinutes: Int? = nil, markers: [WatchMarker] = []) {
         self.recordingID = recordingID
         self.startedAt = startedAt
         self.endedAt = endedAt
@@ -133,6 +207,10 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
         self.part = part
         self.partCount = partCount
         self.version = version
+        self.kind = kind
+        self.notebook = notebook
+        self.plannedMinutes = plannedMinutes
+        self.markers = markers
     }
 
     /// The same recording, labeled as one of its parts.
@@ -161,8 +239,21 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
                   pauses: pauses,
                   part: Self.number(d[WatchTransfer.Key.part]).map { Int($0) } ?? 0,
                   partCount: Self.number(d[WatchTransfer.Key.partCount]).map { Int($0) } ?? 1,
-                  version: (d[WatchTransfer.Key.version] as? Int) ?? WatchTransfer.metadataVersion)
+                  version: (d[WatchTransfer.Key.version] as? Int) ?? WatchTransfer.metadataVersion,
+                  // Optional keys: a missing or invalid value is dropped, never the recording
+                  kind: (d[WatchTransfer.Key.kind] as? String).flatMap(RecordingKind.init(rawValue:)),
+                  notebook: Notebook.normalize(d[WatchTransfer.Key.notebook] as? String),
+                  plannedMinutes: Self.validMinutes(Self.number(d[WatchTransfer.Key.plannedMinutes])),
+                  markers: WatchMarker.merged([((d[WatchTransfer.Key.markers] as? [Any]) ?? []).compactMap {
+                      ($0 as? [String: Any]).flatMap(WatchMarker.init(dictionary:))
+                  }]))
         guard isValid else { return nil }
+    }
+
+    /// 1 minute … 12 hours, whole minutes; anything else reads as no limit.
+    private static func validMinutes(_ value: Double?) -> Int? {
+        guard let value, value.isFinite, value >= 1, value <= Double(RecordingLimit.maxMinutes) else { return nil }
+        return Int(value.rounded())
     }
 
     /// Sane values: ends no earlier than it starts, finite non-negative audio
@@ -174,17 +265,81 @@ struct WatchRecordingMetadata: Codable, Equatable, Sendable {
         return pauses.allSatisfy { $0.at.isFinite && $0.length.isFinite && $0.at >= 0 && $0.length >= 0 }
     }
 
-    private static func date(_ value: Any?) -> Date? {
+    fileprivate static func date(_ value: Any?) -> Date? {
         if let d = value as? Date { return d }
         if let n = value as? Double, n.isFinite { return Date(timeIntervalSince1970: n) }
         return nil
     }
 
-    private static func number(_ value: Any?) -> Double? {
+    fileprivate static func number(_ value: Any?) -> Double? {
         if let n = value as? Double { return n.isFinite ? n : nil }
         if let n = value as? Int { return Double(n) }
         if let n = value as? NSNumber { return n.doubleValue.isFinite ? n.doubleValue : nil }
         return nil
+    }
+}
+
+/// A moment marked on the watch (★ Important, ? Question, ✎ the third kind).
+/// `at` is wall-clock time on the watch's clock, the clock of the
+/// recording's `startedAt`, so it lands on the right transcript line however
+/// the parts are joined. `offset` is the seconds of audio before it (pauses
+/// excluded); `WatchRecordingMetadata.wallClock(atFileOffset:)` maps it back
+/// to `at`. Times and a kind only: there are no notes on the watch.
+struct WatchMarker: Codable, Equatable, Sendable, Identifiable {
+    var id: UUID
+    var kind: MarkerKind
+    var at: Date
+    var offset: Double?
+
+    enum Key {
+        static let id = "id"
+        static let kind = "kind"
+        static let at = "at"
+        static let offset = "offset"
+    }
+
+    init(id: UUID = UUID(), kind: MarkerKind = .default, at: Date, offset: Double? = nil) {
+        self.id = id
+        self.kind = kind
+        self.at = at
+        self.offset = offset
+    }
+
+    enum CodingKeys: String, CodingKey { case id, kind, at, offset }
+
+    /// A kind from a newer build reads as ★ Important (the moment is kept).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        at = try c.decode(Date.self, forKey: .at)
+        let kind: String? = try? c.decodeIfPresent(String.self, forKey: .kind)
+        self.kind = kind.flatMap(MarkerKind.init(rawValue:)) ?? .default
+        let offset: Double? = try? c.decodeIfPresent(Double.self, forKey: .offset)
+        self.offset = offset.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+    }
+
+    var dictionary: [String: Any] {
+        var d: [String: Any] = [Key.id: id.uuidString, Key.kind: kind.rawValue, Key.at: at]
+        if let offset { d[Key.offset] = offset }
+        return d
+    }
+
+    /// nil without a valid id and time.
+    init?(dictionary d: [String: Any]) {
+        guard let id = (d[Key.id] as? String).flatMap(UUID.init(uuidString:)),
+              let at = WatchRecordingMetadata.date(d[Key.at]) else { return nil }
+        let offset = WatchRecordingMetadata.number(d[Key.offset]).flatMap { $0 >= 0 ? $0 : nil }
+        self.init(id: id, kind: (d[Key.kind] as? String).flatMap(MarkerKind.init(rawValue:)) ?? .default,
+                  at: at, offset: offset)
+    }
+
+    /// The markers of every part as one list: one per id (the first seen),
+    /// in time order, at most `WatchTransfer.maxMarkers`.
+    static func merged(_ lists: [[WatchMarker]]) -> [WatchMarker] {
+        var seen = Set<UUID>()
+        var out: [WatchMarker] = []
+        for m in lists.joined() where seen.insert(m.id).inserted { out.append(m) }
+        return Array(out.sorted { ($0.at, $0.id.uuidString) < ($1.at, $1.id.uuidString) }.prefix(WatchTransfer.maxMarkers))
     }
 }
 

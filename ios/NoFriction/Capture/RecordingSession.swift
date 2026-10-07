@@ -314,7 +314,7 @@ final class RecordingSession {
             MeetingEndNotifier.shared.clear()
             Task {
                 await self.stop()
-                self.notice = "Recording stopped — the meeting seemed to have ended. Everything said was saved."
+                self.notice = "Recording stopped — it seemed to have ended. Everything said was saved."
             }
         case .none:
             break
@@ -427,28 +427,27 @@ final class RecordingSession {
     }
     #endif
 
-    /// "Meeting · Tue, Oct 6, 10:00 AM" ("Class · …", "Recording · …" for
-    /// Personal) when no calendar event or notebook names it. A calendar
-    /// match found later still renames it (`isDefaultTitle`).
+    /// "Meeting — Oct 7" ("Class — Oct 7", "Personal — Oct 7"): the type
+    /// and the date, when no calendar event or notebook names the recording
+    /// (same as the Mac). A calendar match found later still renames it
+    /// (`isDefaultTitle`).
     static func defaultTitle(for date: Date, kind: RecordingKind = .meeting) -> String {
-        defaultTitlePrefix(kind) + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+        "\(kind.label) — " + shortDate(date)
     }
 
-    private static func defaultTitlePrefix(_ kind: RecordingKind) -> String {
-        switch kind {
-        case .meeting: "Meeting · "
-        case .class: "Class · "
-        case .personal: "Recording · "
-        }
-    }
-
+    /// Titles nobody chose: the type-and-date ones, and "Meeting · …" from
+    /// builds before types.
     static func isDefaultTitle(_ title: String) -> Bool {
-        RecordingKind.allCases.contains { title.hasPrefix(defaultTitlePrefix($0)) }
+        title.hasPrefix("Meeting · ") || RecordingKind.allCases.contains { title.hasPrefix("\($0.label) — ") }
     }
 
-    /// "BIO 101 · Tue, Oct 6, 10:00 AM" for a recording in a notebook with no calendar event
+    /// "BIO 101 — Oct 7": a recording in a notebook with no calendar event
     static func notebookTitle(_ notebook: String, at date: Date) -> String {
-        notebook + " · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+        notebook + " — " + shortDate(date)
+    }
+
+    private static func shortDate(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.abbreviated).day())
     }
 
     /// Names and companies from the invite help the recognizer spell them.
