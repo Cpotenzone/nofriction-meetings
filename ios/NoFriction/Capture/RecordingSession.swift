@@ -22,6 +22,10 @@ final class RecordingSession {
     private(set) var engineName = ""
     /// Meeting-end countdown in progress ("stopping in 30 s"), for the banner
     private(set) var endCountdown: (reason: MeetingEndDetector.Reason, deadline: Date)?
+    /// Time limit of this recording ("how long?"), keyed to its meeting
+    private(set) var timeLimit = TimeLimitSlot()
+    /// "5 minutes left" is showing (cleared by +15, No limit, OK or stop)
+    private(set) var timeWarningVisible = false
 
     private var context: ModelContext?
     private var capture: AudioCapture?
@@ -33,6 +37,8 @@ final class RecordingSession {
     /// Meeting-end detection (nil when not recording)
     private var detector: MeetingEndDetector?
     private var detectorTask: Task<Void, Never>?
+    /// Ticks the time limit every second (recording or paused)
+    private var limitTask: Task<Void, Never>?
     private var levels = LevelHistory()
     /// Last kept segment, for the duplicate-filler check
     private var lastKeptText: String?
@@ -55,10 +61,14 @@ final class RecordingSession {
 
     // MARK: - Start / stop
 
-    func start() async {
+    /// `limit` nil: the remembered length (starts that skip the "how long?"
+    /// sheet). The sheet passes its choice and an optional class.
+    func start(limit: RecordingLimit? = nil, className: String? = nil) async {
         guard phase == .idle, let context else { return }
         phase = .starting
         notice = nil
+        let limit = limit ?? RecordingLimitStore.remembered()
+        let className = ClassNames.normalize(className)
 
         guard await AudioCapture.requestPermission() else {
             notice = "Microphone access is off. Turn it on in Settings → noFriction."
@@ -70,7 +80,10 @@ final class RecordingSession {
         let now = Date()
         let calendar = CalendarService.shared
         let event = calendar.isAuthorized ? calendar.currentEvent(at: now) : nil
-        let meeting = Meeting(title: event?.title ?? Self.defaultTitle(for: now), startedAt: now)
+        let title = event?.title ?? className.map { Self.classTitle($0, at: now) } ?? Self.defaultTitle(for: now)
+        let meeting = Meeting(title: title, startedAt: now)
+        meeting.courseName = className
+        meeting.plannedMinutes = limit.minutes
         context.insert(meeting)
         if let event { MeetingLinker.link(meeting, to: event, in: context) }
 
@@ -107,6 +120,7 @@ final class RecordingSession {
         phase = .recording
         startMeter()
         startEndDetection(scheduledEnd: event?.end)
+        startTimeLimit(meeting: meeting, limit: limit, startedAt: now)
     }
 
     func stop() async {
@@ -119,6 +133,12 @@ final class RecordingSession {
         detector = nil
         endCountdown = nil
         MeetingEndNotifier.shared.clear()
+        // The time limit ends with the recording, whatever stopped it
+        limitTask?.cancel()
+        limitTask = nil
+        timeLimit.clear()
+        timeWarningVisible = false
+        TimeLimitNotifier.cancel()
         capture?.stop()
         await engine?.stop()
         await eventsTask?.value
@@ -309,6 +329,86 @@ final class RecordingSession {
         }
     }
 
+    // MARK: - Time limit ("how long?")
+
+    /// When the recording stops by itself; nil without a limit.
+    var timeDeadline: Date? { timeLimit.plan?.deadline }
+
+    /// Seconds left; nil without a limit.
+    func timeRemaining(at now: Date = .now) -> TimeInterval? { timeLimit.plan?.remaining(at: now) }
+
+    private func startTimeLimit(meeting: Meeting, limit: RecordingLimit, startedAt: Date) {
+        limitTask?.cancel()
+        limitTask = nil
+        timeLimit.arm(meetingID: meeting.id, plan: TimeLimitPlan(startedAt: startedAt, limit: limit))
+        timeWarningVisible = false
+        guard limit.minutes != nil else { return }
+        let id = meeting.id
+        // The warning notification: ask in context (first timed recording), never at launch
+        Task { [weak self] in
+            await TimeLimitNotifier.requestAuthorizationIfNeeded()
+            await self?.scheduleTimeWarning(for: id)
+        }
+        limitTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                self.tickTimeLimit(meetingID: id)
+            }
+        }
+    }
+
+    /// One tick of the timer armed for `meetingID`. Wall-clock: it runs
+    /// while paused too. At the deadline it stops through `stop()`, the
+    /// same path as the Stop button, and only that meeting's recording.
+    func tickTimeLimit(meetingID: UUID) {
+        guard phase == .recording || phase == .paused, meeting?.id == meetingID else { return }
+        switch timeLimit.tick(meetingID: meetingID, now: clock()) {
+        case .none:
+            break
+        case .warn:
+            timeWarningVisible = true
+        case .stop:
+            let planned = timeLimit.plan?.plannedMinutes
+            timeWarningVisible = false
+            Task {
+                guard self.meeting?.id == meetingID else { return }
+                await self.stop()
+                self.notice = planned.map { "Recording stopped at its \($0)-minute limit. Everything said was saved." }
+                    ?? "Recording stopped at its time limit. Everything said was saved."
+            }
+        }
+    }
+
+    /// "+15 min" (screen or notification)
+    func extendTimeLimit() {
+        guard let meeting, timeLimit.extend(meetingID: meeting.id, now: clock()) else { return }
+        meeting.plannedMinutes = timeLimit.plan?.plannedMinutes
+        try? context?.save()
+        timeWarningVisible = timeLimit.plan?.warned ?? false
+        let id = meeting.id
+        Task { await scheduleTimeWarning(for: id) }
+    }
+
+    /// "No limit" (screen or notification)
+    func removeTimeLimit() {
+        guard let meeting, timeLimit.removeLimit(meetingID: meeting.id) else { return }
+        meeting.plannedMinutes = nil
+        try? context?.save()
+        timeWarningVisible = false
+        TimeLimitNotifier.cancel()
+    }
+
+    func dismissTimeWarning() { timeWarningVisible = false }
+
+    private func scheduleTimeWarning(for meetingID: UUID) async {
+        guard timeLimit.meetingID == meetingID, let plan = timeLimit.plan, !plan.warned, let meeting else {
+            TimeLimitNotifier.cancel()
+            return
+        }
+        await TimeLimitNotifier.schedule(for: plan, title: meeting.title)
+    }
+
     #if DEBUG
     /// Screenshots / layout checks: show `meeting` as if it were being
     /// recorded right now. No mic, no engine; Stop just ends the demo.
@@ -330,6 +430,11 @@ final class RecordingSession {
     }
 
     static func isDefaultTitle(_ title: String) -> Bool { title.hasPrefix("Meeting · ") }
+
+    /// "BIO 101 · Tue, Oct 6, 10:00 AM" for a class recording with no calendar event
+    static func classTitle(_ className: String, at date: Date) -> String {
+        className + " · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+    }
 
     /// Names and companies from the invite help the recognizer spell them.
     static func vocabulary(for event: CalendarEventInfo?) -> [String] {

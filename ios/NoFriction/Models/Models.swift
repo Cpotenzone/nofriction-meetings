@@ -46,6 +46,15 @@ final class Meeting {
     /// seconds, wall-clock seconds), to map file time back to clock time
     var sourcePausesJSON: String?
 
+    // Timed recording and classes (docs/TIMED_RECORDING_AND_CLASSES.md).
+    // Optional, so older stores migrate without a schema version.
+    /// The class this recording belongs to ("BIO 101 — Cell Biology"); nil = not a class.
+    /// User-entered; deleted with the meeting. (Not `className`: Core Data
+    /// resolves that key to NSObject's `className`, the object's class name.)
+    var courseName: String?
+    /// Planned length in minutes ("how long?"); nil = no limit
+    var plannedMinutes: Int?
+
     @Relationship(deleteRule: .cascade, inverse: \Segment.meeting) var segments: [Segment] = []
     @Relationship(deleteRule: .cascade, inverse: \Snapshot.meeting) var snapshots: [Snapshot] = []
     @Relationship(deleteRule: .cascade, inverse: \Attendance.meeting) var attendances: [Attendance] = []
