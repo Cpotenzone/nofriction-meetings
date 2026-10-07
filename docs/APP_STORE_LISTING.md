@@ -255,7 +255,7 @@ For students: record a lecture for a set time, tag it by class, mark what's on t
 
 ### Description (limit 4000)
 
-**3862 / 4000 characters**
+**3865 / 4000 characters**
 
 ```text
 noFriction records and transcribes meetings and lectures on your iPhone or iPad so you can stay in the conversation. Keep the recording, transcript, people and photos together, then create notes, follow-up drafts and study guides with the AI you choose.
@@ -282,7 +282,7 @@ FOR STUDENTS AND CLASSES
 • Notes for a class recording are lecture notes: key concepts, definitions, examples, and announcements and deadlines
 • Make a study guide from a lecture: summary, key terms, flashcards, a practice quiz and questions to ask your instructor. Moments you marked On the test or Important get extra weight
 • Quiz answers come with a short explanation and can jump to the moment in the lecture
-• Export flashcards as a CSV file you can import into Anki or Quizlet, or share the whole guide as Markdown
+• Export flashcards as a CSV file that popular flashcard apps can import, or share the whole guide as Markdown
 
 TURN THE TRANSCRIPT INTO USEFUL NOTES
 noFriction Pro adds AI summaries, decisions, action items, follow-up email drafts, lecture notes and study guides. Read and check generated notes before sharing them. Notes stay connected to the meeting that supplied their context.
@@ -303,7 +303,8 @@ Tell participants before recording and obtain any required consent. Many schools
 Comma-separated, no spaces after commas. Doesn't repeat words already in the
 recommended name or the subtitle ("noFriction", "meeting", "notes", "record",
 "transcribe", "summarize"); no competitor or third-party trademarks (no
-"Anki" or "Quizlet"; the description may say the CSV works with them).
+"Anki" or "Quizlet" anywhere in the metadata, guideline 2.3.7; the
+description says the CSV works with "popular flashcard apps").
 Rebalanced 2026-10-06: student terms first (lecture, class, study,
 flashcards, quiz, student), then the meeting terms that matter most. Apple
 combines words across the name, subtitle and keywords, so "lecture" here plus
@@ -362,7 +363,7 @@ For students: timed lecture recording, class tags, a hotkey to mark what's on th
 
 ### Description (limit 4000)
 
-**3897 / 4000 characters**
+**3900 / 4000 characters**
 
 ```text
 noFriction brings your Mac's meeting and lecture recordings, transcripts, screenshots and notes into one place. Record your microphone and the other participants, revisit the discussion in Rewind, and use the AI you choose to turn the transcript into useful work.
@@ -390,7 +391,7 @@ FOR STUDENTS AND CLASSES
 • Find marks on the Rewind timeline, and show only On the test before an exam
 • Notes for a class recording are lecture notes: key concepts, definitions and examples, and announcements and deadlines
 • Make a study guide from a lecture: summary, key terms, flashcards, a practice quiz with explanations, and questions to ask your instructor
-• Export flashcards as a CSV file you can import into Anki or Quizlet, or the whole guide as Markdown
+• Export flashcards as a CSV file that popular flashcard apps can import, or the whole guide as Markdown
 
 NOTES, FOLLOW-UPS AND QUESTIONS
 noFriction Pro adds AI notes with summaries, decisions and action items; lecture notes and study guides; follow-up email drafts; questions over your transcripts in Chat; and live insights during a recording. Review generated answers against the meeting before relying on or sharing them.
@@ -783,12 +784,12 @@ figure was wrong.
 | Subtitle | 29 | 30 | |
 | Subtitle alt | 30 | 30 | |
 | iOS promotional text | 166 | 170 | changed (was 141) |
-| iOS description | 3862 | 4000 | changed (was 2584) |
+| iOS description | 3865 | 4000 | changed (was 2584) |
 | iOS keywords | 98 | 100 | changed (was 95) |
 | iOS keywords, Name alt 1 | 96 | 100 | new |
 | iOS What's New 1.0 | 365 | 4000 | |
 | Mac promotional text | 166 | 170 | changed (was 148) |
-| Mac description | 3897 | 4000 | changed (was 2687; listed as 2713) |
+| Mac description | 3900 | 4000 | changed (was 2687; listed as 2713) |
 | Mac keywords | 97 | 100 | changed (was 96) |
 | Mac keywords, Name alt 1 | 96 | 100 | new |
 | Mac What's New 3.6.0 | 381 | 4000 | recount (listed as 409) |
