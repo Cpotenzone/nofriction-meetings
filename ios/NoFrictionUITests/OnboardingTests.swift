@@ -34,7 +34,7 @@ final class OnboardingTests: XCTestCase {
         for kind in ["microphone", "speech", "calendar", "notifications"] {
             XCTAssertTrue(app.descendants(matching: .any)["permission-\(kind)"].firstMatch.waitForExistence(timeout: 3), "missing \(kind) row")
         }
-        XCTAssertTrue(app.staticTexts["To record your meetings. Audio stays on this device."].exists)
+        XCTAssertTrue(app.staticTexts["To record meetings, classes and everything else. Audio stays on this device."].exists)
         saveShot("onboarding-3-permissions")
         let allowNotifications = app.buttons["Allow Notifications"]
         if allowNotifications.exists {
@@ -127,7 +127,7 @@ final class DynamicTypeTests: XCTestCase {
         saveShot("xxxl-record")
 
         // Line editor actions (Delete / Strike) and the strike confirmation
-        app.buttons["Meetings"].firstMatch.tap()
+        app.buttons["Recordings"].firstMatch.tap()
         let meeting = app.staticTexts["Weekly sync with Marcus"].firstMatch
         XCTAssertTrue(meeting.waitForExistence(timeout: 5))
         meeting.tap()

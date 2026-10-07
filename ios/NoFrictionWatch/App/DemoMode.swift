@@ -6,6 +6,12 @@ import Foundation
 ///
 ///     -NFWatchDemo idle|recording|paused|list   sample state, no microphone,
 ///                                               no WatchConnectivity
+///     -NFWatchDemo length|notebook|controls     the Record flow's later steps; the
+///                                               Discreet controls (layout checks)
+///     -NFWatchDemo start|class|warning|discreet the Record flow; a Class recording
+///                                               in a notebook with time left and
+///                                               marks; its 5-minute warning; the
+///                                               Discreet screen
 ///     -NFWatchSendTestRecording                 write a 3-second synthetic tone and
 ///                                               send it to the paired iPhone (E2E check)
 ///     -NFWatchAutoRecord                        the real recorder: 2 s, pause 2 s,
@@ -14,6 +20,12 @@ import Foundation
 /// The demo uses a throwaway store in tmp, never the real recordings.
 enum DemoMode: String {
     case idle, recording, paused, list
+    case start, `class`, warning, discreet
+    /// Layout checks: the Record flow's later steps and the Discreet controls
+    case length, notebook, controls
+
+    /// Sample notebook names, as the iPhone would send them
+    static let notebooks = ["BIO 101", "Acme project", "Health"]
 
     static var current: DemoMode? {
         let args = ProcessInfo.processInfo.arguments
@@ -40,6 +52,27 @@ enum DemoMode: String {
         case .list:
             seedList(model.store)
             model.page = .recordings
+        case .start, .length, .notebook:
+            model.connection.showDemoNotebooks(notebooks)
+            model.demoStartPath = mode == .length ? [.length(.class)] : mode == .notebook ? [.length(.class), .notebook(.class, .minutes(60))] : []
+            model.showStartFlow = true
+        case .controls:
+            model.recorder.showDemo(elapsed: 31 * 60 + 5,
+                                    options: WatchStartOptions(kind: .class, limit: .minutes(90), notebook: "BIO 101", discreet: true))
+            model.demoShowDiscreetControls = true
+        case .class:
+            // 60-minute class, 17:48 in: 42:12 left, three moments marked
+            model.recorder.showDemo(elapsed: 17 * 60 + 48, level: 0.5,
+                                    options: WatchStartOptions(kind: .class, limit: .minutes(60), notebook: "BIO 101"),
+                                    marks: [.important, .test, .question])
+        case .warning:
+            model.recorder.showDemo(elapsed: 55 * 60 + 40, level: 0.4,
+                                    options: WatchStartOptions(kind: .class, limit: .minutes(60), notebook: "BIO 101"),
+                                    marks: [.important, .test], warning: true)
+        case .discreet:
+            model.recorder.showDemo(elapsed: 31 * 60 + 5,
+                                    options: WatchStartOptions(kind: .class, limit: .minutes(90), notebook: "BIO 101", discreet: true),
+                                    marks: [.important])
         }
         model.refresh()
     }
@@ -57,8 +90,14 @@ enum DemoMode: String {
             let id = UUID()
             let start = today.addingTimeInterval(offset)
             store.beginRecording(id: id, startedAt: start)
+            // The one still on its way shows its type, notebook and marks
+            let sending = status == .sending
+            let marks = sending ? [MarkerKind.important, .test, .question].enumerated().map { i, kind in
+                WatchMarker(kind: kind, at: start.addingTimeInterval(Double(i + 1) * 300))
+            } : []
             store.finish(WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(seconds),
-                                                duration: seconds, appVersion: "demo"))
+                                                duration: seconds, appVersion: "demo", kind: sending ? .class : .meeting,
+                                                notebook: sending ? "BIO 101" : nil, markers: marks))
             switch status {
             case .sending: store.markSending(id)
             case .delivered: store.markConfirmed(id, part: 0)

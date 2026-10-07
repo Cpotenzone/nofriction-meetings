@@ -55,7 +55,7 @@ final class RecordingFlowTests: XCTestCase {
         app.buttons["Stop recording"].tap()
         sleep(2)
 
-        app.buttons["Meetings"].tap()
+        app.buttons["Recordings"].tap()
         sleep(1)
         shot("3-meetings")
         let row = app.cells.firstMatch

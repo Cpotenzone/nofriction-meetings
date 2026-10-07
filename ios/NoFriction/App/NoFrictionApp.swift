@@ -25,6 +25,8 @@ struct NoFrictionApp: App {
         _session = State(initialValue: session)
         _watchImporter = State(initialValue: importer)
         self.container = container
+        // Recordings with a notebook from before types were classes (once)
+        RecordingKindBackfill.run(container.mainContext)
         // Before any UI: a recording from the watch may be what launched us
         importer.removeLeftoverTemporaryFiles()
         importer.retryFailedOnLaunch()
@@ -47,6 +49,8 @@ struct NoFrictionApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Recent notebook names for the watch's picker (names only)
+                .modifier(WatchNotebookSync())
                 .environment(session)
                 .environment(store)
                 .environment(aiSettings)

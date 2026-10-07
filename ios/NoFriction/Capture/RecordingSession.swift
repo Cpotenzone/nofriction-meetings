@@ -61,14 +61,15 @@ final class RecordingSession {
 
     // MARK: - Start / stop
 
-    /// `limit` nil: the remembered length (starts that skip the "how long?"
-    /// sheet). The sheet passes its choice and an optional class.
-    func start(limit: RecordingLimit? = nil, className: String? = nil) async {
+    /// `limit` / `kind` nil: the remembered choices (starts that skip the
+    /// Record sheet). The sheet passes its choices and an optional notebook.
+    func start(limit: RecordingLimit? = nil, kind: RecordingKind? = nil, notebook: String? = nil) async {
         guard phase == .idle, let context else { return }
         phase = .starting
         notice = nil
         let limit = limit ?? RecordingLimitStore.remembered()
-        let className = ClassNames.normalize(className)
+        let kind = kind ?? RecordingKindStore.remembered()
+        let notebook = Notebook.normalize(notebook)
 
         guard await AudioCapture.requestPermission() else {
             notice = "Microphone access is off. Turn it on in Settings → noFriction."
@@ -80,10 +81,11 @@ final class RecordingSession {
         let now = Date()
         let calendar = CalendarService.shared
         let event = calendar.isAuthorized ? calendar.currentEvent(at: now) : nil
-        let title = event?.title ?? className.map { Self.classTitle($0, at: now) } ?? Self.defaultTitle(for: now)
+        let title = event?.title ?? notebook.map { Self.notebookTitle($0, at: now) } ?? Self.defaultTitle(for: now, kind: kind)
         let meeting = Meeting(title: title, startedAt: now)
-        meeting.courseName = className
+        meeting.courseName = notebook
         meeting.plannedMinutes = limit.minutes
+        meeting.kind = kind
         context.insert(meeting)
         if let event { MeetingLinker.link(meeting, to: event, in: context) }
 
@@ -312,7 +314,7 @@ final class RecordingSession {
             MeetingEndNotifier.shared.clear()
             Task {
                 await self.stop()
-                self.notice = "Recording stopped — the meeting seemed to have ended. Everything said was saved."
+                self.notice = "Recording stopped — it seemed to have ended. Everything said was saved."
             }
         case .none:
             break
@@ -425,15 +427,38 @@ final class RecordingSession {
     }
     #endif
 
-    static func defaultTitle(for date: Date) -> String {
-        "Meeting · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+    /// "Meeting — Oct 7" ("Class — Oct 7", "Personal — Oct 7"): the type
+    /// and the date, when no calendar event or notebook names the recording
+    /// (same as the Mac). A calendar match found later still renames it
+    /// (`isDefaultTitle`).
+    static func defaultTitle(for date: Date, kind: RecordingKind = .meeting) -> String {
+        "\(kind.label) — " + shortDate(date)
     }
 
-    static func isDefaultTitle(_ title: String) -> Bool { title.hasPrefix("Meeting · ") }
+    /// A title the app made up, so a calendar match may replace it (same
+    /// rule as the Mac's `is_untitled_title`): "<type or notebook> — Oct 7",
+    /// or "Meeting · …" from builds before types.
+    static func isDefaultTitle(_ title: String) -> Bool {
+        if title.hasPrefix("Meeting · ") { return true }
+        guard let split = title.range(of: " — ", options: .backwards) else { return false }
+        let head = title[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+        let date = title[split.upperBound...].split(separator: " ", omittingEmptySubsequences: false)
+        guard !head.isEmpty, date.count == 2, months.contains(String(date[0])),
+              (1...2).contains(date[1].count), let day = Int(date[1]), (1...31).contains(day) else { return false }
+        return true
+    }
 
-    /// "BIO 101 · Tue, Oct 6, 10:00 AM" for a class recording with no calendar event
-    static func classTitle(_ className: String, at date: Date) -> String {
-        className + " · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+    /// "BIO 101 — Oct 7": a recording in a notebook with no calendar event
+    static func notebookTitle(_ notebook: String, at date: Date) -> String {
+        notebook + " — " + shortDate(date)
+    }
+
+    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    /// "Oct 7", in English whatever the device language, like the Mac
+    private static func shortDate(_ date: Date) -> String {
+        let c = Calendar(identifier: .gregorian).dateComponents(in: .current, from: date)
+        return "\(months[max(1, min(12, c.month ?? 1)) - 1]) \(c.day ?? 1)"
     }
 
     /// Names and companies from the invite help the recognizer spell them.

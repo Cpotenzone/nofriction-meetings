@@ -34,7 +34,7 @@ final class ScreensTests: XCTestCase {
         XCTAssertTrue(app.buttons["record-button"].firstMatch.waitForExistence(timeout: 5), "onboarding should be skipped with demo data")
         saveShot("\(device)-1-record")
 
-        app.buttons["Meetings"].firstMatch.tap()
+        app.buttons["Recordings"].firstMatch.tap()
         sleep(1)
         saveShot("\(device)-2-meetings")
         let meeting = app.staticTexts["Brightwater pilot kickoff"].firstMatch
@@ -83,7 +83,7 @@ final class AppStoreScreenshots: XCTestCase {
         shot("01-record")
 
         // 2. A meeting with AI notes
-        app.buttons["Meetings"].firstMatch.tap()
+        app.buttons["Recordings"].firstMatch.tap()
         let meeting = app.staticTexts["Brightwater pilot kickoff"].firstMatch
         XCTAssertTrue(meeting.waitForExistence(timeout: 5))
         meeting.tap()
@@ -118,7 +118,7 @@ final class AppStoreScreenshots: XCTestCase {
         shot("05-settings-ai")
 
         // 6. Meetings list
-        app.buttons["Meetings"].firstMatch.tap()
+        app.buttons["Recordings"].firstMatch.tap()
         if UIDevice.current.userInterfaceIdiom == .phone {
             // back to the list from the meeting pushed in step 2
             let back = app.navigationBars.buttons.element(boundBy: 0)
@@ -137,7 +137,7 @@ final class StrikeFlowTests: XCTestCase {
         app.launchArguments = ["-NFResetDemo", "-NFSeedDemo"]
         app.launch()
 
-        app.buttons["Meetings"].firstMatch.tap()
+        app.buttons["Recordings"].firstMatch.tap()
         let meeting = app.staticTexts["Weekly sync with Marcus"].firstMatch
         XCTAssertTrue(meeting.waitForExistence(timeout: 5))
         meeting.tap()
@@ -364,7 +364,7 @@ final class WatchImportScreensTests: XCTestCase {
         app.launchArguments = ["-NFResetDemo", "-NFSeedDemo", "-NFSeedWatchDemo"]
         app.launch()
 
-        app.buttons["Meetings"].firstMatch.tap()
+        app.buttons["Recordings"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Site walk with Dana"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(element(app, labelContains: "Recorded on Apple Watch").waitForExistence(timeout: 3), "watch badge missing")
         XCTAssertTrue(element(app, labelContains: "Transcribing…").exists, "import state missing in the list")

@@ -104,6 +104,27 @@ final class WatchMetadataTests: XCTestCase {
         XCTAssertEqual(meta.appVersion, "unknown")
     }
 
+    func testTypeNotebookPlanAndMarkersRoundTripAndStayOptional() throws {
+        var meta = sample()
+        meta.kind = .personal
+        meta.notebook = "Health"
+        meta.plannedMinutes = 30
+        meta.markers = [WatchMarker(kind: .test, at: start.addingTimeInterval(90), offset: 90)]
+        let data = try PropertyListSerialization.data(fromPropertyList: meta.dictionary, format: .binary, options: 0)
+        let back = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        XCTAssertEqual(WatchRecordingMetadata(dictionary: back), meta)
+        XCTAssertEqual(try JSONDecoder().decode(WatchRecordingMetadata.self, from: JSONEncoder().encode(meta)), meta,
+                       "the inbox's staged JSON keeps them")
+        // Without them (an older watch): the same recording, nothing extra
+        var old = meta.dictionary
+        for key in ["kind", "notebook", "plannedMinutes", "markers"] { old.removeValue(forKey: key) }
+        let plain = try XCTUnwrap(WatchRecordingMetadata(dictionary: old))
+        XCTAssertEqual(plain.recordingID, meta.recordingID)
+        XCTAssertNil(plain.kind)
+        XCTAssertEqual(plain.markers, [])
+        XCTAssertEqual(meta.dictionary["v"] as? Int, 1, "additive keys keep version 1")
+    }
+
     func testWallClockAddsPausesBeforeTheOffset() {
         let meta = sample()
         XCTAssertEqual(meta.wallClock(atFileOffset: 0), start)
@@ -461,6 +482,151 @@ final class WatchImporterTests: XCTestCase {
         XCTAssertEqual(m.location, "Room 4")
         XCTAssertEqual(m.meetingURL, "https://meet.example.com/abc")
         XCTAssertEqual(m.people.map(\.person.displayName), ["Dana Whitfield", "Jonah Kim"], "organizer first, self excluded")
+    }
+
+    // MARK: Type, notebook, planned length and markers from the watch
+
+    /// Stage one part of a recording with the given metadata.
+    private func stagePart(_ meta: WatchRecordingMetadata, seconds: Double = 2) throws {
+        let file = root.appending(path: "part-\(meta.part)-\(UUID().uuidString).m4a")
+        try WatchAudioFixture.write(file, seconds: seconds)
+        try inbox.stage(file, metadata: meta)
+    }
+
+    private func markerCount() -> Int { (try? context.fetchCount(FetchDescriptor<MomentMarker>())) ?? -1 }
+
+    func testImportSetsTypeNotebookPlanAndMarkersAndIsIdempotent() async throws {
+        // A notebook the phone already spells "BIO 101"
+        let earlier = Meeting(title: "Lecture 2", startedAt: start.addingTimeInterval(-86_400))
+        earlier.courseName = "BIO 101"
+        earlier.kind = .class
+        context.insert(earlier)
+        try context.save()
+
+        let id = UUID()
+        let star = WatchMarker(kind: .important, at: start.addingTimeInterval(1), offset: 1)
+        let test = WatchMarker(kind: .test, at: start.addingTimeInterval(24), offset: 3)   // after a 20 s pause
+        let meta = WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(24),
+                                          duration: 4, appVersion: "test", pauses: [.init(at: 2, length: 20)],
+                                          kind: .class, notebook: "bio 101", plannedMinutes: 75, markers: [star])
+        // Markers may arrive with any part: the second part knows one more
+        var second = meta.forPart(1, of: 2)
+        second.markers = [star, test]
+        try stagePart(meta.forPart(0, of: 2))
+        try stagePart(second)
+
+        let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
+        await importer.processInbox()
+        let m = try XCTUnwrap(meetings().first { $0.sourceRecordingID == id.uuidString })
+        XCTAssertEqual(m.recordingKind, "class")
+        XCTAssertEqual(m.kind, .class)
+        XCTAssertEqual(m.courseName, "BIO 101", "joins the existing notebook's spelling")
+        XCTAssertEqual(m.plannedMinutes, 75)
+        XCTAssertTrue(m.title.hasPrefix("BIO 101 — "), "no calendar event: named by its notebook, like a live recording")
+        XCTAssertEqual(m.orderedMarkers.map(\.id), [star.id, test.id], "the watch's marker ids are kept")
+        XCTAssertEqual(m.orderedMarkers.map(\.markerKind), [.important, .test])
+        XCTAssertEqual(m.orderedMarkers.map { $0.offset(in: m) }, [1, 24], "wall clock, like the transcript lines")
+        XCTAssertEqual(m.orderedMarkers.map(\.label), ["Important", "On the test"])
+        XCTAssertTrue(m.orderedMarkers.allSatisfy { $0.note == nil }, "no notes on the watch")
+
+        // Delivered again: nothing doubles
+        try stagePart(meta.forPart(0, of: 2))
+        try stagePart(second)
+        await importer.processInbox()
+        XCTAssertEqual(meetings().filter { $0.sourceRecordingID == id.uuidString }.count, 1)
+        XCTAssertEqual(markerCount(), 2)
+
+        // The app died after saving, before placing the audio: the next pass
+        // finishes it and still adds no marker twice
+        try FileManager.default.removeItem(at: audioDir.appending(path: try XCTUnwrap(m.audioFileName)))
+        try stagePart(meta.forPart(0, of: 2))
+        try stagePart(second)
+        await importer.processInbox()
+        XCTAssertEqual(markerCount(), 2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioDir.appending(path: m.audioFileName!).path(percentEncoded: false)))
+        importer.applyWatchFields(second, to: m)
+        XCTAssertEqual(markerCount(), 2, "applying twice changes nothing")
+    }
+
+    func testUserChangesSurviveALateRedelivery() async throws {
+        let id = UUID()
+        let mark = WatchMarker(kind: .question, at: start.addingTimeInterval(1))
+        let meta = WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(2), duration: 2,
+                                          appVersion: "test", kind: .personal, notebook: "Health", markers: [mark])
+        let importer = makeImporter(ScriptedTranscriber { _, _ in [] })
+        try stagePart(meta)
+        await importer.processInbox()
+        let m = try XCTUnwrap(meetings().first)
+        // The user deletes the marker and moves it to another notebook
+        for k in m.markers { context.delete(k) }
+        m.courseName = "Family"
+        try context.save()
+        try stagePart(meta)
+        await importer.processInbox()
+        XCTAssertEqual(markerCount(), 0, "a duplicate delivery brings nothing back")
+        XCTAssertEqual(m.courseName, "Family")
+        XCTAssertEqual(m.kind, .personal)
+    }
+
+    func testOlderWatchMetadataImportsAsAMeetingWithNothingExtra() async throws {
+        // What a watch app from before types sends: only the first-version keys
+        let id = UUID()
+        let file = root.appending(path: "old-\(UUID().uuidString).m4a")
+        try WatchAudioFixture.write(file, seconds: 2)
+        let d: [String: Any] = ["recordingId": id.uuidString, "startedAt": start, "endedAt": start.addingTimeInterval(2),
+                                "duration": 2.0, "appVersion": "1.0.0 (4)", "pauses": [[Double]](), "part": 0, "parts": 1, "v": 1]
+        let meta = try XCTUnwrap(WatchRecordingMetadata(dictionary: d))
+        try inbox.stage(file, metadata: meta)
+        await makeImporter(ScriptedTranscriber { _, _ in [] }).processInbox()
+        let m = try XCTUnwrap(meetings().first)
+        XCTAssertNil(m.recordingKind)
+        XCTAssertEqual(m.kind, .meeting)
+        XCTAssertNil(m.courseName)
+        XCTAssertNil(m.plannedMinutes)
+        XCTAssertTrue(m.markers.isEmpty)
+        XCTAssertTrue(m.title.hasPrefix("Meeting — "))
+    }
+
+    func testImportedMarkersAreClampedAndDeletedWithTheRecording() async throws {
+        let id = UUID()
+        let early = WatchMarker(kind: .important, at: start.addingTimeInterval(-30))
+        let late = WatchMarker(kind: .test, at: start.addingTimeInterval(3_600))
+        let meta = WatchRecordingMetadata(recordingID: id, startedAt: start, endedAt: start.addingTimeInterval(2), duration: 2,
+                                          appVersion: "test", kind: .meeting, markers: [early, late])
+        try stagePart(meta)
+        await makeImporter(ScriptedTranscriber { _, _ in [] }).processInbox()
+        let m = try XCTUnwrap(meetings().first)
+        XCTAssertEqual(m.orderedMarkers.map(\.at), [start, start.addingTimeInterval(2)], "kept inside the recording")
+        XCTAssertEqual(m.orderedMarkers.last?.label, "Follow up", "a meeting's third kind")
+        // Delete Meeting removes them with the rest (cascade)
+        context.delete(m)
+        try context.save()
+        XCTAssertEqual(markerCount(), 0)
+    }
+
+    func testInboxMergesWhatAnyPartCarries() {
+        let a = WatchMarker(kind: .important, at: start)
+        let b = WatchMarker(kind: .question, at: start.addingTimeInterval(5))
+        let first = WatchRecordingMetadata(recordingID: UUID(), startedAt: start, endedAt: start, duration: 0, appVersion: "x",
+                                           partCount: 2, markers: [a])
+        var other = first.forPart(1, of: 2)
+        other.kind = .class
+        other.notebook = "BIO 101"
+        other.plannedMinutes = 30
+        other.markers = [b, a]
+        let merged = WatchInbox.merged(first, [first, other])
+        XCTAssertEqual(merged.markers, [a, b])
+        XCTAssertEqual(merged.kind, .class)
+        XCTAssertEqual(merged.notebook, "BIO 101")
+        XCTAssertEqual(merged.plannedMinutes, 30)
+        XCTAssertEqual(merged.part, 0)
+    }
+
+    func testNotebookListForTheWatchIsNamesOnly() {
+        let context = WatchTransfer.notebookContext(["Acme project", "acme project", " BIO 101 "] + (1...10).map { "N\($0)" })
+        XCTAssertEqual(Array(context.keys), ["recentNotebooks"])
+        XCTAssertEqual((context["recentNotebooks"] as? [String]).map { Array($0.prefix(2)) }, ["Acme project", "BIO 101"])
+        XCTAssertEqual((context["recentNotebooks"] as? [String])?.count, WatchTransfer.maxRecentNotebooks)
     }
 
     // MARK: Transcription

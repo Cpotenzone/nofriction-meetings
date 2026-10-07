@@ -12,14 +12,19 @@ struct StudyInput: Sendable, Equatable {
     struct Mark: Sendable, Equatable { var ms: Int; var kind: MarkerKind; var note: String? }
 
     var title: String
-    /// The recording's class ("BIO 101"), when it has one
+    /// What the recording is: the prompts speak of a lecture and a student
+    /// only for a Class, and the ✎ marker's label follows the type
+    var recordingKind: RecordingKind
+    /// The recording's notebook ("BIO 101"), when it has one
     var courseName: String?
     var durationMs: Int
     var lines: [Line]
     var marks: [Mark]
 
-    init(title: String, courseName: String? = nil, durationMs: Int, lines: [Line], marks: [Mark]) {
+    init(title: String, recordingKind: RecordingKind = .meeting, courseName: String? = nil,
+         durationMs: Int, lines: [Line], marks: [Mark]) {
         self.title = title
+        self.recordingKind = recordingKind
         self.courseName = courseName
         self.durationMs = durationMs
         self.lines = lines
@@ -31,6 +36,7 @@ struct StudyInput: Sendable, Equatable {
         lines = m.orderedSegments.map { Line(ms: ms($0.start), text: RedactionText.plain($0.text)) }
         marks = m.orderedMarkers.map { Mark(ms: ms($0.at), kind: $0.markerKind, note: $0.note) }
         title = m.title
+        recordingKind = m.kind
         courseName = m.courseName
         let last = (lines.map(\.ms) + marks.map(\.ms)).max() ?? 0
         durationMs = max(Int((m.duration ?? 0) * 1000), last)
@@ -57,7 +63,7 @@ struct StudyInput: Sendable, Equatable {
 
     func marksBlock(from: Int = .min, to: Int = .max) -> String {
         let out = marks.filter { $0.ms >= from && $0.ms <= to }.map { m -> String in
-            var s = "[\(StudyParse.clock(m.ms))] \(m.kind.symbol) \(m.kind.label)"
+            var s = "[\(StudyParse.clock(m.ms))] \(m.kind.symbol) \(m.kind.label(for: recordingKind))"
             if let n = m.note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { s += ": \(n)" }
             return s
         }
@@ -71,64 +77,118 @@ struct StudyInput: Sendable, Equatable {
     }
 }
 
-/// Study guide prompts and generation (same prompts and rules as the Mac,
+/// The words the review prompts use for a recording type. A Class keeps the
+/// lecture wording exactly (study guide); Meeting and Personal get the same
+/// parts as a review guide, worded for any recording.
+struct StudyWords: Equatable, Sendable {
+    /// "lecture" / "meeting" / "recording"
+    var source: String
+    /// Who made the marks and strikes: "student" / "user"
+    var person: String
+    /// Header of the marks block: "STUDENT MARKS" / "MARKS"
+    var marksHeader: String
+    /// ✎'s label: "On the test" / "Follow up" / "Remember"
+    var third: String
+
+    init(_ kind: RecordingKind) {
+        switch kind {
+        case .class: source = "lecture"; person = "student"; marksHeader = "STUDENT MARKS"
+        case .meeting: source = "meeting"; person = "user"; marksHeader = "MARKS"
+        case .personal: source = "recording"; person = "user"; marksHeader = "MARKS"
+        }
+        third = MarkerKind.test.label(for: kind)
+    }
+
+    /// "Lecture" / "Meeting" / "Recording" for the header line
+    var sourceTitle: String { source.prefix(1).uppercased() + source.dropFirst() }
+}
+
+/// Review guide prompts and generation (same prompts and rules as the Mac,
 /// `src-tauri/src/study/prompt.rs`). Requests go through `AIClient` — Apple
 /// on-device or the user's endpoint — with the caller's consent and Pro
 /// checks already done (MeetingDetailView.requestAI).
 extension MeetingAI {
-    static let studyBase = """
-        You turn a lecture transcript into study material for a student. The transcript comes from speech \
-        recognition: it has no speaker labels and may contain recognition errors; don't repeat obvious errors. \
-        Each line starts with its time in the lecture as [m:ss]. Use only what the lecture says; never invent \
-        facts, names, numbers, dates or examples. Text shown as [stricken from the record] was removed by the \
-        student: never guess at or mention what it said. The student marked some moments while listening \
-        (STUDENT MARKS): moments marked ✎ On the test matter most, then ★ Important; make sure they are covered. \
-        Reply with only one JSON object: no Markdown, no code fence, no text before or after it.
-        """
+    /// The Class (study guide) text; `studyBase(for:)` words it for any type.
+    static let studyBase = studyBase(for: .class)
 
-    static func studySystem(_ kind: StudyKind) -> String {
+    static func studyBase(for recording: RecordingKind) -> String {
+        let w = StudyWords(recording)
+        let material = recording == .class ? "study material for a student" : "review material for the user"
+        return """
+            You turn a \(w.source) transcript into \(material). The transcript comes from speech \
+            recognition: it has no speaker labels and may contain recognition errors; don't repeat obvious errors. \
+            Each line starts with its time in the \(w.source) as [m:ss]. Use only what the \(w.source) says; never invent \
+            facts, names, numbers, dates or examples. Text shown as [stricken from the record] was removed by the \
+            \(w.person): never guess at or mention what it said. The \(w.person) marked some moments while listening \
+            (\(w.marksHeader)): moments marked ✎ \(w.third) matter most, then ★ Important; make sure they are covered. \
+            Reply with only one JSON object: no Markdown, no code fence, no text before or after it.
+            """
+    }
+
+    /// One part's system prompt. `recording` is the recording's type (the
+    /// lecture wording for a Class).
+    static func studySystem(_ kind: StudyKind, for recording: RecordingKind = .class) -> String {
+        let w = StudyWords(recording)
+        let isClass = recording == .class
         let task: String
         switch kind {
         case .summary:
-            task = #"Write lecture notes: the main topics in the order they were taught, with the definitions, steps, examples and formulas given. 3 to 8 sections, 2 to 6 short bullets each. Shape: {"title": "short lecture title", "sections": [{"heading": "topic", "bullets": ["point", "point"]}]}"#
+            task = isClass
+                ? #"Write lecture notes: the main topics in the order they were taught, with the definitions, steps, examples and formulas given. 3 to 8 sections, 2 to 6 short bullets each. Shape: {"title": "short lecture title", "sections": [{"heading": "topic", "bullets": ["point", "point"]}]}"#
+                : #"Write notes: the main topics in the order they came up, with the facts, steps, examples and numbers given. 3 to 8 sections, 2 to 6 short bullets each. Shape: {"title": "short title", "sections": [{"heading": "topic", "bullets": ["point", "point"]}]}"#
         case .terms:
-            task = #"List the key terms the lecture introduced or relied on, each with a definition of one or two sentences taken from the lecture. 5 to 20 terms. Shape: {"terms": [{"term": "term", "definition": "definition"}]}"#
+            task = "List the key terms the \(w.source) introduced or relied on, each with a definition of one or two sentences taken from the \(w.source). "
+                + #"5 to 20 terms. Shape: {"terms": [{"term": "term", "definition": "definition"}]}"#
         case .flashcards:
-            task = #"Write flashcards for studying: one fact, definition or step per card, the front a question or term, the back a short answer. 8 to 25 cards; cover the marked moments first. Shape: {"cards": [{"front": "question", "back": "answer"}]}"#
+            task = "Write flashcards for \(isClass ? "studying" : "review"): "
+                + #"one fact, definition or step per card, the front a question or term, the back a short answer. 8 to 25 cards; cover the marked moments first. Shape: {"cards": [{"front": "question", "back": "answer"}]}"#
         case .quiz:
             task = #"Write a multiple-choice practice quiz: 5 to 10 questions, each with 4 choices and exactly one correct choice. "answer" is the 0-based index of the correct choice. "explanation" is one line saying why. "time" is the [m:ss] time of the transcript line the answer comes from, without brackets. Shape: {"questions": [{"question": "question", "choices": ["a", "b", "c", "d"], "answer": 0, "explanation": "why", "time": "12:34"}]}"#
         case .questions:
-            task = #"Write questions the student could ask the instructor: points the lecture left unclear or skipped, and the moments marked ? Question (use the student's note when there is one). 3 to 8 questions. "time" is the [m:ss] time the question is about, without brackets. Shape: {"questions": [{"question": "question", "time": "12:34"}]}"#
+            task = isClass
+                ? #"Write questions the student could ask the instructor: points the lecture left unclear or skipped, and the moments marked ? Question (use the student's note when there is one). 3 to 8 questions. "time" is the [m:ss] time the question is about, without brackets. Shape: {"questions": [{"question": "question", "time": "12:34"}]}"#
+                : "Write questions the user could ask afterwards: points the \(w.source) left unclear or skipped, and the moments marked ? Question (use the user's note when there is one). "
+                    + #"3 to 8 questions. "time" is the [m:ss] time the question is about, without brackets. Shape: {"questions": [{"question": "question", "time": "12:34"}]}"#
         }
-        return studyBase + "\n\n" + task
+        return studyBase(for: recording) + "\n\n" + task
     }
 
-    static let condenseSystem = """
-        You condense part of a lecture transcript into study notes. The transcript comes from speech recognition \
-        and may contain errors. Each line starts with its time as [m:ss]. Write at most 15 short lines. Start every \
-        line with the [m:ss] time it comes from. Keep definitions, key terms, steps, examples, formulas, anything \
-        the lecturer stresses ("this will be on the exam"), points that sound unclear, and everything said near \
-        the STUDENT MARKS. Use only what the transcript says. Text shown as [stricken from the record] was removed \
-        by the student: never guess at or mention what it said. Plain text lines only.
-        """
+    /// The Class text; `condenseSystem(for:)` words it for any type.
+    static let condenseSystem = condenseSystem(for: .class)
+
+    static func condenseSystem(for recording: RecordingKind) -> String {
+        let w = StudyWords(recording)
+        let isClass = recording == .class
+        let stresses = isClass ? #"the lecturer stresses ("this will be on the exam")"# : "a speaker stresses"
+        return """
+            You condense part of a \(w.source) transcript into \(isClass ? "study notes" : "notes"). The transcript comes from speech recognition \
+            and may contain errors. Each line starts with its time as [m:ss]. Write at most 15 short lines. Start every \
+            line with the [m:ss] time it comes from. Keep definitions, key terms, steps, examples, formulas, anything \
+            \(stresses), points that sound unclear, and everything said near \
+            the \(w.marksHeader). Use only what the transcript says. Text shown as [stricken from the record] was removed \
+            by the \(w.person): never guess at or mention what it said. Plain text lines only.
+            """
+    }
 
     static func studyHeader(_ input: StudyInput) -> String {
         let title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        var s = "Lecture: \(title.isEmpty ? "Untitled" : title)\n"
-        if let c = input.courseName?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { s += "Class: \(c)\n" }
+        var s = "\(StudyWords(input.recordingKind).sourceTitle): \(title.isEmpty ? "Untitled" : title)\n"
+        if let c = input.courseName?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { s += "\(Notebook.label): \(c)\n" }
         if input.durationMs > 0 { s += "Length: \(StudyParse.clock(input.durationMs))\n" }
         return s
     }
 
     static func studyUserMessage(_ input: StudyInput, condensed: Bool, body: String) -> String {
-        "\(studyHeader(input))\nSTUDENT MARKS:\n\(input.marksBlock())\n\n"
-            + (condensed ? "LECTURE NOTES (condensed from the transcript, with times)" : "TRANSCRIPT") + ":\n\(body)"
+        let w = StudyWords(input.recordingKind)
+        return "\(studyHeader(input))\n\(w.marksHeader):\n\(input.marksBlock())\n\n"
+            + (condensed ? "\(input.recordingKind == .class ? "LECTURE " : "")NOTES (condensed from the transcript, with times)" : "TRANSCRIPT")
+            + ":\n\(body)"
     }
 
     static func condenseMessage(_ input: StudyInput, chunk: String, part: Int, parts: Int) -> String {
         var marks = "(none)"
         if let span = chunkSpan(chunk) { marks = input.marksBlock(from: span.0 - 5_000, to: span.1 + 30_000) }
-        return "\(studyHeader(input))Part \(part) of \(parts)\n\nSTUDENT MARKS:\n\(marks)\n\nTRANSCRIPT:\n\(chunk)"
+        return "\(studyHeader(input))Part \(part) of \(parts)\n\n\(StudyWords(input.recordingKind).marksHeader):\n\(marks)\n\nTRANSCRIPT:\n\(chunk)"
     }
 
     static func retryNote(_ kind: StudyKind, why: String) -> String {
@@ -227,8 +287,8 @@ extension MeetingAI {
         case condense(part: Int, of: Int)
         var errorDescription: String? {
             switch self {
-            case .noTranscript: "This recording has no transcript to make a study guide from."
-            case .condense(let p, let n): "Couldn't condense part \(p) of \(n) of the lecture (asked twice). Try again, or choose a model with a larger context window."
+            case .noTranscript: "This recording has no transcript to make a guide from."
+            case .condense(let p, let n): "Couldn't condense part \(p) of \(n) of the transcript (asked twice). Try again, or choose a model with a larger context window."
             }
         }
     }
@@ -245,21 +305,21 @@ extension MeetingAI {
 
         // Fit: condense chunk by chunk until the material fits the smallest budget
         let fixed = studyUserMessage(input, condensed: true, body: "")
-        let finalBudget = kinds.map { bodyBudget(contextTokens: contextTokens, maxTokens: studyMaxTokens($0, contextTokens: contextTokens), fixed: studySystem($0) + fixed) }.min() ?? 600
+        let finalBudget = kinds.map { bodyBudget(contextTokens: contextTokens, maxTokens: studyMaxTokens($0, contextTokens: contextTokens), fixed: studySystem($0, for: input.recordingKind) + fixed) }.min() ?? 600
         var lines = input.transcriptLines
         var condensed = false
         for round in 0..<3 {
             if lines.reduce(0, { $0 + $1.count + 1 }) <= finalBudget { break }
             let cmax = condenseMaxTokens(contextTokens: contextTokens)
             let chunkBudget = bodyBudget(contextTokens: contextTokens, maxTokens: cmax,
-                                         fixed: condenseSystem + condenseMessage(input, chunk: "", part: 99, parts: 99) + input.marksBlock())
+                                         fixed: condenseSystem(for: input.recordingKind) + condenseMessage(input, chunk: "", part: 99, parts: 99) + input.marksBlock())
             let chunks = chunkLines(lines, budget: chunkBudget)
             if round > 0 && chunks.count <= 1 && condensed { break }
             total += chunks.count
             var notes: [String] = []
             for (i, chunk) in chunks.enumerated() {
-                await progress(StudyProgress(done: done, total: total, label: "Reading the lecture (\(i + 1) of \(chunks.count))…"))
-                let msgs = [ChatMessage(role: "system", content: condenseSystem),
+                await progress(StudyProgress(done: done, total: total, label: "Reading the \(StudyWords(input.recordingKind).source) (\(i + 1) of \(chunks.count))…"))
+                let msgs = [ChatMessage(role: "system", content: condenseSystem(for: input.recordingKind)),
                             ChatMessage(role: "user", content: condenseMessage(input, chunk: chunk, part: i + 1, parts: chunks.count))]
                 var got: [String]?
                 for attempt in 0..<2 {
@@ -288,7 +348,7 @@ extension MeetingAI {
                 let text = attempt == 0 ? user : user + "\n\n" + retryNote(kind, why: why)
                 let raw: String
                 do {
-                    raw = try await complete([ChatMessage(role: "system", content: studySystem(kind)),
+                    raw = try await complete([ChatMessage(role: "system", content: studySystem(kind, for: input.recordingKind)),
                                               ChatMessage(role: "user", content: text)],
                                              studyMaxTokens(kind, contextTokens: contextTokens), attempt == 0 ? 0.2 : 0.3)
                 } catch {

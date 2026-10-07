@@ -91,9 +91,22 @@ struct WatchInbox: Sendable {
                 if now.timeIntervalSince(oldest) > Self.incompleteLimit { removeUnlocked(id) }
                 continue
             }
-            items.append(Item(metadata: first.metadata, audioURLs: (0..<count).map { audioURL(id, part: $0) }))
+            items.append(Item(metadata: Self.merged(first.metadata, (0..<count).compactMap { byPart[$0]?.metadata }),
+                              audioURLs: (0..<count).map { audioURL(id, part: $0) }))
         }
         return items.sorted { $0.metadata.startedAt < $1.metadata.startedAt }
+    }
+
+    /// Part 0's metadata (for the whole recording) with what any part adds:
+    /// the markers of every part, one per marker id, and the type, notebook
+    /// and planned length from the first part that has them.
+    static func merged(_ first: WatchRecordingMetadata, _ all: [WatchRecordingMetadata]) -> WatchRecordingMetadata {
+        var m = first
+        m.markers = WatchMarker.merged([first.markers] + all.map(\.markers))
+        m.kind = m.kind ?? all.lazy.compactMap(\.kind).first
+        m.notebook = m.notebook ?? all.lazy.compactMap(\.notebook).first
+        m.plannedMinutes = m.plannedMinutes ?? all.lazy.compactMap(\.plannedMinutes).first
+        return m
     }
 
     /// Every recording with something staged (complete or not)

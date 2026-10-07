@@ -41,7 +41,7 @@ enum AIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured: "Configure Apple on-device or enter your AI endpoint and model in Settings first."
-        case .consentRequired(let p): "Allow sending meeting content to \(p) first."
+        case .consentRequired(let p): "Allow sending recording content to \(p) first."
         case .insecureURL: "That address isn't allowed. Cloud services need https://. Plain http:// only works for this device, your local network or a Tailscale address."
         case .wrongKey(let m): "Wrong or revoked key." + (m.isEmpty ? "" : " \(m)")
         case .noCredit(let m): "No credit left, or rate-limited." + (m.isEmpty ? "" : " \(m)")

@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 /// iPhone: a tab bar. iPad: the same tabs become a sidebar
-/// (.sidebarAdaptable), and Meetings becomes a list + detail split.
+/// (.sidebarAdaptable), and Recordings becomes a list + detail split.
 struct RootView: View {
     @Environment(RecordingSession.self) private var session
     @Environment(\.modelContext) private var context
@@ -19,7 +19,7 @@ struct RootView: View {
             Tab("Record", systemImage: "waveform", value: AppTab.now) {
                 LiveView()
             }
-            Tab("Meetings", systemImage: "rectangle.stack", value: AppTab.meetings) {
+            Tab("Recordings", systemImage: "rectangle.stack", value: AppTab.meetings) {
                 MeetingsView()
             }
             Tab("People", systemImage: "person.2", value: AppTab.people) {

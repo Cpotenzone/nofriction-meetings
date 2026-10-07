@@ -409,7 +409,10 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   fingerprint no longer matches. The Strike confirmation lists the guide.
 - **Moment markers** (`MomentMarker`) cascade with their meeting. iOS has no
   time-range action, so markers are otherwise left alone, like the Mac's
-  word and line edits.
+  word and line edits. Markers made on Apple Watch are ordinary
+  `MomentMarker` rows on the imported recording (times and a kind, no note),
+  so Delete Recording removes them the same way; a late re-delivery of the
+  recording never brings them back (the import log and marker ids).
 - **SQLite.** SwiftData doesn't expose store options, so the app can't set
   `secure_delete` on SwiftData's own connections. The system SQLite on iOS defaults
   `secure_delete` to FAST (2), which zeroes freed cells on pages it already
@@ -438,7 +441,13 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   any inbox copy of that recording, and a list of imported recording ids
   (ids only) keeps a late re-delivery from bringing a deleted meeting back.
   A recording not yet delivered isn't a meeting; it can be deleted from the
-  watch's list.
+  watch's list. The watch's copy of a recording's notebook name and marker
+  times lives in its list (`index.json`) only until the iPhone confirms
+  every part; then they are dropped with the audio. The recent notebook
+  names the iPhone sends the watch (WatchConnectivity application context,
+  names only, latest list wins) are derived from the iPhone's recordings,
+  so deleting the last recording in a notebook sends a list without it.
+  No transcript or screen text is stored on the watch.
 - **Links.** "Said" links are derived from `Segment.text` each time the
   meeting is shown (`MeetingLinks.items`), so Delete and Strike remove them
   with the words. `MeetingReference` rows cascade with their `Meeting`.

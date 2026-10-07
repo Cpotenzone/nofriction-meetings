@@ -17,7 +17,7 @@ struct AIConsentSheet: View {
                         .font(.system(size: 44))
                         .foregroundStyle(Theme.ai)
                         .accessibilityHidden(true)
-                    Text("Send meeting content to \(recipient)?")
+                    Text("Send recording content to \(recipient)?")
                         .font(.title2.weight(.semibold))
                     Text(Self.body(recipient))
                         .font(.body)
@@ -53,7 +53,7 @@ struct AIConsentSheet: View {
 
     /// Spec copy. iOS never sends screenshots, so that clause is left out.
     static func body(_ name: String) -> String {
-        "If you allow this remote endpoint, noFriction sends the transcript, the meeting title, " +
+        "If you allow this remote endpoint, noFriction sends the transcript, the recording title, " +
             "attendee names and invite notes to \(name), including your API key if configured. The endpoint operator's privacy policy " +
             "and terms apply. This is optional: you can use a local or Apple on-device model instead. " +
             "noFriction offers no hosted models and receives none of this content."
@@ -79,7 +79,7 @@ struct RecordingNoticeSheet: View {
                 .accessibilityAddTraits(.isHeader)
             Text(Self.text)
                 .foregroundStyle(.secondary)
-            Text("Audio and transcripts are stored on this device. Optional cloud AI sends meeting text directly to the provider you choose.")
+            Text("Audio and transcripts are stored on this device. Optional cloud AI sends transcript text directly to the provider you choose.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)

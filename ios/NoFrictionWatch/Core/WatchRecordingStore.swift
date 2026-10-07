@@ -39,6 +39,14 @@ struct WatchRecordingEntry: Codable, Equatable, Identifiable, Sendable {
     /// Pauses so far, kept while recording so a recording recovered after a
     /// crash still maps file time to clock time
     var pauses: [WatchRecordingMetadata.Pause] = []
+    /// What it is, its notebook, its planned length and the moments marked,
+    /// kept while recording so a recording recovered after a crash keeps
+    /// them. The notebook name and the markers are dropped once the iPhone
+    /// has every part (the watch keeps no more than it needs).
+    var kind: RecordingKind?
+    var notebook: String?
+    var plannedMinutes: Int?
+    var markers: [WatchMarker] = []
     /// Why the last transfer failed (system error text; never content)
     var lastError: String?
     var updatedAt: Date
@@ -62,6 +70,7 @@ struct WatchRecordingEntry: Codable, Equatable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, startedAt, parts, confirmedParts, handedOff, status, metadata, pauses, lastError, updatedAt
+        case kind, notebook, plannedMinutes, markers
         case fileName   // first builds: one file per recording
     }
 
@@ -94,6 +103,14 @@ struct WatchRecordingEntry: Codable, Equatable, Identifiable, Sendable {
         self.lastError = lastError
         let updatedAt: Date? = try? c.decodeIfPresent(Date.self, forKey: .updatedAt)
         self.updatedAt = updatedAt ?? Date()
+        let kind: String? = try? c.decodeIfPresent(String.self, forKey: .kind)
+        self.kind = kind.flatMap(RecordingKind.init(rawValue:))
+        let notebook: String? = try? c.decodeIfPresent(String.self, forKey: .notebook)
+        self.notebook = Notebook.normalize(notebook)
+        let planned: Int? = try? c.decodeIfPresent(Int.self, forKey: .plannedMinutes)
+        self.plannedMinutes = planned
+        let markers: [WatchMarker]? = try? c.decodeIfPresent([WatchMarker].self, forKey: .markers)
+        self.markers = markers ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -108,6 +125,10 @@ struct WatchRecordingEntry: Codable, Equatable, Identifiable, Sendable {
         try c.encode(pauses, forKey: .pauses)
         try c.encodeIfPresent(lastError, forKey: .lastError)
         try c.encode(updatedAt, forKey: .updatedAt)
+        try c.encodeIfPresent(kind, forKey: .kind)
+        try c.encodeIfPresent(notebook, forKey: .notebook)
+        try c.encodeIfPresent(plannedMinutes, forKey: .plannedMinutes)
+        if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
     }
 }
 
@@ -213,9 +234,13 @@ final class WatchRecordingStore {
 
     /// A new recording is about to start: returns where to write part 0.
     @discardableResult
-    func beginRecording(id: UUID, startedAt: Date) -> URL {
-        let entry = WatchRecordingEntry(id: id, startedAt: startedAt, parts: [Self.partName(id, 0)],
+    func beginRecording(id: UUID, startedAt: Date, kind: RecordingKind? = nil, notebook: String? = nil,
+                        plannedMinutes: Int? = nil) -> URL {
+        var entry = WatchRecordingEntry(id: id, startedAt: startedAt, parts: [Self.partName(id, 0)],
                                         status: .recording, updatedAt: clock())
+        entry.kind = kind
+        entry.notebook = Notebook.normalize(notebook)
+        entry.plannedMinutes = plannedMinutes
         entries.removeAll { $0.id == id }
         entries.append(entry)
         persist()
@@ -244,6 +269,16 @@ final class WatchRecordingStore {
         update(id) { $0.pauses = pauses }
     }
 
+    /// The moments marked so far (saved at once, so a crash keeps them).
+    func recordMarkers(_ id: UUID, _ markers: [WatchMarker]) {
+        update(id) { $0.markers = markers }
+    }
+
+    /// The planned length changed (+15 min, No limit).
+    func recordPlan(_ id: UUID, plannedMinutes: Int?) {
+        update(id) { $0.plannedMinutes = plannedMinutes }
+    }
+
     /// Recording stopped: keep the parts with audio (deleting the rest),
     /// line the pauses up with them, and mark it ready to send. Returns
     /// false (and discards the recording) when no part has audio.
@@ -270,6 +305,10 @@ final class WatchRecordingStore {
             $0.startedAt = final.startedAt
             $0.metadata = final.forPart(0, of: parts.count)
             $0.pauses = final.pauses
+            $0.kind = final.kind
+            $0.notebook = final.notebook
+            $0.plannedMinutes = final.plannedMinutes
+            $0.markers = final.markers
             $0.status = .saved
             $0.lastError = nil
         }
@@ -314,6 +353,11 @@ final class WatchRecordingStore {
             if $0.unconfirmedParts.isEmpty, $0.status != .recording {
                 $0.status = .delivered
                 $0.lastError = nil
+                // The iPhone has it all: keep only times and the type here
+                $0.notebook = nil
+                $0.markers = []
+                $0.metadata?.notebook = nil
+                $0.metadata?.markers = []
             }
         }
         prune()
@@ -376,7 +420,9 @@ final class WatchRecordingStore {
             let start = e.startedAt.addingTimeInterval(layout.startShift)
             let metadata = WatchRecordingMetadata(recordingID: e.id, startedAt: e.startedAt,
                                                   endedAt: start.addingTimeInterval(layout.duration + paused),
-                                                  duration: layout.duration, appVersion: appVersion, pauses: e.pauses)
+                                                  duration: layout.duration, appVersion: appVersion, pauses: e.pauses,
+                                                  kind: e.kind, notebook: e.notebook, plannedMinutes: e.plannedMinutes,
+                                                  markers: e.markers)
             finish(metadata, partLengths: lengths)
             kept += 1
         }

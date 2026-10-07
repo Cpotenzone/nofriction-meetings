@@ -1,28 +1,45 @@
 import SwiftData
 import SwiftUI
 
-// Timed recording and classes (docs/TIMED_RECORDING_AND_CLASSES.md):
-// the "How long?" sheet, the time-left row and warning on the Record
-// screen, class chips, the library filter and the class field.
+// Timed recording, type and notebook (docs/TIMED_RECORDING_AND_NOTEBOOKS.md):
+// the Record sheet ("What is it?", "How long?", Notebook), the time-left row
+// and warning on the Record screen, notebook chips, the library filter and
+// the type and notebook fields on a recording.
 
-/// "How long?" before recording, with an optional class.
+/// Before recording: what it is, how long, and an optional notebook.
 struct RecordPlanSheet: View {
-    let onStart: (RecordingLimit, String?) -> Void
+    let onStart: (RecordingLimit, RecordingKind, String?) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var kind: RecordingKind = RecordingKindStore.remembered()
     @State private var choice: RecordingLimit = RecordingLimitStore.remembered()
-    @State private var className = ""
+    @State private var notebook = ""
     @Query(filter: #Predicate<Meeting> { $0.courseName != nil }, sort: \Meeting.startedAt, order: .reverse)
-    private var classMeetings: [Meeting]
+    private var notebookMeetings: [Meeting]
 
-    private var recents: [String] { ClassNames.recent(classMeetings.map { ($0.courseName, $0.startedAt) }) }
+    private var recents: [String] { Notebook.recent(notebookMeetings.map { ($0.courseName, $0.startedAt) }) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(RecordingKind.pickerTitle)
+                            .font(.title2.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
+                        Picker(RecordingKind.pickerTitle, selection: $kind) {
+                            ForEach(RecordingKind.allCases) { k in
+                                Text(k.label).tag(k)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("record-kind")
+                        Text(RecordingKind.help)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("How long?")
-                            .font(.title2.weight(.semibold))
+                            .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         Text("The recording stops by itself at the end. You can add time while it runs.")
                             .font(.subheadline)
@@ -34,19 +51,20 @@ struct RecordPlanSheet: View {
                         }
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        (Text("Class ").font(.subheadline.weight(.semibold)) + Text("optional").font(.subheadline).foregroundStyle(.secondary))
-                        TextField("e.g. BIO 101 — Cell Biology", text: $className)
+                        (Text("\(Notebook.label) ").font(.subheadline.weight(.semibold)) + Text("optional").font(.subheadline).foregroundStyle(.secondary))
+                        TextField(kind.notebookPlaceholder, text: $notebook)
                             .textInputAutocapitalization(.words)
                             .autocorrectionDisabled()
                             .submitLabel(.go)
                             .onSubmit(start)
                             .padding(12)
                             .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .accessibilityIdentifier("record-class-field")
-                        ClassChips(classes: ClassNames.suggestions(className, recents: recents), selected: ClassNames.normalize(className)) {
-                            className = $0
+                            .accessibilityLabel(Notebook.label)
+                            .accessibilityIdentifier("record-notebook-field")
+                        NotebookChips(notebooks: Notebook.suggestions(notebook, recents: recents), selected: Notebook.normalize(notebook)) {
+                            notebook = $0
                         }
-                        if ClassNames.normalize(className) != nil {
+                        if kind == .class {
                             Text("Notes for a class are written as lecture notes.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
@@ -76,9 +94,10 @@ struct RecordPlanSheet: View {
 
     private func start() {
         RecordingLimitStore.remember(choice)
-        let name = ClassNames.canonical(className, existing: recents)
+        RecordingKindStore.remember(kind)
+        let name = Notebook.canonical(notebook, existing: recents)
         dismiss()
-        onStart(choice, name)
+        onStart(choice, kind, name)
     }
 }
 
@@ -116,17 +135,17 @@ private struct LengthChoice: View {
     }
 }
 
-/// One-tap class chips.
-struct ClassChips: View {
-    let classes: [String]
+/// One-tap notebook chips.
+struct NotebookChips: View {
+    let notebooks: [String]
     let selected: String?
     let pick: (String) -> Void
 
     var body: some View {
-        if !classes.isEmpty {
+        if !notebooks.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(classes, id: \.self) { c in
+                    ForEach(notebooks, id: \.self) { c in
                         let on = selected?.caseInsensitiveCompare(c) == .orderedSame
                         Button { pick(c) } label: {
                             Text(c)
@@ -141,31 +160,38 @@ struct ClassChips: View {
                     }
                 }
             }
-            .accessibilityLabel("Recent classes")
+            .accessibilityLabel("Recent notebooks")
         }
     }
 }
 
-/// Library filter: All, then each class.
-struct ClassFilterBar: View {
-    let classes: [String]
+/// Library filter ("Notebooks"): All, then each notebook.
+struct NotebookFilterBar: View {
+    let notebooks: [String]
     @Binding var selection: String?
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                chip("All", on: selection == nil) { selection = nil }
-                ForEach(classes, id: \.self) { c in
-                    chip(c, on: ClassNames.matches(c, filter: selection) && selection != nil) {
-                        selection = selection == c ? nil : c
+        VStack(alignment: .leading, spacing: 6) {
+            Text(Notebook.filterTitle.uppercased())
+                .font(.caption2.weight(.semibold))
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    chip("All", on: selection == nil) { selection = nil }
+                    ForEach(notebooks, id: \.self) { c in
+                        chip(c, on: Notebook.matches(c, filter: selection) && selection != nil) {
+                            selection = selection == c ? nil : c
+                        }
                     }
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Filter by class")
-        .accessibilityIdentifier("class-filter")
+        .accessibilityLabel(Notebook.filterTitle)
+        .accessibilityIdentifier("notebook-filter")
     }
 
     private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
@@ -182,46 +208,67 @@ struct ClassFilterBar: View {
     }
 }
 
-/// "Class" on a meeting: edit, pick a recent one, or clear.
-struct MeetingClassField: View {
+/// On a recording: its type (Meeting / Class / Personal) and its notebook
+/// (edit, pick a recent one, or clear).
+struct RecordingKindNotebookField: View {
     @Bindable var meeting: Meeting
     @Environment(\.modelContext) private var context
     @State private var draft = ""
     @FocusState private var focused: Bool
     @Query(filter: #Predicate<Meeting> { $0.courseName != nil }, sort: \Meeting.startedAt, order: .reverse)
-    private var classMeetings: [Meeting]
+    private var notebookMeetings: [Meeting]
 
-    private var recents: [String] { ClassNames.recent(classMeetings.map { ($0.courseName, $0.startedAt) }) }
+    private var recents: [String] { Notebook.recent(notebookMeetings.map { ($0.courseName, $0.startedAt) }) }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "graduationcap")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            TextField("Class", text: $draft, prompt: Text("Add to a class"))
-                .font(.subheadline)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .submitLabel(.done)
-                .focused($focused)
-                .onSubmit(commit)
-                .accessibilityLabel("Class")
-                .accessibilityIdentifier("meeting-class-field")
-            let others = recents.filter { $0.caseInsensitiveCompare(meeting.courseName ?? "") != .orderedSame }
-            if !others.isEmpty || meeting.courseName != nil {
-                Menu {
-                    ForEach(others, id: \.self) { c in
-                        Button(c) { draft = c; commit() }
+        VStack(alignment: .leading, spacing: 8) {
+            Menu {
+                Picker(RecordingKind.pickerTitle, selection: Binding(get: { meeting.kind }, set: { setKind($0) })) {
+                    ForEach(RecordingKind.allCases) { k in
+                        Label(k.label, systemImage: k.systemImage).tag(k)
                     }
-                    if meeting.courseName != nil {
-                        Button("Not a class", systemImage: "xmark", role: .destructive) { draft = ""; commit() }
-                    }
-                } label: {
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
-                .accessibilityLabel("Choose a class")
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: meeting.kind.systemImage)
+                    Text(meeting.kind.label)
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("\(RecordingKind.pickerTitle) \(meeting.kind.label)")
+            .accessibilityHint("Changes the notes style and the third marker's name")
+            .accessibilityIdentifier("meeting-kind")
+            HStack(spacing: 8) {
+                Image(systemName: "book.closed")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField(Notebook.label, text: $draft, prompt: Text("Add to a notebook"))
+                    .font(.subheadline)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .accessibilityLabel(Notebook.label)
+                    .accessibilityIdentifier("meeting-notebook-field")
+                let others = recents.filter { $0.caseInsensitiveCompare(meeting.courseName ?? "") != .orderedSame }
+                if !others.isEmpty || meeting.courseName != nil {
+                    Menu {
+                        ForEach(others, id: \.self) { c in
+                            Button(c) { draft = c; commit() }
+                        }
+                        if meeting.courseName != nil {
+                            Button("Remove from notebook", systemImage: "xmark", role: .destructive) { draft = ""; commit() }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel("Choose a notebook")
+                }
             }
         }
         .onAppear { draft = meeting.courseName ?? "" }
@@ -229,8 +276,14 @@ struct MeetingClassField: View {
         .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
     }
 
+    private func setKind(_ kind: RecordingKind) {
+        guard kind != meeting.kind || meeting.recordingKind == nil else { return }
+        meeting.kind = kind
+        try? context.save()
+    }
+
     private func commit() {
-        let name = ClassNames.canonical(draft, existing: recents)
+        let name = Notebook.canonical(draft, existing: recents)
         draft = name ?? ""
         guard name != meeting.courseName else { return }
         meeting.courseName = name
@@ -314,7 +367,7 @@ struct TimeLimitBanner: View {
     }
 }
 
-/// One-time, non-blocking: the first class recording.
+/// One-time, non-blocking: the first Class recording.
 struct ClassNoticeBanner: View {
     let dismiss: () -> Void
 
@@ -322,7 +375,7 @@ struct ClassNoticeBanner: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "graduationcap.fill").foregroundStyle(Theme.accent)
                 .accessibilityHidden(true)
-            Text(ClassNames.notice).font(.footnote)
+            Text(ClassNotice.text).font(.footnote)
             Spacer(minLength: 0)
             Button("OK", action: dismiss)
                 .font(.footnote.weight(.semibold))

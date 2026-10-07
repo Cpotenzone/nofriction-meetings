@@ -1,9 +1,13 @@
 # noFriction for Apple Watch
 
-Record a meeting on the watch. The audio goes to the iPhone, which imports
-it as an ordinary meeting: transcribed on the iPhone, matched to the
-calendar, with AI notes, follow-up email, Delete / Strike, export and People,
-the same as a recording made on the phone.
+Record a meeting, a class or anything else on the watch. Say what it is
+(Meeting · Class · Personal), how long ("How long?" stops it by itself) and,
+optionally, which notebook it belongs to; mark moments while it records;
+choose the low-distraction **Discreet** display for lectures. The audio goes
+to the iPhone, which imports it as an ordinary recording: transcribed on the
+iPhone, matched to the calendar, with its type, notebook, planned length and
+marked moments, AI notes, Review, Delete / Strike, export and People, the
+same as a recording made on the phone.
 
 The watch app is part of the iPhone app. It has no App Store record of its
 own and makes no network requests. The Speech framework doesn't exist on
@@ -34,13 +38,16 @@ session(_:didReceiveUserInfo:) ["ack": parts] ◀── transferUserInfo after e
 
 | Piece | File |
 |---|---|
-| Transfer contract: metadata keys, audio format, wall-clock mapping, shared notice text | `ios/Shared/WatchTransfer.swift` (in both apps) |
-| Watch app entry, model, background WatchConnectivity task | `ios/NoFrictionWatch/App/NoFrictionWatchApp.swift` |
-| Recorder (AVAudioRecorder, interruptions, haptics) | `ios/NoFrictionWatch/Core/WatchRecorder.swift` |
-| Recorder state machine (testable, no audio) | `ios/NoFrictionWatch/Core/RecorderStateMachine.swift` |
+| Transfer contract: metadata keys, audio format, wall-clock mapping, markers, notebook list, shared notice text | `ios/Shared/WatchTransfer.swift` (in both apps) |
+| Vocabulary: Meeting · Class · Personal, Notebook, marker labels by type | `ios/Shared/RecordingVocabulary.swift` (in both apps) |
+| "How long?" choices and the wall-clock deadline (`TimeLimitPlan`) | `ios/Shared/TimeLimit.swift` (in both apps) |
+| Watch app entry, model, Record flow, notification actions, background WatchConnectivity task | `ios/NoFrictionWatch/App/NoFrictionWatchApp.swift` |
+| Recorder (AVAudioRecorder, interruptions, time limit, marks, haptics, warning notification) | `ios/NoFrictionWatch/Core/WatchRecorder.swift` |
+| Recorder state machine (testable, no audio): pauses, deadline, +15 / No limit, markers | `ios/NoFrictionWatch/Core/RecorderStateMachine.swift` |
+| Start options, Discreet setting, what the screen shows (`RecordingPresentation`), haptic patterns | `ios/NoFrictionWatch/Core/RecordingOptions.swift` |
 | Recordings list + transfer queue | `ios/NoFrictionWatch/Core/WatchRecordingStore.swift` |
-| Watch end of WatchConnectivity | `ios/NoFrictionWatch/Core/WatchConnection.swift` |
-| Watch UI (Record, Recordings, first-use notice) | `ios/NoFrictionWatch/Views/WatchRootView.swift` |
+| Watch end of WatchConnectivity (files, acks, notebook list) | `ios/NoFrictionWatch/Core/WatchConnection.swift` |
+| Watch UI (Record flow, recording screen, Discreet, Recordings, first-use notice) | `ios/NoFrictionWatch/Views/WatchRootView.swift` |
 | "Start Recording" App Intent / App Shortcut | `ios/NoFrictionWatch/App/StartRecordingIntent.swift` |
 | Debug demo states and simulator E2E sender | `ios/NoFrictionWatch/App/DemoMode.swift` |
 | iPhone end of WatchConnectivity | `ios/NoFriction/Watch/PhoneWatchLink.swift` |
@@ -69,16 +76,130 @@ with iPhones on iOS 18. Nothing needs watchOS 11.
   interruption) closes the current file, and Resume continues in a new one.
   A paused recording is therefore always complete on disk. The iPhone joins
   the parts in order into one file; pause positions are the part boundaries.
-- **Controls:** one large Record button, the elapsed time (pauses excluded),
-  a live input meter, Pause/Resume and Stop. Haptics on start, stop, pause,
-  resume and interruption. A second page (Digital Crown or swipe) lists
-  recent recordings with **Saved on watch / Sending to iPhone / Delivered**.
+- **Controls:** one large Record button opens the Record flow (below).
+  While recording: the status ("Recording · Class · BIO 101"), a large
+  **time left** (the elapsed time, pauses excluded, when there is no
+  limit), a live input meter, **Mark** one tap away, then Pause/Resume and
+  Stop. Haptics on start, mark, the time-limit warning, stop, pause, resume
+  and interruption. A second page (Digital Crown or swipe) lists recent
+  recordings with **Saved on watch / Sending to iPhone / Delivered** (and
+  the type, notebook and number of marks until it is delivered).
 - **First use:** the same recording-consent notice as the iPhone
-  (`RecordingNotice.text`) before the first recording.
+  (`RecordingNotice.text`) before the first recording, Discreet or not.
 - **App Intent:** "Start Recording" (Siri: "Start a recording in noFriction";
   Shortcuts; on Apple Watch Ultra, assign the shortcut to the Action button).
   It opens the app first, because watchOS only lets recording start in the
-  foreground, and shows the notice if it hasn't been accepted.
+  foreground, and shows the notice if it hasn't been accepted. It starts
+  with the remembered type, "How long?" and Discreet choice, and no notebook.
+
+### Record flow: what it is, how long, which notebook
+
+Tapping Record (after the one-time notice) opens three short lists; the
+Digital Crown scrolls each one:
+
+1. **What is it?** Meeting · Class · Personal (the shared vocabulary in
+   `ios/Shared/RecordingVocabulary.swift`; the help line says "Personal
+   covers everything else: conversations, appointments, talks, ideas."). A
+   **Start** row at the top starts at once with the last type and length
+   and no notebook. The **Discreet** switch is on this screen.
+2. **How long?** 15 / 30 / 60 / 90 min / No limit.
+3. **Notebook**: None, or one of the iPhone's recent notebooks. Skipped
+   (None) while the watch has no list from the iPhone. There is no text
+   entry on the watch.
+
+The type, the length and Discreet are remembered on the watch
+(`recordingKindDefault`, `recordingDefaultLength`, `discreetRecording` in
+the watch app's UserDefaults; Meeting, No limit and off until chosen). The
+notebook starts at None each time, as on the iPhone.
+
+**Notebook list.** The iPhone sends the names of its most recent notebooks
+(at most 8, cleaned) with `WCSession.updateApplicationContext`
+(`["recentNotebooks": [names]]`): only the latest list is delivered, also
+while the watch app isn't running, and it is sent again whenever the
+iPhone's recent notebooks change, including when the last recording in a
+notebook is deleted (the name then leaves the watch too). Nothing else of
+the user's data goes to the watch. The watch reads the list from
+`receivedApplicationContext`; it keeps no copy of its own.
+
+### "How long?" on the watch
+
+The watch enforces the limit itself with the iPhone's rules (the same
+`TimeLimitPlan`, in `ios/Shared/TimeLimit.swift`):
+
+- **Wall clock** from the start: pausing doesn't move the deadline.
+- **Warning** 5 minutes before the end (2 minutes for a 15-minute plan): a
+  haptic and a screen with **+15 min** and **No limit**. +15 min moves the
+  deadline (from now if it already passed, 12 hours at most) and re-arms
+  the warning; No limit removes it.
+- **At the deadline** the recorder stops through the same path as Stop:
+  the parts are closed, the recording is finished and queued for the
+  iPhone, and the watch says "Stopped at its 60-minute limit."
+- The timer ticks every second while recording or paused, and again when
+  the app comes back to the foreground, so a paused app that watchOS
+  suspended stops as soon as it runs again after the deadline. A recording
+  ended by watchOS while paused is finished at the next launch, as before.
+- **Warning notification.** watchOS may not play an app's haptics while it
+  is in the background (the watch face showing, wrist down for a while), so
+  the warning is also scheduled ahead as a local notification with
+  **+15 min** / **No limit** actions (category `WATCH_TIME_LIMIT`), if
+  notification permission is granted. The watch asks for it in context, at
+  the first timed recording, never at launch. Its text is generic ("5
+  minutes left in this recording"; no title or notebook). In the
+  foreground the app suppresses the banner and shows its own warning. It
+  is rescheduled on +15 min and removed on No limit and at stop.
+- The planned minutes (after any +15 min) go to the iPhone, which stores
+  them as `plannedMinutes`.
+
+### Marks
+
+While recording, **Mark** marks ★ Important with one tap and a confirming
+haptic ("★ Marked Important" shows for a moment). Touch and hold Mark for
+**? Question** or the third kind, labeled by type: **On the test** (Class),
+**Follow up** (Meeting), **Remember** (Personal). The stored kinds are
+`important` / `question` / `test` whatever the label. There are no notes on
+the watch. A second tap of the same kind within 0.8 s is the same mark;
+nothing is marked while paused; at most 500 marks per recording.
+
+Each mark is stored in the recording's local metadata (`index.json`) as it
+is made, so a crash keeps it, with its wall-clock time and its audio
+offset (seconds of audio before it, pauses excluded). The contract's
+`wallClock(atFileOffset:)` maps the offset back to the same wall-clock
+time; the iPhone places the marker by its wall-clock time, the clock the
+transcript lines use.
+
+### Discreet
+
+A low-distraction display for lectures and other places where a lit, red
+recording screen would distract the room. It changes only how the watch
+looks and feels while recording. It is not a way to record covertly: the
+system microphone indicator still shows (the app doesn't, and can't, hide
+it), the recording-consent notice still comes before the first recording,
+and the Record flow says to tell people you're recording.
+
+- **On/off:** the Discreet switch in the Record flow. Remembered; off by
+  default. The App Intent uses the remembered setting.
+- **Screen:** almost entirely black. No red UI, no meter, no big timer. The
+  only sign is the noFriction logo (a monochrome template version of the
+  app logo, `DiscreetLogo` in the watch asset catalog) fading slowly in and
+  out between 12% and 35% opacity over 3.5 s, never brighter.
+  - **Reduce Motion:** a static faded logo (22%), no pulse.
+  - **Wrist down / Always On** (`isLuminanceReduced`): only the logo,
+    dimmer (7%) and still.
+  - **Paused:** a still logo and the word "Paused".
+- **Time left:** small, dim grey text, shown for 3 seconds after a tap or a
+  wrist raise (elapsed time with no limit).
+- **Marking:** a tap anywhere marks ★, with a light tap and a brief,
+  faint brighten of the logo (to 50% for under half a second). Touch and
+  hold, or turn the Digital Crown, for **? Question** / the third kind.
+- **Stopping** takes two deliberate steps: touch and hold (or turn the
+  crown) to open the dim controls, then **Stop recording**. The controls
+  also have Pause/Resume and, with a limit, +15 min / No limit.
+- **Haptics:** light taps only: one for start, mark and stop, a gentle
+  double tap for the time-limit warning (+15 / No limit then show as dim
+  buttons, a tap away) and for an interruption.
+- The pure rules (what is visible, at what opacity, in normal, Discreet,
+  Discreet + wrist down, Reduce Motion, paused) are `RecordingPresentation`
+  in `RecordingOptions.swift`, unit-tested.
 
 ### Recording limits (what watchOS actually allows)
 
@@ -117,9 +238,34 @@ It must be a user-initiated event while the app is in the foreground.
   `startedAt`, `endedAt`, `duration` (seconds of audio, whole recording),
   `appVersion`, `pauses` (`[[fileSeconds, pausedSeconds]]`), `part` and
   `parts` (this file's index and the number of files; 0 and 1 for a
-  recording without pauses) and `v`. Times and ids only: no transcript,
-  title or other content. The phone ignores unknown keys and rejects invalid
-  times or part numbers.
+  recording without pauses) and `v`. The phone ignores unknown keys and
+  rejects invalid times or part numbers.
+- **Optional keys** (added with recording types; `v` stays 1 because they
+  are additive):
+
+  | Key | Value |
+  |---|---|
+  | `kind` | `meeting` / `class` / `personal` |
+  | `notebook` | the notebook name picked on the watch (one of the iPhone's recent notebooks) |
+  | `plannedMinutes` | "How long?" in minutes when it ended (after any +15 min); absent = no limit |
+  | `markers` | `[["id": uuid, "kind": "important" \| "question" \| "test", "at": Date, "offset": seconds]]` |
+
+  A key is present only when set (a property list has no null). No
+  transcript, title or audio content: times, ids, the type, the notebook
+  name the user picked, the planned length and marker times.
+- **Compatibility, both directions.** An iPhone app from before these keys
+  imports a new watch's recording (it ignores unknown keys; the first-version
+  keys keep their names and types; a test parses new metadata with a copy of
+  the first-version parser). A new iPhone app imports a recording from an
+  older watch app as a meeting with no notebook, limit or markers. A bad
+  value in an optional key (an unknown type, a planned length outside 1 min
+  … 12 h, a marker without a valid id or time) is dropped; the recording is
+  never rejected for it. A marker kind from a newer build reads as ★
+  Important. The ack flow and delete-only-after-ack are unchanged.
+- **Markers with any part.** Every part of a recording carries the marker
+  list. The iPhone merges the lists of all parts by marker id (first seen
+  wins, time order), and takes the type, notebook and planned length from
+  part 0, or the first part that has them.
 - **Queued delivery:** `WCSession.transferFile` hands the file to the system,
   which delivers it when the iPhone is reachable, in the background. The
   watch re-queues anything not yet delivered at launch, when the iPhone comes
@@ -158,8 +304,16 @@ It must be a user-initiated event while the app is in the foreground.
   `.json` of the metadata) inside that method, then imports it. Staging and
   listing share a lock so a half-staged recording is never cleared.
 - **Nothing else crosses:** the watch receives only acknowledgments (part
-  ids) from the phone, never audio, transcripts or settings. The watch app has no network code (the release
-  policy check enforces this) and no keys.
+  ids) and the recent notebook names (application context) from the phone,
+  never audio, transcripts, titles or settings. The watch app has no network
+  code and no Speech APIs (the release policy check enforces this) and no
+  keys. Notebook names are never logged.
+- **What the watch keeps of a recording:** while a recording is on the
+  watch, its row in `index.json` holds the type, the notebook name, the
+  planned length and the marker times (so a crash keeps them). Once the
+  iPhone confirms every part, the row drops the notebook name and the
+  markers along with the audio; a delivered row keeps only times and the
+  type until it is pruned.
 - **Data protection:** the watch index and phone inbox are written with
   `completeFileProtectionUntilFirstUserAuthentication`.
 
@@ -173,10 +327,25 @@ It must be a user-initiated event while the app is in the foreground.
    `sourceRecordingID`, `audioFileName = watch-<id>.m4a` in `Storage.audio`,
    `importState = "pending"`. The new `Meeting` fields are optional, so stores
    from earlier builds migrate automatically (no schema version needed).
+   **Type, notebook, plan and marks** (`WatchImporter.applyWatchFields`):
+   `recordingKind` from `kind` (nil, a meeting, from an older watch),
+   `courseName` (the notebook) from `notebook`, spelled like an existing
+   notebook ignoring case, `plannedMinutes`, and one `MomentMarker` per
+   watch marker at its wall-clock time (kept inside the recording), with
+   the watch's marker id and no note. Idempotent: a field is only filled
+   when empty and a marker only added if no marker has its id, so a
+   re-delivery, or a pass that finishes an import cut short, never doubles
+   a marker; a duplicate delivery of an imported recording changes nothing
+   (the user may have edited the notebook or deleted a marker since). With
+   a notebook and no calendar event, the title is the notebook and the date
+   ("BIO 101 — Oct 7"), like a live recording; otherwise the type and the
+   date ("Meeting — Oct 7", "Class — Oct 7", "Personal — Oct 7"). Both
+   count as untitled, so a calendar match found later names it (the Mac's
+   rule).
 2. **Calendar:** the same `CalendarMatching.bestEvent` rules as a live
    recording, over the watch recording's start and end; `MeetingLinker`
    fills the title, invite fields and attendees. Unmatched recordings keep the
-   default "Meeting · …" title, so the existing backfill can still name them
+   default type-and-date title, so the existing backfill can still name them
    when calendar access is granted later.
 3. **Transcription (on-device only):** iOS 26+ uses `SpeechAnalyzer` +
    `SpeechTranscriber` on the file (`analyzeSequence(from:)`), iOS 18–25 uses
@@ -207,17 +376,19 @@ It must be a user-initiated event while the app is in the foreground.
    transcribed on this iPhone", only if the user already allowed
    notifications; the import never asks for permission.
 
-**After import** the meeting is ordinary: AI notes and the follow-up email
-use its transcript; **Delete / Strike silence the phone's copy** of the audio
+**After import** the recording is ordinary: AI notes in its type's style
+(meeting notes, lecture notes for a Class, personal notes), the follow-up
+email for a meeting, and Review use its transcript and its marks;
+**Delete / Strike silence the phone's copy** of the audio
 (the imported file is the meeting's audio file, with word timings, so exactly
 the selected words plus 150 ms are zeroed; see `docs/REDACTION.md`); Delete
-Meeting removes the file and anything of that recording still in the inbox,
-and the import log keeps a late re-delivery from bringing it back; export and
-People work unchanged. At launch the app removes temporary files a killed run
+Recording removes the file, its markers (cascade) and anything of that
+recording still in the inbox, and the import log keeps a late re-delivery
+from bringing it back; export and People work unchanged. At launch the app removes temporary files a killed run
 may have left (`.joining-*` / `.silencing-*` in `Audio/`, `nf-chunk-*` in
 `tmp/`).
 
-**UI:** an Apple Watch mark on the meeting in Meetings and "Recorded on Apple
+**UI:** an Apple Watch mark on the recording in Recordings and "Recorded on Apple
 Watch" in its detail; "Transcribing…" / "Not transcribed" in the list and a
 progress card (or Retry) in the transcript section; Settings → **Apple Watch**
 shows paired / app installed / arriving from the watch (a paused recording
@@ -245,16 +416,40 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
   pauses, the filter), resume from a checkpoint after a cut-short run and a
   killed run, waiting for the foreground, failure + Retry, waiting while the
   phone records, deletion mid-run, Strike silencing a watch-format file, the
-  silencer's bit-rate fallback, line splitting and chunk planning.
+  silencer's bit-rate fallback, line splitting and chunk planning. Type,
+  notebook, plan and markers: imported (notebook spelled like an existing
+  one, markers at their wall-clock times with the watch's ids, markers from
+  any part merged), idempotent (re-delivery, a pass finishing a cut-short
+  import, applying twice), user edits kept on a late re-delivery, markers
+  clamped into the recording and deleted with it, metadata from an older
+  watch imported as a plain meeting, the new keys' plist/JSON round trip,
+  and the notebook list (names only, capped).
 - `NoFrictionWatchTests`: recorder state machine (transitions, pauses,
   interruptions, metadata), transfer queue (send once, every part of a
   paused recording, delete each part on delivery, keep and retry only the
   failed part, nothing sent while unavailable or while recording, resend
   after relaunch), crash recovery keeping readable parts, pruning, plist
-  round trip.
+  round trip. `RecordingModeTests.swift`: the time limit in the state
+  machine (warning 5 or 2 minutes ahead, stop at the deadline while
+  recording or paused, +15 min before and after the deadline, No limit,
+  idle), markers (wall clock + offset mapped back by the contract, none
+  while paused, double taps, the cap, labels by type), metadata with the new
+  keys in both directions (round trip, a copy of the first-version parser
+  reading new metadata, old metadata without the keys, bad values dropped
+  but the recording kept), the notebook context, the store (every part
+  carries the markers, delivery drops the notebook name and markers, a
+  crash keeps them, an index from before types), Discreet (setting off by
+  default and persisted, start options remembered without the notebook,
+  what is visible and at what opacity in normal, Discreet, Discreet + wrist
+  down, Reduce Motion, paused and mark flash, light-tap haptics).
 - **Simulators:** a watch simulator paired with an iPhone simulator
-  (`xcrun simctl pair <watch> <phone>`). Debug launch arguments on the watch:
-  `-NFWatchDemo idle|recording|paused|list` (sample states, no microphone) and
+  (`xcrun simctl pair <watch> <phone>`; a dependent watch app doesn't launch
+  on an unpaired watch simulator). Debug launch arguments on the watch:
+  `-NFWatchDemo idle|recording|paused|list` (sample states, no microphone),
+  `-NFWatchDemo start|class|warning|discreet` (the Record flow, a Class
+  recording in a notebook with time left and marks, its 5-minute warning,
+  the Discreet screen), `-NFWatchDemo length|notebook|controls` (the later
+  Record flow steps and the Discreet controls, for layout checks) and
   `-NFWatchSendTestRecording` (a 3-second synthetic tone sent through the real
   store and WatchConnectivity path), `-NFWatchAutoRecord` (the real
   microphone recorder: 2 s, pause, 2 s, stop; grant the simulator microphone
@@ -283,6 +478,22 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
 6. Close the iPhone app during a long transcription; reopen: it continues.
 7. Strike a word and play the audio: silence there, nothing else changed.
 8. A 60-minute recording: transfer time, transcription time, battery use.
+9. Notebooks: add a notebook to a recording on the iPhone; open the Record
+   flow on the watch: it is listed. Delete the iPhone's last recording in
+   it: it leaves the watch's list.
+10. A 15-minute Class recording in a notebook, wrist down most of the time:
+    the warning arrives 2 minutes before (haptic in the app, or the
+    notification with +15 min / No limit when the watch face shows); +15 min
+    from the notification moves the end; it stops by itself at the end and
+    arrives on the iPhone as a Class in that notebook with `plannedMinutes`.
+11. Mark ★ with a tap and ? / ✎ with a long press during a paused
+    recording's second part: on the iPhone the markers sit on the right
+    transcript lines, labeled On the test (Class) / Follow up (Meeting) /
+    Remember (Personal).
+12. Discreet in a dark room: only the faint logo; Always On shows it dimmer
+    and still; a tap marks with a light tap; the crown or a long press opens
+    the controls; Stop takes two steps; the microphone indicator still
+    shows; Reduce Motion stops the pulse.
 
 ## Release
 
@@ -306,9 +517,12 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
   `NF_IOS_PROFILE_UUID` and `NF_IOS_SIGNING_IDENTITY`; the script maps each
   profile to its target and adds both to the export options.
 - **Screenshots:** `scripts/ios-screenshots.sh watch` builds the watch app
-  for the "NF Apple Watch Series 11 (46mm)" simulator, captures three demo
-  states, removes the alpha channel and checks 416×496 (the Series 10/11
-  size; Ultra 3 would be 422×514). Output: `ios/AppStore/screenshots/watch-46mm/`.
+  for the "NF Apple Watch Series 11 (46mm)" simulator, captures five demo
+  states (recording, Record, Recordings, a Class recording with time left
+  and marks, Discreet), removes the alpha channel and checks 416×496 (the
+  Series 10/11 size; Ultra 3 would be 422×514). Output:
+  `ios/AppStore/screenshots/watch-46mm/`. The committed set was captured
+  from the same demo states on a Series 11 (46mm) simulator.
 - **Next upload is a new build.** Build 3 was exported without the watch app
   and never uploaded; the release script will produce build 4 with it.
 
@@ -328,11 +542,14 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
 4. **Apple Watch screenshots** are required once the build has a watch app:
    on the iOS 1.0.0 version page, Apple Watch section, upload
    `ios/AppStore/screenshots/watch-46mm/01-recording.png`, `02-record.png`,
-   `03-recordings.png` (416×496).
+   `03-recordings.png`, `04-class.png`, `05-discreet.png` (416×496).
 5. **Review notes:** add one paragraph: "The Apple Watch app records a
-   meeting and sends the audio to the iPhone app, which transcribes it on the
-   device. Install from the Watch app on the paired iPhone; tap Record, then
-   Stop; the meeting appears in the iPhone app's Meetings tab."
+   meeting, a class or anything else and sends the audio to the iPhone app,
+   which transcribes it on the device. Install from the Watch app on the
+   paired iPhone; tap Record, choose what it is and how long, then Stop; the
+   recording appears in the iPhone app's Recordings tab. Discreet dims the
+   watch screen while recording; the system microphone indicator still
+   shows."
 6. **Listing / privacy:** mention Apple Watch in the description where
    appropriate. The App Privacy answers don't change: audio moves only between
    the user's own watch and iPhone; nothing is collected by the developer.
@@ -352,3 +569,10 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
   app start recording from the background, so a rotation with the wrist down
   would end the recording; it isn't done.
 - Signed archive/upload with the watch app (needs the portal steps above).
+- Student mode on hardware: whether watchOS plays the app's haptics (the
+  time-limit warning, marks) while the app is in the background with the
+  wrist down (the warning notification is the fallback), the warning
+  notification and its +15 min / No limit actions, the Discreet display in
+  Always On, the Digital Crown opening the Discreet controls, and the
+  application context (recent notebooks) reaching the watch. The pure logic
+  is unit-tested and the screens were checked in the simulator.

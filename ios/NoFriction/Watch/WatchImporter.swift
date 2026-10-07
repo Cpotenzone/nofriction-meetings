@@ -121,14 +121,20 @@ final class WatchImporter {
         let record: Meeting
         if let existing = self.meeting(sourceRecordingID: key) {
             guard !hasAudio else {
-                // Delivered again after its import: a duplicate
+                // Delivered again after its import: a duplicate. Nothing is
+                // re-applied (the user may have changed its notebook or markers).
                 env.inbox.remove(metadata.recordingID)
                 for url in audio { try? FileManager.default.removeItem(at: url) }
                 return existing
             }
             record = existing
+            // Saved before the app died: finish what the first pass may not
+            // have (markers by id, so none twice)
+            applyWatchFields(metadata, to: record)
+            try? context.save()
         } else {
-            record = Meeting(title: RecordingSession.defaultTitle(for: metadata.startedAt), startedAt: metadata.startedAt)
+            let kind = metadata.kind ?? .meeting
+            record = Meeting(title: RecordingSession.defaultTitle(for: metadata.startedAt, kind: kind), startedAt: metadata.startedAt)
             record.endedAt = metadata.endedAt
             record.source = Meeting.Source.watch
             record.sourceRecordingID = key
@@ -142,6 +148,11 @@ final class WatchImporter {
             let events = env.events(metadata.startedAt.addingTimeInterval(-3600), metadata.endedAt.addingTimeInterval(3600))
             if let event = CalendarMatching.bestEvent(start: metadata.startedAt, end: metadata.endedAt, in: events) {
                 MeetingLinker.link(record, to: event, in: context)
+            }
+            applyWatchFields(metadata, to: record)
+            // Like a live recording: a calendar event names it, else its notebook
+            if RecordingSession.isDefaultTitle(record.title), let notebook = record.courseName {
+                record.title = RecordingSession.notebookTitle(notebook, at: metadata.startedAt)
             }
             try context.save()
             env.importLog.add(metadata.recordingID)
@@ -165,6 +176,36 @@ final class WatchImporter {
         }
         env.inbox.remove(metadata.recordingID)
         return record
+    }
+
+    /// What the watch adds besides audio and times: the type, the notebook
+    /// (spelled like an existing one ignoring case), the planned length and
+    /// the markers. Only fills what isn't set, and adds a marker only if no
+    /// marker with its id exists, so running it twice changes nothing.
+    /// Metadata without these keys (an older watch app) leaves a meeting
+    /// with no notebook, limit or markers.
+    func applyWatchFields(_ metadata: WatchRecordingMetadata, to record: Meeting) {
+        if record.recordingKind == nil, let kind = metadata.kind { record.kind = kind }
+        if record.courseName == nil, let notebook = metadata.notebook {
+            record.courseName = Notebook.canonical(notebook, existing: existingNotebooks())
+        }
+        if record.plannedMinutes == nil { record.plannedMinutes = metadata.plannedMinutes }
+        let lo = record.startedAt
+        let hi = max(record.endedAt ?? metadata.endedAt, lo)
+        for w in metadata.markers {
+            let id = w.id
+            let known = (try? context.fetchCount(FetchDescriptor<MomentMarker>(predicate: #Predicate { $0.id == id }))) ?? 0
+            guard known == 0 else { continue }
+            // Wall-clock, like the transcript lines (clamped into the recording)
+            let marker = MomentMarker(id: id, at: min(max(w.at, lo), hi), kind: w.kind)
+            context.insert(marker)
+            marker.meeting = record
+        }
+    }
+
+    private func existingNotebooks() -> [String] {
+        let all = (try? context.fetch(FetchDescriptor<Meeting>(predicate: #Predicate { $0.courseName != nil }))) ?? []
+        return Notebook.recent(all.map { ($0.courseName, $0.startedAt) }, limit: .max)
     }
 
     // MARK: Queue

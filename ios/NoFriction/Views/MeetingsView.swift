@@ -1,26 +1,26 @@
 import SwiftData
 import SwiftUI
 
-/// Past meetings. iPhone: a list that pushes detail. iPad: list + detail.
+/// Past recordings (the Recordings tab). iPhone: a list that pushes detail. iPad: list + detail.
 struct MeetingsView: View {
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @Environment(RecordingSession.self) private var session
     @State private var selection: Meeting?
     @State private var query = ""
-    /// Class filter; nil = All
-    @State private var classFilter: String?
+    /// Notebook filter; nil = All
+    @State private var notebookFilter: String?
 
-    /// Classes of saved meetings, most recent first
-    private var classes: [String] { ClassNames.recent(meetings.map { ($0.courseName, $0.startedAt) }, limit: 50) }
+    /// Notebooks of saved recordings, most recent first
+    private var notebooks: [String] { Notebook.recent(meetings.map { ($0.courseName, $0.startedAt) }, limit: 50) }
 
-    /// The filter, unless its last meeting was deleted
-    private var activeClass: String? {
-        guard let classFilter, classes.contains(where: { $0.caseInsensitiveCompare(classFilter) == .orderedSame }) else { return nil }
-        return classFilter
+    /// The filter, unless its last recording was deleted
+    private var activeNotebook: String? {
+        guard let notebookFilter, notebooks.contains(where: { $0.caseInsensitiveCompare(notebookFilter) == .orderedSame }) else { return nil }
+        return notebookFilter
     }
 
     private var shown: [Meeting] {
-        let past = meetings.filter { $0.id != session.meeting?.id && ClassNames.matches($0.courseName, filter: activeClass) }
+        let past = meetings.filter { $0.id != session.meeting?.id && Notebook.matches($0.courseName, filter: activeNotebook) }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return past }
         return past.filter { m in
@@ -43,8 +43,8 @@ struct MeetingsView: View {
                 CalendarConnectCard()
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                if !classes.isEmpty {
-                    ClassFilterBar(classes: classes, selection: $classFilter)
+                if !notebooks.isEmpty {
+                    NotebookFilterBar(notebooks: notebooks, selection: $notebookFilter)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
@@ -61,23 +61,23 @@ struct MeetingsView: View {
             .background(Theme.background)
             // Neutral selection on iPad; yellow fill made secondary text unreadable
             .tint(Color.white.opacity(0.14))
-            .navigationTitle("Meetings")
+            .navigationTitle("Recordings")
             .searchable(text: $query, prompt: "Titles, people, or anything said")
             .overlay {
                 if meetings.isEmpty {
-                    ContentUnavailableView("No meetings yet", systemImage: "waveform",
-                                           description: Text("Recordings you make appear here with their transcript, photos and attendees."))
+                    ContentUnavailableView("No recordings yet", systemImage: "waveform",
+                                           description: Text("Meetings, classes and everything else you record appear here with their transcript and photos."))
                 } else if shown.isEmpty && !query.isEmpty {
                     ContentUnavailableView.search(text: query)
-                } else if shown.isEmpty, let activeClass {
-                    ContentUnavailableView("No recordings in \(activeClass)", systemImage: "graduationcap")
+                } else if shown.isEmpty, let activeNotebook {
+                    ContentUnavailableView("No recordings in \(activeNotebook)", systemImage: "book.closed")
                 }
             }
         } detail: {
             if let selection {
                 MeetingDetailView(meeting: selection)
             } else {
-                ContentUnavailableView("Select a meeting", systemImage: "rectangle.stack")
+                ContentUnavailableView("Select a recording", systemImage: "rectangle.stack")
                     .background(Theme.background)
             }
         }
@@ -107,12 +107,21 @@ private struct MeetingRow: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            if let className = meeting.courseName {
-                Label(className, systemImage: "graduationcap")
-                    .font(.caption)
-                    .foregroundStyle(Theme.accent)
-                    .lineLimit(1)
-                    .accessibilityLabel("Class: \(className)")
+            // Class / Personal (a meeting is the default and isn't tagged), and the notebook
+            if meeting.kind != .meeting || meeting.courseName != nil {
+                HStack(spacing: 10) {
+                    if meeting.kind != .meeting {
+                        Label(meeting.kind.label, systemImage: meeting.kind.systemImage)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let notebook = meeting.courseName {
+                        Label(notebook, systemImage: "book.closed")
+                            .foregroundStyle(Theme.accent)
+                            .accessibilityLabel("\(Notebook.label): \(notebook)")
+                    }
+                }
+                .font(.caption)
+                .lineLimit(1)
             }
             let names = meeting.people.prefix(3).map(\.person.displayName)
             if !names.isEmpty {

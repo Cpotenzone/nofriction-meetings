@@ -46,14 +46,20 @@ final class Meeting {
     /// seconds, wall-clock seconds), to map file time back to clock time
     var sourcePausesJSON: String?
 
-    // Timed recording and classes (docs/TIMED_RECORDING_AND_CLASSES.md).
+    // Timed recording, type and notebook (docs/TIMED_RECORDING_AND_NOTEBOOKS.md).
     // Optional, so older stores migrate without a schema version.
-    /// The class this recording belongs to ("BIO 101 — Cell Biology"); nil = not a class.
-    /// User-entered; deleted with the meeting. (Not `className`: Core Data
-    /// resolves that key to NSObject's `className`, the object's class name.)
+    /// The **notebook** this recording belongs to ("Acme project", "BIO 101",
+    /// "Health"); nil = none. Any type can have one. User-entered; deleted
+    /// with the recording. The attribute keeps its first name (it was the
+    /// class before notebooks; no data migration). Not `className`: Core Data
+    /// resolves that key to NSObject's `className`, the object's class name.
     var courseName: String?
     /// Planned length in minutes ("how long?"); nil = no limit
     var plannedMinutes: Int?
+    /// "What is it?": `meeting` / `class` / `personal` (`RecordingKind`).
+    /// nil = a meeting: recordings from before types, except those with a
+    /// notebook, which `RecordingKindBackfill` made `class` once.
+    var recordingKind: String?
 
     @Relationship(deleteRule: .cascade, inverse: \Segment.meeting) var segments: [Segment] = []
     @Relationship(deleteRule: .cascade, inverse: \Snapshot.meeting) var snapshots: [Snapshot] = []
@@ -110,6 +116,12 @@ final class Meeting {
     }
 
     var isFromWatch: Bool { source == Source.watch }
+
+    /// What the recording is (nil or unknown reads as Meeting).
+    var kind: RecordingKind {
+        get { RecordingKind(stored: recordingKind) }
+        set { recordingKind = newValue.rawValue }
+    }
     var importPhase: ImportState? { importState.flatMap(ImportState.init(rawValue:)) }
 
     /// 0…1 while an imported recording is being transcribed
@@ -288,6 +300,30 @@ enum Storage {
         for dir in [audio, snapshots, watchInbox] {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
+    }
+}
+
+/// Once, at the first launch with recording types: a recording with a
+/// notebook was a class (the field was "Class" until then), so it becomes
+/// `class`; every other one stays nil, which means meeting. It runs once, so
+/// a notebook added to a meeting later never turns it into a class.
+enum RecordingKindBackfill {
+    static let doneKey = "recordingKindBackfillDone"
+
+    /// Returns how many recordings became classes.
+    @MainActor
+    @discardableResult
+    static func run(_ context: ModelContext, defaults: UserDefaults = .standard) -> Int {
+        guard !defaults.bool(forKey: doneKey) else { return 0 }
+        let classes = (try? context.fetch(FetchDescriptor<Meeting>(
+            predicate: #Predicate { $0.courseName != nil && $0.recordingKind == nil }))) ?? []
+        for m in classes { m.recordingKind = RecordingKind.class.rawValue }
+        if !classes.isEmpty {
+            // Not marked done if it couldn't be saved: tried again next launch
+            guard (try? context.save()) != nil else { return 0 }
+        }
+        defaults.set(true, forKey: doneKey)
+        return classes.count
     }
 }
 
