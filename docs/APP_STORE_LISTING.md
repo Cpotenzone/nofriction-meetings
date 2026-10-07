@@ -283,7 +283,9 @@ Meetings, classes and everyday life: record and transcribe on your device, mark 
 
 ### Description (limit 4000)
 
-**3963 / 4000 characters**
+App Store Connect rejects some symbols in descriptions with "This field contains one or more invalid characters" (seen 2026-10-07 for ★; key glyphs like ⌘ are avoided too). Write marks and shortcuts in words here; bullets (•) are fine.
+
+**3959 / 4000 characters**
 
 ```text
 noFriction records and transcribes on your iPhone or iPad so you can stay in the moment: a meeting, a class, or anything else worth keeping. Then create notes, follow-up drafts and review guides with the AI you choose.
@@ -299,7 +301,7 @@ RECORD ANYTHING, FIND WHAT MATTERS
 • Say what it is when you record: Meeting, Class or Personal. Notes, marks and the review guide follow the type
 • Choose how long to record (15, 30, 60 or 90 minutes, or no limit). It stops by itself, after a warning with +15 min
 • Live transcription with Apple's on-device speech recognition, even with the screen locked
-• Tap Mark this moment while you record: ★ Important, ? Question, or the third mark for the type, with an optional note
+• Tap Mark this moment while you record: Important, Question, or the third mark for the type, with an optional note
 • Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
 • Play back the audio and search everything you've recorded
 • Add photos of slides, whiteboards and handouts
@@ -407,7 +409,7 @@ Notes for meetings, classes and everyday life, transcribed on your Mac. Rewind s
 
 ### Description (limit 4000)
 
-**3959 / 4000 characters**
+**3975 / 4000 characters**
 
 ```text
 noFriction keeps your Mac's recordings, transcripts, screenshots and notes in one place: meetings, classes and anything else worth keeping. Go back to any moment in Rewind, and turn the transcript into notes with the AI you choose.
@@ -424,7 +426,7 @@ RECORD AND REWIND
 • Choose how long to record (15, 30, 60 or 90 minutes, or no limit). It stops by itself, after a warning with +15 min
 • Capture your microphone and your Mac's audio, with a live local transcript
 • Capture the displays or windows you choose, and see screenshots and transcript side by side in Rewind
-• Mark a moment with ⌃⌥⌘M, even from another app: ★ Important, ? Question, or the third mark for the type, with a note, shown on the Rewind timeline
+• Mark a moment with Control-Option-Command-M, even from another app: Important, Question, or the third mark for the type, with a note, shown on the Rewind timeline
 • Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
 • Search every transcript
 • See the web addresses said in a recording, and add your own references. Nothing is fetched
@@ -878,13 +880,13 @@ from Business to Education.
 | Subtitle | 29 | 30 | |
 | Subtitle alt | 30 | 30 | |
 | iOS promotional text | 159 | 170 | changed (was 166) |
-| iOS description | 3963 | 4000 | changed (was 3865) |
+| iOS description | 3959 | 4000 | changed (was 3865) |
 | iOS keywords | 95 | 100 | changed (was 98) |
 | iOS keywords, Name alt 1 | 93 | 100 | changed (was 96) |
 | iOS keywords, Name alt 2 | 92 | 100 | changed (was 95) |
 | iOS What's New 1.0 | 685 | 4000 | changed (was 365) |
 | Mac promotional text | 158 | 170 | changed (was 166) |
-| Mac description | 3959 | 4000 | changed (was 3900) |
+| Mac description | 3975 | 4000 | changed (was 3900) |
 | Mac keywords | 98 | 100 | changed (was 97) |
 | Mac keywords, Name alt 1 | 96 | 100 | changed (was 96) |
 | Mac keywords, Name alt 2 | 95 | 100 | changed (was 94) |
