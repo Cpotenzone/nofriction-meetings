@@ -46,7 +46,7 @@ final class Meeting {
     /// seconds, wall-clock seconds), to map file time back to clock time
     var sourcePausesJSON: String?
 
-    // Timed recording, type and notebook (docs/TIMED_RECORDING_AND_CLASSES.md).
+    // Timed recording, type and notebook (docs/TIMED_RECORDING_AND_NOTEBOOKS.md).
     // Optional, so older stores migrate without a schema version.
     /// The **notebook** this recording belongs to ("Acme project", "BIO 101",
     /// "Health"); nil = none. Any type can have one. User-entered; deleted

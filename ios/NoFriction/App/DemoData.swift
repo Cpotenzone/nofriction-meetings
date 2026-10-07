@@ -80,6 +80,8 @@ enum DemoData {
         • Dana: choose the five pilot inspectors
         """
         brightwater.aiNotesAt = brightwater.endedAt
+        brightwater.kind = .meeting
+        brightwater.courseName = "Brightwater pilot"
         if let line = brightwater.orderedSegments.first(where: { $0.text == "STRIKE" }) {
             let r = Redaction(kind: .line, action: .strike, mediaStart: 56, mediaEnd: 68,
                               coveredFrom: line.start, coveredTo: line.start.addingTimeInterval(12),
@@ -106,6 +108,74 @@ enum DemoData {
                     "Just the store listing. Screenshots and the privacy answers.",
                 ],
                 attendees: [1, selfIndex], organizer: selfIndex, in: context)
+
+        // Today: a class in its notebook, with marked moments and lecture notes
+        let lecture = meeting("Lecture 7: Cellular respiration", start: a.addingTimeInterval(-100 * 60), minutes: 50,
+                              lines: [
+                                  "Today we follow a glucose molecule all the way to ATP.",
+                                  "Glycolysis happens in the cytoplasm and doesn't need oxygen.",
+                                  "It splits glucose into two pyruvate molecules and nets two ATP.",
+                                  "The Krebs cycle runs in the mitochondrial matrix.",
+                                  "This will be on the exam: the electron transport chain makes most of the ATP.",
+                                  "Oxygen is the final electron acceptor; without it the chain stops.",
+                                  "Problem set four is due next Thursday.",
+                              ],
+                              spacing: 6 * 60, attendees: [], organizer: -1, calendar: false, in: context)
+        lecture.kind = .class
+        lecture.courseName = "BIO 101"
+        lecture.plannedMinutes = 60
+        lecture.aiNotes = """
+        ## Summary
+        How cells turn glucose into ATP: glycolysis, the Krebs cycle and the electron transport chain.
+
+        ## Key concepts
+        - Glycolysis splits glucose into two pyruvate in the cytoplasm (no oxygen needed)
+        - The Krebs cycle runs in the mitochondrial matrix
+        - The electron transport chain makes most of the ATP
+
+        ## Definitions
+        - **Final electron acceptor**: oxygen; without it the chain stops
+
+        ## Examples
+        None.
+
+        ## Announcements and deadlines
+        - Problem set four is due next Thursday
+        """
+        lecture.aiNotesAt = lecture.endedAt
+        for (minute, kind, note) in [(13.0, MarkerKind.important, nil as String?), (25.0, .test, nil), (31.0, .question, "why oxygen?")] {
+            let marker = MomentMarker(at: lecture.startedAt.addingTimeInterval(minute * 60), kind: kind, note: note)
+            context.insert(marker)
+            marker.meeting = lecture
+        }
+
+        // Personal: an appointment, in its own notebook
+        let physio = meeting("Physio check-in", start: a.addingTimeInterval(-3 * day + 8 * 3600), minutes: 20,
+                             lines: [
+                                 "Your shoulder is moving much better than two weeks ago.",
+                                 "Keep the band exercises, three sets of ten, morning and evening.",
+                                 "Ice it after the long runs, not before.",
+                                 "Book the next visit for the end of the month.",
+                             ],
+                             spacing: 4 * 60, attendees: [], organizer: -1, calendar: false, in: context)
+        physio.kind = .personal
+        physio.courseName = "Health"
+        physio.aiNotes = """
+        ## Summary
+        Shoulder check-up: good progress since the last visit.
+
+        ## Key points
+        - Range of motion is much better than two weeks ago
+        - Ice after long runs, not before
+
+        ## To-dos and reminders
+        - Band exercises: three sets of ten, morning and evening
+        - Book the next visit for the end of the month
+        """
+        physio.aiNotesAt = physio.endedAt
+        let remember = MomentMarker(at: physio.startedAt.addingTimeInterval(4 * 60 + 30), kind: .test)
+        context.insert(remember)
+        remember.meeting = physio
         try? context.save()
     }
 
@@ -169,13 +239,15 @@ enum DemoData {
 
     @MainActor @discardableResult
     private static func meeting(_ title: String, start: Date, minutes: Double?, lines: [String], spacing: TimeInterval = 14,
-                                attendees: [Int], organizer: Int, in context: ModelContext) -> Meeting {
+                                attendees: [Int], organizer: Int, calendar: Bool = true, in context: ModelContext) -> Meeting {
         let m = Meeting(title: title, startedAt: start)
         m.endedAt = minutes.map { start.addingTimeInterval($0 * 60) }
-        m.scheduledStart = start
-        m.scheduledEnd = m.endedAt
-        m.meetingURL = "https://meet.example.com/q4-review"
-        m.calendarEventID = UUID().uuidString
+        if calendar {
+            m.scheduledStart = start
+            m.scheduledEnd = m.endedAt
+            m.meetingURL = "https://meet.example.com/q4-review"
+            m.calendarEventID = UUID().uuidString
+        }
         context.insert(m)
         for (i, line) in lines.enumerated() {
             let s = Segment(text: line, start: start.addingTimeInterval(Double(i) * spacing + 20), duration: 12)

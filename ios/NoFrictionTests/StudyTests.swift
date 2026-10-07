@@ -335,14 +335,23 @@ final class MarkerAndStudyStoreTests: XCTestCase {
             """)
         XCTAssertTrue(MeetingAI.condenseSystem.contains(#"the lecturer stresses ("this will be on the exam")"#))
         XCTAssertTrue(MeetingAI.studySystem(.summary).contains("Write lecture notes"))
+        // Meeting and Personal never mention student, lecture, instructor or exam (same rule as the Mac)
+        let schoolWords = try! NSRegularExpression(pattern: #"\b(students?|lectures?|lecturer|instructors?|exams?)\b"#, options: [.caseInsensitive])
+        func mentionsSchool(_ s: String) -> Bool {
+            schoolWords.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+        }
+        XCTAssertTrue(mentionsSchool(MeetingAI.studyBase), "the check itself works on the Class text")
         for kind in [RecordingKind.meeting, .personal] {
             for part in StudyKind.allCases {
                 let system = MeetingAI.studySystem(part, for: kind)
-                XCTAssertFalse(system.contains("lecture"), "\(kind) \(part)")
-                XCTAssertFalse(system.contains("student"), "\(kind) \(part)")
+                XCTAssertFalse(mentionsSchool(system), "\(kind) \(part)")
                 XCTAssertTrue(system.contains("(MARKS)"))
             }
-            XCTAssertFalse(MeetingAI.condenseSystem(for: kind).contains("lecture"))
+            XCTAssertFalse(mentionsSchool(MeetingAI.condenseSystem(for: kind)), "\(kind) condense")
+            let input = StudyInput(title: "x", recordingKind: kind, durationMs: 1000, lines: [.init(ms: 0, text: "hi")],
+                                   marks: [.init(ms: 0, kind: .test, note: nil)])
+            XCTAssertFalse(mentionsSchool(MeetingAI.studyUserMessage(input, condensed: true, body: "")), "\(kind) message")
+            XCTAssertFalse(mentionsSchool(MeetingAI.condenseMessage(input, chunk: "[0:00] hi", part: 1, parts: 1)), "\(kind) condense message")
         }
         XCTAssertTrue(MeetingAI.studyBase(for: .meeting).contains("✎ Follow up matter most"))
         XCTAssertTrue(MeetingAI.studyBase(for: .personal).contains("✎ Remember matter most"))

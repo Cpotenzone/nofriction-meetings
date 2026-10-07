@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 
-// Timed recording (docs/TIMED_RECORDING_AND_CLASSES.md): the iPhone's
+// Timed recording (docs/TIMED_RECORDING_AND_NOTEBOOKS.md): the iPhone's
 // per-meeting slot and warning notification. The choices and the deadline
 // logic are shared with Apple Watch (ios/Shared/TimeLimit.swift); the
 // vocabulary (type, notebook, markers) is in ios/Shared/RecordingVocabulary.swift.

@@ -449,7 +449,7 @@ struct NoticeBanner: View {
     }
 }
 
-/// "Meeting seems to have ended — stopping in 30 s" with the two choices.
+/// "This seems to have ended — stopping in 30 s" with the two choices.
 struct MeetingEndBanner: View {
     let deadline: Date
     let keep: () -> Void
@@ -462,7 +462,7 @@ struct MeetingEndBanner: View {
                     .accessibilityHidden(true)
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
                     let left = max(0, Int(deadline.timeIntervalSince(ctx.date).rounded(.up)))
-                    Text("Meeting seems to have ended — stopping in \(left) s")
+                    Text("This seems to have ended — stopping in \(left) s")
                         .font(.footnote.weight(.semibold))
                         .contentTransition(.numericText())
                 }

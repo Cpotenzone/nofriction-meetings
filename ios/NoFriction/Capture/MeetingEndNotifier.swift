@@ -41,7 +41,7 @@ final class MeetingEndNotifier: NSObject, UNUserNotificationCenterDelegate {
     func post(deadline: Date) {
         let seconds = max(1, Int(deadline.timeIntervalSinceNow.rounded()))
         let content = UNMutableNotificationContent()
-        content.title = "Meeting seems to have ended"
+        content.title = "This seems to have ended"
         content.body = "Stopping the recording in \(seconds) s. Everything said so far is saved."
         content.categoryIdentifier = Self.category
         content.sound = .default

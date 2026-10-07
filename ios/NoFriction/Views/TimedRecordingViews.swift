@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-// Timed recording, type and notebook (docs/TIMED_RECORDING_AND_CLASSES.md):
+// Timed recording, type and notebook (docs/TIMED_RECORDING_AND_NOTEBOOKS.md):
 // the Record sheet ("What is it?", "How long?", Notebook), the time-left row
 // and warning on the Record screen, notebook chips, the library filter and
 // the type and notebook fields on a recording.
