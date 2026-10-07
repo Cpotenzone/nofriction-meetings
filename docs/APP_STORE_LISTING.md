@@ -536,10 +536,10 @@ Pro Monthly
 
 Monthly description:
 
-**38 / 45 characters**
+**40 / 45 characters**
 
 ```text
-AI meeting notes and insights, monthly
+AI notes, summaries and reviews, monthly
 ```
 
 Yearly display name:
@@ -552,21 +552,21 @@ Pro Yearly
 
 Yearly description:
 
-**37 / 45 characters**
+**39 / 45 characters**
 
 ```text
-AI meeting notes and insights, yearly
+AI notes, summaries and reviews, yearly
 ```
 
 Limits used: display name 30, description 45 (App Store Connect's
 in-app purchase localization limits). The local test file
-`ios/NoFriction.storekit` uses longer descriptions ("AI meeting notes and
-follow-up emails, billed yearly."); that file is only for local testing and
+`ios/NoFriction.storekit` uses longer descriptions ("AI notes, summaries and
+review guides, billed yearly."); that file is only for local testing and
 doesn't need to match.
 
 Review information for each product: a screenshot of the paywall (iOS: the
 paywall from "Summarize"; Mac: Settings → Subscription) and the note "Unlocks
-the AI features. Reach it from a meeting's Summarize button (iOS) or Settings →
+the AI features. Reach it from a recording's Summarize button (iOS) or Settings →
 Subscription (Mac)."
 
 ---

@@ -32,7 +32,7 @@
       "id" : "21500001",
       "localizations" : [
         {
-          "description" : "AI notes and follow-up emails",
+          "description" : "AI notes, summaries and review guides",
           "displayName" : "noFriction Pro",
           "locale" : "en_US"
         }
@@ -58,7 +58,7 @@
           },
           "localizations" : [
             {
-              "description" : "AI meeting notes and follow-up emails, billed yearly.",
+              "description" : "AI notes, summaries and review guides, billed yearly.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }
@@ -91,7 +91,7 @@
           },
           "localizations" : [
             {
-              "description" : "AI meeting notes and follow-up emails, billed monthly.",
+              "description" : "AI notes, summaries and review guides, billed monthly.",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
