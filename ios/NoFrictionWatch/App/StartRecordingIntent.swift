@@ -6,9 +6,13 @@ import AppIntents
 /// shows the one-time recording notice if it has not been accepted yet. It
 /// uses the remembered choices from the Record flow (type, "How long?",
 /// Discreet) with no notebook, so a timed recording still stops by itself.
+///
+/// App Store processing rejects intent text containing "apple" (ITMS-90626):
+/// say "your watch", never "Apple Watch", in the title, description and
+/// phrases. `scripts/release-ios.sh --check` enforces it.
 struct StartRecordingIntent: AppIntent {
     static let title: LocalizedStringResource = "Start Recording"
-    static let description = IntentDescription("Opens noFriction on Apple Watch and starts recording with your last choices.")
+    static let description = IntentDescription("Opens noFriction on your watch and starts recording with your last choices.")
     static let openAppWhenRun = true
 
     @MainActor
@@ -24,7 +28,7 @@ struct NoFrictionWatchShortcuts: AppShortcutsProvider {
             intent: StartRecordingIntent(),
             phrases: [
                 "Start a recording in \(.applicationName)",
-                "Record a meeting with \(.applicationName)",
+                "Record with \(.applicationName)",
             ],
             shortTitle: "Start Recording",
             systemImageName: "mic.fill"
