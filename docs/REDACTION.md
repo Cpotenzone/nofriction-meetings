@@ -152,6 +152,16 @@ exist on the platform:
 Device backups (Time Machine, iCloud backup) are outside the app's control.
 The Strike confirmation mentions it in one line.
 
+**Meeting metadata that isn't transcript or screen text.** A recording's
+class (Mac `meetings.class_name`, iOS `Meeting.courseName`) and planned
+length (`planned_minutes` / `plannedMinutes`) are user-entered fields on the
+meeting row, like its title. Delete and Strike of words or screens don't
+touch them. **Delete Meeting** removes them with the row on both platforms.
+The "recent classes" chips are read from the remaining meetings, never stored
+separately, so a deleted meeting's class disappears with it. Lecture notes
+are ordinary AI notes (step 5). See
+[TIMED_RECORDING_AND_CLASSES.md](TIMED_RECORDING_AND_CLASSES.md#purge).
+
 ## Rendering the marker
 
 - **In the transcript:** a dark bar with the text **"Stricken from the record"**

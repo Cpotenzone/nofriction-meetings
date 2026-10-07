@@ -13,7 +13,15 @@ accounts, no noFriction servers, no analytics.
 | Transcription | Apple on-device speech | Local Whisper on the Mac (one-time model download); no cloud transcription |
 | Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |
 | AI (noFriction Pro) | Notes (summary, decisions, action items), follow-up email | Chat across meetings, live insights, after-meeting report, meeting prep brief, screenshot analysis |
-| Also | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Markdown share | Calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Obsidian export, JSON export |
+| Also | Calendar match, People + LinkedIn, auto-stop, timed recording, classes + lecture notes, Delete / Strike from the record, Markdown share | Calendar match, People + LinkedIn, auto-stop, timed recording, classes + lecture notes, Delete / Strike from the record, Obsidian export, JSON export |
+
+**Timed recording and classes:** Record asks "How long?" (15 / 30 / 60 / 90
+min or no limit; the last choice is remembered) and the recording stops by
+itself at the end, with a warning and +15 min / No limit before it does. A
+recording can belong to a class ("BIO 101 — Cell Biology"): set it when you
+record or later, filter the library by class, and get lecture notes (concepts,
+definitions, examples, announcements) instead of meeting minutes. Spec:
+[docs/TIMED_RECORDING_AND_CLASSES.md](docs/TIMED_RECORDING_AND_CLASSES.md).
 
 **AI** has two choices. **Apple on-device** (Foundation Models, iOS/macOS 26+
 with Apple Intelligence on and its model available) needs no key and keeps
@@ -50,6 +58,7 @@ For developers:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the apps fit together
 - [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md): AI contract (Apple on-device or your own endpoint, keys, consent), shared by both apps
 - [docs/REDACTION.md](docs/REDACTION.md): Delete and "Strike from the record" spec
+- [docs/TIMED_RECORDING_AND_CLASSES.md](docs/TIMED_RECORDING_AND_CLASSES.md): "How long?", auto-stop at the time limit, classes and lecture notes
 - [ios/README.md](ios/README.md): iOS app file map and tests
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): release history
 - [DESIGN.md](DESIGN.md): design system (hazard yellow on matte black)
