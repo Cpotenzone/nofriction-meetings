@@ -160,6 +160,7 @@ fn condensed_lines_keep_times_and_drop_noise() {
 fn input_with(lines: &[(i64, &str)], marks: &[(i64, &str, Option<&str>)]) -> StudyInput {
     StudyInput {
         title: "Biology 101".into(),
+        class_name: Some("BIO 101".into()),
         duration_ms: lines.iter().map(|l| l.0).max().unwrap_or(0) + 5_000,
         lines: lines.iter().map(|(ms, t)| StudyLine { ms: *ms, text: t.to_string() }).collect(),
         marks: marks.iter().map(|(ms, k, n)| StudyMark { ms: *ms, kind: k.to_string(), note: n.map(String::from) }).collect(),
@@ -177,6 +178,7 @@ fn prompt_lines_carry_times_and_marks() {
     assert!(m.contains("[1:30] ✎ On the test: phases"), "{}", m);
     assert!(m.contains("[0:10] ? Question"), "{}", m);
     assert!(m.contains("TRANSCRIPT:\n[0:00] Welcome."));
+    assert!(m.starts_with("Lecture: Biology 101\nClass: BIO 101\n"), "{}", m);
     assert!(system_for(StudyKind::Quiz).contains("0-based index"));
     assert!(system_for(StudyKind::Summary).contains("never guess at or mention"));
     // The fingerprint follows the text

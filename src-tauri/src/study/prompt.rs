@@ -29,6 +29,8 @@ pub struct StudyMark {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StudyInput {
     pub title: String,
+    /// The recording's class ("BIO 101"), when it has one (classes.rs)
+    pub class_name: Option<String>,
     pub duration_ms: i64,
     pub lines: Vec<StudyLine>,
     pub marks: Vec<StudyMark>,
@@ -243,6 +245,9 @@ was removed by the student: never guess at or mention what it said. Plain text l
 pub fn header(input: &StudyInput) -> String {
     let title = input.title.trim();
     let mut s = format!("Lecture: {}\n", if title.is_empty() { "Untitled" } else { title });
+    if let Some(c) = input.class_name.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        s.push_str(&format!("Class: {}\n", c));
+    }
     if input.duration_ms > 0 {
         s.push_str(&format!("Length: {}\n", clock(input.duration_ms)));
     }

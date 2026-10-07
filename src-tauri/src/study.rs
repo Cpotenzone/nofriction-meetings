@@ -105,12 +105,13 @@ fn err<E: std::fmt::Display>(ctx: &'static str) -> impl Fn(E) -> String {
 
 struct MeetingInfo {
     title: String,
+    class_name: Option<String>,
     started_at: DateTime<Utc>,
     duration_seconds: Option<i64>,
 }
 
 async fn meeting_info(conn: &mut SqliteConnection, meeting_id: &str) -> Result<MeetingInfo, String> {
-    let row = sqlx::query("SELECT title, started_at, duration_seconds FROM meetings WHERE id = ?")
+    let row = sqlx::query("SELECT title, started_at, duration_seconds, class_name FROM meetings WHERE id = ?")
         .bind(meeting_id)
         .fetch_optional(&mut *conn)
         .await
@@ -118,6 +119,7 @@ async fn meeting_info(conn: &mut SqliteConnection, meeting_id: &str) -> Result<M
         .ok_or("That recording no longer exists")?;
     Ok(MeetingInfo {
         title: row.get("title"),
+        class_name: row.get("class_name"),
         started_at: parse_ts(&row.get::<String, _>("started_at")).ok_or("That recording has no start time")?,
         duration_seconds: row.get("duration_seconds"),
     })
@@ -156,7 +158,7 @@ pub async fn load_input_conn(conn: &mut SqliteConnection, meeting_id: &str) -> R
         .collect();
     let last = lines.iter().map(|l| l.ms).chain(marks.iter().map(|k| k.ms)).max().unwrap_or(0);
     let duration_ms = m.duration_seconds.map(|s| s * 1000).filter(|d| *d > 0).unwrap_or(0).max(last);
-    Ok(StudyInput { title: m.title, duration_ms, lines, marks })
+    Ok(StudyInput { title: m.title, class_name: m.class_name, duration_ms, lines, marks })
 }
 
 pub async fn load_input(pool: &Pool<Sqlite>, meeting_id: &str) -> Result<StudyInput, String> {
