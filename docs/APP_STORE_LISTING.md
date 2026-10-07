@@ -581,7 +581,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3939 / 4000 characters**
+**3935 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -603,14 +603,14 @@ Alternatively, enter your own local OpenAI-compatible model server and model in 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
 7. While recording, tap Mark this moment, then ? Question, ✎ On the test or Note within six seconds. On a physical device, say a web address such as "example dot com".
-8. Stop. Meetings shows Notebook chips that filter the list. In the meeting, Marked moments lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched.
+8. Stop. Recordings shows Notebook chips that filter the list. In the meeting, Marked moments lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched.
 Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9). A short Meeting and a short Personal recording show the difference.
 
 REVIEW (Pro)
 9. In the meeting's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Summarize follows the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Summarize.
 
 APPLE WATCH
-The Apple Watch app records a meeting and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the meeting appears in the iPhone app's Meetings tab. Delivery and transcription require a physical iPhone and Apple Watch.
+The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the recording appears in the iPhone app's Recordings tab. Delivery and transcription require a physical iPhone and Apple Watch.
 
 EDITING
 Open a meeting and select transcript text. Delete offers a brief undo period. Strike from the record is permanent and leaves a marker.
@@ -717,7 +717,7 @@ Order and suggested captions:
 | 4 | Class recording: Notebook BIO 101, **Marked moments** (★, ?, ✎ On the test, with notes) and the **Review** section showing the study guide is ready | Meetings → Notebook chip "BIO 101" → "Cell structure and the membrane" | Mark what's on the test |
 | 5 | Study guide: **Flashcards** with a card flipped to its back, or **Practice quiz** with an answered question, its explanation and "Jump to this moment" | That recording → Review → open the guide | Flashcards and a quiz from any recording |
 | 6 | Personal recording: notes with summary, key points and to-dos, and a Remember mark | Meetings → Notebook chip "Home" → "Kitchen renovation walkthrough" | Remember what was said, and what to do |
-| 7 | Meetings list with Notebook chips (All · Acme project · BIO 101 · Home) | Meetings tab | Group recordings into Notebooks |
+| 7 | Recordings list with Notebook chips (All · Acme project · BIO 101 · Home) | Recordings tab | Group recordings into Notebooks |
 | 8 | People | People tab | Know who was there |
 | 9 | Strike from the record marker | Meeting → select words → Strike | Strike it from the record |
 | 10 | Settings → Connect AI | Settings tab (no key entered) | Your key. Your provider. |
@@ -894,7 +894,7 @@ from Business to Education.
 | Monthly description | 38 | 45 | |
 | Yearly display name | 10 | 30 | |
 | Yearly description | 37 | 45 | |
-| iOS review notes | 3939 | 4000 | changed (was 3593) |
+| iOS review notes | 3935 | 4000 | changed (was 3593) |
 | Mac review notes | 3882 | 4000 | changed (was 3495) |
 | Beta description | 308 | 4000 | changed (was 281) |
 | What to Test | 1366 | 4000 | changed (was 1058) |
