@@ -61,14 +61,15 @@ final class RecordingSession {
 
     // MARK: - Start / stop
 
-    /// `limit` nil: the remembered length (starts that skip the "how long?"
-    /// sheet). The sheet passes its choice and an optional class.
-    func start(limit: RecordingLimit? = nil, className: String? = nil) async {
+    /// `limit` / `kind` nil: the remembered choices (starts that skip the
+    /// Record sheet). The sheet passes its choices and an optional notebook.
+    func start(limit: RecordingLimit? = nil, kind: RecordingKind? = nil, notebook: String? = nil) async {
         guard phase == .idle, let context else { return }
         phase = .starting
         notice = nil
         let limit = limit ?? RecordingLimitStore.remembered()
-        let className = ClassNames.normalize(className)
+        let kind = kind ?? RecordingKindStore.remembered()
+        let notebook = Notebook.normalize(notebook)
 
         guard await AudioCapture.requestPermission() else {
             notice = "Microphone access is off. Turn it on in Settings → noFriction."
@@ -80,10 +81,11 @@ final class RecordingSession {
         let now = Date()
         let calendar = CalendarService.shared
         let event = calendar.isAuthorized ? calendar.currentEvent(at: now) : nil
-        let title = event?.title ?? className.map { Self.classTitle($0, at: now) } ?? Self.defaultTitle(for: now)
+        let title = event?.title ?? notebook.map { Self.notebookTitle($0, at: now) } ?? Self.defaultTitle(for: now, kind: kind)
         let meeting = Meeting(title: title, startedAt: now)
-        meeting.courseName = className
+        meeting.courseName = notebook
         meeting.plannedMinutes = limit.minutes
+        meeting.kind = kind
         context.insert(meeting)
         if let event { MeetingLinker.link(meeting, to: event, in: context) }
 
@@ -425,15 +427,28 @@ final class RecordingSession {
     }
     #endif
 
-    static func defaultTitle(for date: Date) -> String {
-        "Meeting · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+    /// "Meeting · Tue, Oct 6, 10:00 AM" ("Class · …", "Recording · …" for
+    /// Personal) when no calendar event or notebook names it. A calendar
+    /// match found later still renames it (`isDefaultTitle`).
+    static func defaultTitle(for date: Date, kind: RecordingKind = .meeting) -> String {
+        defaultTitlePrefix(kind) + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
     }
 
-    static func isDefaultTitle(_ title: String) -> Bool { title.hasPrefix("Meeting · ") }
+    private static func defaultTitlePrefix(_ kind: RecordingKind) -> String {
+        switch kind {
+        case .meeting: "Meeting · "
+        case .class: "Class · "
+        case .personal: "Recording · "
+        }
+    }
 
-    /// "BIO 101 · Tue, Oct 6, 10:00 AM" for a class recording with no calendar event
-    static func classTitle(_ className: String, at date: Date) -> String {
-        className + " · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+    static func isDefaultTitle(_ title: String) -> Bool {
+        RecordingKind.allCases.contains { title.hasPrefix(defaultTitlePrefix($0)) }
+    }
+
+    /// "BIO 101 · Tue, Oct 6, 10:00 AM" for a recording in a notebook with no calendar event
+    static func notebookTitle(_ notebook: String, at date: Date) -> String {
+        notebook + " · " + date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
     }
 
     /// Names and companies from the invite help the recognizer spell them.

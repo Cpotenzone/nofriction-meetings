@@ -1,43 +1,14 @@
 import Foundation
 import SwiftData
 
-/// The three ways to mark a moment while recording (docs/STUDY_TOOLS.md).
-enum MarkerKind: String, CaseIterable, Codable, Sendable {
-    case important, question, test
+// `MarkerKind` (★ / ? / ✎ and their labels by recording type) is shared
+// with Apple Watch: ios/Shared/RecordingVocabulary.swift.
 
-    /// One tap marks this
-    static let `default`: MarkerKind = .important
-
-    var symbol: String {
-        switch self {
-        case .important: "★"
-        case .question: "?"
-        case .test: "✎"
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .important: "Important"
-        case .question: "Question"
-        case .test: "On the test"
-        }
-    }
-
-    /// SF Symbol for buttons and rows
-    var systemImage: String {
-        switch self {
-        case .important: "star.circle.fill"
-        case .question: "questionmark.circle.fill"
-        case .test: "pencil.circle.fill"
-        }
-    }
-}
-
-/// A moment the user marked while recording (★ Important, ? Question,
-/// ✎ On the test), with an optional short note. The note is user content:
-/// it goes with its meeting (cascade). Same rules as the Mac
-/// (`meeting_markers`).
+/// A moment the user marked while recording (★ Important, ? Question, and
+/// ✎ On the test / Follow up / Remember by type), with an optional short
+/// note. The note is user content: it goes with its recording (cascade).
+/// Same rules as the Mac (`meeting_markers`). Markers made on Apple Watch
+/// keep the watch's marker id, so a re-import never duplicates them.
 @Model
 final class MomentMarker {
     @Attribute(.unique) var id: UUID
@@ -51,8 +22,8 @@ final class MomentMarker {
 
     static let maxNoteLength = 280
 
-    init(at: Date, kind: MarkerKind = .default, note: String? = nil) {
-        self.id = UUID()
+    init(id: UUID = UUID(), at: Date, kind: MarkerKind = .default, note: String? = nil) {
+        self.id = id
         self.at = at
         self.kind = kind.rawValue
         self.note = MomentMarker.clean(note)
@@ -60,6 +31,9 @@ final class MomentMarker {
     }
 
     var markerKind: MarkerKind { MarkerKind(rawValue: kind) ?? .default }
+
+    /// "On the test" / "Follow up" / "Remember" for ✎, by the recording's type
+    var label: String { markerKind.label(for: meeting?.kind ?? .default) }
 
     func setKind(_ k: MarkerKind) { kind = k.rawValue }
     func setNote(_ n: String?) { note = MomentMarker.clean(n) }
@@ -113,7 +87,7 @@ enum StudyStore {
     enum Failure: LocalizedError, Equatable {
         case transcriptChanged
         var errorDescription: String? {
-            "The transcript changed while the study guide was being made (it was edited), so it wasn't saved. Make it again."
+            "The transcript changed while the guide was being made (it was edited), so it wasn't saved. Make it again."
         }
     }
 

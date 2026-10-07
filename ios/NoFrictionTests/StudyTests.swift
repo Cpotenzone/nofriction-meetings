@@ -99,7 +99,7 @@ final class StudyExportTests: XCTestCase {
 
     func testMarkdownEscapesModelText() {
         let md = StudyExport.guideMarkdown(
-            title: "Bio #1", when: "",
+            title: "Bio #1", kind: .class, when: "",
             summary: StudySummary(title: nil, sections: [.init(heading: "Org*an*elles", bullets: ["[click](javascript:x) <b>"])]),
             terms: nil, cards: nil,
             quiz: StudyQuiz(questions: [.init(question: "Q1?", choices: ["a", "b"], answer: 1, explanation: "because", atMs: 754_000)]),
@@ -149,7 +149,7 @@ private final class MockAI: @unchecked Sendable {
 
     static func kind(_ system: String) -> String {
         if system.hasPrefix("You condense") { return "condense" }
-        if system.contains("Write lecture notes") { return "summary" }
+        if system.contains("Write lecture notes") || system.contains("Write notes:") { return "summary" }
         if system.contains("key terms") { return "terms" }
         if system.contains("flashcards") { return "flashcards" }
         if system.contains("practice quiz") { return "quiz" }
@@ -177,7 +177,7 @@ private final class MockAI: @unchecked Sendable {
 
 final class StudyGenerationTests: XCTestCase {
     private func input(lines: Int, marks: [StudyInput.Mark] = []) -> StudyInput {
-        StudyInput(title: "Biology", courseName: "BIO 101", durationMs: lines * 6000,
+        StudyInput(title: "Biology", recordingKind: .class, courseName: "BIO 101", durationMs: lines * 6000,
                    lines: (0..<lines).map { .init(ms: $0 * 6000, text: "sentence \($0) about the cell cycle and mitosis phases") },
                    marks: marks)
     }
@@ -190,7 +190,7 @@ final class StudyGenerationTests: XCTestCase {
         XCTAssertTrue(out.allSatisfy { (try? $0.1.get()) != nil })
         XCTAssertEqual(ai.calls.count, 5)
         XCTAssertTrue(ai.calls.allSatisfy { $0[1].content.contains("[0:06] ✎ On the test: phases") })
-        XCTAssertTrue(ai.calls[0][1].content.hasPrefix("Lecture: Biology\nClass: BIO 101\n"))
+        XCTAssertTrue(ai.calls[0][1].content.hasPrefix("Lecture: Biology\nNotebook: BIO 101\n"))
     }
 
     func testLongLectureIsCondensedForTheOnDeviceWindow() async throws {
@@ -279,7 +279,15 @@ final class MarkerAndStudyStoreTests: XCTestCase {
         XCTAssertNil(k.note)
         XCTAssertEqual(MomentMarker.clean(String(repeating: "é", count: 400))?.count, MomentMarker.maxNoteLength)
         XCTAssertEqual(MarkerKind.allCases.map(\.symbol), ["★", "?", "✎"])
-        XCTAssertEqual(MarkerKind(rawValue: "test")?.label, "On the test")
+        XCTAssertEqual(MarkerKind(rawValue: "test")?.label(for: .class), "On the test")
+        XCTAssertEqual(MarkerKind.test.label(for: .meeting), "Follow up")
+        XCTAssertEqual(MarkerKind.test.label(for: .personal), "Remember")
+        XCTAssertEqual(MarkerKind.important.label(for: .personal), "Important")
+        XCTAssertEqual(MarkerKind.question.label(for: .meeting), "Question")
+        XCTAssertEqual(k.label, "Follow up", "a recording without a type is a meeting")
+        m.kind = .class
+        XCTAssertEqual(k.label, "On the test")
+        XCTAssertEqual(k.kind, "test", "the stored kind never changes with the label")
         k.kind = "garbage"
         XCTAssertEqual(k.markerKind, .important, "unknown stored kinds read as Important")
         try context.save()
@@ -300,12 +308,64 @@ final class MarkerAndStudyStoreTests: XCTestCase {
     func testInputUsesPlainTranscriptAndMarks() {
         let m = meeting(["Welcome to biology.", "the secret answer is \(RedactionText.markerToken(UUID()))"])
         m.courseName = "BIO 101"
+        m.kind = .class
         let k = MomentMarker(at: m.startedAt.addingTimeInterval(12), kind: .test, note: "on the exam")
         context.insert(k); k.meeting = m
         let i = StudyInput(meeting: m)
         XCTAssertEqual(i.transcriptLines, ["[0:00] Welcome to biology.", "[0:10] the secret answer is [stricken from the record]"])
         XCTAssertEqual(i.marksBlock(), "[0:12] ✎ On the test: on the exam")
         XCTAssertEqual(i.courseName, "BIO 101")
+        XCTAssertEqual(i.recordingKind, .class)
+        // The same mark on a meeting reads Follow up
+        m.kind = .meeting
+        XCTAssertEqual(StudyInput(meeting: m).marksBlock(), "[0:12] ✎ Follow up: on the exam")
+    }
+
+    /// A Class keeps the lecture prompts word for word; Meeting and Personal
+    /// get the same five parts, worded for any recording.
+    func testReviewPromptsFollowTheType() {
+        XCTAssertEqual(MeetingAI.studyBase, """
+            You turn a lecture transcript into study material for a student. The transcript comes from speech \
+            recognition: it has no speaker labels and may contain recognition errors; don't repeat obvious errors. \
+            Each line starts with its time in the lecture as [m:ss]. Use only what the lecture says; never invent \
+            facts, names, numbers, dates or examples. Text shown as [stricken from the record] was removed by the \
+            student: never guess at or mention what it said. The student marked some moments while listening \
+            (STUDENT MARKS): moments marked ✎ On the test matter most, then ★ Important; make sure they are covered. \
+            Reply with only one JSON object: no Markdown, no code fence, no text before or after it.
+            """)
+        XCTAssertTrue(MeetingAI.condenseSystem.contains(#"the lecturer stresses ("this will be on the exam")"#))
+        XCTAssertTrue(MeetingAI.studySystem(.summary).contains("Write lecture notes"))
+        for kind in [RecordingKind.meeting, .personal] {
+            for part in StudyKind.allCases {
+                let system = MeetingAI.studySystem(part, for: kind)
+                XCTAssertFalse(system.contains("lecture"), "\(kind) \(part)")
+                XCTAssertFalse(system.contains("student"), "\(kind) \(part)")
+                XCTAssertTrue(system.contains("(MARKS)"))
+            }
+            XCTAssertFalse(MeetingAI.condenseSystem(for: kind).contains("lecture"))
+        }
+        XCTAssertTrue(MeetingAI.studyBase(for: .meeting).contains("✎ Follow up matter most"))
+        XCTAssertTrue(MeetingAI.studyBase(for: .personal).contains("✎ Remember matter most"))
+        let meeting = StudyInput(title: "Weekly sync", recordingKind: .meeting, courseName: "Acme project", durationMs: 60_000,
+                                 lines: [.init(ms: 0, text: "ship on Friday")], marks: [.init(ms: 1000, kind: .test, note: nil)])
+        let message = MeetingAI.studyUserMessage(meeting, condensed: true, body: "x")
+        XCTAssertTrue(message.hasPrefix("Meeting: Weekly sync\nNotebook: Acme project\n"))
+        XCTAssertTrue(message.contains("\nMARKS:\n[0:01] ✎ Follow up\n"))
+        XCTAssertTrue(message.contains("\nNOTES (condensed from the transcript, with times):\nx"))
+        XCTAssertTrue(MeetingAI.studyHeader(StudyInput(title: "Dentist", recordingKind: .personal, durationMs: 0, lines: [], marks: []))
+            .hasPrefix("Recording: Dentist\n"))
+    }
+
+    func testReviewGuideExportIsTitledByType() {
+        let review = StudyExport.guideMarkdown(title: "Sync", kind: .meeting, when: "", summary: nil, terms: nil, cards: nil,
+                                               quiz: nil, asks: nil, marks: [.init(ms: 5000, kind: .test, note: nil)])
+        XCTAssertTrue(review.hasPrefix("# Review guide: Sync\n"))
+        XCTAssertTrue(review.contains("- 0:05 ✎ Follow up\n"))
+        XCTAssertTrue(review.contains("from the transcript. AI can make mistakes; check against the recording."))
+        XCTAssertEqual(StudyExportFile.markdown("x", title: "Sync", kind: .meeting).name, "Sync review guide.md")
+        XCTAssertEqual(StudyExportFile.markdown("x", title: "Bio", kind: .class).name, "Bio study guide.md")
+        XCTAssertEqual(RecordingKind.class.guideTitle, "Study guide")
+        XCTAssertEqual(RecordingKind.personal.guideTitle, "Review guide")
     }
 
     func testStrikeDeletesTheStudyGuideAndAStaleSaveIsRefused() async throws {

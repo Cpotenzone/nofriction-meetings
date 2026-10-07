@@ -9,10 +9,10 @@ struct LiveView: View {
     @State private var snapFlash = false
     @AppStorage("recordingNoticeAccepted") private var recordingNoticeAccepted = false
     @State private var showRecordingNotice = false
-    /// "How long?" (and class) before recording
+    /// "What is it?", "How long?" and a notebook before recording
     @State private var showPlanSheet = false
     @State private var planAfterNotice = false
-    @AppStorage(ClassNames.noticeShownKey) private var classNoticeShown = false
+    @AppStorage(ClassNotice.shownKey) private var classNoticeShown = false
     @State private var showClassNotice = false
 
     var body: some View {
@@ -40,7 +40,7 @@ struct LiveView: View {
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)
                     .accessibilityIdentifier("recording-reminder")
-                // ★ / ? / ✎ moment markers (docs/STUDY_TOOLS.md)
+                // ★ / ? / ✎ moment markers (docs/STUDY_TOOLS.md); the ✎ label follows the type
                 if session.isActive { MarkControl() }
                 controls
             }
@@ -52,7 +52,7 @@ struct LiveView: View {
                 }
             }
             .sheet(isPresented: $showRecordingNotice, onDismiss: {
-                // Accepted: on to "How long?"
+                // Accepted: on to the Record sheet ("What is it?", "How long?")
                 if planAfterNotice {
                     planAfterNotice = false
                     showPlanSheet = true
@@ -64,13 +64,13 @@ struct LiveView: View {
                 }
             }
             .sheet(isPresented: $showPlanSheet) {
-                RecordPlanSheet { limit, className in
-                    // First class recording ever: a one-time reminder about school policy
-                    if className != nil && !classNoticeShown {
+                RecordPlanSheet { limit, kind, notebook in
+                    // First Class recording ever: a one-time reminder about school policy
+                    if kind == .class && !classNoticeShown {
                         classNoticeShown = true
                         showClassNotice = true
                     }
-                    Task { await session.start(limit: limit, className: className) }
+                    Task { await session.start(limit: limit, kind: kind, notebook: notebook) }
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
@@ -159,8 +159,9 @@ struct LiveView: View {
             if let m = session.meeting, let s = m.scheduledStart, let e = m.scheduledEnd {
                 return "\(s.formatted(date: .omitted, time: .shortened)) – \(e.formatted(date: .omitted, time: .shortened))"
             }
-            if let className = session.meeting?.courseName { return "\(className) · Recording" }
-            return "Recording"
+            // "Class · BIO 101 · Recording"
+            guard let m = session.meeting else { return "Recording" }
+            return ([m.kind.label] + [m.courseName].compactMap { $0 } + ["Recording"]).joined(separator: " · ")
         }
     }
 
@@ -182,7 +183,7 @@ struct LiveView: View {
                 } else if !recordingNoticeAccepted {
                     showRecordingNotice = true
                 } else {
-                    // "How long?" first; the sheet starts the recording
+                    // The Record sheet first; it starts the recording
                     showPlanSheet = true
                 }
             }
@@ -202,7 +203,7 @@ struct LiveView: View {
             }
             .disabled(!session.isActive)
             .accessibilityLabel("Snap")
-            .accessibilityHint(session.isActive ? "Adds a photo of a slide, whiteboard or screen to this meeting" : "Available while recording")
+            .accessibilityHint(session.isActive ? "Adds a photo of a slide, whiteboard or screen to this recording" : "Available while recording")
         }
         .padding(.horizontal, 36)
         .padding(.top, 14)
@@ -395,7 +396,7 @@ private struct RecordButton: View {
         .buttonStyle(.plain)
         .disabled(phase == .starting || phase == .stopping)
         .accessibilityLabel(active ? "Stop recording" : "Start recording")
-        .accessibilityHint(active ? "Stops and saves the meeting" : "Records and transcribes on this device")
+        .accessibilityHint(active ? "Stops and saves the recording" : "Records and transcribes on this device")
         .accessibilityIdentifier("record-button")
     }
 }

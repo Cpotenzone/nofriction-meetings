@@ -32,10 +32,10 @@ final class PermissionsModel {
 
         var reason: String {
             switch self {
-            case .microphone: "To record your meetings. Audio stays on this device."
+            case .microphone: "To record meetings, classes and everything else. Audio stays on this device."
             case .speech: "To turn the recording into text, on this device."
             case .calendar: "To name each meeting and list who attended. Read only."
-            case .notifications: "To ask before stopping when a meeting seems to be over."
+            case .notifications: "To warn before a timed recording stops, and to ask before stopping when a meeting seems to be over."
             }
         }
 
@@ -231,7 +231,7 @@ struct OnboardingView: View {
                 .font(.largeTitle.weight(.bold))
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("onboarding-welcome")
-            Text("Record a meeting and get a transcript you can search, edit and share.")
+            Text("Record a meeting, a class or anything else, and get a transcript you can search, edit and share.")
                 .font(.title3)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 16) {

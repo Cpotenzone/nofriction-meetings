@@ -27,7 +27,7 @@ struct MeetingDetailView: View {
     @State private var selectingPhotos = false
     @State private var selectedPhotos: Set<PersistentIdentifier> = []
     @State private var strikeRequest: StrikeRequest?
-    // Study tools (docs/STUDY_TOOLS.md)
+    // Review: markers and the review / study guide (docs/STUDY_TOOLS.md)
     @State private var studyProgress: MeetingAI.StudyProgress?
     @State private var studyFailures: [String] = []
     @State private var showStudy = false
@@ -87,14 +87,14 @@ struct MeetingDetailView: View {
                 ShareLink(item: MeetingExport.markdown(meeting), subject: Text(meeting.title)) {
                     Image(systemName: "square.and.arrow.up")
                 }
-                .accessibilityLabel("Share meeting")
+                .accessibilityLabel("Share recording")
                 .accessibilityHint("Shares the title, people, notes and transcript as text")
             }
             ToolbarItem(placement: .secondaryAction) {
-                Button("Delete Meeting", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                Button("Delete Recording", systemImage: "trash", role: .destructive) { confirmDelete = true }
             }
         }
-        .confirmationDialog("Delete this meeting?", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .confirmationDialog("Delete this recording?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { delete() }
         } message: {
             Text("Its transcript, audio and photos are removed from this device.")
@@ -121,7 +121,7 @@ struct MeetingDetailView: View {
                 .font(.title.weight(.semibold))
                 .onSubmit { try? context.save() }
             Text(whenLine).font(.subheadline).foregroundStyle(.secondary)
-            MeetingClassField(meeting: meeting)
+            RecordingKindNotebookField(meeting: meeting)
             if meeting.isFromWatch {
                 Label("Recorded on Apple Watch", systemImage: "applewatch")
                     .font(.subheadline)
@@ -221,15 +221,16 @@ struct MeetingDetailView: View {
                     Button(meeting.aiNotes == nil ? "Summarize" : "Redo notes", systemImage: "sparkles") {
                         requestAI(.notes)
                     }
-                    .accessibilityHint(meeting.courseName != nil
-                        ? "Writes lecture notes (concepts, definitions, announcements) with your AI provider"
-                        : "Writes a summary, decisions and action items with your AI provider")
+                    .accessibilityHint(notesHint)
                     .accessibilityIdentifier("ai-summarize")
-                    Button("Follow-up email", systemImage: "envelope") {
-                        requestAI(.email)
+                    // A follow-up email is about a meeting's attendees
+                    if meeting.kind == .meeting {
+                        Button("Follow-up email", systemImage: "envelope") {
+                            requestAI(.email)
+                        }
+                        .accessibilityHint("Drafts a follow-up email with your AI provider")
+                        .accessibilityIdentifier("ai-email")
                     }
-                    .accessibilityHint("Drafts a follow-up email with your AI provider")
-                    .accessibilityIdentifier("ai-email")
                 }
                 .buttonStyle(.bordered)
                 .tint(Theme.ai)
@@ -238,6 +239,15 @@ struct MeetingDetailView: View {
             }
             .padding(14)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    /// The notes style follows the type: meeting notes, lecture notes, personal notes.
+    private var notesHint: String {
+        switch meeting.kind {
+        case .meeting: "Writes a summary, decisions and action items with your AI provider"
+        case .class: "Writes lecture notes (concepts, definitions, announcements) with your AI provider"
+        case .personal: "Writes a summary, key points and to-dos with your AI provider"
         }
     }
 
@@ -264,7 +274,7 @@ struct MeetingDetailView: View {
         case .notes:
             runAI("Writing notes with \(endpoint.provider.name)…") {
                 let text = try await MeetingAI.notes(context: MeetingAI.context(meeting), endpoint: endpoint,
-                                                     isLecture: meeting.courseName != nil)
+                                                     kind: meeting.kind)
                 meeting.aiNotes = text
                 meeting.aiNotesAt = .now
                 meeting.aiNotesStale = false
@@ -279,14 +289,14 @@ struct MeetingDetailView: View {
         }
     }
 
-    /// Study guide: every part, saved only if the transcript wasn't edited meanwhile.
+    /// Review (study) guide: every part, saved only if the transcript was not edited meanwhile.
     private func runStudy(_ endpoint: AIEndpoint) {
         let input = StudyInput(meeting: meeting)
         let fingerprint = input.fingerprint
         studyFailures = []
         studyProgress = nil
         studyRunning = true
-        runAI("Making the study guide with \(endpoint.provider.name)…") {
+        runAI("Making the \(meeting.kind.guideTitle.lowercased()) with \(endpoint.provider.name)…") {
             defer { studyProgress = nil; studyRunning = false }
             do {
                 let results = try await MeetingAI.studyGuide(input, contextTokens: endpoint.contextTokens,
@@ -300,7 +310,7 @@ struct MeetingDetailView: View {
                 try StudyStore.save(ok, fingerprint: fingerprint, meeting: meeting, context: context)
                 if !ok.isEmpty { showStudy = true }
             } catch {
-                // Shown in the Study section, not under the notes
+                // Shown in the Review section, not under the notes
                 studyFailures = [error.localizedDescription]
             }
         }
@@ -743,8 +753,8 @@ enum MeetingExport {
         var out = "# \(m.title)\n\n"
         out += m.startedAt.formatted(date: .complete, time: .shortened)
         if let d = m.duration { out += " · \(d.minutesLabel)" }
-        out += "\n"
-        if let className = m.courseName { out += "Class: \(className)\n" }
+        out += " · \(m.kind.label)\n"
+        if let notebook = m.courseName { out += "\(Notebook.label): \(notebook)\n" }
         if !m.people.isEmpty {
             out += "\n## People\n"
             for (p, role) in m.people {

@@ -143,80 +143,123 @@ final class TimeLimitPlanTests: XCTestCase {
     }
 }
 
-final class ClassNamesTests: XCTestCase {
+final class NotebookTests: XCTestCase {
     func testNormalize() {
-        XCTAssertEqual(ClassNames.normalize("  BIO 101 —  Cell\n Biology "), "BIO 101 — Cell Biology")
-        XCTAssertNil(ClassNames.normalize("  \n "))
-        XCTAssertNil(ClassNames.normalize(nil))
-        XCTAssertEqual(ClassNames.normalize("CHEM\u{7}201"), "CHEM201")
-        XCTAssertEqual(ClassNames.normalize(String(repeating: "x", count: 200))?.count, 80)
-        XCTAssertEqual(ClassNames.normalize(String(repeating: "x", count: 79) + " y"), String(repeating: "x", count: 79))
+        XCTAssertEqual(Notebook.normalize("  BIO 101 —  Cell\n Biology "), "BIO 101 — Cell Biology")
+        XCTAssertNil(Notebook.normalize("  \n "))
+        XCTAssertNil(Notebook.normalize(nil))
+        XCTAssertEqual(Notebook.normalize("CHEM\u{7}201"), "CHEM201")
+        XCTAssertEqual(Notebook.normalize(String(repeating: "x", count: 200))?.count, 80)
+        XCTAssertEqual(Notebook.normalize(String(repeating: "x", count: 79) + " y"), String(repeating: "x", count: 79))
     }
 
-    func testCanonicalJoinsAnExistingClassIgnoringCase() {
+    func testCanonicalJoinsAnExistingNotebookIgnoringCase() {
         let existing = ["BIO 101 — Cell Biology", "HIST 200"]
-        XCTAssertEqual(ClassNames.canonical("bio 101 — cell biology", existing: existing), "BIO 101 — Cell Biology")
-        XCTAssertEqual(ClassNames.canonical("MATH 3", existing: existing), "MATH 3")
-        XCTAssertNil(ClassNames.canonical("  ", existing: existing))
+        XCTAssertEqual(Notebook.canonical("bio 101 — cell biology", existing: existing), "BIO 101 — Cell Biology")
+        XCTAssertEqual(Notebook.canonical("MATH 3", existing: existing), "MATH 3")
+        XCTAssertNil(Notebook.canonical("  ", existing: existing))
     }
 
     func testRecentIsNewestFirstAndOnePerName() {
         let d = { (s: TimeInterval) in Date(timeIntervalSince1970: 1_790_000_000 + s) }
-        let recents = ClassNames.recent([
+        let recents = Notebook.recent([
             ("BIO 101", d(10)), (nil, d(50)), ("hist 200", d(40)), ("bio 101", d(30)), ("  ", d(60)), ("HIST 200", d(5)),
         ])
         XCTAssertEqual(recents, ["hist 200", "bio 101"])
-        XCTAssertEqual(ClassNames.recent([("A", d(1)), ("B", d(2)), ("C", d(3))], limit: 2), ["C", "B"])
+        XCTAssertEqual(Notebook.recent([("A", d(1)), ("B", d(2)), ("C", d(3))], limit: 2), ["C", "B"])
     }
 
     func testSuggestionsAndFilter() {
         let recents = ["CHEM 110", "BIO 101", "Biochem 300", "HIST 200"]
-        XCTAssertEqual(ClassNames.suggestions("", recents: recents, max: 2), ["CHEM 110", "BIO 101"])
-        XCTAssertEqual(ClassNames.suggestions("bio", recents: recents), ["BIO 101", "Biochem 300"])
-        XCTAssertEqual(ClassNames.suggestions("chem", recents: recents), ["CHEM 110", "Biochem 300"])
-        XCTAssertTrue(ClassNames.matches("BIO 101", filter: nil))
-        XCTAssertTrue(ClassNames.matches("bio 101", filter: "BIO 101"))
-        XCTAssertFalse(ClassNames.matches(nil, filter: "BIO 101"))
-        XCTAssertFalse(ClassNames.matches("HIST 200", filter: "BIO 101"))
+        XCTAssertEqual(Notebook.suggestions("", recents: recents, max: 2), ["CHEM 110", "BIO 101"])
+        XCTAssertEqual(Notebook.suggestions("bio", recents: recents), ["BIO 101", "Biochem 300"])
+        XCTAssertEqual(Notebook.suggestions("chem", recents: recents), ["CHEM 110", "Biochem 300"])
+        XCTAssertTrue(Notebook.matches("BIO 101", filter: nil))
+        XCTAssertTrue(Notebook.matches("bio 101", filter: "BIO 101"))
+        XCTAssertFalse(Notebook.matches(nil, filter: "BIO 101"))
+        XCTAssertFalse(Notebook.matches("HIST 200", filter: "BIO 101"))
     }
 
-    func testLectureNotesPromptOnlyForClasses() {
-        XCTAssertEqual(MeetingAI.notesSystem(isLecture: false), MeetingAI.notesSystem)
-        let lecture = MeetingAI.notesSystem(isLecture: true)
+    /// The type picks the notes style, never whether a notebook is set.
+    func testNotesPromptFollowsTheType() {
+        XCTAssertEqual(MeetingAI.notesSystem(for: .meeting), MeetingAI.notesSystem)
+        let lecture = MeetingAI.notesSystem(for: .class)
+        XCTAssertEqual(lecture, MeetingAI.lectureNotesSystem)
         XCTAssertTrue(lecture.contains("lecture notes"))
         XCTAssertTrue(lecture.contains("## Key concepts"))
         XCTAssertTrue(lecture.contains("## Announcements and deadlines"))
         XCTAssertTrue(lecture.contains("Never write action items for attendees"))
         XCTAssertFalse(lecture.contains("## Action items"))
+        let personal = MeetingAI.notesSystem(for: .personal)
+        XCTAssertTrue(personal.contains("## Summary"))
+        XCTAssertTrue(personal.contains("## Key points"))
+        XCTAssertTrue(personal.contains("## To-dos and reminders"))
+        XCTAssertFalse(personal.contains("## Action items"))
+        XCTAssertFalse(personal.contains("## Decisions"))
+        XCTAssertFalse(personal.lowercased().contains("lecture"))
+    }
+
+    @MainActor
+    func testVocabulary() {
+        XCTAssertEqual(RecordingKind.allCases.map(\.label), ["Meeting", "Class", "Personal"])
+        XCTAssertEqual(RecordingKind.allCases.map(\.rawValue), ["meeting", "class", "personal"])
+        XCTAssertEqual(RecordingKind.allCases.map(\.notebookPlaceholder), ["e.g. Acme project", "e.g. BIO 101", "e.g. Health"])
+        XCTAssertEqual(RecordingKind.pickerTitle, "What is it?")
+        XCTAssertEqual(RecordingKind.help, "Personal covers everything else: conversations, appointments, talks, ideas.")
+        XCTAssertEqual(RecordingKind(stored: nil), .meeting)
+        XCTAssertEqual(RecordingKind(stored: "lecture"), .meeting, "unknown values read as a meeting")
+        XCTAssertEqual(RecordingKind(stored: "class"), .class)
+        XCTAssertEqual(Notebook.label, "Notebook")
+        XCTAssertEqual(Notebook.filterTitle, "Notebooks")
+        XCTAssertTrue(RecordingSession.isDefaultTitle(RecordingSession.defaultTitle(for: .now, kind: .personal)))
+        XCTAssertTrue(RecordingSession.defaultTitle(for: .now, kind: .class).hasPrefix("Class · "))
+        XCTAssertFalse(RecordingSession.isDefaultTitle(RecordingSession.notebookTitle("BIO 101", at: .now)))
+    }
+
+    func testRememberedKindDefaultsToMeeting() throws {
+        let suite = "nf-kind-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(RecordingKindStore.remembered(defaults), .meeting)
+        RecordingKindStore.remember(.personal, defaults)
+        XCTAssertEqual(RecordingKindStore.remembered(defaults), .personal)
+        defaults.set("garbage", forKey: RecordingKindStore.key)
+        XCTAssertEqual(RecordingKindStore.remembered(defaults), .meeting)
     }
 }
 
 @MainActor
 final class ClassStoreTests: XCTestCase {
-    func testClassIsSavedShownToAIAndDeletedWithTheMeeting() throws {
+    func testNotebookAndTypeAreSavedShownToAIAndDeletedWithTheRecording() throws {
         let container = try ModelContainer(for: Schema(Storage.modelTypes), configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let context = container.mainContext
         let lecture = Meeting(title: "Lecture 3")
         lecture.courseName = "BIO 101"
         lecture.plannedMinutes = 90
+        lecture.kind = .class
         let standup = Meeting(title: "Standup")
         context.insert(lecture)
         context.insert(standup)
         try context.save()
 
-        XCTAssertTrue(MeetingAI.context(lecture).contains("Class: BIO 101"))
-        XCTAssertFalse(MeetingAI.context(standup).contains("Class:"))
-        XCTAssertTrue(MeetingExport.markdown(lecture).contains("Class: BIO 101"))
+        XCTAssertEqual(lecture.recordingKind, "class")
+        XCTAssertEqual(standup.kind, .meeting, "no type: a meeting")
+        XCTAssertTrue(MeetingAI.context(lecture).hasPrefix("Class: Lecture 3\n"))
+        XCTAssertTrue(MeetingAI.context(lecture).contains("Notebook: BIO 101"))
+        XCTAssertTrue(MeetingAI.context(standup).hasPrefix("Meeting: Standup\n"))
+        XCTAssertFalse(MeetingAI.context(standup).contains("Notebook:"))
+        XCTAssertTrue(MeetingExport.markdown(lecture).contains("Notebook: BIO 101"))
+        XCTAssertTrue(MeetingExport.markdown(lecture).contains(" · Class\n"))
 
         let all = try context.fetch(FetchDescriptor<Meeting>())
-        XCTAssertEqual(ClassNames.recent(all.map { ($0.courseName, $0.startedAt) }), ["BIO 101"])
+        XCTAssertEqual(Notebook.recent(all.map { ($0.courseName, $0.startedAt) }), ["BIO 101"])
 
         // Delete Meeting removes the class name with the row
         context.delete(lecture)
         try context.save()
         let left = try context.fetch(FetchDescriptor<Meeting>())
         XCTAssertEqual(left.map(\.title), ["Standup"])
-        XCTAssertTrue(ClassNames.recent(left.map { ($0.courseName, $0.startedAt) }).isEmpty)
+        XCTAssertTrue(Notebook.recent(left.map { ($0.courseName, $0.startedAt) }).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<Meeting>(predicate: #Predicate { $0.courseName != nil })).isEmpty)
     }
 
@@ -262,6 +305,197 @@ final class ClassStoreTests: XCTestCase {
         let again = try ModelContext(container).fetch(FetchDescriptor<Meeting>(predicate: #Predicate { $0.courseName != nil }))
         XCTAssertEqual(again.map(\.courseName), ["BIO 101"])
         XCTAssertEqual(again.first?.plannedMinutes, 60)
+    }
+
+    /// A store from before recording types (notebooks were classes then)
+    /// opens with the current model; the one-time backfill makes the
+    /// recordings with a notebook classes and leaves the rest meetings.
+    func testStoreFromBeforeTypesMigratesAndBackfillsOnce() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "nf-migrate-kind-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appending(path: "old.store")
+        let started = Date(timeIntervalSince1970: 1_790_000_000)
+        let suite = "nf-kind-backfill-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try autoreleasepool {
+            let old = try ModelContainer(for: Schema(PreKindSchema.models), configurations: ModelConfiguration(url: url))
+            let ctx = ModelContext(old)
+            let lecture = PreKindSchema.Meeting(title: "Lecture 3", startedAt: started)
+            lecture.courseName = "BIO 101"
+            lecture.plannedMinutes = 90
+            let sync = PreKindSchema.Meeting(title: "Weekly sync", startedAt: started.addingTimeInterval(3600))
+            ctx.insert(lecture)
+            ctx.insert(sync)
+            let mark = PreKindSchema.MomentMarker(at: started.addingTimeInterval(30), kind: "test")
+            ctx.insert(mark)
+            mark.meeting = lecture
+            try ctx.save()
+        }
+
+        let container = try ModelContainer(for: Schema(Storage.modelTypes), configurations: ModelConfiguration(url: url))
+        let context = container.mainContext
+        let all = try context.fetch(FetchDescriptor<Meeting>(sortBy: [SortDescriptor(\.startedAt)]))
+        XCTAssertEqual(all.map(\.title), ["Lecture 3", "Weekly sync"])
+        XCTAssertTrue(all.allSatisfy { $0.recordingKind == nil }, "the new attribute starts empty")
+        XCTAssertEqual(all[0].courseName, "BIO 101")
+        XCTAssertEqual(all[0].plannedMinutes, 90)
+        XCTAssertEqual(all[0].markers.map(\.kind), ["test"])
+
+        XCTAssertEqual(RecordingKindBackfill.run(context, defaults: defaults), 1)
+        XCTAssertEqual(all[0].kind, .class, "a notebook from before types was a class")
+        XCTAssertEqual(all[0].markers.first?.label, "On the test")
+        XCTAssertNil(all[1].recordingKind, "the rest stay nil, which means meeting")
+        XCTAssertEqual(all[1].kind, .meeting)
+        XCTAssertEqual(all[1].courseName, nil)
+
+        // Once only: a notebook added to a meeting later doesn't make it a class
+        all[1].courseName = "Acme project"
+        try context.save()
+        XCTAssertEqual(RecordingKindBackfill.run(context, defaults: defaults), 0)
+        XCTAssertNil(all[1].recordingKind)
+        let classes = try ModelContext(container).fetch(FetchDescriptor<Meeting>(predicate: #Predicate { $0.recordingKind == "class" }))
+        XCTAssertEqual(classes.map(\.title), ["Lecture 3"], "saved to the store")
+    }
+}
+
+/// The SwiftData model as it shipped before recording types (main @
+/// 3acc780: `courseName` was the class), trimmed to the models the
+/// migration test writes.
+enum PreKindSchema {
+    static var models: [any PersistentModel.Type] {
+        [Meeting.self, Segment.self, Snapshot.self, Person.self, Attendance.self, Redaction.self, MomentMarker.self]
+    }
+
+    @Model
+    final class Meeting {
+        @Attribute(.unique) var id: UUID
+        var title: String
+        var startedAt: Date
+        var endedAt: Date?
+        var calendarEventID: String?
+        var scheduledStart: Date?
+        var scheduledEnd: Date?
+        var location: String?
+        var meetingURL: String?
+        var inviteNotes: String?
+        var audioFileName: String?
+        var aiNotes: String?
+        var aiNotesAt: Date?
+        var aiNotesStale: Bool = false
+        var source: String?
+        var sourceRecordingID: String?
+        var importState: String?
+        var importError: String?
+        var importProgress: Double?
+        var audioDuration: Double?
+        var sourcePausesJSON: String?
+        var courseName: String?
+        var plannedMinutes: Int?
+        @Relationship(deleteRule: .cascade, inverse: \Segment.meeting) var segments: [Segment] = []
+        @Relationship(deleteRule: .cascade, inverse: \Snapshot.meeting) var snapshots: [Snapshot] = []
+        @Relationship(deleteRule: .cascade, inverse: \Attendance.meeting) var attendances: [Attendance] = []
+        @Relationship(deleteRule: .cascade, inverse: \Redaction.meeting) var redactions: [Redaction] = []
+        @Relationship(deleteRule: .cascade, inverse: \MomentMarker.meeting) var markers: [MomentMarker] = []
+
+        init(title: String, startedAt: Date) {
+            self.id = UUID()
+            self.title = title
+            self.startedAt = startedAt
+        }
+    }
+
+    @Model
+    final class MomentMarker {
+        @Attribute(.unique) var id: UUID
+        var at: Date
+        var kind: String
+        var note: String?
+        var createdAt: Date
+        var meeting: Meeting?
+
+        init(at: Date, kind: String) {
+            self.id = UUID()
+            self.at = at
+            self.kind = kind
+            self.createdAt = .now
+        }
+    }
+
+    @Model
+    final class Segment {
+        var text: String
+        var start: Date
+        var duration: TimeInterval
+        var meeting: Meeting?
+        var audioOffset: Double?
+        var wordTimingsJSON: String?
+
+        init(text: String, start: Date, duration: TimeInterval) {
+            self.text = text
+            self.start = start
+            self.duration = duration
+        }
+    }
+
+    @Model
+    final class Redaction {
+        @Attribute(.unique) var id: UUID
+        var kind: String
+        var action: String
+        var mediaStart: Double
+        var mediaEnd: Double
+        var coveredFrom: Date?
+        var coveredTo: Date?
+        var createdAt: Date
+        var reason: String?
+        var meeting: Meeting?
+        var pendingAudioJSON: String?
+        var pendingFilesJSON: String?
+
+        init(kind: String, action: String) {
+            self.id = UUID()
+            self.kind = kind
+            self.action = action
+            self.mediaStart = 0
+            self.mediaEnd = 0
+            self.createdAt = .now
+        }
+    }
+
+    @Model
+    final class Snapshot {
+        var fileName: String
+        var takenAt: Date
+        var meeting: Meeting?
+
+        init(fileName: String) {
+            self.fileName = fileName
+            self.takenAt = .now
+        }
+    }
+
+    @Model
+    final class Person {
+        @Attribute(.unique) var email: String
+        var name: String?
+        var company: String?
+        var linkedinURL: String?
+        var isSelf: Bool = false
+        @Relationship(deleteRule: .cascade, inverse: \Attendance.person) var attendances: [Attendance] = []
+
+        init(email: String) { self.email = email }
+    }
+
+    @Model
+    final class Attendance {
+        var role: String
+        var meeting: Meeting?
+        var person: Person?
+
+        init(role: String) { self.role = role }
     }
 }
 

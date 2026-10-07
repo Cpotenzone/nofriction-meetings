@@ -46,7 +46,7 @@ struct PaywallView: View {
                 .font(.system(size: 38))
                 .foregroundStyle(Theme.ai)
             Text("noFriction Pro").font(.largeTitle.weight(.bold))
-            Text("AI notes and follow-ups for every meeting, using the AI you choose.")
+            Text("AI notes and review guides for every recording, using the AI you choose.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -137,7 +137,7 @@ struct PaywallView: View {
     private var finePrint: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Payment is charged to your Apple Account when you confirm. The subscription renews automatically at the price shown unless you cancel at least 24 hours before the end of the current period. Any unused part of a free trial ends when you subscribe. Manage or cancel in Settings → your name → Subscriptions.")
-            Text("Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, meeting text is sent directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
+            Text("Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, transcript text is sent directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
             HStack(spacing: 16) {
                 Link("Terms of Use (EULA)", destination: AppLinks.terms)
                 Link("Privacy Policy", destination: AppLinks.privacyPolicy)

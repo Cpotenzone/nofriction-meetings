@@ -22,6 +22,9 @@ struct MarkControl: View {
     @State private var editingNote = false
     @State private var hideTask: Task<Void, Never>?
 
+    /// The live recording's type (the ✎ label follows it)
+    private var kind: RecordingKind { session.meeting?.kind ?? .default }
+
     var body: some View {
         VStack(spacing: 8) {
             if let last, last.modelContext != nil {
@@ -32,7 +35,7 @@ struct MarkControl: View {
                             try? last.modelContext?.save()
                             keepOpen()
                         } label: {
-                            Label(k.label, systemImage: k.systemImage)
+                            Label(k.label(for: kind), systemImage: k.systemImage)
                                 .font(.caption.weight(last.markerKind == k ? .semibold : .regular))
                         }
                         .buttonStyle(.bordered)
@@ -62,7 +65,7 @@ struct MarkControl: View {
             .buttonStyle(.bordered)
             .tint(Theme.accent)
             .disabled(session.phase != .recording && session.phase != .paused)
-            .accessibilityHint("Marks it Important. Change it to Question or On the test right after.")
+            .accessibilityHint("Marks it Important. Change it to Question or \(MarkerKind.test.label(for: kind)) right after.")
             .accessibilityIdentifier("mark-button")
         }
         .padding(.horizontal, 20)
@@ -99,7 +102,7 @@ struct MarkControl: View {
     }
 }
 
-// MARK: - Meeting: marked moments
+// MARK: - Recording: marked moments
 
 struct MarkersSection: View {
     let meeting: Meeting
@@ -133,15 +136,15 @@ struct MarkersSection: View {
                                 .foregroundStyle(m.markerKind.color)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("\(m.markerKind.label) at \(m.offset(in: meeting).clock)")
+                        .accessibilityLabel("\(m.label) at \(m.offset(in: meeting).clock)")
                         .accessibilityHint("Shows this moment in the transcript")
-                        Text(m.note ?? m.markerKind.label)
+                        Text(m.note ?? m.label)
                             .font(.subheadline)
                             .foregroundStyle(m.note == nil ? .secondary : .primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Menu {
                             ForEach(MarkerKind.allCases, id: \.self) { k in
-                                Button(k.label, systemImage: k.systemImage) { m.setKind(k); try? context.save() }
+                                Button(k.label(for: meeting.kind), systemImage: k.systemImage) { m.setKind(k); try? context.save() }
                             }
                             Button(m.note == nil ? "Add note" : "Edit note", systemImage: "note.text") {
                                 noteDraft = m.note ?? ""
@@ -178,7 +181,7 @@ struct MarkerInlineRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: marker.markerKind.systemImage).foregroundStyle(marker.markerKind.color)
-            Text(marker.markerKind.label).font(.caption.weight(.semibold))
+            Text(marker.label).font(.caption.weight(.semibold))
             Text(marker.offset(in: meeting).clock).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             if let n = marker.note { Text(n).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
             Spacer(minLength: 0)
@@ -190,7 +193,7 @@ struct MarkerInlineRow: View {
     }
 }
 
-// MARK: - Meeting: study guide
+// MARK: - Recording: review (study guide for a Class)
 
 struct StudySection: View {
     let meeting: Meeting
@@ -203,14 +206,17 @@ struct StudySection: View {
     let onMake: () -> Void
     let onOpen: () -> Void
 
+    /// "Study guide" for a Class, "Review guide" otherwise
+    private var guide: String { meeting.kind.guideTitle }
+
     var body: some View {
         let has = !meeting.studyMaterials.isEmpty
         let tests = meeting.markers.filter { $0.markerKind == .test }.count
-        SectionBlock(title: "Study") {
+        SectionBlock(title: "Review") {
             VStack(alignment: .leading, spacing: 10) {
                 if has {
                     Button(action: onOpen) {
-                        Label("Open study guide", systemImage: "graduationcap")
+                        Label("Open \(guide.lowercased())", systemImage: meeting.kind == .class ? "graduationcap" : "text.book.closed")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.borderedProminent)
@@ -218,7 +224,7 @@ struct StudySection: View {
                     .accessibilityIdentifier("study-open")
                 } else {
                     Text("Notes, key terms, flashcards, a practice quiz and questions to ask, made from this transcript by your AI"
-                         + (tests > 0 ? ", with extra weight on the \(tests) moment\(tests == 1 ? "" : "s") you marked On the test." : "."))
+                         + (tests > 0 ? ", with extra weight on the \(tests) moment\(tests == 1 ? "" : "s") you marked \(MarkerKind.test.label(for: meeting.kind))." : "."))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -229,13 +235,13 @@ struct StudySection: View {
                     }
                     if let p = progress, p.total > 0 {
                         ProgressView(value: Double(p.done), total: Double(p.total)).tint(Theme.ai)
-                            .accessibilityLabel("Study guide progress")
+                            .accessibilityLabel("\(guide) progress")
                     }
                 }
                 ForEach(failures, id: \.self) { f in
                     Label(f, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange)
                 }
-                Button(has ? "Remake study guide" : "Make study guide", systemImage: "sparkles", action: onMake)
+                Button(has ? "Remake \(guide.lowercased())" : "Make \(guide.lowercased())", systemImage: "sparkles", action: onMake)
                     .buttonStyle(.bordered)
                     .tint(Theme.ai)
                     .disabled(busy)
@@ -316,7 +322,7 @@ struct StudyGuideView: View {
                 }
             }
             .background(Theme.background)
-            .navigationTitle("Study guide")
+            .navigationTitle(meeting.kind.guideTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
@@ -328,9 +334,9 @@ struct StudyGuideView: View {
                                 Label("Flashcards for Anki or Quizlet (CSV)", systemImage: "rectangle.on.rectangle")
                             }
                         }
-                        ShareLink(item: StudyExportFile.markdown(markdown(summary, terms, cards, quiz, asks), title: meeting.title),
-                                  preview: SharePreview("Study guide (Markdown)")) {
-                            Label("Study guide (Markdown)", systemImage: "doc.text")
+                        ShareLink(item: StudyExportFile.markdown(markdown(summary, terms, cards, quiz, asks), title: meeting.title, kind: meeting.kind),
+                                  preview: SharePreview("\(meeting.kind.guideTitle) (Markdown)")) {
+                            Label("\(meeting.kind.guideTitle) (Markdown)", systemImage: "doc.text")
                         }
                     } label: {
                         Image(systemName: "square.and.arrow.up")
@@ -342,7 +348,7 @@ struct StudyGuideView: View {
     }
 
     private var missing: some View {
-        Text("This part wasn't made. Close this and use Remake study guide.").font(.footnote).foregroundStyle(.secondary)
+        Text("This part wasn't made. Close this and use Remake \(meeting.kind.guideTitle.lowercased()).").font(.footnote).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private func asksView(_ asks: StudyAsks?) -> some View {
@@ -372,6 +378,7 @@ struct StudyGuideView: View {
     private func markdown(_ s: StudySummary?, _ t: StudyTerms?, _ c: StudyCards?, _ q: StudyQuiz?, _ a: StudyAsks?) -> String {
         StudyExport.guideMarkdown(
             title: meeting.title,
+            kind: meeting.kind,
             when: meeting.startedAt.formatted(date: .complete, time: .shortened),
             summary: s, terms: t, cards: c, quiz: q, asks: a,
             marks: meeting.orderedMarkers.map { .init(ms: Int(($0.offset(in: meeting) * 1000).rounded()), kind: $0.markerKind, note: $0.note) })

@@ -226,7 +226,7 @@ struct SettingsView: View {
                 Text(whatLeaves(p))
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
-                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your meetings are unchanged. Choose Apple on-device when available, or enter your endpoint and model below." : "Choose Apple on-device when available, or enter your endpoint and model below to use AI notes and follow-ups.")
+                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your recordings are unchanged. Choose Apple on-device when available, or enter your endpoint and model below." : "Choose Apple on-device when available, or enter your endpoint and model below to use AI notes and follow-ups.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -274,7 +274,7 @@ struct SettingsView: View {
 
     @ViewBuilder private var privacySection: some View {
         Section {
-            Text("Audio, photos and transcripts are stored only on this device. Transcription runs on the device. Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, the meeting's text goes directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
+            Text("Audio, photos and transcripts are stored only on this device. Transcription runs on the device. Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, the recording's text goes directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
                 .font(.footnote)
             ForEach(AIProvider.all.filter { settings.consented.contains($0.id) }) { p in
                 HStack {
@@ -352,7 +352,7 @@ struct SettingsView: View {
         if !URLPolicy.needsConsent(provider: p, baseURL: settings.baseURL(for: p)) {
             return "AI requests go to your own server at \(settings.baseURL(for: p)?.host() ?? "your network"). Nothing goes to a cloud service."
         }
-        return "When you use AI, the transcript, meeting title, attendee names and invite notes go to \(settings.baseURL(for: p)?.host() ?? p.name). Audio and photos stay on this device."
+        return "When you use AI, the transcript, recording title, attendee names and invite notes go to \(settings.baseURL(for: p)?.host() ?? p.name). Audio and photos stay on this device."
     }
 }
 
@@ -388,12 +388,12 @@ struct AppleWatchSection: View {
     }
 
     private var footer: String {
-        var text = "Record on your watch: the audio comes to this iPhone over Apple's watch connection, is transcribed here on the device, and is deleted from the watch once it arrives."
+        var text = "Record on your watch: the audio comes to this iPhone over Apple's watch connection, is transcribed here on the device, and is deleted from the watch once it arrives. The watch's notebook list shows the names of your recent notebooks from this iPhone."
         if link.isPaired && !link.isWatchAppInstalled {
             text += " To install, open the Watch app on this iPhone and find noFriction under Available Apps."
         }
         if importing.contains(where: { $0.importPhase == .failed }) {
-            text += " Recordings that couldn't be transcribed show Retry in the meeting."
+            text += " Recordings that could not be transcribed show Retry in the recording."
         }
         return text
     }

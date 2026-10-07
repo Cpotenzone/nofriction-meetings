@@ -41,7 +41,7 @@ struct MeetingLinksSection: View {
             Button("Add", systemImage: "plus") { editing = ReferenceDraft(reference: nil) }
                 .font(.subheadline)
                 .accessibilityLabel("Add a reference")
-                .accessibilityHint("Adds a web address to this meeting, like the syllabus or a reading")
+                .accessibilityHint("Adds a web address to this recording, like the syllabus, a reading or a document")
                 .accessibilityIdentifier("links-add")
         }
         .sheet(item: $editing) { draft in

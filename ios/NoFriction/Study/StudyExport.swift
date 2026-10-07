@@ -2,7 +2,7 @@ import CoreTransferable
 import Foundation
 import UniformTypeIdentifiers
 
-/// Exports: flashcards as CSV (Anki and Quizlet import it) and the study
+/// Exports: flashcards as CSV (Anki and Quizlet import it) and the review
 /// guide as Markdown, shared through the share sheet. Same output as the
 /// Mac (`src-tauri/src/study/export.rs`).
 enum StudyExport {
@@ -53,9 +53,12 @@ enum StudyExport {
         var note: String?
     }
 
-    static func guideMarkdown(title: String, when: String, summary: StudySummary?, terms: StudyTerms?,
-                              cards: StudyCards?, quiz: StudyQuiz?, asks: StudyAsks?, marks: [Mark]) -> String {
-        var out = "# Study guide: \(mdEscape(title))\n\n"
+    /// "# Study guide: …" for a Class, "# Review guide: …" otherwise; the ✎
+    /// marker's label follows the type.
+    static func guideMarkdown(title: String, kind: RecordingKind = .meeting, when: String, summary: StudySummary?,
+                              terms: StudyTerms?, cards: StudyCards?, quiz: StudyQuiz?, asks: StudyAsks?,
+                              marks: [Mark]) -> String {
+        var out = "# \(kind.guideTitle): \(mdEscape(title))\n\n"
         if !when.isEmpty { out += "\(mdEscape(when))\n\n" }
         if let summary {
             out += "## Summary\n\n"
@@ -74,7 +77,7 @@ enum StudyExport {
         if !marks.isEmpty {
             out += "## Marked moments\n\n"
             for m in marks {
-                out += "- \(StudyParse.clock(m.ms)) \(m.kind.symbol) \(m.kind.label)"
+                out += "- \(StudyParse.clock(m.ms)) \(m.kind.symbol) \(m.kind.label(for: kind))"
                 if let n = m.note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { out += ": \(mdEscape(n))" }
                 out += "\n"
             }
@@ -112,7 +115,9 @@ enum StudyExport {
             }
             out += "\n"
         }
-        out += "_Made with noFriction from the lecture transcript. AI can make mistakes; check against the lecture._\n"
+        out += kind == .class
+            ? "_Made with noFriction from the lecture transcript. AI can make mistakes; check against the lecture._\n"
+            : "_Made with noFriction from the transcript. AI can make mistakes; check against the recording._\n"
         return out
     }
 
@@ -123,7 +128,7 @@ enum StudyExport {
         let s = String(title.map { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" || $0 == "_" ? $0 : " " })
             .split(separator: " ").joined(separator: " ")
         let stem = String(s.prefix(60))
-        return stem.isEmpty ? "Lecture" : stem
+        return stem.isEmpty ? "Recording" : stem
     }
 }
 
@@ -148,8 +153,8 @@ struct StudyExportFile: Transferable {
                         data: Data(StudyExport.flashcardsCSV(cards).utf8), type: .commaSeparatedText)
     }
 
-    static func markdown(_ text: String, title: String) -> StudyExportFile {
-        StudyExportFile(name: "\(StudyExport.fileStem(title)) study guide.md", data: Data(text.utf8),
+    static func markdown(_ text: String, title: String, kind: RecordingKind = .meeting) -> StudyExportFile {
+        StudyExportFile(name: "\(StudyExport.fileStem(title)) \(kind.guideTitle.lowercased()).md", data: Data(text.utf8),
                         type: UTType(filenameExtension: "md") ?? .plainText)
     }
 }
