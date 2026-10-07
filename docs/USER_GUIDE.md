@@ -68,6 +68,36 @@ Turn it off or change the silence time:
 - Mac: **Settings → General → Recording** ("Stop automatically when the
   meeting ends", "Silence before stopping").
 
+### How long? (timed recording)
+
+When you tap or click **Record**, noFriction asks how long: **15, 30, 60 or
+90 minutes, or No limit (∞)**. Your last choice is selected for you. On the
+Mac, press 1–5 to pick, Enter to start, Esc to cancel. The recording stops by
+itself at the end, through the same Stop as yours, so notes are still written.
+
+- Five minutes before the end (two for a 15-minute recording) you get a
+  warning with **+15 min** and **No limit**. The same buttons sit next to the
+  time left on the recording screen (Mac: the capture bar; also in the
+  menu-bar icon).
+- Mac: ⌘N, the menu-bar icon's **Start Recording** and the command palette
+  skip the question and use your last choice. **Start Recording For** in the
+  menu-bar icon picks a length directly.
+- iPhone/iPad: the warning is also a notification, if you've allowed
+  notifications for noFriction. You're asked the first time you record with a
+  time limit (or a meeting-end auto-stop), never when the app opens.
+
+### Classes
+
+Recording a lecture? Type the class in the same sheet (for example
+"BIO 101 — Cell Biology"), or tap one of your recent classes. You can change
+it later on the recording. Filter your recordings by class in **Meetings**
+(iPhone/iPad) or **REWIND → Recordings** (Mac). AI notes for a class are
+lecture notes: key concepts, definitions, examples, and announcements or
+deadlines the instructor mentioned.
+
+> Many schools require the instructor's permission to record a class, and
+> some require classmates' consent. Check your school's policy.
+
 ---
 
 ## Add slides and screens

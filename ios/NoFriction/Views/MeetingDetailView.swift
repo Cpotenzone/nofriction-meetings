@@ -100,6 +100,7 @@ struct MeetingDetailView: View {
                 .font(.title.weight(.semibold))
                 .onSubmit { try? context.save() }
             Text(whenLine).font(.subheadline).foregroundStyle(.secondary)
+            MeetingClassField(meeting: meeting)
             if meeting.isFromWatch {
                 Label("Recorded on Apple Watch", systemImage: "applewatch")
                     .font(.subheadline)
@@ -199,7 +200,9 @@ struct MeetingDetailView: View {
                     Button(meeting.aiNotes == nil ? "Summarize" : "Redo notes", systemImage: "sparkles") {
                         requestAI(.notes)
                     }
-                    .accessibilityHint("Writes a summary, decisions and action items with your AI provider")
+                    .accessibilityHint(meeting.courseName != nil
+                        ? "Writes lecture notes (concepts, definitions, announcements) with your AI provider"
+                        : "Writes a summary, decisions and action items with your AI provider")
                     .accessibilityIdentifier("ai-summarize")
                     Button("Follow-up email", systemImage: "envelope") {
                         requestAI(.email)
@@ -239,7 +242,8 @@ struct MeetingDetailView: View {
         switch action {
         case .notes:
             runAI("Writing notes with \(endpoint.provider.name)…") {
-                let text = try await MeetingAI.notes(context: MeetingAI.context(meeting), endpoint: endpoint)
+                let text = try await MeetingAI.notes(context: MeetingAI.context(meeting), endpoint: endpoint,
+                                                     isLecture: meeting.courseName != nil)
                 meeting.aiNotes = text
                 meeting.aiNotesAt = .now
                 meeting.aiNotesStale = false
@@ -666,6 +670,7 @@ enum MeetingExport {
         out += m.startedAt.formatted(date: .complete, time: .shortened)
         if let d = m.duration { out += " · \(d.minutesLabel)" }
         out += "\n"
+        if let className = m.courseName { out += "Class: \(className)\n" }
         if !m.people.isEmpty {
             out += "\n## People\n"
             for (p, role) in m.people {

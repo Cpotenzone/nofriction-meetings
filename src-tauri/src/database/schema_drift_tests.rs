@@ -229,6 +229,45 @@ async fn old_schema_migrates_to_every_current_column_and_screen_delete_works() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Timed recording + classes: an old `meetings` table (no planned_minutes /
+/// class_name) gains both columns, its rows read back with them empty, and
+/// the new code paths (set, list, filter) work on it.
+#[tokio::test]
+async fn old_meetings_gain_planned_minutes_and_class_name() {
+    let dir = tmp_dir("classes");
+    let path = old_database(&dir).await;
+    {
+        let mut conn = SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().filename(&path))
+            .await
+            .unwrap();
+        let cols: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('meetings')")
+            .fetch_all(&mut conn)
+            .await
+            .unwrap();
+        assert!(!cols.contains(&"planned_minutes".to_string()) && !cols.contains(&"class_name".to_string()));
+        conn.close().await.unwrap();
+    }
+    let db = DatabaseManager::new(&path).await.unwrap();
+    migrate_all(&db).await;
+
+    let m1 = db.get_meeting("m1").await.unwrap().expect("old meeting still there");
+    assert_eq!((m1.title.as_str(), m1.planned_minutes, m1.class_name.as_deref()), ("Old meeting", None, None));
+    assert_eq!(db.list_meetings(10).await.unwrap().len(), 1);
+
+    db.set_meeting_planned_minutes("m1", Some(60)).await.unwrap();
+    db.set_meeting_class("m1", Some("BIO 101")).await.unwrap();
+    let m1 = db.get_meeting("m1").await.unwrap().unwrap();
+    assert_eq!((m1.planned_minutes, m1.class_name.as_deref()), (Some(60), Some("BIO 101")));
+    assert_eq!(db.recent_classes(12).await.unwrap(), vec!["BIO 101".to_string()]);
+    assert_eq!(db.list_meetings_in_class("bio 101", 10).await.unwrap().len(), 1);
+    assert!(db.list_meetings_in_class("CHEM 1", 10).await.unwrap().is_empty());
+
+    // Migrating again is a no-op
+    migrate_all(&db).await;
+    assert_eq!(db.get_meeting_class("m1").await.unwrap().as_deref(), Some("BIO 101"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Real-data check, run by hand against a COPY of an app database:
 ///   NF_DRIFT_DB=/path/to/copy.db cargo test --lib owner_db_copy -- --ignored --nocapture
 /// The copy is copied again into a temp dir, its file paths are pointed into

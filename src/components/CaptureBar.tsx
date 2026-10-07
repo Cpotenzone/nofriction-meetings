@@ -19,6 +19,7 @@ import {
     type FrameCapturedEvent,
 } from "../lib/tauri";
 import { CameraIcon, CheckIcon, DisplayIcon, WindowIcon } from "./icons";
+import { RecordingTimer } from "./TimedRecording";
 import "./CaptureBar.css";
 
 interface TranscriptionStatus {
@@ -118,6 +119,9 @@ export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarP
                     <span className="cbar__dot" aria-hidden />
                     <span className="cbar__status-text" title={status.text}>{status.text}</span>
                 </div>
+
+                {/* Time left (or elapsed) with +15 min / No limit — timed_recording.rs */}
+                <RecordingTimer isRecording={isRecording} />
 
                 <button className="cbar__sources" onClick={() => setPickerOpen(true)} type="button" title="Choose what to capture">
                     {chips.slice(0, 3).map((c) => (

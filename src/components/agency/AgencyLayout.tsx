@@ -15,6 +15,9 @@ import { useRecording } from '../../hooks/useRecording';
 import { useTranscripts } from '../../hooks/useTranscripts';
 import { AgencySettingsModal } from './AgencySettingsModal';
 import { onOpenSettings, type SettingsCategory } from '../../lib/navigation';
+import { getMeeting } from '../../lib/tauri';
+import { segmentCarryOver } from '../../lib/recordPlan';
+import { getTimedRecordingStatus } from '../../lib/timedRecording';
 
 export type AgencyMode = 'flow' | 'deck' | 'zen' | 'vault' | 'intel' | 'chat' | 'help' | 'prompts';
 
@@ -75,9 +78,24 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
     }, [recording.isRecording]);
 
     const handleSegmentConfirm = async () => {
+        // The new segment keeps the class and the time that was left (no
+        // "how long?" sheet: the user already chose)
+        let carry = segmentCarryOver(null, null, Date.now());
+        try {
+            const [status, meeting] = await Promise.all([
+                getTimedRecordingStatus(),
+                recording.meetingId ? getMeeting(recording.meetingId) : Promise.resolve(null),
+            ]);
+            carry = segmentCarryOver(status, meeting?.class_name, Date.now());
+        } catch (e) {
+            console.warn('Segment carry-over unavailable:', e);
+        }
         // Stop current recording, then start new one
         onToggleRecording(); // stop
-        setTimeout(() => onToggleRecording(), 1500); // restart after brief pause
+        setTimeout(() => {
+            transcripts.clearLiveTranscripts();
+            recording.startRecording(carry).catch((e) => console.error('New segment failed to start:', e));
+        }, 1500); // restart after brief pause
     };
 
     return (

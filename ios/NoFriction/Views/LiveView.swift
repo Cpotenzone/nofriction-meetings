@@ -9,6 +9,11 @@ struct LiveView: View {
     @State private var snapFlash = false
     @AppStorage("recordingNoticeAccepted") private var recordingNoticeAccepted = false
     @State private var showRecordingNotice = false
+    /// "How long?" (and class) before recording
+    @State private var showPlanSheet = false
+    @State private var planAfterNotice = false
+    @AppStorage(ClassNames.noticeShownKey) private var classNoticeShown = false
+    @State private var showClassNotice = false
 
     var body: some View {
         NavigationStack {
@@ -18,8 +23,16 @@ struct LiveView: View {
                     MeetingEndBanner(deadline: countdown.deadline,
                                      keep: { session.keepRecording() },
                                      stop: { session.stopNow() })
+                } else if session.timeWarningVisible, let deadline = session.timeDeadline {
+                    TimeLimitBanner(deadline: deadline,
+                                    extend: { session.extendTimeLimit() },
+                                    removeLimit: { session.removeTimeLimit() },
+                                    dismiss: { session.dismissTimeWarning() })
                 } else if let notice = session.notice {
                     NoticeBanner(text: notice)
+                }
+                if showClassNotice {
+                    ClassNoticeBanner { showClassNotice = false }
                 }
                 TranscriptStream(meeting: session.meeting, partial: session.partial, phase: session.phase)
                 Label("Let everyone know you're recording.", systemImage: "person.wave.2")
@@ -36,10 +49,26 @@ struct LiveView: View {
                     Color.white.opacity(0.35).ignoresSafeArea().transition(.opacity).allowsHitTesting(false)
                 }
             }
-            .sheet(isPresented: $showRecordingNotice) {
+            .sheet(isPresented: $showRecordingNotice, onDismiss: {
+                // Accepted: on to "How long?"
+                if planAfterNotice {
+                    planAfterNotice = false
+                    showPlanSheet = true
+                }
+            }) {
                 RecordingNoticeSheet {
                     recordingNoticeAccepted = true
-                    Task { await session.start() }
+                    planAfterNotice = true
+                }
+            }
+            .sheet(isPresented: $showPlanSheet) {
+                RecordPlanSheet { limit, className in
+                    // First class recording ever: a one-time reminder about school policy
+                    if className != nil && !classNoticeShown {
+                        classNoticeShown = true
+                        showClassNotice = true
+                    }
+                    Task { await session.start(limit: limit, className: className) }
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
@@ -71,11 +100,20 @@ struct LiveView: View {
                 Spacer()
                 if session.isActive {
                     TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                        Text(session.elapsed(at: ctx.date).clock)
-                            .font(.system(.body, design: .monospaced).weight(.medium))
-                            .foregroundStyle(session.phase == .paused ? .secondary : .primary)
-                            .contentTransition(.numericText())
-                            .accessibilityLabel("Elapsed \(Duration.seconds(session.elapsed(at: ctx.date)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide)))")
+                        // With a time limit: what's left; otherwise elapsed
+                        if let left = session.timeRemaining(at: ctx.date) {
+                            Text("\(left.clock) left")
+                                .font(.system(.body, design: .monospaced).weight(.medium))
+                                .foregroundStyle(left <= 300 ? Theme.accent : (session.phase == .paused ? .secondary : .primary))
+                                .contentTransition(.numericText())
+                                .accessibilityLabel("\(Duration.seconds(left).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))) left")
+                        } else {
+                            Text(session.elapsed(at: ctx.date).clock)
+                                .font(.system(.body, design: .monospaced).weight(.medium))
+                                .foregroundStyle(session.phase == .paused ? .secondary : .primary)
+                                .contentTransition(.numericText())
+                                .accessibilityLabel("Elapsed \(Duration.seconds(session.elapsed(at: ctx.date)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide)))")
+                        }
                     }
                 }
             }
@@ -83,6 +121,12 @@ struct LiveView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            if session.isActive, let deadline = session.timeDeadline {
+                TimeLimitRow(deadline: deadline,
+                             extend: { session.extendTimeLimit() },
+                             removeLimit: { session.removeTimeLimit() })
+                    .padding(.top, 4)
+            }
             if let people = session.meeting?.people, !people.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -113,6 +157,7 @@ struct LiveView: View {
             if let m = session.meeting, let s = m.scheduledStart, let e = m.scheduledEnd {
                 return "\(s.formatted(date: .omitted, time: .shortened)) – \(e.formatted(date: .omitted, time: .shortened))"
             }
+            if let className = session.meeting?.courseName { return "\(className) · Recording" }
             return "Recording"
         }
     }
@@ -135,7 +180,8 @@ struct LiveView: View {
                 } else if !recordingNoticeAccepted {
                     showRecordingNotice = true
                 } else {
-                    Task { await session.start() }
+                    // "How long?" first; the sheet starts the recording
+                    showPlanSheet = true
                 }
             }
             Spacer()

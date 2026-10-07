@@ -8,6 +8,7 @@ import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 import { CalendarIcon, TrashIcon } from "./icons";
 import { withFallback, mockMeetings } from "../lib/offline";
+import { ClassFilterChips, useRecentClasses } from "./MeetingClass";
 
 interface MeetingHistoryProps {
     onSelectMeeting: (meetingId: string) => void;
@@ -23,16 +24,19 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     const [calendarMatches, setCalendarMatches] = useState<Record<string, CalendarMatchEvent>>({});
     const [dismissedMatches, setDismissedMatches] = useState<Set<string>>(new Set());
     const [renamingId, setRenamingId] = useState<string | null>(null);
+    // Class filter (null = All); chips come from the classes recordings have
+    const [classFilter, setClassFilter] = useState<string | null>(null);
+    const classes = useRecentClasses(refreshKey);
 
     useEffect(() => {
         loadMeetings();
-    }, [refreshKey]); // Reload when refreshKey changes
+    }, [refreshKey, classFilter]); // Reload when refreshKey or the filter changes
 
     const loadMeetings = async () => {
         setIsLoading(true);
         setLoadError(null);
         try {
-            const data = await withFallback(() => tauri.getMeetings(50), mockMeetings);
+            const data = await withFallback(() => tauri.getMeetings(50, classFilter), mockMeetings);
             setMeetings(data);
             // Check recent meetings (last 5) for calendar overlap
             checkCalendarOverlaps(data.slice(0, 5));
@@ -152,6 +156,22 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         );
     }
 
+    const filterChips = (
+        <ClassFilterChips classes={classes} value={classFilter} onChange={setClassFilter} />
+    );
+
+    if (meetings.length === 0 && classFilter) {
+        return (
+            <div className="meeting-history">
+                {!compact && <h3>Past Meetings</h3>}
+                {filterChips}
+                <div className="empty-state">
+                    <div className="empty-state-text">No recordings in {classFilter}.</div>
+                </div>
+            </div>
+        );
+    }
+
     if (meetings.length === 0) {
         if (compact) {
             return <div className="compact-empty">No meetings yet</div>;
@@ -172,6 +192,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     if (compact) {
         return (
             <div className="compact-meeting-list" style={{ overflowY: 'auto', maxHeight: '100%' }}>
+                {filterChips}
                 {meetings.map((meeting) => (
                     <div
                         key={meeting.id}
@@ -179,6 +200,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                         onClick={() => onSelectMeeting(meeting.id)}
                     >
                         <div className="compact-meeting-title">{meeting.title}</div>
+                        {meeting.class_name && <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>}
                         <div className="compact-meeting-date">
                             {formatDate(meeting.started_at)}
                         </div>
@@ -190,7 +212,8 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
 
     return (
         <div className="meeting-history">
-            <h3>Past Meetings ({meetings.length})</h3>
+            <h3>{classFilter ? `${classFilter} (${meetings.length})` : `Past Meetings (${meetings.length})`}</h3>
+            {filterChips}
             <div className="meeting-list scrollable">
                 {meetings.map((meeting) => {
                     const match = calendarMatches[meeting.id];
@@ -247,7 +270,12 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                             )}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                                 <div>
-                                    <div className="meeting-title">{meeting.title}</div>
+                                    <div className="meeting-title">
+                                        {meeting.title}
+                                        {meeting.class_name && !classFilter && (
+                                            <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>
+                                        )}
+                                    </div>
                                     <div className="meeting-date">
                                         {formatDate(meeting.started_at)} at {formatTime(meeting.started_at)}
                                         {meeting.duration_seconds && (

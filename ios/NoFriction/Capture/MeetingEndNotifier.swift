@@ -24,7 +24,8 @@ final class MeetingEndNotifier: NSObject, UNUserNotificationCenterDelegate {
         let keep = UNNotificationAction(identifier: Self.keepAction, title: "Keep recording", options: [])
         let stop = UNNotificationAction(identifier: Self.stopAction, title: "Stop now", options: [.destructive])
         let category = UNNotificationCategory(identifier: Self.category, actions: [keep, stop], intentIdentifiers: [], options: [])
-        center.setNotificationCategories([category])
+        // Timed recording's "5 minutes left" (+15 min / No limit) shares this delegate
+        center.setNotificationCategories([category, TimeLimitNotifier.notificationCategory])
     }
 
     /// Ask once, at the first recording with auto-stop on — the moment the
@@ -57,6 +58,17 @@ final class MeetingEndNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let action = response.actionIdentifier
+        if response.notification.request.content.categoryIdentifier == TimeLimitNotifier.category {
+            await MainActor.run {
+                guard let session = MeetingEndNotifier.shared.session else { return }
+                switch action {
+                case TimeLimitNotifier.extendAction: session.extendTimeLimit()
+                case TimeLimitNotifier.noLimitAction: session.removeTimeLimit()
+                default: break   // tapped: the app opens on the recording
+                }
+            }
+            return
+        }
         guard response.notification.request.content.categoryIdentifier == Self.category else { return }
         await MainActor.run {
             guard let session = MeetingEndNotifier.shared.session else { return }

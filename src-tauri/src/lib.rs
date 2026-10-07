@@ -71,6 +71,9 @@ pub mod continue_prompt;
 pub mod interaction_loop;
 pub mod meeting_end;
 pub mod notifications;
+// Timed recording ("how long?") and classes (course tagging)
+pub mod classes;
+pub mod timed_recording;
 pub mod power_manager;
 pub mod privacy_filter;
 pub mod tray_builder;
@@ -513,6 +516,13 @@ pub fn run() {
                                         });
                                     }
                                     commands::people::spawn_startup_sync(&handle_clone);
+                                    // Tray "Start Recording (60 min)" shows the remembered length
+                                    {
+                                        let h = handle_clone.clone();
+                                        tauri::async_runtime::spawn(async move {
+                                            timed_recording::refresh_tray(&h).await;
+                                        });
+                                    }
                                     log::info!(
                                         "noFriction Meetings v{} initialized successfully",
                                         env!("CARGO_PKG_VERSION")
@@ -855,6 +865,14 @@ pub fn run() {
             meeting_end::get_meeting_end_status,
             meeting_end::get_auto_stop_settings,
             meeting_end::set_auto_stop_settings,
+            // Timed recording + classes
+            timed_recording::get_record_prefs,
+            timed_recording::get_timed_recording_status,
+            timed_recording::extend_timed_recording,
+            timed_recording::remove_timed_recording_limit,
+            classes::set_meeting_class,
+            classes::list_recent_classes,
+            classes::take_class_recording_notice,
         ])
         .on_window_event(|window, event| {
             match event {

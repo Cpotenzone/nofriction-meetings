@@ -469,12 +469,30 @@ pub async fn request_permission(permission_type: String) -> Result<bool, String>
     }
 }
 
-/// Start recording with frame capture and live transcription
+/// Start recording with frame capture and live transcription.
+///
+/// `plan` comes from the Record sheet ("how long?" + class). Starts that
+/// skip the sheet (menu shortcut, tray, command palette) pass none and get
+/// the remembered length. Every start arms the timer (timed_recording.rs).
 #[tauri::command(rename_all = "camelCase")]
-pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn start_recording(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    plan: Option<crate::timed_recording::StartPlan>,
+) -> Result<String, String> {
+    let remembered = crate::timed_recording::remembered(&app).await;
+    let limit = crate::timed_recording::resolve_limit(plan.as_ref(), remembered)?;
+    let class_input = plan
+        .as_ref()
+        .and_then(|p| p.class_name.as_deref())
+        .and_then(crate::classes::normalize);
+
     // Generate a new meeting ID
     let meeting_id = uuid::Uuid::new_v4().to_string();
-    let title = format!("Meeting {}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
+    let title = match &class_input {
+        Some(class) => format!("{} {}", class, chrono::Local::now().format("%Y-%m-%d %H:%M")),
+        None => format!("Meeting {}", chrono::Local::now().format("%Y-%m-%d %H:%M")),
+    };
 
     // Create meeting in database
     state
@@ -482,6 +500,19 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         .create_meeting(&meeting_id, &title)
         .await
         .map_err(|e| format!("Failed to create meeting: {}", e))?;
+
+    // Timed recording + class (user-entered metadata on the meeting row)
+    if let Err(e) = state.database.set_meeting_planned_minutes(&meeting_id, limit.minutes()).await {
+        log::warn!("Failed to save the planned length: {}", e);
+    }
+    if class_input.is_some() {
+        if let Err(e) = state.database.set_meeting_class(&meeting_id, class_input.as_deref()).await {
+            log::warn!("Failed to save the class: {}", e);
+        }
+    }
+    if plan.as_ref().map(|p| p.remember).unwrap_or(false) {
+        crate::timed_recording::remember(&app, limit).await;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Calendar Integration: Check for matching calendar event
@@ -861,6 +892,9 @@ pub async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Resu
         frames_dir
     );
 
+    // Time limit ("how long?"): stops at the deadline through the Stop path
+    crate::timed_recording::arm(&app_for_end_monitor, &meeting_id, limit);
+
     // Watch for the meeting ending (call app releases the mic, window closes,
     // calendar end, sustained silence) — see meeting_end.rs
     crate::meeting_end::start_monitor(app_for_end_monitor, meeting_id.clone(), calendar_window);
@@ -941,6 +975,8 @@ pub async fn stop_recording_core(state: &AppState) -> Result<(), String> {
     let stopped_meeting_id = state.state_builder.read().current_meeting_id();
     // Ends meeting-end detection; Some(end) if this stop follows a detected end
     let trim_after = crate::meeting_end::on_recording_stopped(stopped_meeting_id.as_deref());
+    // Cancels the time limit: its timer can't stop anything after this
+    crate::timed_recording::on_recording_stopped();
 
     // Stop capture engine
     {
@@ -1508,14 +1544,16 @@ pub async fn set_setting(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_meetings(
     limit: Option<i32>,
+    class_name: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Meeting>, String> {
     let limit = limit.unwrap_or(50);
-    state
-        .database
-        .list_meetings(limit)
-        .await
-        .map_err(|e| format!("Failed to list meetings: {}", e))
+    // Library filter: one class (classes.rs), or everything
+    let listed = match class_name.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        Some(class) => state.database.list_meetings_in_class(class, limit).await,
+        None => state.database.list_meetings(limit).await,
+    };
+    listed.map_err(|e| format!("Failed to list meetings: {}", e))
 }
 
 /// Get a single meeting

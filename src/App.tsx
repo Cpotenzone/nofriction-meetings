@@ -1,5 +1,5 @@
 // noFriction Meetings - Sidebar Layout
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { AiConsentModal } from "./components/AiConsentModal";
 import { PaywallModal } from "./components/PaywallModal";
 import { listen } from "@tauri-apps/api/event";
@@ -15,6 +15,10 @@ import { useTranscripts } from "./hooks/useTranscripts";
 import { GenieView } from "./components/GenieView";
 import { AgencyLayout, AgencyMode } from "./components/agency/AgencyLayout";
 import { openSettings } from "./lib/navigation";
+import { RecordPicker, RecordPickerContext } from "./components/RecordPicker";
+import { ClassRecordingNotice, TimeLimitBanner } from "./components/TimedRecording";
+import { TIMED_EVENTS, takeClassRecordingNotice, type TimedAutoStop } from "./lib/timedRecording";
+import type { StartPlan } from "./lib/recordPlan";
 
 
 function App() {
@@ -27,6 +31,14 @@ function App() {
   const commandPalette = useCommandPalette();
   const [setupRequired, setSetupRequired] = useSetupRequired();
   const [isGenieMode, setIsGenieMode] = useState(false);
+  // "How long?" sheet (Record button clicks) and the one-time class notice
+  const [recordPickerOpen, setRecordPickerOpen] = useState(false);
+  const [showClassNotice, setShowClassNotice] = useState(false);
+  const closeClassNotice = useCallback(() => setShowClassNotice(false), []);
+  // A recording started some other way (tray, ⌘N) while the sheet was open
+  useEffect(() => {
+    if (recording.isRecording) setRecordPickerOpen(false);
+  }, [recording.isRecording]);
   const isGenieModeRef = useRef(isGenieMode);
   isGenieModeRef.current = isGenieMode;
 
@@ -51,7 +63,9 @@ function App() {
       const recording = {
         get isRecording() { return recordingRef.current.isRecording; },
         get isPaused() { return recordingRef.current.isPaused; },
-        startRecording: () => recordingRef.current.startRecording(),
+        get meetingId() { return recordingRef.current.meetingId; },
+        // No plan: the remembered length (shortcut, tray, capture modes)
+        startRecording: (plan?: StartPlan) => recordingRef.current.startRecording(plan),
         stopRecording: () => recordingRef.current.stopRecording(),
         pauseRecording: () => recordingRef.current.pauseRecording(),
         resumeRecording: () => recordingRef.current.resumeRecording(),
@@ -82,11 +96,13 @@ function App() {
           setMeetingListRefreshKey((k) => k + 1);
         }
       }));
-      // Tray menu events
-      add(await listen("tray:start_recording", async () => {
+      // Tray menu events. "Start Recording" uses the remembered length;
+      // "Start Recording For > 30 Minutes" sends one (and remembers it).
+      add(await listen<{ duration?: string } | null>("tray:start_recording", async (e) => {
         if (!recording.isRecording) {
           transcripts.clearLiveTranscripts();
-          await recording.startRecording();
+          const duration = e.payload?.duration;
+          await recording.startRecording(duration ? { duration, remember: true } : undefined);
         }
       }));
       add(await listen("tray:stop_recording", async () => {
@@ -103,6 +119,20 @@ function App() {
             await recording.stopRecording();
           } catch (err) {
             console.error("Auto-stop failed:", err);
+          }
+          setMeetingListRefreshKey((k) => k + 1);
+        }
+      }));
+      // Time limit reached (timed_recording.rs): stop through the user's own
+      // Stop path. Only the recording the limit belongs to; the backend
+      // stops it itself if this doesn't happen within a few seconds.
+      add(await listen<TimedAutoStop>(TIMED_EVENTS.autoStop, async (e) => {
+        const target = e.payload?.meetingId;
+        if (recording.isRecording && (!target || target === recording.meetingId)) {
+          try {
+            await recording.stopRecording();
+          } catch (err) {
+            console.error("Timed auto-stop failed:", err);
           }
           setMeetingListRefreshKey((k) => k + 1);
         }
@@ -250,11 +280,28 @@ function App() {
         // Refresh meeting list after recording stops
         setMeetingListRefreshKey((k) => k + 1);
       } else {
-        transcripts.clearLiveTranscripts();
-        await recording.startRecording();
+        // A Record button: ask "how long?" (and which class) first
+        setRecordPickerOpen(true);
       }
     } catch (err) {
       console.error("Recording error:", err);
+    }
+  };
+
+  const openRecordPicker = () => {
+    if (!recording.isRecording) setRecordPickerOpen(true);
+  };
+
+  // The Record sheet's Start (an error stays in the sheet)
+  const startFromPicker = async (plan: StartPlan) => {
+    transcripts.clearLiveTranscripts();
+    await recording.startRecording(plan);
+    setRecordPickerOpen(false);
+    if (plan.className) {
+      // First class recording ever: a one-time reminder about school policy
+      takeClassRecordingNotice()
+        .then((first) => { if (first) setShowClassNotice(true); })
+        .catch(() => {});
     }
   };
 
@@ -316,6 +363,7 @@ function App() {
     return (
       <>
       {meetingEndBanner}
+      <TimeLimitBanner isRecording={recording.isRecording} />
       <GenieView
         onRestore={() => setIsGenieMode(false)}
         liveTranscripts={transcripts.liveTranscripts.map(t => t.text)}
@@ -331,6 +379,7 @@ function App() {
   }
 
   return (
+    <RecordPickerContext.Provider value={{ open: openRecordPicker }}>
     <div className={`app-container ${isBackendReady ? 'ready' : ''}`}>
       <AgencyLayout
         activeMode={activeMode}
@@ -350,6 +399,13 @@ function App() {
 
       {/* "Meeting seems to have ended — stopping in 30s" */}
       {meetingEndBanner}
+
+      {/* Timed recording: "5 minutes left" with +15 min / No limit */}
+      <TimeLimitBanner isRecording={recording.isRecording} />
+      {recordPickerOpen && !recording.isRecording && (
+        <RecordPicker onCancel={() => setRecordPickerOpen(false)} onStart={startFromPicker} />
+      )}
+      {showClassNotice && <ClassRecordingNotice onClose={closeClassNotice} />}
 
       {/* Command Palette */}
       <CommandPalette
@@ -374,6 +430,7 @@ function App() {
         currentMeetingId={recording.meetingId}
       />
     </div>
+    </RecordPickerContext.Provider>
   );
 }
 
