@@ -96,7 +96,7 @@ export function CommandPalette({
             ...(currentMeetingId
                 ? [{
                     id: "notes-current",
-                    label: "Open Notes for This Meeting",
+                    label: "Open Notes for This Recording",
                     category: "ai" as const,
                     icon: "📝",
                     action: () => {
@@ -110,7 +110,7 @@ export function CommandPalette({
             // Navigation
             { id: "nav-live", label: "Go to Live", shortcut: "⌘1", category: "navigation", icon: "🎙️", action: go("live"), keywords: ["live", "transcript", "current"] },
             { id: "nav-rewind", label: "Go to Recordings", shortcut: "⌘2", category: "navigation", icon: "🎬", action: go("rewind"), keywords: ["rewind", "recordings", "timeline", "history", "notes"] },
-            { id: "nav-chat", label: "Chat with Your Meetings", shortcut: "⇧⌘I", category: "ai", icon: "💬", action: go("chat"), keywords: ["ask", "question", "ai", "chat", "search"] },
+            { id: "nav-chat", label: "Chat with Your Recordings", shortcut: "⇧⌘I", category: "ai", icon: "💬", action: go("chat"), keywords: ["ask", "question", "ai", "chat", "search"] },
             { id: "nav-prompts", label: "Open Prompts", shortcut: "⇧⌘P", category: "navigation", icon: "🎯", action: go("prompts"), keywords: ["prompts", "ai", "library", "templates"] },
             { id: "nav-settings", label: "Open Settings", shortcut: "⌘,", category: "navigation", icon: "⚙️", action: go("settings"), keywords: ["settings", "preferences", "config", "options"] },
             { id: "nav-ai", label: "Set Up AI (Settings → AI Engine)", category: "ai", icon: "✨", action: go("settings:ai"), keywords: ["ai", "key", "openai", "provider", "engine"] },
@@ -120,7 +120,7 @@ export function CommandPalette({
         // Add meeting commands
         const meetingCommands: Command[] = recentMeetings.map((meeting) => ({
             id: `meeting-${meeting.id}`,
-            label: meeting.title || "Untitled Meeting",
+            label: meeting.title || "Untitled recording",
             category: "meeting" as const,
             icon: "📅",
             action: () => {
@@ -209,7 +209,7 @@ export function CommandPalette({
     const categoryLabels: Record<string, string> = {
         action: "Actions",
         navigation: "Navigation",
-        meeting: "Recent Meetings",
+        meeting: "Recent Recordings",
         ai: "AI",
     };
 

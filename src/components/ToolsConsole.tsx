@@ -119,7 +119,7 @@ export function ToolsConsole() {
                     <div className="db-stats-grid">
                         <div className="db-stat">
                             <div className="stat-value">{dbStats.meetings.toLocaleString()}</div>
-                            <div className="stat-label">Meetings</div>
+                            <div className="stat-label">Recordings</div>
                         </div>
                         <div className="db-stat">
                             <div className="stat-value">{dbStats.frames.toLocaleString()}</div>

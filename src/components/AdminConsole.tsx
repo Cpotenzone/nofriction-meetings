@@ -45,7 +45,7 @@ function AboutPanel() {
                     Version 1.0.0 RC 1
                 </p>
                 <p style={{ color: '#9ca3af', fontSize: '14px', maxWidth: '500px', margin: '0 auto 32px', lineHeight: 1.7 }}>
-                    Your AI-powered meeting companion that captures everything—audio, screen content, and visual context—so you can focus on the conversation, not on taking notes.
+                    Your AI-powered recording companion that captures everything—audio, screen content, and visual context—so you can focus on the conversation, not on taking notes.
                 </p>
             </div>
 

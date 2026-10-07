@@ -1,6 +1,6 @@
 // noFriction Meetings - AI provider API (bring your own key)
 // Thin typed wrappers over the ai_* Tauri commands, plus the consent bus
-// used to show the "Send meeting content to {Provider}?" dialog whenever a
+// used to show the "Send recording content to your endpoint?" dialog whenever a
 // call comes back with CONSENT_REQUIRED:<provider>.
 
 import { invoke } from "@tauri-apps/api/core";

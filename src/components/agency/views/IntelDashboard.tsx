@@ -425,14 +425,14 @@ export const IntelDashboard: React.FC = () => {
             <div className="intel-topbar">
                 <div className="intel-topbar-left">
                     <h2>🔍 INTEL</h2>
-                    <span className="intel-badge">Cross-Meeting Intelligence</span>
+                    <span className="intel-badge">Intelligence Across Recordings</span>
                 </div>
 
                 <div className="intel-search-bar">
                     <Search size={14} />
                     <input
                         type="text"
-                        placeholder="Search across all meetings..."
+                        placeholder="Search across all recordings..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         onKeyDown={handleSearchKeyDown}
@@ -471,7 +471,7 @@ export const IntelDashboard: React.FC = () => {
                                 <div className="intel-overview">
                                     <div className="intel-stat-card gold">
                                         <span className="intel-stat-value">{meetings.length}</span>
-                                        <span className="intel-stat-label">Meetings</span>
+                                        <span className="intel-stat-label">Recordings</span>
                                     </div>
                                     <div className="intel-stat-card blue">
                                         <span className="intel-stat-value">{people.length}</span>
@@ -567,7 +567,7 @@ export const IntelDashboard: React.FC = () => {
                                                     </div>
                                                 </>
                                             ) : (
-                                                <div className="intel-empty">No graph data yet. Export meetings to your Obsidian vault first.</div>
+                                                <div className="intel-empty">No graph data yet. Export recordings to your Obsidian vault first.</div>
                                             )}
                                         </div>
                                     </div>
@@ -722,7 +722,7 @@ export const IntelDashboard: React.FC = () => {
                                 {/* Recent Meetings */}
                                 <div className="intel-section">
                                     <div className="intel-section-header">
-                                        <h3><Clock size={14} /> Recent Meetings</h3>
+                                        <h3><Clock size={14} /> Recent Recordings</h3>
                                         <button className="intel-nav-link" onClick={() => setActiveTab('timeline')}>
                                             View All →
                                         </button>
@@ -741,7 +741,7 @@ export const IntelDashboard: React.FC = () => {
                                                         </div>
                                                         <div className="intel-timeline-body">
                                                             <div className="intel-timeline-title">
-                                                                {m.title || 'Untitled Meeting'}
+                                                                {m.title || 'Untitled recording'}
                                                             </div>
                                                             <div className="intel-timeline-meta">
                                                                 {m.duration_seconds ? formatDuration(m.duration_seconds) : ''}
@@ -751,7 +751,7 @@ export const IntelDashboard: React.FC = () => {
                                                 );
                                             })}
                                             {meetings.length === 0 && (
-                                                <div className="intel-empty">No meetings recorded yet.</div>
+                                                <div className="intel-empty">No recordings yet.</div>
                                             )}
                                         </div>
                                     </div>
@@ -850,7 +850,7 @@ export const IntelDashboard: React.FC = () => {
                                             </>
                                         ) : (
                                             <div className="intel-empty">
-                                                No graph data. Export meetings to your vault to build the knowledge graph.
+                                                No graph data. Export recordings to your vault to build the knowledge graph.
                                             </div>
                                         )}
                                     </div>
@@ -862,9 +862,9 @@ export const IntelDashboard: React.FC = () => {
                         {activeTab === 'timeline' && (
                             <div className="intel-section">
                                 <div className="intel-section-header">
-                                    <h3><Clock size={14} /> Meeting Timeline</h3>
+                                    <h3><Clock size={14} /> Recording Timeline</h3>
                                     <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-                                        {meetings.length} meetings · {insights.totalHours}h total
+                                        {meetings.length} recordings · {insights.totalHours}h total
                                     </span>
                                 </div>
                                 <div className="intel-section-body">
@@ -886,7 +886,7 @@ export const IntelDashboard: React.FC = () => {
                                                     </div>
                                                     <div className="intel-timeline-body">
                                                         <div className="intel-timeline-title">
-                                                            {m.title || 'Untitled Meeting'}
+                                                            {m.title || 'Untitled recording'}
                                                         </div>
                                                         <div className="intel-timeline-meta">
                                                             {m.duration_seconds ? formatDuration(m.duration_seconds) : ''}
@@ -901,7 +901,7 @@ export const IntelDashboard: React.FC = () => {
                                             );
                                         })}
                                         {meetings.length === 0 && (
-                                            <div className="intel-empty">No meetings recorded yet. Start a recording to begin building your timeline.</div>
+                                            <div className="intel-empty">No recordings yet. Start a recording to begin building your timeline.</div>
                                         )}
                                     </div>
                                 </div>
@@ -1030,7 +1030,7 @@ export const IntelDashboard: React.FC = () => {
                                                         <div className="intel-topic-card-stats">
                                                             <div className="intel-topic-card-stat">
                                                                 <strong>{topic.meetings.length}</strong>
-                                                                Meetings
+                                                                Recordings
                                                             </div>
                                                             <div className="intel-topic-card-stat">
                                                                 <strong>{topic.noteCount}</strong>
@@ -1049,7 +1049,7 @@ export const IntelDashboard: React.FC = () => {
                                             </div>
                                         ) : (
                                             <div className="intel-empty">
-                                                No topics created yet. Create topics in the Vault tab to organize your meetings.
+                                                No topics created yet. Create topics in the Vault tab to organize your recordings.
                                             </div>
                                         )}
                                     </div>
@@ -1061,7 +1061,7 @@ export const IntelDashboard: React.FC = () => {
                         {activeTab === 'search' && (
                             <div className="intel-section">
                                 <div className="intel-section-header">
-                                    <h3><Search size={14} /> Cross-Meeting Search</h3>
+                                    <h3><Search size={14} /> Search Across Recordings</h3>
                                     <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
                                         {searchResults.length} results
                                     </span>
@@ -1089,7 +1089,7 @@ export const IntelDashboard: React.FC = () => {
                                             <Search size={32} />
                                             {searchQuery
                                                 ? 'No results found. Try a different search term.'
-                                                : 'Type a query and press Enter to search across all meeting notes, transcripts, and vault files.'}
+                                                : 'Type a query and press Enter to search across all notes, transcripts, and vault files.'}
                                         </div>
                                     )}
                                 </div>

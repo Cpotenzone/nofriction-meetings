@@ -404,14 +404,14 @@ function AutomaticAi({ configured }: { configured: boolean }) {
             </p>
             {value &&
                 row(
-                    "Live insights during meetings",
+                    "Live insights while recording",
                     "Spot action items, decisions and risks in the live transcript while you record (runs on this Mac).",
                     value.liveInsights,
                     (v) => ({ liveInsights: v }),
                 )}
             {value &&
                 row(
-                    "Write a report after each meeting",
+                    "Write notes after each recording",
                     "When a recording longer than 6 minutes stops, write AI notes with your AI provider. Off: generate notes yourself from Recordings → Notes.",
                     value.autoReport,
                     (v) => ({ autoReport: v }),
@@ -429,7 +429,7 @@ function LocalEndpoints({ providers, onChange }: { providers: AiProviderInfo[]; 
             <h3>Local & custom servers</h3>
             <p className="section-desc">
                 Enter a local or remote OpenAI-compatible endpoint yourself. Remote addresses require HTTPS
-                and permission before meeting content is sent. Private local addresses may use HTTP.
+                and permission before recording content is sent. Private local addresses may use HTTP.
             </p>
             {providers.map((p) => (
                 <LocalEndpoint key={p.id} p={p} onChange={onChange} />

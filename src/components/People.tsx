@@ -163,7 +163,7 @@ function ConnectCalendar({ access, onSynced }: { access: CalendarAccess | null; 
                 setMsg("Calendar access is off. Turn on noFriction Meetings in System Settings → Privacy & Security → Calendars, then try again.");
                 open("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars");
             } else {
-                setMsg(r.report ? `Linked ${r.report.meetings_linked} of ${r.report.meetings_checked} meetings to your calendar.` : null);
+                setMsg(r.report ? `Linked ${r.report.meetings_linked} of ${r.report.meetings_checked} recordings to your calendar.` : null);
                 onSynced();
             }
         } catch (e) {
@@ -178,7 +178,7 @@ function ConnectCalendar({ access, onSynced }: { access: CalendarAccess | null; 
             <CalendarIcon size={18} />
             <div className="cal-connect__text">
                 <strong>{access === "denied" ? "Calendar access is off" : "Connect your calendar"}</strong>
-                <span>{msg ?? "Meetings get their real titles, times and attendees — then link each person's LinkedIn."}</span>
+                <span>{msg ?? "Recordings get their real titles, times and attendees — then link each person's LinkedIn."}</span>
             </div>
             <button onClick={connect} disabled={busy} type="button">
                 {busy ? "Connecting…" : access === "denied" ? "Open Settings" : "Connect"}

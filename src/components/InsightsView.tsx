@@ -65,8 +65,8 @@ export function InsightsView() {
             <div className="insights-view">
                 <EmptyState
                     icon={<LightbulbIcon size={44} strokeWidth={1.5} />}
-                    title="No meeting data yet"
-                    message="Once you record a meeting, duration stats and activity insights appear here."
+                    title="No recordings yet"
+                    message="Once you make a recording, duration stats and activity insights appear here."
                 />
             </div>
         );
@@ -138,7 +138,7 @@ export function InsightsView() {
                 <div className="stat-card glass-panel">
                     <div className="stat-icon">📊</div>
                     <div className="stat-value">{meetings.length}</div>
-                    <div className="stat-label">Total Meetings</div>
+                    <div className="stat-label">Total Recordings</div>
                 </div>
 
                 <div className="stat-card glass-panel">
@@ -168,7 +168,7 @@ export function InsightsView() {
                         <div key={bucket} className="category-item">
                             <div className="category-header">
                                 <span className="category-name">{bucket}</span>
-                                <span className="category-count">{count} meeting{count !== 1 ? 's' : ''}</span>
+                                <span className="category-count">{count} recording{count !== 1 ? 's' : ''}</span>
                             </div>
                             <div className="category-bar">
                                 <div
@@ -186,7 +186,7 @@ export function InsightsView() {
 
             {/* Meetings by Day */}
             <div className="insights-section glass-panel">
-                <h3>📅 Meetings by Day</h3>
+                <h3>📅 Recordings by Day</h3>
                 <div className="category-list">
                     {dateEntries.map(([date, dayMeetings]) => {
                         const dayDuration = dayMeetings.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
@@ -195,7 +195,7 @@ export function InsightsView() {
                                 <div className="category-header">
                                     <span className="category-name">{date}</span>
                                     <span className="category-count">
-                                        {dayMeetings.length} meeting{dayMeetings.length !== 1 ? 's' : ''}{dayDuration > 0 ? ` · ${formatDuration(dayDuration)}` : ''}
+                                        {dayMeetings.length} recording{dayMeetings.length !== 1 ? 's' : ''}{dayDuration > 0 ? ` · ${formatDuration(dayDuration)}` : ''}
                                     </span>
                                 </div>
                                 <div className="category-bar">
@@ -216,7 +216,7 @@ export function InsightsView() {
             {/* Longest Meeting */}
             {longestMeeting && (
                 <div className="insights-section glass-panel">
-                    <h3>🏆 Longest Meeting</h3>
+                    <h3>🏆 Longest Recording</h3>
                     <div className="activity-item" style={{ cursor: 'default' }}>
                         <div className="activity-header">
                             <span className="activity-app">{longestMeeting.title}</span>
@@ -235,7 +235,7 @@ export function InsightsView() {
 
             {/* Recent Meetings */}
             <div className="insights-section glass-panel">
-                <h3>🕒 Recent Meetings</h3>
+                <h3>🕒 Recent Recordings</h3>
                 <div className="activity-list scrollable" style={{ maxHeight: "400px" }}>
                     {meetings.slice(0, 20).map((meeting) => (
                         <div key={meeting.id} className="activity-item">

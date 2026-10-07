@@ -197,14 +197,14 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
         const successCount = total - errors.length;
         if (successCount > 0) {
             setImportSuccess({
-                title: `${successCount} meeting${successCount > 1 ? 's' : ''}`,
+                title: `${successCount} recording${successCount > 1 ? 's' : ''}`,
                 path: selectedTopic.name,
                 count: successCount,
             });
             setTimeout(() => setImportSuccess(null), 5000);
         }
         if (errors.length > 0) {
-            alert(`${errors.length} meeting(s) failed to import. Check console for details.`);
+            alert(`${errors.length} recording(s) failed to import. Check console for details.`);
         }
         setIsExportLoading(false);
     };
@@ -348,7 +348,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                 <div className="empty-icon"><Settings size={48} /></div>
                 <h2 className="empty-title">Vault Not Configured</h2>
                 <p className="empty-desc">
-                    Connect your Obsidian vault in Settings to start managing meeting knowledge.
+                    Connect your Obsidian vault in Settings to start organizing your recordings.
                 </p>
                 <button
                     className="action-btn primary"
@@ -513,7 +513,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                         <div className="vault-empty-state">
                             <div className="empty-icon"><FileText size={48} /></div>
                             <h2 className="empty-title">No File Selected</h2>
-                            <p className="empty-desc">Select a meeting or note from the sidebar to preview its content.</p>
+                            <p className="empty-desc">Select a recording or note from the sidebar to preview its content.</p>
                         </div>
                     )}
                 </div>
@@ -645,9 +645,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                     <div className="export-modal-overlay">
                         <div className="export-modal">
                             <div className="import-modal-header">
-                                <h4>Import Meetings to {selectedTopic?.name}</h4>
+                                <h4>Import Recordings to {selectedTopic?.name}</h4>
                                 <p className="import-subtitle">
-                                    Select meetings to import. Transcripts, AI Intelligence, and screenshots will be added to your Obsidian vault.
+                                    Select recordings to import. Transcripts, AI Intelligence, and screenshots will be added to your Obsidian vault.
                                 </p>
                             </div>
                             <div className="meeting-select-list">
@@ -670,7 +670,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                                                 )}
                                             </div>
                                             <div className="m-info">
-                                                <span className="m-title">{m.title || 'Untitled Meeting'}</span>
+                                                <span className="m-title">{m.title || 'Untitled recording'}</span>
                                                 <span className="m-date">
                                                     {new Date(m.started_at).toLocaleDateString('en-US', {
                                                         month: 'short', day: 'numeric', year: 'numeric',
@@ -686,7 +686,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                                     );
                                 })}
                                 {meetingList.length === 0 && (
-                                    <div className="empty-text">No meetings found. Start a recording first.</div>
+                                    <div className="empty-text">No recordings found. Start a recording first.</div>
                                 )}
                             </div>
                             <div className="import-modal-footer">
@@ -698,7 +698,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                                 >
                                     {isExportLoading
                                         ? `Importing ${importProgress?.current || 0}/${importProgress?.total || 0}...`
-                                        : `Import ${selectedMeetings.size} Meeting${selectedMeetings.size !== 1 ? 's' : ''}`
+                                        : `Import ${selectedMeetings.size} Recording${selectedMeetings.size !== 1 ? 's' : ''}`
                                     }
                                 </button>
                             </div>
@@ -712,7 +712,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
 
                 {!selectedFile && selectedTopic && (
                     <div className="inspector-section">
-                        <h4>Linked Meetings</h4>
+                        <h4>Linked Recordings</h4>
                         <div className="inspector-list">
                             {selectedTopic.meetings.length > 0 ? (
                                 selectedTopic.meetings.map(m => (
@@ -724,7 +724,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onSelectMeeting: _onSelect
                                     </div>
                                 ))
                             ) : (
-                                <p className="empty-text">No meetings linked yet</p>
+                                <p className="empty-text">No recordings linked yet</p>
                             )}
                         </div>
                     </div>

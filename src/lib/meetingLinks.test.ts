@@ -139,5 +139,5 @@ test("copy all as Markdown", () => {
             "",
         ].join("\n"),
     );
-    assert.equal(linksMarkdown("", []), "## Links — Meeting\n\n_No links._\n");
+    assert.equal(linksMarkdown("", []), "## Links — Recording\n\n_No links._\n");
 });

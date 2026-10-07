@@ -97,12 +97,12 @@ export function AiConsentModal() {
         <div className="modal-overlay ai-consent-overlay" role="dialog" aria-modal="true" aria-labelledby="ai-consent-title">
             <div className="modal-content ai-consent-modal">
                 <div className="modal-header">
-                    <h2 id="ai-consent-title">Send meeting content to your endpoint?</h2>
+                    <h2 id="ai-consent-title">Send recording content to your endpoint?</h2>
                 </div>
                 <div className="modal-body">
                     <p className="ai-consent-copy">
                         Destination: <strong style={{ overflowWrap: "anywhere" }}>{endpoint || "Unavailable"}</strong>.
-                        If you allow it, noFriction sends transcripts, meeting titles, attendee names,
+                        If you allow it, noFriction sends transcripts, titles, attendee names,
                         email/company details and selected screenshots needed for AI features directly to this endpoint,
                         using your optional API key. Its operator's privacy policy and terms apply.
                         This is optional. You can use Apple on-device or a local endpoint instead.

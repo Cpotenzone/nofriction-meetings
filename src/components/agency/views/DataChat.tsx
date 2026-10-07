@@ -74,7 +74,7 @@ export const DataChat: React.FC = () => {
             } else if (aiErrorClass(err) === "pro_required") {
                 setError("Chat is part of noFriction Pro.");
             } else if (aiErrorClass(err) === "consent_required") {
-                setError("Chat needs your permission to send meeting excerpts to your AI provider. Ask again and choose Allow.");
+                setError("Chat needs your permission to send recording excerpts to your AI provider. Ask again and choose Allow.");
             } else {
                 setError(friendlyAiError(err));
             }
@@ -127,7 +127,7 @@ export const DataChat: React.FC = () => {
     };
 
     const suggestions = [
-        "What were the key decisions from my last meeting?",
+        "What were the key points from my last recording?",
         "Summarize what I worked on today",
         "What action items are outstanding?",
         "Who did I meet with this week?",
@@ -141,10 +141,10 @@ export const DataChat: React.FC = () => {
                 <div>
                     <h2>
                         <span className="header-icon">💬</span>
-                        CHAT WITH YOUR MEETINGS
+                        CHAT WITH YOUR RECORDINGS
                     </h2>
                     <span className="header-status">
-                        Your meetings, searched on this Mac
+                        Your recordings, searched on this Mac
                     </span>
                 </div>
                 {messages.length > 0 && (
@@ -167,7 +167,7 @@ export const DataChat: React.FC = () => {
                         <span className="empty-icon"><BrainIcon size={40} strokeWidth={1.5} /></span>
                         <span className="empty-title">Talk to your data</span>
                         <span className="empty-subtitle">
-                            Ask about your meetings, transcripts and screen activity. noFriction searches them on this
+                            Ask about your recordings, transcripts and screen activity. noFriction searches them on this
                             Mac and sends only the most relevant excerpts to your AI provider for the answer.
                         </span>
                         <div className="empty-suggestions">
@@ -259,7 +259,7 @@ export const DataChat: React.FC = () => {
                 <textarea
                     ref={textareaRef}
                     className="chat-textarea"
-                    placeholder="Ask about your meetings, transcripts, or screen activity..."
+                    placeholder="Ask about your recordings, transcripts, or screen activity..."
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}

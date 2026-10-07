@@ -19,9 +19,9 @@ import "../features/settings/AIProviderSettings.css";
 import "./PaywallModal.css";
 
 export const PRO_FEATURES = [
-    "AI meeting notes, summaries and action items",
+    "AI notes, summaries and to-dos",
     "Follow-up email drafts",
-    "Chat with your meetings",
+    "Chat with your recordings",
     "Pre-meeting attendee briefings",
 ];
 
