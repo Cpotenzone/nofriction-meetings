@@ -181,33 +181,33 @@ have.
 
 ## 2. App Privacy (nutrition label, shared by both platforms)
 
-**Tracking:** No. No data is used to track users; no tracking domains
-(`NSPrivacyTracking = false`).
+**Published 2026-10-07: "Data Not Collected"** (owner decision: "we don't
+collect any data from the users").
 
-**Data collected by the developer:** none reaches us. The app sends data only
-to the AI or transcription provider the user picks, with the user's own key,
-when the user uses that feature (and on the Mac, automatically for live
-insights and the after-meeting report once a provider is connected and
-approved). Apple's definition of "collect" covers data a third party can keep
-longer than needed to answer a request, and some AI providers retain request
-data. So declare the following conservatively, consistent with the iOS
-privacy manifest (`ios/NoFriction/PrivacyInfo.xcprivacy` declares Other User
-Content, not linked, not tracking, App Functionality):
+**Tracking:** No. No tracking domains (`NSPrivacyTracking = false`).
 
-| Data type | Declare? | Linked to identity | Tracking | Purpose | Why |
-|---|---|---|---|---|---|
-| **User Content → Other User Content** | Yes | No | No | App Functionality | Transcript text, meeting title, recording type and Notebook name, moment-marker notes, attendee names/companies and invite notes sent to the user's chosen AI provider (both platforms). |
-| **User Content → Audio Data** | No | — | — | — | Transcription is on-device on both platforms (cloud transcription was removed from the Mac source on 2026-10-03), so meeting audio never leaves the device. |
-| **User Content → Photos or Videos** | Yes | No | No | App Functionality | Mac only: screenshot analysis sends screenshots to the user's vision model. iOS photos never leave the device. |
-| Contact Info, Contacts, Identifiers, Usage Data, Diagnostics, Location, Financial, Health, Browsing/Search History, Purchases, Sensitive Info | No | | | | Not collected. Attendee names are part of the meeting content above, not the address book. Purchases are handled by Apple. Crash reports shared through Apple's opt-in come from Apple, not an SDK. |
+**Why "Data Not Collected" is accurate:** Apple's "collect" means sending
+data off the device so that *the developer or its third-party partners*
+(analytics, ad networks, SDKs or vendors whose code is in the app) can keep
+it longer than needed to answer the request. noFriction has no servers, no
+analytics, no crash-reporting SDK and no partner code. Recording,
+transcription and storage stay on the device. When a user connects an AI
+endpoint they chose, the app sends that user's content there at their
+request; that endpoint is the user's own provider, not our partner, and
+nothing reaches us. Purchases are handled by Apple.
 
-If you add any SDK, server, crash reporter or new destination, update this
-section, `site/privacy.html` and the privacy manifest in the same change.
+The privacy manifests match: `ios/NoFriction/PrivacyInfo.xcprivacy` and
+`ios/NoFrictionWatch/PrivacyInfo.xcprivacy` declare no collected data types.
 
-**Privacy Policy URL:** unresolved; leave the store field unset. The current
-`nofriction.ai` constants in `ios/NoFriction/App/AppLinks.swift` and
-`src/lib/build.ts` are known incorrect and must be corrected separately before
-release. Do not treat the presence of those constants as a verified policy URL.
+If you ever add an SDK, server, crash reporter or a destination the app
+chooses for the user, update this section, the published label, the
+privacy manifests and the privacy policy in the same change.
+
+**Privacy Policy URL:** `https://nofriction.io/privacy` (set in App Store
+Connect; matches `ios/NoFriction/App/AppLinks.swift` and `src/lib/build.ts`).
+The live page is the company policy; it needs a noFriction app section (what
+stays on the device, the optional user-chosen AI endpoint, no collection),
+based on `site/privacy.html`, before review.
 
 ---
 
