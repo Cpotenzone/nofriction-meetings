@@ -138,12 +138,14 @@ exist on the platform:
      and the user can edit them)
    - the AI "regenerate" uses the edited transcript, where stricken spans
      appear as `[stricken from the record]`
-   - **study guides are deleted, not rewritten** (Mac `study_materials`, iOS
-     `StudyMaterial`): summary, key terms, flashcards, quiz and questions
-     paraphrase the lecture, so matching the removed words can't clean them.
-     Any Delete or Strike of transcript text (words, lines, time ranges)
-     deletes every part of the meeting's study guide, in the live store and
-     in app backups; the preview/confirmation says so. Screen-only edits
+   - **review guides (study guides, for a class) are deleted, not rewritten**
+     (Mac `study_materials`, iOS `StudyMaterial`): summary, key terms,
+     flashcards, quiz and questions paraphrase the recording, so matching the
+     removed words can't clean them. Any Delete or Strike of transcript text
+     (words, lines, time ranges) deletes every part of the recording's guide,
+     in the live store and in app backups; the preview/confirmation says so
+     (Mac: "The guide in REVIEW (summary, key terms, flashcards, quiz,
+     questions): deleted; make it again after the edit"). Screen-only edits
      keep it (it is made from the transcript only). A guide still being
      generated is not saved if the transcript changed meanwhile (the
      transcript fingerprint is re-checked when saving). See
@@ -185,15 +187,17 @@ from `Meeting`).
 Device backups (Time Machine, iCloud backup) are outside the app's control.
 The Strike confirmation mentions it in one line.
 
-**Meeting metadata that isn't transcript or screen text.** A recording's
-class (Mac `meetings.class_name`, iOS `Meeting.courseName`) and planned
-length (`planned_minutes` / `plannedMinutes`) are user-entered fields on the
-meeting row, like its title. Delete and Strike of words or screens don't
-touch them. **Delete Meeting** removes them with the row on both platforms.
-The "recent classes" chips are read from the remaining meetings, never stored
-separately, so a deleted meeting's class disappears with it. Lecture notes
-are ordinary AI notes (step 5). See
-[TIMED_RECORDING_AND_CLASSES.md](TIMED_RECORDING_AND_CLASSES.md#purge).
+**Recording metadata that isn't transcript or screen text.** A recording's
+type (Meeting · Class · Personal; Mac `meetings.recording_kind`), notebook
+(Mac `meetings.class_name`, iOS `Meeting.courseName`) and planned length
+(`planned_minutes` / `plannedMinutes`) are user-entered fields on the
+recording's row, like its title. Delete and Strike of words or screens don't
+touch them. **Delete** of the whole recording removes them with the row on
+both platforms. The recent-notebook chips are read from the remaining
+recordings, never stored separately, so a deleted recording's notebook
+disappears with it. Notes of every type (meeting, lecture, personal) are
+ordinary AI notes (step 5). See
+[TIMED_RECORDING_AND_NOTEBOOKS.md](TIMED_RECORDING_AND_NOTEBOOKS.md#purge).
 
 ## Rendering the marker
 
@@ -310,7 +314,7 @@ UI in `src/components/redaction/Redaction.tsx`.
   from backups; a backup holding a different version of that line that still
   has the words is deleted.
 - **Comments.** `meeting_comments` are never rewritten, for Delete or Strike.
-- **Study guides.** `redact_ai_outputs` calls `study::purge_for_meeting`
+- **Review / study guides.** `redact_ai_outputs` calls `study::purge_for_meeting`
   for every line edit (any removal, distinctive or not), in the action's
   transaction and in each backup's purge. `study::save_materials` re-checks
   the transcript fingerprint and pending deletes inside `BEGIN IMMEDIATE`, so

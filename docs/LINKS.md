@@ -1,8 +1,9 @@
 # Links & References: shared spec (Mac + iOS)
 
-Every meeting has a **Links** list: the sites that came up in it, and the
-references the user adds. For students: the syllabus, readings and slides of a
-lecture, and every site the professor named or showed.
+Every recording has a **Links** list: the sites that came up in it, and the
+references the user adds: a meeting's agenda and slides, a class's syllabus
+and readings, or the page a friend mentioned, and every site someone named or
+showed.
 
 ## For users
 
