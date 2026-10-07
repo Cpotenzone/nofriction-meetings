@@ -2,9 +2,11 @@
 // Manages recording state and audio capture
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as tauri from "../lib/tauri";
 import { getCapabilities } from "../lib/build";
+import type { StartPlan } from "../lib/recordPlan";
 
 
 export interface RecordingState {
@@ -29,6 +31,20 @@ export function useRecording() {
     });
     const [error, setError] = useState<string | null>(null);
     const intervalRef = useRef<number | null>(null);
+
+    // The backend stopped the recording itself (time limit or meeting end,
+    // when the UI didn't). Polling is off while paused, so sync here too.
+    useEffect(() => {
+        let disposed = false;
+        let off: (() => void) | null = null;
+        listen("recording-stopped-automatically", () => {
+            setState((prev) => ({ ...prev, isRecording: false, isPaused: false }));
+        }).then((fn) => (disposed ? fn() : (off = fn)));
+        return () => {
+            disposed = true;
+            off?.();
+        };
+    }, []);
 
     // Poll recording status while recording
     useEffect(() => {
@@ -60,10 +76,11 @@ export function useRecording() {
         };
     }, [state.isRecording, state.isPaused]);
 
-    const startRecording = useCallback(async () => {
+    /** No plan: the remembered length (shortcut, tray, palette). The Record sheet passes one. */
+    const startRecording = useCallback(async (plan?: StartPlan) => {
         try {
             setError(null);
-            const meetingId = await tauri.startRecording();
+            const meetingId = await tauri.startRecording(plan);
 
             // Link accessibility captures to this meeting
             try {

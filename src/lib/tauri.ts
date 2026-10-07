@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { RedactionRecord } from "./redaction";
+import type { StartPlan } from "./recordPlan";
 import { withAiConsent } from "./ai";
 
 // Types
@@ -36,6 +37,10 @@ export interface Meeting {
     ended_at: string | null;
     duration_seconds: number | null;
     calendar_event_id: string | null;
+    /** Timed recording: planned length in minutes; null = no limit */
+    planned_minutes?: number | null;
+    /** The class this recording belongs to, if any */
+    class_name?: string | null;
 }
 
 export interface Transcript {
@@ -87,8 +92,12 @@ export interface AppSettings {
 }
 
 // Recording commands
-export async function startRecording(): Promise<string> {
-    return invoke<string>("start_recording");
+/**
+ * No plan (menu shortcut, tray, command palette): the remembered length.
+ * The Record sheet passes its choice and class (lib/recordPlan.ts).
+ */
+export async function startRecording(plan?: StartPlan): Promise<string> {
+    return invoke<string>("start_recording", { plan: plan ?? null });
 }
 
 export async function stopRecording(): Promise<void> {
@@ -150,8 +159,8 @@ export async function setFrameCaptureInterval(intervalMs: number): Promise<void>
 }
 
 // Meeting commands
-export async function getMeetings(limit?: number): Promise<Meeting[]> {
-    return invoke<Meeting[]>("get_meetings", { limit });
+export async function getMeetings(limit?: number, className?: string | null): Promise<Meeting[]> {
+    return invoke<Meeting[]>("get_meetings", { limit, className: className ?? null });
 }
 
 export async function getMeeting(meetingId: string): Promise<Meeting | null> {

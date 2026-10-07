@@ -5,6 +5,7 @@ import { InsightsView } from '../../InsightsView';
 import { RewindGallery } from '../../RewindGallery';
 import { MeetingNotesPanel } from '../../MeetingNotesPanel';
 import { MeetingPeople, PeopleDirectory } from '../../People';
+import { MeetingClassField } from '../../MeetingClass';
 
 type DeckTab = 'history' | 'people' | 'insights' | 'search';
 
@@ -18,6 +19,8 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
     const [activeTab, setActiveTab] = useState<DeckTab>('history');
     // Selected recording: screenshots + transcript, or its AI notes
     const [meetingView, setMeetingView] = useState<'rewind' | 'notes'>('rewind');
+    // Bumped when a recording's class is edited, so the list and its filter refresh
+    const [classEdits, setClassEdits] = useState(0);
 
     return (
         <div className="agency-view insight-deck">
@@ -56,11 +59,12 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         <MeetingHistory
                             onSelectMeeting={onSelectMeeting}
                             selectedMeetingId={selectedMeetingId}
-                            refreshKey={refreshKey}
+                            refreshKey={refreshKey + classEdits}
                             compact={!!selectedMeetingId}
                         />
                         {selectedMeetingId && (
                             <div className="deck-playback-panel" style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <MeetingClassField meetingId={selectedMeetingId} onSaved={() => setClassEdits((n) => n + 1)} />
                                 <MeetingPeople meetingId={selectedMeetingId} />
                                 <div className="deck-tabs" role="tablist" aria-label="Recording view" style={{ padding: '6px 0' }}>
                                     <button

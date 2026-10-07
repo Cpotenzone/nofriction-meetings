@@ -31,7 +31,7 @@ interface FollowUpEmail {
     to: string[];
 }
 
-type Decision = { text: string; made_by?: string | null };
+type Decision = { text: string; made_by?: string | null; context?: string | null };
 type ActionItem = { task: string; assignee?: string | null; due_date?: string | null };
 
 function parseList<T>(json: string | null): T[] {
@@ -193,10 +193,16 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
     );
 }
 
+/** Notes written with the lecture prompt (the recording has a class; classes.rs). */
+const LECTURE_NOTES = "lecture-notes";
+
 function NotesBody({ notes }: { notes: SavedNotes }) {
     const topics = parseList<string>(notes.key_topics);
     const decisions = parseList<Decision>(notes.decisions);
     const actions = parseList<ActionItem>(notes.action_items);
+    if (notes.model_used === LECTURE_NOTES) {
+        return <LectureNotesBody summary={notes.summary} concepts={topics} definitions={decisions} announcements={actions} />;
+    }
     return (
         <>
             <section className="mn-section">
@@ -242,6 +248,70 @@ function NotesBody({ notes }: { notes: SavedNotes }) {
                                     — {a.assignee || "owner not stated"}
                                     {a.due_date ? ` · ${a.due_date}` : ""}
                                 </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+        </>
+    );
+}
+
+/** Same stored shape, framed for a class: concepts, definitions with examples, announcements. */
+function LectureNotesBody({
+    summary,
+    concepts,
+    definitions,
+    announcements,
+}: {
+    summary: string | null;
+    concepts: string[];
+    definitions: Decision[];
+    announcements: ActionItem[];
+}) {
+    return (
+        <>
+            <section className="mn-section">
+                <h4>Lecture summary</h4>
+                <p>{summary?.trim() || "No summary."}</p>
+            </section>
+            <section className="mn-section">
+                <h4>Key concepts</h4>
+                {concepts.length === 0 ? (
+                    <p className="mn-muted">None recorded.</p>
+                ) : (
+                    <ul>
+                        {concepts.map((t, i) => (
+                            <li key={i}>{t}</li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+            <section className="mn-section">
+                <h4>Definitions and examples</h4>
+                {definitions.length === 0 ? (
+                    <p className="mn-muted">None recorded.</p>
+                ) : (
+                    <ul>
+                        {definitions.map((d, i) => (
+                            <li key={i}>
+                                {d.text}
+                                {d.context && <span className="mn-muted"> — e.g. {d.context}</span>}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+            <section className="mn-section">
+                <h4>Announcements and deadlines</h4>
+                {announcements.length === 0 ? (
+                    <p className="mn-muted">None mentioned.</p>
+                ) : (
+                    <ul>
+                        {announcements.map((a, i) => (
+                            <li key={i}>
+                                {a.task}
+                                {a.due_date && <span className="mn-muted"> — {a.due_date}</span>}
                             </li>
                         ))}
                     </ul>

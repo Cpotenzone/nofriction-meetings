@@ -1,0 +1,288 @@
+/* Timed recording + classes: Record sheet, capture-bar clock, warning
+   banner, class notice, class chips. Same tokens as CaptureBar.css. */
+
+/* ── Record sheet ─────────────────────────────────────────────────────── */
+
+.rpick__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  animation: rpick-fade 160ms ease-out;
+}
+
+.rpick {
+  width: min(520px, calc(100vw - 48px));
+  padding: 22px 24px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color, #262626);
+  background: var(--bg-card, #0d0d0d);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  color: var(--text-primary, #f5f5f5);
+  outline: none;
+  animation: rpick-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes rpick-fade { from { opacity: 0; } }
+@keyframes rpick-in { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
+
+.rpick h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.rpick__sub {
+  margin: 4px 0 16px;
+  font-size: 13px;
+  color: var(--text-secondary, #a3a3a3);
+}
+
+.rpick__choices {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.rpick__choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #262626);
+  background: transparent;
+  color: var(--text-primary, #f5f5f5);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.rpick__choice:hover { border-color: #3a3a3a; background: rgba(255, 255, 255, 0.03); }
+.rpick__choice.is-on {
+  border-color: var(--hazard-yellow, #facc15);
+  background: rgba(250, 204, 21, 0.08);
+}
+.rpick__choice:focus-visible { outline: 2px solid var(--hazard-yellow, #facc15); outline-offset: 2px; }
+
+.rpick__num { font-size: 22px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.rpick__unit { font-size: 11px; color: var(--text-secondary, #a3a3a3); }
+
+.rpick__key {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #737373;
+}
+
+.rpick__label {
+  display: block;
+  margin: 18px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #a3a3a3);
+}
+.rpick__optional { font-weight: 400; color: #737373; }
+
+.rpick__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #262626);
+  background: var(--tactical-gray, #171717);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 14px;
+}
+.rpick__input:focus { outline: none; border-color: var(--hazard-yellow, #facc15); }
+
+.rpick__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rpick__chip,
+.class-chip {
+  max-width: 220px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color, #262626);
+  background: transparent;
+  color: var(--text-primary, #f5f5f5);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.rpick__chip:hover,
+.class-chip:hover { border-color: #3a3a3a; }
+.rpick__chip.is-on,
+.class-chip.is-on {
+  border-color: var(--hazard-yellow, #facc15);
+  color: var(--hazard-yellow, #facc15);
+}
+
+.rpick__hint { margin: 8px 0 0; font-size: 12px; color: var(--text-secondary, #a3a3a3); }
+.rpick__error { margin: 10px 0 0; font-size: 12px; color: var(--accent-danger, #ef4444); }
+
+.rpick__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.rpick__keys { margin-right: auto; font-size: 11px; color: #737373; }
+
+.rpick__ghost,
+.rpick__go {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rpick__ghost {
+  border: 1px solid var(--border-color, #262626);
+  background: transparent;
+  color: var(--text-primary, #f5f5f5);
+}
+.rpick__go {
+  border: 1px solid transparent;
+  background: var(--accent-danger, #ef4444);
+  color: #fff;
+}
+.rpick__go:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Capture bar clock ────────────────────────────────────────────────── */
+
+.tlim {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 12px;
+}
+
+.tlim__clock {
+  font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #f5f5f5);
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--tactical-gray, #171717);
+}
+.tlim.is-low .tlim__clock { color: var(--hazard-yellow, #facc15); }
+
+.tlim__btn {
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color, #262626);
+  background: transparent;
+  color: var(--text-primary, #f5f5f5);
+  font-size: 12px;
+  cursor: pointer;
+}
+.tlim__btn:hover { border-color: #3a3a3a; background: rgba(255, 255, 255, 0.03); }
+.tlim__btn:disabled { opacity: 0.5; cursor: default; }
+.tlim__error { color: var(--accent-danger, #ef4444); }
+
+/* ── Warning banner (styled like the meeting-end banner) ──────────────── */
+
+.tlim-banner {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+}
+
+/* ── One-time class notice ────────────────────────────────────────────── */
+
+.class-notice {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 460px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #262626);
+  background: var(--bg-card, #0d0d0d);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.class-notice p { margin: 0; }
+.class-notice__ok {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #262626);
+  background: transparent;
+  color: var(--text-primary, #f5f5f5);
+  cursor: pointer;
+}
+
+/* ── Library filter + meeting class ───────────────────────────────────── */
+
+.class-filter {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  scrollbar-width: none;
+}
+
+.class-tag {
+  display: inline-block;
+  max-width: 200px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.1);
+  color: var(--hazard-yellow, #facc15);
+  font-size: 11px;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.class-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #a3a3a3);
+}
+.class-field input {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #262626);
+  background: var(--tactical-gray, #171717);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+}
+.class-field input:focus { outline: none; border-color: var(--hazard-yellow, #facc15); }
+.class-field__status { font-size: 11px; color: #737373; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rpick, .rpick__scrim { animation: none; }
+}

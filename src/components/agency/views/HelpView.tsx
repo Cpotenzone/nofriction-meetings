@@ -155,6 +155,23 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
         </div>
 
         <div className="help-section">
+            <h3>Timed Recording and Classes</h3>
+            <p>
+                Clicking a Record button asks <strong>How long?</strong>: 15, 30, 60 or 90 minutes, or no limit
+                (keys 1–5, Enter starts, Esc cancels). Your last choice is remembered and used by ⌘N, the
+                menu-bar icon and the command palette. The recording stops by itself at the end, even with the
+                window closed. Five minutes before (two for a 15-minute recording) you get a warning with
+                <strong> +15 min</strong> and <strong>No limit</strong>; both are also in the capture bar and the
+                menu-bar icon.
+            </p>
+            <p>
+                Add a <strong>Class</strong> (for example "BIO 101 — Cell Biology") in the same sheet, or later on
+                the recording. Filter Recordings by class, and a class recording's AI notes are lecture notes: key
+                concepts, definitions, examples, and the announcements and deadlines the instructor mentioned.
+            </p>
+        </div>
+
+        <div className="help-section">
             <h3>Meeting Notes</h3>
             <p>
                 When you stop a recording longer than <strong>6 minutes</strong> and an AI provider is set up,
@@ -253,7 +270,7 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
             <ol>
                 <li>Pick your microphone in <strong>Settings → General → Microphone</strong> (optional; the system default is used otherwise).</li>
                 <li>Leave <strong>Capture System Audio</strong> on (Settings → General) to record the other people on the call.</li>
-                <li>Click <strong>START CAPTURE</strong> in the top-right, press ⌘N, or use the menu-bar icon. The status pill shows <strong>RECORDING</strong>.</li>
+                <li>Click <strong>START CAPTURE</strong> in the top-right and choose how long (and, for a lecture, the class), or press ⌘N or use the menu-bar icon to start with your last length. The status pill shows <strong>RECORDING</strong>.</li>
                 <li>The live transcript appears in <strong>LIVE</strong>.</li>
                 <li>Click <strong>STOP CAPTURE</strong> (⌘.), or let auto-stop end it when the meeting is over.</li>
                 <li>For recordings over 6 minutes, AI notes are written automatically if an AI provider is set up and <strong>Write a report after each meeting</strong> is on.</li>

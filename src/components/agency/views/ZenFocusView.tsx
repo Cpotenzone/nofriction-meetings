@@ -1,12 +1,14 @@
 import React from 'react';
 import { useRecording } from '../../../hooks/useRecording';
 import { motion } from 'framer-motion';
+import { useRecordPicker } from '../../RecordPicker';
 
 interface ZenFocusViewProps {
     recording: ReturnType<typeof useRecording>;
 }
 
 export const ZenFocusView: React.FC<ZenFocusViewProps> = ({ recording }) => {
+    const recordPicker = useRecordPicker();
     return (
         <div className="agency-view zen-focus">
             <div className="zen-container">
@@ -25,7 +27,7 @@ export const ZenFocusView: React.FC<ZenFocusViewProps> = ({ recording }) => {
 
                         <motion.button
                             className="zen-primary-action"
-                            onClick={recording.isRecording ? recording.stopRecording : recording.startRecording}
+                            onClick={recording.isRecording ? () => recording.stopRecording() : recordPicker.open}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                         >

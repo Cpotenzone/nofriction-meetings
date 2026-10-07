@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { LiveInsightEvent } from '../../../lib/tauri';
 import { AiSetupNotice, useAiStatus } from '../../AiSetupNotice';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useRecordPicker } from '../../RecordPicker';
 import {
     CheckSquareIcon,
     CheckIcon,
@@ -31,6 +32,7 @@ interface TranscriptionStatus {
 }
 
 export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcripts }) => {
+    const recordPicker = useRecordPicker();
     const [insights, setInsights] = useState<LiveInsightEvent[]>([]);
     const [isPolling, setIsPolling] = useState(false);
     const [sttStatus, setSttStatus] = useState<TranscriptionStatus | null>(null);
@@ -103,10 +105,8 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
                     <LiveTranscriptView
                         isRecording={recording.isRecording}
                         transcripts={transcripts.liveTranscripts}
-                        onStartRecording={async () => {
-                            transcripts.clearLiveTranscripts();
-                            await recording.startRecording();
-                        }}
+                        // A Record button: ask "how long?" first (App starts it)
+                        onStartRecording={recordPicker.open}
                     />
                 </div>
 
