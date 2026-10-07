@@ -8,6 +8,7 @@
 import { useEffect, useRef, useMemo } from "react";
 import type { LiveTranscript } from "../hooks/useTranscripts";
 import { MicIcon } from "./icons";
+import { PrivacyPromise } from "./PrivacyPromise";
 import "./LiveTranscript.css";
 
 interface LiveTranscriptProps {
@@ -87,11 +88,12 @@ export function LiveTranscriptView({ transcripts, isRecording, onStartRecording 
                     <MicIcon size={28} strokeWidth={1.5} />
                 </div>
                 <p className="lt-empty__title">{isRecording ? "Listening" : "Ready when you are"}</p>
-                <p className="lt-empty__hint">
-                    {isRecording
-                        ? "Words appear here as they're spoken."
-                        : "Transcribed on this Mac. Nothing leaves it."}
-                </p>
+                {isRecording ? (
+                    <p className="lt-empty__hint">Words appear here as they're spoken.</p>
+                ) : (
+                    // "Recording and transcription work offline. Nothing leaves this Mac…"
+                    <PrivacyPromise />
+                )}
                 {!isRecording && onStartRecording && (
                     <button className="lt-empty__action" onClick={onStartRecording} type="button">
                         Start recording
