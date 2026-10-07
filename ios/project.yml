@@ -120,7 +120,11 @@ targets:
   NoFrictionTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [NoFrictionTests]
+    sources:
+      - NoFrictionTests
+      # Link-detection cases shared with the Mac tests (docs/LINKS.md)
+      - path: ../src-tauri/src/meeting_links/detection_cases.json
+        buildPhase: resources
     dependencies:
       - target: NoFriction
     settings:

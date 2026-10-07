@@ -60,6 +60,8 @@ final class Meeting {
     @Relationship(deleteRule: .cascade, inverse: \Attendance.meeting) var attendances: [Attendance] = []
     /// "Stricken from the record" markers (and Delete records during their undo window)
     @Relationship(deleteRule: .cascade, inverse: \Redaction.meeting) var redactions: [Redaction] = []
+    /// Links the user added (syllabus, readings, slides); docs/LINKS.md
+    @Relationship(deleteRule: .cascade, inverse: \MeetingReference.meeting) var references: [MeetingReference] = []
 
     init(title: String, startedAt: Date = .now) {
         self.id = UUID()
@@ -265,6 +267,7 @@ enum Storage {
 
     static let modelTypes: [any PersistentModel.Type] = [
         Meeting.self, Segment.self, Snapshot.self, Person.self, Attendance.self, Redaction.self,
+        MeetingReference.self,
     ]
 
     /// The app's store. Opened in App.init, before any view, because Apple
