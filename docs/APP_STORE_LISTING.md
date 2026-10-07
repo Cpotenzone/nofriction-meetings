@@ -648,6 +648,19 @@ App Review notes above.
 
 ## 9. Screenshot plan
 
+**Uploaded 2026-10-07 (via the App Store Connect API), replacing the pre-relabel set:**
+
+| Platform | Set | Files (source in `marketing/film/stills/`) |
+|---|---|---|
+| iPhone 6.9" | 5 screenshots, 1260×2736 | `iphone-6.9/01-record-sheet`, `02-class-marks`, `03-review-guide`, `04-flashcards-quiz`, `05-notebooks` |
+| iPhone 6.9" | app preview, 886×1920, 28.8 s | `marketing/out/nofriction-app-preview-iphone-6.9in-886x1920.mp4` (rendered, not committed) |
+| Mac | 5 screenshots, 2880×1800 | `mac/01-rewind`, `02-record-sheet`, `03-review`, `04-links`, `05-notebooks` |
+| Mac | app preview, 1920×1080, 28.8 s | `marketing/out/nofriction-app-preview-mac-1920x1080.mp4` (rendered, not committed) |
+
+The iPad 13" set still holds the older six screenshots (pre-relabel wording); replace it from the film harness before a later submission. Everything else below is the original plan.
+
+
+
 Rule for every image: **no real people, emails, meeting content, calendar
 data or API keys.** Use only the demo data below. Apple requires screenshots
 to show the app in use; captions are optional and can be added as plain
