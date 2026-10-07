@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>noFriction Privacy Policy</title>
-<meta name="description" content="noFriction stores meeting content on your device. Optional AI sends selected content directly to your own configured endpoint. Transcription runs locally.">
+<meta name="description" content="noFriction doesn't collect any data from you. Recording and transcription work offline, and nothing leaves your device unless you want it to. Optional AI runs on Apple's on-device model or goes straight to the endpoint you set up.">
 <link rel="icon" href="mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -23,55 +23,85 @@
 </header>
 <main class="doc" id="content">
   <h1>Privacy Policy</h1>
-  <p class="meta">Effective October 3, 2026 · applies to noFriction for iPhone, iPad and Mac</p>
+  <p class="meta">Effective October 6, 2026 · applies to noFriction for iPhone, iPad, Apple Watch and Mac</p>
 
-  <p class="lede">noFriction has no app accounts and operates no hosted AI models or meeting-data servers. Meeting content is stored on your device. Optional custom-endpoint AI sends content directly to the destination you configure; the details below describe those transfers.</p>
+  <p class="lede"><strong>noFriction doesn't collect any data from you.</strong> Recording and transcription work offline, and nothing leaves your device unless you want it to. noFriction has no app accounts and runs no servers for your recordings or for AI. Your recordings are stored on your device. If you choose optional AI with your own endpoint, the app sends content straight to the destination you set up; the details are below.</p>
+
+  <h2>We don't collect any data from you</h2>
+  <p>
+    "Collect" means sending data off your device to us, or to partners whose code is in the app, so that it can be kept. noFriction does neither.
+    The app has no noFriction servers, no accounts, no analytics, no advertising or tracking SDKs and no partner code. In Apple's privacy-label terms, that is <strong>Data Not Collected</strong>.
+    Content leaves your device only when you choose: to the AI endpoint you set up, in an export or share, or from your Apple Watch to your own iPhone.
+  </p>
 
   <h2>What is stored on your device</h2>
   <ul>
-    <li>Audio recordings and transcripts. Transcription runs on your device: Apple's on-device speech recognition on iPhone and iPad, and a Whisper speech model on the Mac.</li>
-    <li>Meeting titles, notes, photos, screenshots and the people list. On the Mac, screenshots are taken only of the displays or windows you choose, while you record.</li>
+    <li>Audio recordings and transcripts. Transcription runs on your device: Apple's on-device speech recognition on iPhone and iPad, and a Whisper speech model on the Mac. Recordings made on Apple Watch are transcribed on your iPhone.</li>
+    <li>Each recording's details: its title, its type (Meeting, Class or Personal), its Notebook (such as "Acme project", "BIO 101" or "Health"), the length you chose, notes, photos, screenshots and the people list. On the Mac, screenshots are taken only of the displays or windows you choose, while you record, and any text the Mac reads from them is read and kept on your Mac.</li>
+    <li>Moment marks: Important, Question, and the third mark for the recording's type (Follow up, On the test or Remember), with their times and any note you add.</li>
+    <li>Links: the web addresses said in a recording, which the app finds in its transcript, and the references you add (an address with an optional title and note). noFriction never visits these pages, not even for a title or an icon.</li>
+    <li>AI notes and review guides (summary, key terms, flashcards, a practice quiz and questions to ask), once you make them.</li>
     <li>Calendar details the app reads to name meetings and list attendees. noFriction only reads your calendar; it never changes it.</li>
-    <li>Your settings and your AI provider API keys. Keys are kept in the system Keychain and are never shown again in full.</li>
+    <li>Your settings and the optional API key for your AI endpoint. The key is kept in the system Keychain, tied to that endpoint, and is never shown again in full.</li>
     <li>The Mac app's diagnostic log, which never contains transcript text or keys. It stays on your Mac unless you choose to send it to us.</li>
   </ul>
   <p>
-    Deciding when a meeting has ended (to stop a recording automatically) also happens entirely on your device, from the calendar, the microphone and the transcript.
+    Deciding when a recording has ended (to stop it automatically, or at the length you chose) also happens entirely on your device, from the calendar, the microphone and the transcript.
+  </p>
+
+  <h3>Apple Watch</h3>
+  <p>
+    The Apple Watch app records audio and makes no network requests. It sends each recording only to your paired iPhone, through Apple's connection between the watch and the phone,
+    with its times, type, Notebook name, planned length and marks. The watch deletes the audio only after the noFriction app on your iPhone confirms that it has received it; until then the watch keeps the file, so nothing is lost.
+    From the iPhone the watch receives only those confirmations and your recent Notebook names, never audio, transcripts or titles.
+  </p>
+
+  <h3>Browser addresses (direct-download Mac version)</h3>
+  <p>
+    The direct-download version of noFriction for Mac (not the Mac App Store version) can note the address and window title of the browser page in front while you record, so the recording's Links list can show what was on screen.
+    It does this only while screen capture is on, if you have already allowed Accessibility for noFriction, and while <strong>Record the browser's address during meetings</strong> is on (at the bottom of the Links view, where you can turn it off).
+    It reads only the address and the window title, never the page, and skips windows whose title says Private, Incognito or InPrivate. Safari doesn't mark private windows in their titles, so turn the setting off before browsing privately while you record.
+    These addresses are stored only on your Mac, with the recording, and are deleted with it. The Mac App Store version never records browser addresses.
   </p>
 
   <h2>Deleting and striking content</h2>
   <p>
-    You can delete a whole meeting, or select words, lines, photos or screenshots and choose <strong>Delete</strong> or <strong>Strike from the record</strong>.
-    Either one removes the content from the transcript, search, the saved audio recording on iPhone and iPad (replaced with silence), photos and screenshots, and future exports. AI notes made from it are flagged for regeneration, and distinctive phrases are also removed from them.
+    You can delete a whole recording, or select words, lines, photos or screenshots and choose <strong>Delete</strong> or <strong>Strike from the record</strong>.
+    Either one removes the content from the transcript, search, the saved audio recording on iPhone and iPad (replaced with silence), photos and screenshots, the links found in it, and future exports. AI notes made from it are flagged for regeneration, distinctive phrases are also removed from them, and the recording's review guide is deleted.
     On the Mac it is also purged from the app's own database backups. <strong>Strike</strong> can't be undone and leaves only a marker with the time, the date and an optional reason, never the content.
-    Copies you already exported, shared or sent to an AI provider, photos still in your Photos library, and device backups (such as iCloud or Time Machine) are outside the app's control.
+    Deleting a recording also deletes its marks, references and review guide.
+    Copies you already exported, shared or sent to an AI endpoint, photos still in your Photos library, and device backups (such as iCloud or Time Machine) are outside the app's control.
   </p>
-  <p>Use the app's deletion controls to remove local meetings before uninstalling. Removing a Mac app does not necessarily remove its application data, Keychain entries, exports or backups. Content already sent to a provider remains subject to that provider's retention and deletion policies.</p>
+  <p>Use the app's deletion controls to remove local recordings before uninstalling. Removing a Mac app does not necessarily remove its application data, Keychain entries, exports or backups. Content already sent to an AI endpoint remains subject to its operator's retention and deletion policies.</p>
 
-  <h2>What leaves your device</h2>
-  <h3>AI features, with the provider you choose</h3>
+  <h2>What leaves your device, and only when you choose</h2>
+  <h3>AI features, with the AI you choose</h3>
   <p>
-    AI features are optional. On iPhone and iPad: meeting notes (summary, decisions, action items) and follow-up emails. On the Mac: chat across your meetings, live meeting insights, meeting reports, meeting prep briefs and screenshot analysis.
+    AI features are optional and need noFriction Pro. On iPhone and iPad: notes for each recording in the style of its type (meeting notes, lecture notes, or a summary with key points and to-dos), follow-up emails for meetings, and review guides. On the Mac: the same notes and review guides, plus chat across your recordings, live insights, reports, meeting prep briefs and screenshot analysis.
+    With Apple's on-device model, AI runs on your device and nothing leaves it.
     noFriction offers no hosted AI models. Local and Apple on-device models support offline AI after setup and downloads. No remote service or credential is preconfigured. If you enter an OpenAI-compatible endpoint and model, the app sends the content it needs straight from your device to <strong>that endpoint</strong>, using an optional API key you supply.
-    That text can include the transcript, the meeting title, attendee names, email addresses, companies and roster details, calendar invite notes and, for screen features on the Mac, screenshots.
-    The app asks for your permission before it first sends meeting content to a public endpoint, and you can revoke that permission in Settings. Changing the endpoint clears its previous consent and stored key; a new destination must be reviewed again.
+    That content can include the transcript, the recording's title, type and Notebook, your moment marks and their notes, attendee names, email addresses, companies and roster details, calendar invite notes and, for screen features on the Mac, screenshots. Deleted and stricken words are never sent.
+    The app asks for your permission before it first sends recording content to a public endpoint, and you can revoke that permission in Settings. Changing the endpoint clears its previous consent and stored key; a new destination must be reviewed again.
   </p>
   <p>
-    On the Mac, once you've connected and approved a provider, noFriction uses it automatically for live insights while you record and for a report after a recording longer than six minutes. You can turn either one off in Settings → AI Engine → Automatic AI.
-    If Apple's on-device model is available and no provider is selected, the Mac can use Apple's model instead; that inference runs on your Mac. Unsupported previously saved provider presets remain unavailable and do not select another remote service.
+    On the Mac, once you've connected and approved an endpoint, noFriction uses it automatically for live insights while you record and for a report after a recording longer than six minutes. You can turn either one off in Settings → AI Engine → Automatic AI.
+    If Apple's on-device model is available and no endpoint is selected, the Mac can use Apple's model instead; that inference runs on your Mac. Unsupported previously saved provider presets remain unavailable and do not select another remote service.
   </p>
   <p>
-    That provider's own privacy policy and terms govern what it does with the data. noFriction never receives, stores or relays it.
+    The endpoint's operator and its own privacy policy and terms govern what it does with the data. noFriction never receives, stores or relays it.
     Apple on-device inference runs on this device. An endpoint on another computer receives content across your network, even when it is classified as local; its operator controls any further processing and retention.
   </p>
 
   <h3>On-device transcription</h3>
-  <p>Transcription uses Apple's on-device speech recognition on iPhone and iPad, and Local Whisper on Mac. No cloud-transcription service is built in. Local model downloads may require internet access before offline use.</p>
+  <p>Transcription uses Apple's on-device speech recognition on iPhone and iPad, and Local Whisper on Mac. Recordings from Apple Watch are transcribed on your iPhone. No cloud-transcription service is built in. Local model downloads may require internet access before offline use.</p>
+
+  <h3>Exports and sharing</h3>
+  <p>When you share a recording as text, export flashcards (CSV) or a review guide (Markdown), or export recordings to a folder on the Mac, the copy goes only where you send it.</p>
 
   <h3>Downloads and links</h3>
   <p>
-    The Mac app downloads its speech-recognition model once from Hugging Face. No meeting data is sent.
-    Links you choose to open, such as a LinkedIn search for an attendee or the support page, open in your browser and are governed by those sites' policies.
+    The Mac app downloads its speech-recognition model once from Hugging Face. No recording data is sent.
+    Links you choose to open, such as a LinkedIn search for an attendee, a link in a recording's Links list or the support page, open in your browser and are governed by those sites' policies.
   </p>
 
   <h2>Purchases</h2>
@@ -83,7 +113,7 @@
   <h2>What we don't do</h2>
   <ul>
     <li>No analytics, advertising or tracking SDKs.</li>
-    <li>noFriction does not sell your personal data or share it for advertising. Optional provider transfers, exports and reports you choose to share are described above.</li>
+    <li>noFriction does not sell your personal data or share it for advertising. Optional AI transfers, exports and shares you choose are described above.</li>
     <li>No accounts, and no email address required.</li>
   </ul>
   <p>If you choose to share crash reports with developers in your device settings, Apple gives us those reports without your identity.</p>
@@ -91,11 +121,14 @@
   <h2>Recording other people</h2>
   <p>
     Laws on recording conversations vary. In many places everyone in the conversation must agree to be recorded.
-    You are responsible for telling participants and getting any consent the law requires.
+    You are responsible for telling participants and getting any consent the law requires. Many schools require the instructor's permission to record a class; check your school's policy.
   </p>
 
   <h2>Children</h2>
   <p>noFriction is not directed at children under 13 and does not knowingly collect their data.</p>
+
+  <h2>This website</h2>
+  <p>This policy covers the noFriction app. The nofriction.io website, not the app, uses cookies and hosting analytics; see the <a href="https://nofriction.io/privacy/website">website privacy policy</a>.</p>
 
   <h2>Changes</h2>
   <p>If this policy changes, we'll update this page and its effective date.</p>
