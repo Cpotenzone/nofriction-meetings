@@ -41,6 +41,8 @@ import {
     useRedaction,
     useWordSelection,
 } from "./redaction/Redaction";
+import { MarkerInline, MarkerList, MarkerPins, useMarkers } from "./study/MarkerList";
+import { markersInSpans, placeMarkers } from "../lib/studyLogic";
 import './RewindTab.css';
 
 /** A moment to show, asked for from outside (Links → "first said at 12:03").
@@ -121,6 +123,8 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     const clearWords = words.clear;
     const reload = useCallback(() => setReloadKey((k) => k + 1), []);
     const redaction = useRedaction(meetingId, reload);
+    // Moment markers (docs/STUDY_TOOLS.md)
+    const { markers, setMarkers, reload: reloadMarkers } = useMarkers(meetingId, reloadKey);
 
     // Load timeline data
     useEffect(() => {
@@ -497,6 +501,17 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         if (f) setSelectedFrame(f);
     };
 
+    /** Jump to a moment (a marker). Study's quiz links come in through `seek`. */
+    const seekTo = useCallback(
+        (ms: number) => {
+            setCurrentTime(ms);
+            const f = nearestFrame(ms);
+            if (f) setSelectedFrame(f);
+        },
+        [nearestFrame],
+    );
+    const placed = useMemo(() => placeMarkers(transcripts, markers), [transcripts, markers]);
+
     const onThumbClick = (e: React.MouseEvent, frame: tauri.TimelineFrame) => {
         // Keyboard shortcuts (⌘A, Delete) act on the grid once it's used
         galleryRef.current?.focus({ preventScroll: true });
@@ -564,6 +579,14 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                 : tl,
         );
         setSelectedFrame((f) => (f && screens.has(f.id) ? null : f));
+        // Markers in the deleted time go with it at commit (Undo brings them back)
+        if (p?.ranges?.length) {
+            const spans = p.ranges.map((r) => [r.start_ms, r.end_ms] as [number, number]);
+            setMarkers((ms) => {
+                const gone = markersInSpans(ms, spans);
+                return ms.filter((m) => !gone.has(m.id));
+            });
+        }
         words.clear();
         clearSelection();
     };
@@ -590,6 +613,11 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
             }
             if (!matchesPreview(link, p)) {
                 ask("Deleting this time removes something other than what's highlighted. This is exactly what will be removed:");
+                return;
+            }
+            // Markers are notes the user wrote: never remove them unseen
+            if ((p.moment_markers ?? 0) > 0) {
+                ask("This time also has moment markers you placed; they go with it. This is exactly what will be removed:");
                 return;
             }
         }
@@ -792,6 +820,13 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                 {/* Transcript panel */}
                 <div className="rewind-transcripts scrollable" ref={transcriptRef}>
                     <h3>Transcripts</h3>
+                    <MarkerList
+                        meetingId={meetingId}
+                        markers={markers}
+                        currentMs={currentTime}
+                        onJump={seekTo}
+                        onChanged={reloadMarkers}
+                    />
                     {notesStale && (
                         <div className="rd-stale" role="status">
                             <span>AI notes were made before an edit.</span>
@@ -869,6 +904,9 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                             Double-click a line to edit its words.
                         </p>
                     )}
+                    {placed.before.map((m) => (
+                        <MarkerInline key={m.id} m={m} onJump={seekTo} />
+                    ))}
                     {transcripts.length === 0 ? (
                         <p className="no-transcripts">No transcripts yet</p>
                     ) : (
@@ -936,6 +974,9 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                                                 onWordEnter={words.extend}
                                             />
                                         </p>
+                                        {placed.after.get(t.id)?.map((m) => (
+                                            <MarkerInline key={m.id} m={m} onJump={seekTo} />
+                                        ))}
                                     </div>
                                 );
                             })}
@@ -977,6 +1018,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                         onChange={handleScrub}
                         className="timeline-slider"
                     />
+                    <MarkerPins markers={markers} pct={pct} onJump={seekTo} />
                     {/* Selected time spans, and selected screens/lines in
                         yellow, so a pick scrolled out of view is still visible */}
                     <div className="timeline-markers">

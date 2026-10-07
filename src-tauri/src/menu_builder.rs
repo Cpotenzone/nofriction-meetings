@@ -12,6 +12,8 @@ pub mod menu_ids {
     pub const NEW_RECORDING: &str = "new_recording";
     pub const STOP_RECORDING: &str = "stop_recording";
     pub const PAUSE_RECORDING: &str = "mode_pause";
+    /// ★ the current moment of the recording (markers.rs)
+    pub const MARK_MOMENT: &str = "mark_moment";
 
     pub const ASK_AI: &str = "ask_ai";
 
@@ -65,6 +67,11 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
         )
         .item(&MenuItemBuilder::with_id(menu_ids::PAUSE_RECORDING, "Pause Recording").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::MARK_MOMENT, "Mark Moment")
+                .accelerator(crate::markers::MENU_ACCELERATOR)
+                .build(app)?,
+        )
         .separator()
         .item(&PredefinedMenuItem::close_window(app, None)?)
         .build()?;
@@ -144,6 +151,10 @@ pub fn handle_menu_event(app: &AppHandle<Wry>, event_id: &str) {
         menu_ids::NEW_RECORDING => "menu:new_recording",
         menu_ids::STOP_RECORDING => "menu:stop_recording",
         menu_ids::PAUSE_RECORDING => "menu:mode_pause",
+        menu_ids::MARK_MOMENT => {
+            crate::markers::commands::mark_from_shortcut(app);
+            return;
+        }
         menu_ids::ASK_AI => "menu:ask_ai",
         menu_ids::VIEW_LIVE => "menu:view_live",
         menu_ids::VIEW_REWIND => "menu:view_rewind",

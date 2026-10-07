@@ -1052,6 +1052,9 @@ impl DatabaseManager {
 
         // Links & References: added references, hidden-link hashes (docs/LINKS.md)
         crate::meeting_links::ensure_schema(&mut conn).await?;
+        // Moment markers and study guides (docs/STUDY_TOOLS.md)
+        crate::markers::ensure_schema(&mut conn).await?;
+        crate::study::ensure_schema(&mut conn).await?;
 
         log::info!("Database migrations completed (v3.0 - Calendar Integration)");
         Ok(())

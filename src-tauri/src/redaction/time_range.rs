@@ -12,7 +12,10 @@
 //!   range); a line without them goes whole only if at least half of it
 //!   falls inside (its length is estimated from its word count), and the
 //!   preview says so;
-//! - the **screen video** for the span (DMG), blanked by the background job.
+//! - the **screen video** for the span (DMG), blanked by the background job;
+//! - **moment markers** placed in the span, with their notes (markers.rs).
+//!   Like screen text they are found at commit, so a Delete's undo window
+//!   keeps them.
 //!
 //! The plan is resolved up front (ids, UTF-16 offsets, text hashes; never
 //! content) so the preview's counts are exactly what is removed: a Delete
@@ -319,17 +322,23 @@ pub async fn line_extents(
 }
 
 /// Screen text, AI screen-activity summaries and timeline entries captured
-/// inside a span that no removed screen owns.
+/// inside a span that no removed screen owns, and the moment markers
+/// (with their notes) placed inside it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RangeExtras {
     pub snapshot_ids: Vec<String>,
     pub activity_ids: Vec<i64>,
     pub event_ids: Vec<String>,
+    /// `meeting_markers` ids (markers.rs)
+    pub marker_ids: Vec<String>,
 }
 
 impl RangeExtras {
     pub fn is_empty(&self) -> bool {
-        self.snapshot_ids.is_empty() && self.activity_ids.is_empty() && self.event_ids.is_empty()
+        self.snapshot_ids.is_empty()
+            && self.activity_ids.is_empty()
+            && self.event_ids.is_empty()
+            && self.marker_ids.is_empty()
     }
 }
 
@@ -374,6 +383,17 @@ pub(crate) async fn find_range_extras(
         {
             if in_spans(parse_ts(&r.get::<String, _>("ts")), ranges) {
                 out.event_ids.push(r.get("event_id"));
+            }
+        }
+    }
+    if tables.contains("meeting_markers") {
+        for r in sqlx::query("SELECT id, ts FROM meeting_markers WHERE meeting_id = ?")
+            .bind(meeting_id)
+            .fetch_all(&mut *conn)
+            .await?
+        {
+            if in_spans(parse_ts(&r.get::<String, _>("ts")), ranges) {
+                out.marker_ids.push(r.get("id"));
             }
         }
     }
@@ -435,6 +455,11 @@ pub(crate) async fn purge_range_extras(conn: &mut SqliteConnection, x: &RangeExt
     }
     for ev in &x.event_ids {
         sqlx::query("DELETE FROM meeting_timeline_events WHERE event_id = ?").bind(ev).execute(&mut *conn).await?;
+    }
+    if has("meeting_markers") {
+        for id in &x.marker_ids {
+            sqlx::query("DELETE FROM meeting_markers WHERE id = ?").bind(id).execute(&mut *conn).await?;
+        }
     }
     Ok(())
 }
@@ -676,6 +701,8 @@ pub struct TimeRangePreview {
     pub screen_text_snapshots: usize,
     pub activity_summaries: usize,
     pub timeline_entries: usize,
+    /// Moment markers inside the ranges (removed with them, at commit)
+    pub moment_markers: usize,
     pub nothing: bool,
     /// What will be destroyed, one line each (same style as the Strike
     /// confirmation for words/screens)
@@ -720,7 +747,14 @@ pub(crate) async fn build_preview(
         ));
     }
     let x = &plan.extras;
-    if !x.is_empty() {
+    if !x.marker_ids.is_empty() {
+        items.push(format!(
+            "{} you placed in that span (★ / ? / ✎, with {} notes)",
+            n_s(x.marker_ids.len(), "moment marker", "moment markers"),
+            if x.marker_ids.len() == 1 { "its" } else { "their" }
+        ));
+    }
+    if !(x.snapshot_ids.is_empty() && x.activity_ids.is_empty() && x.event_ids.is_empty()) {
         let mut parts = Vec::new();
         if !x.snapshot_ids.is_empty() {
             parts.push(n_s(x.snapshot_ids.len(), "screen-text snapshot", "screen-text snapshots"));
@@ -792,6 +826,7 @@ pub(crate) async fn build_preview(
         screen_text_snapshots: x.snapshot_ids.len(),
         activity_summaries: x.activity_ids.len(),
         timeline_entries: x.event_ids.len(),
+        moment_markers: x.marker_ids.len(),
         nothing: plan.is_empty(),
         items,
     }
