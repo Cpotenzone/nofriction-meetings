@@ -89,51 +89,26 @@ in App Store Connect. The category stays Productivity + Education (§1).
 
 ### Name (limit 30)
 
-Recommended:
-
-**25 / 30 characters**
-
-```text
-noFriction: Meeting Notes
-```
-
-Alternate 1 (matches the Mac app's bundle name):
-
-**19 / 30 characters**
-
-```text
-noFriction Meetings
-```
-
-Alternate 2:
+Chosen by the owner on 2026-10-07 (entered in App Store Connect):
 
 **28 / 30 characters**
 
 ```text
-noFriction: AI Meeting Notes
+noFriction: Record your Life
 ```
 
-Notes: names are unique across the store; "noFriction" alone may be taken
-(APP_STORE_RELEASE.md D5). The home-screen name stays "noFriction" on iOS
-(`CFBundleDisplayName`) and "noFriction Meetings" on the Mac (`productName`),
-whatever the store name is.
+Names are unique across the store. The home-screen name stays "noFriction" on
+iOS (`CFBundleDisplayName`) and "noFriction Meetings" on the Mac
+(`productName`), whatever the store name is.
 
 ### Subtitle (limit 30)
 
-Recommended:
+Doesn't repeat "Record" from the name, and names Rewind:
 
 **29 / 30 characters**
 
 ```text
-Record, transcribe, summarize
-```
-
-Alternate:
-
-**30 / 30 characters**
-
-```text
-Private notes with your own AI
+Transcribe, summarize, rewind
 ```
 
 ### Category
@@ -338,38 +313,20 @@ Tell participants before recording and obtain any required consent. Many schools
 ### Keywords (limit 100)
 
 Comma-separated, no spaces after commas. Doesn't repeat words already in the
-recommended name or the subtitle ("noFriction", "meeting", "notes", "record",
-"transcribe", "summarize"); no competitor or third-party trademarks (no
-"Anki" or "Quizlet" anywhere in the metadata, guideline 2.3.7; the
-description says the CSV works with "popular flashcard apps").
-Rebalanced again 2026-10-06 for meetings, classes and everyday life:
-general recording terms first (transcription, recorder, voice, memo), then
-classes (lecture, class), meetings (minutes, action items), review
-(flashcards, quiz) and offline AI. "meeting" and "notes" are already in the
-name, so they stay out. Apple combines words across the name, subtitle and
-keywords, so "voice" plus "recorder" covers "voice recorder", "voice" plus
-"memo" covers "voice memo", "lecture" plus "Notes" in the name covers
-"lecture notes", and "Meeting" in the name plus "minutes" covers "meeting
-minutes". `student` and `study` were dropped for room; "lecture" and "class"
-still reach students. `rewind` is Mac-only (iOS has no Rewind view).
+name or the subtitle ("noFriction", "record", "your", "life", "transcribe",
+"summarize", "rewind"); no competitor or third-party trademarks (no "Anki" or
+"Quizlet" anywhere in the metadata, guideline 2.3.7; the description says the
+CSV works with "popular flashcard apps"). Rebalanced 2026-10-07 for the name
+"noFriction: Record your Life": "meeting" and "notes" are no longer in the name, so they lead. Apple
+combines words across the name, subtitle and keywords ("meeting" + "notes",
+"lecture" + "notes", "meeting" + "minutes", "voice" + "recorder").
+"quiz" and "offline" were dropped for room; "flashcards" still reaches students.
 
-**95 / 100 characters**
+**96 / 100 characters**
 
 ```text
-transcription,recorder,voice,memo,lecture,class,minutes,action items,flashcards,quiz,offline,AI
+meeting,notes,transcription,recorder,voice,memo,lecture,class,minutes,action items,flashcards,AI
 ```
-
-If the store name is **Name alt 1** ("noFriction Meetings", no "Notes"),
-use this instead, which swaps `offline` for `notes`:
-
-**93 / 100 characters**
-
-```text
-transcription,recorder,voice,memo,lecture,class,minutes,action items,flashcards,quiz,notes,AI
-```
-
-With **Name alt 2** ("noFriction: AI Meeting Notes"), `AI` is already in the
-name: use the main string without the final `,AI` (92 characters).
 
 ### What's New in this version (limit 4000)
 
@@ -463,28 +420,21 @@ Tell participants before recording and obtain any required consent. Many schools
 
 ### Keywords (limit 100)
 
-Same rules and order as iOS. `rewind` and `slides` replace `voice` and
-`memo` here: Rewind shows the slides and screens captured during a call,
-class or talk next to the transcript. Not `screen` (with `recorder` it would
-match "screen recorder", and the Mac App Store build saves screenshots, not
-screen video).
+Comma-separated, no spaces after commas. Doesn't repeat words already in the
+name or the subtitle ("noFriction", "record", "your", "life", "transcribe",
+"summarize", "rewind"); no competitor or third-party trademarks (no "Anki" or
+"Quizlet" anywhere in the metadata, guideline 2.3.7; the description says the
+CSV works with "popular flashcard apps"). Rebalanced 2026-10-07 for the name
+"noFriction: Record your Life": "meeting" and "notes" are no longer in the name, so they lead. Apple
+combines words across the name, subtitle and keywords ("meeting" + "notes",
+"lecture" + "notes", "meeting" + "minutes", "voice" + "recorder").
+"rewind" is in the subtitle now; "slides" covers screen capture of presentations; "quiz" was dropped for room.
 
-**98 / 100 characters**
-
-```text
-transcription,recorder,rewind,slides,lecture,class,minutes,action items,flashcards,quiz,offline,AI
-```
-
-With **Name alt 1**, swap `offline` for `notes`:
-
-**96 / 100 characters**
+**100 / 100 characters**
 
 ```text
-transcription,recorder,rewind,slides,lecture,class,minutes,action items,flashcards,quiz,notes,AI
+meeting,notes,transcription,recorder,slides,lecture,class,minutes,action items,flashcards,offline,AI
 ```
-
-With **Name alt 2**, use the main string without the final `,AI`
-(95 characters).
 
 ### What's New in this version (limit 4000)
 
@@ -874,22 +824,15 @@ from Business to Education.
 
 | Field | Characters | Limit | This pass |
 |---|---|---|---|
-| Name | 25 | 30 | |
-| Name alt 1 | 19 | 30 | |
-| Name alt 2 | 28 | 30 | |
-| Subtitle | 29 | 30 | |
-| Subtitle alt | 30 | 30 | |
+| Name | 28 | 30 | changed (was 25, "noFriction: Meeting Notes") |
+| Subtitle | 29 | 30 | changed (was "Record, transcribe, summarize") |
 | iOS promotional text | 159 | 170 | changed (was 166) |
 | iOS description | 3959 | 4000 | changed (was 3865) |
-| iOS keywords | 95 | 100 | changed (was 98) |
-| iOS keywords, Name alt 1 | 93 | 100 | changed (was 96) |
-| iOS keywords, Name alt 2 | 92 | 100 | changed (was 95) |
+| iOS keywords | 96 | 100 | changed |
 | iOS What's New 1.0 | 685 | 4000 | changed (was 365) |
 | Mac promotional text | 158 | 170 | changed (was 166) |
 | Mac description | 3975 | 4000 | changed (was 3900) |
-| Mac keywords | 98 | 100 | changed (was 97) |
-| Mac keywords, Name alt 1 | 96 | 100 | changed (was 96) |
-| Mac keywords, Name alt 2 | 95 | 100 | changed (was 94) |
+| Mac keywords | 100 | 100 | changed |
 | Mac What's New 3.6.0 | 804 | 4000 | changed (was 381) |
 | Group display name | 14 | 30 | |
 | Monthly display name | 11 | 30 | |
