@@ -435,10 +435,17 @@ final class RecordingSession {
         "\(kind.label) — " + shortDate(date)
     }
 
-    /// Titles nobody chose: the type-and-date ones, and "Meeting · …" from
-    /// builds before types.
+    /// A title the app made up, so a calendar match may replace it (same
+    /// rule as the Mac's `is_untitled_title`): "<type or notebook> — Oct 7",
+    /// or "Meeting · …" from builds before types.
     static func isDefaultTitle(_ title: String) -> Bool {
-        title.hasPrefix("Meeting · ") || RecordingKind.allCases.contains { title.hasPrefix("\($0.label) — ") }
+        if title.hasPrefix("Meeting · ") { return true }
+        guard let split = title.range(of: " — ", options: .backwards) else { return false }
+        let head = title[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+        let date = title[split.upperBound...].split(separator: " ", omittingEmptySubsequences: false)
+        guard !head.isEmpty, date.count == 2, months.contains(String(date[0])),
+              (1...2).contains(date[1].count), let day = Int(date[1]), (1...31).contains(day) else { return false }
+        return true
     }
 
     /// "BIO 101 — Oct 7": a recording in a notebook with no calendar event
@@ -446,8 +453,12 @@ final class RecordingSession {
         notebook + " — " + shortDate(date)
     }
 
+    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    /// "Oct 7", in English whatever the device language, like the Mac
     private static func shortDate(_ date: Date) -> String {
-        date.formatted(.dateTime.month(.abbreviated).day())
+        let c = Calendar(identifier: .gregorian).dateComponents(in: .current, from: date)
+        return "\(months[max(1, min(12, c.month ?? 1)) - 1]) \(c.day ?? 1)"
     }
 
     /// Names and companies from the invite help the recognizer spell them.

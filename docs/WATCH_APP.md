@@ -339,8 +339,9 @@ It must be a user-initiated event while the app is in the foreground.
    (the user may have edited the notebook or deleted a marker since). With
    a notebook and no calendar event, the title is the notebook and the date
    ("BIO 101 — Oct 7"), like a live recording; otherwise the type and the
-   date ("Meeting — Oct 7", "Class — Oct 7", "Personal — Oct 7") until a
-   calendar match names it.
+   date ("Meeting — Oct 7", "Class — Oct 7", "Personal — Oct 7"). Both
+   count as untitled, so a calendar match found later names it (the Mac's
+   rule).
 2. **Calendar:** the same `CalendarMatching.bestEvent` rules as a live
    recording, over the watch recording's start and end; `MeetingLinker`
    fills the title, invite fields and attendees. Unmatched recordings keep the

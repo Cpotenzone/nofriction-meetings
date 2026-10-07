@@ -212,13 +212,20 @@ final class NotebookTests: XCTestCase {
         XCTAssertEqual(Notebook.label, "Notebook")
         XCTAssertEqual(Notebook.filterTitle, "Notebooks")
         XCTAssertTrue(RecordingSession.isDefaultTitle(RecordingSession.defaultTitle(for: .now, kind: .personal)))
+        // Same titles and rule as the Mac (recording_kind.rs untitled_title / is_untitled_title)
         let oct7 = DateComponents(calendar: .current, year: 2026, month: 10, day: 7, hour: 10).date!
-        XCTAssertEqual(RecordingSession.defaultTitle(for: oct7, kind: .class), "Class — \(oct7.formatted(.dateTime.month(.abbreviated).day()))")
-        XCTAssertTrue(RecordingSession.defaultTitle(for: oct7, kind: .personal).hasPrefix("Personal — "))
-        XCTAssertTrue(RecordingSession.defaultTitle(for: oct7).hasPrefix("Meeting — "))
-        XCTAssertTrue(RecordingSession.notebookTitle("BIO 101", at: oct7).hasPrefix("BIO 101 — "))
-        XCTAssertTrue(RecordingSession.isDefaultTitle("Meeting · Tue, Oct 6, 10:00 AM"), "titles from before types still count")
-        XCTAssertFalse(RecordingSession.isDefaultTitle(RecordingSession.notebookTitle("BIO 101", at: .now)))
+        let dec25 = DateComponents(calendar: .current, year: 2026, month: 12, day: 25, hour: 23).date!
+        XCTAssertEqual(RecordingSession.defaultTitle(for: oct7, kind: .class), "Class — Oct 7")
+        XCTAssertEqual(RecordingSession.defaultTitle(for: oct7, kind: .personal), "Personal — Oct 7")
+        XCTAssertEqual(RecordingSession.defaultTitle(for: oct7), "Meeting — Oct 7")
+        XCTAssertEqual(RecordingSession.notebookTitle("BIO 101", at: oct7), "BIO 101 — Oct 7")
+        XCTAssertEqual(RecordingSession.notebookTitle("Health", at: dec25), "Health — Dec 25")
+        for t in ["Class — Oct 7", "BIO 101 — Dec 25", "Acme — project — Jan 31", "Meeting · Tue, Oct 6, 10:00 AM"] {
+            XCTAssertTrue(RecordingSession.isDefaultTitle(t), t)
+        }
+        for t in ["Weekly sync", "Class — October 7", "— Oct 7", "Class — Oct 77", "Class — Oct 7 2026", "Class — Foo 7", "Class — Oct 0"] {
+            XCTAssertFalse(RecordingSession.isDefaultTitle(t), t)
+        }
     }
 
     func testRememberedKindDefaultsToMeeting() throws {
