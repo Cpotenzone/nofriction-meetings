@@ -122,6 +122,18 @@ else
   warn "ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH not set: signing uses the Xcode account; --upload would fail"
 fi
 
+# App Store processing fails a build whose App Intent text contains "apple"
+# (ITMS-90626 Invalid Siri Support; build 5 failed on "on Apple Watch").
+# Check the intent title/description and App Shortcut phrases/titles.
+intent_hits="$(grep -rniE '(IntentDescription|LocalizedStringResource|shortTitle|"[^"]*\\\(\.applicationName\)[^"]*")' \
+  "$IOS/NoFriction" "$IOS/NoFrictionWatch" "$IOS/Shared" --include='*.swift' 2>/dev/null | grep -i 'apple' || true)"
+if [[ -z "$intent_hits" ]]; then
+  ok "App Intent text has no \"apple\" (ITMS-90626)"
+else
+  err "App Intent text contains \"apple\" (App Store rejects it, ITMS-90626):"
+  echo "$intent_hits" >&2
+fi
+
 if [[ $errors -gt 0 ]]; then
   echo "==> $errors problem(s); fix them first." >&2
   exit 1
