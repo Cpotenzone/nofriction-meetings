@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://nofriction.io/sitemap.xml

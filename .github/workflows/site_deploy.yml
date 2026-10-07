@@ -1,0 +1,72 @@
+name: Deploy site (S3 + CloudFront)
+
+# Deploys site/ to S3 and invalidates CloudFront on every push to main that
+# touches the site. Safe by default: with no AWS_ROLE_ARN secret it exits 0
+# and prints what to set up (see infra/site/README.md).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "infra/site/**"
+      - ".github/workflows/site_deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC token for AssumeRoleWithWebIdentity
+  contents: read
+
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      BUCKET: ${{ secrets.SITE_BUCKET }}
+      DISTRIBUTION_ID: ${{ secrets.SITE_DISTRIBUTION_ID }}
+      AWS_REGION: us-east-1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$AWS_ROLE_ARN" ] || [ -z "$BUCKET" ] || [ -z "$DISTRIBUTION_ID" ]; then
+            echo "::notice title=Site deploy skipped::AWS_ROLE_ARN, SITE_BUCKET and SITE_DISTRIBUTION_ID secrets are not all set. Follow infra/site/README.md section 7, then re-run this workflow."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Lint HTML
+        if: steps.cfg.outputs.configured == 'true'
+        run: npx -y htmlhint@1.9.2 "site/**/*.html"
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.cfg.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: nofriction-site-deploy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          chmod +x infra/site/deploy.sh
+          infra/site/deploy.sh
+
+      - name: Verify
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          for p in / /support/ /privacy/ /download/; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://nofriction.io$p")
+            echo "$code $p"
+            [ "$code" = "200" ] || exit 1
+          done
