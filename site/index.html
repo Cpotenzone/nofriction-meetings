@@ -3,131 +3,267 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>noFriction: private meeting notes with your own AI</title>
-<meta name="description" content="noFriction records and transcribes meetings on your iPhone, iPad and Mac, matches them to your calendar, and writes notes with the AI you choose. No accounts, no servers.">
+<title>noFriction: Record your Life. Transcribe, summarize, rewind.</title>
+<meta name="description" content="Record meetings, classes and everyday life, transcribed on your device. Mark what matters, rewind to any moment, and get notes and review guides with Apple on-device AI or your own endpoint. No account, no servers.">
+<link rel="canonical" href="https://nofriction.io/">
 <meta name="theme-color" content="#0b0b0c">
-<meta property="og:title" content="noFriction: private meeting notes with your own AI">
-<meta property="og:description" content="Record and transcribe meetings on your device. Bring your own AI key for notes, action items and follow-up emails. No accounts, no servers.">
+<meta name="apple-itunes-app" content="app-id=6818838861">
+<meta property="og:site_name" content="noFriction">
 <meta property="og:type" content="website">
-<link rel="icon" href="mark.svg" type="image/svg+xml">
-<link rel="stylesheet" href="style.css">
+<meta property="og:title" content="noFriction: Record your Life. Transcribe, summarize, rewind.">
+<meta property="og:description" content="Record meetings, classes and everyday life, transcribed on your device. Mark what matters, rewind to any moment, and get notes and review guides with Apple on-device AI or your own endpoint. No account, no servers.">
+<meta property="og:url" content="https://nofriction.io/">
+<meta property="og:image" content="https://nofriction.io/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="noFriction: Record your Life. Transcribe, summarize, rewind.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="noFriction: Record your Life. Transcribe, summarize, rewind.">
+<meta name="twitter:description" content="Record meetings, classes and everyday life, transcribed on your device. Mark what matters, rewind to any moment, and get notes and review guides with Apple on-device AI or your own endpoint. No account, no servers.">
+<meta name="twitter:image" content="https://nofriction.io/img/og.png">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="icon" href="/img/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "noFriction: Record your Life",
+  "alternateName": "noFriction",
+  "applicationCategory": "ProductivityApplication",
+  "operatingSystem": "iOS, iPadOS, watchOS, macOS",
+  "description": "Record meetings, classes and everyday life, transcribed on your device. Mark what matters, rewind to any moment, and turn any recording into notes and a review guide with Apple on-device AI or your own endpoint.",
+  "url": "https://nofriction.io/",
+  "image": "https://nofriction.io/img/og.png",
+  "author": {"@type": "Organization", "name": "CCA Innovations OU d/b/a No Friction", "url": "https://nofriction.io/about/"},
+  "offers": [
+    {"@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD", "description": "Recording, on-device transcription, types, Notebooks, timed recording, marks, links, editing and export."},
+    {"@type": "Offer", "name": "noFriction Pro, monthly", "price": "0.99", "priceCurrency": "USD", "description": "AI notes and review guides. 1-week free trial. United States only.", "eligibleRegion": {"@type": "Country", "name": "US"}},
+    {"@type": "Offer", "name": "noFriction Pro, yearly", "price": "5.99", "priceCurrency": "USD", "description": "AI notes and review guides. 1-week free trial. United States only.", "eligibleRegion": {"@type": "Country", "name": "US"}}
+  ]
+}
+</script>
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
 <header class="site-header">
   <div class="wrap">
-    <a class="brand" href="index.html" aria-label="noFriction home"><img src="mark.svg" alt="" width="36" height="36"><span>noFriction</span></a>
+    <a class="brand" href="/" aria-label="noFriction home"><img src="/img/icon-192.png" alt="" width="34" height="34"><span>noFriction</span></a>
     <nav class="nav" aria-label="Main">
-      <a href="#features">Features</a>
-      <a href="#privacy">Privacy</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#faq">FAQ</a>
-      <a href="support.html">Support</a>
+      <a href="/#features">Features</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/support/">Support</a>
+      <a href="/about/">About</a>
+      <a class="btn primary" href="/download/" data-store-text="Download">Get the app</a>
     </nav>
   </div>
 </header>
-
 <main id="content">
+
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap hero-grid">
-      <div>
-        <p class="eyebrow">For iPhone, iPad and Mac</p>
-        <h1 id="hero-title">Every meeting, written down. Nothing sent to us.</h1>
-        <p class="lede">
-          noFriction records your meetings and transcribes them on your device. It knows which calendar event you're in and who was there.
-          When you want notes, action items or a follow-up email, it uses <strong>the AI you choose, with your own key</strong>, or Apple's on-device model.
-        </p>
-        <div class="cta-row">
-          <!-- At launch: change to href="https://apps.apple.com/app/id<APP_ID>" and the text to "Download on the App Store". -->
-          <a class="btn primary" href="#pricing">Coming soon to the App Store</a>
-          <a class="btn" href="#how">How it works</a>
+      <div class="hero-copy">
+        <p class="eyebrow">For iPhone, iPad, Apple Watch and Mac</p>
+        <h1 id="hero-title">Record your life. Transcribe, summarize, rewind.</h1>
+        <p class="promise">Recording and transcription work offline. Nothing leaves your device unless you want it to.</p>
+        <p class="lede">noFriction records meetings, classes and everyday life, writes the transcript on your device as people talk, and lets you go back to any moment. Mark what matters as it happens, then turn any recording into notes and a review guide.</p>
+        <div class="cta-row" style="margin:24px 0 8px">
+          <div class="store-cta">
+  <div data-store="notify">
+    <div class="cta-row">
+      <a class="btn primary" href="mailto:casey@nofriction.io?subject=noFriction%20launch">Get notified at launch</a>
+      <a class="btn" href="https://testflight.apple.com/join/4JnJD3Fk" data-store-href="testflight">Join the TestFlight beta</a>
+    </div>
+    <p class="fine">Coming soon to the App Store for iPhone, iPad, Apple Watch and Mac. "Get notified" opens an email to casey@nofriction.io; reply-free, one message at launch.</p>
+  </div>
+  <div data-store="live" hidden>
+    <div class="badges">
+      <a href="https://apps.apple.com/us/app/nofriction-record-your-life/id6818838861" data-store-href="ios"><img src="/img/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="144" height="48"></a>
+      <a href="https://apps.apple.com/us/app/nofriction-record-your-life/id6818838861?mt=12" data-store-href="mac"><img src="/img/badges/download-on-the-mac-app-store.svg" alt="Download on the Mac App Store" width="187" height="48"></a>
+    </div>
+    <p class="fine">Free to download. noFriction Pro is a separate subscription.</p>
+  </div>
+</div>
         </div>
-        <p class="platforms">iPhone and iPad (iOS 18 or later) · Mac (macOS 12.3 or later) · one subscription covers all of them</p>
+        <p class="platforms"><a href="#how-it-works">See how it works</a> · Free to record and transcribe · No account</p>
       </div>
-      <img class="hero-mark" src="mark.svg" alt="noFriction logo: a yellow pinwheel on black" width="320" height="320">
+      <div class="hero-media">
+        <video poster="img/mac-01-rewind.webp" width="1400" height="875" muted autoplay loop playsinline preload="metadata" aria-label="noFriction for Mac: Rewind shows the slide that was on screen next to what was said.">
+          <source src="video/hero.webm" type="video/webm">
+          <source src="video/hero.mp4" type="video/mp4">
+          <img src="img/mac-01-rewind.webp" alt="noFriction for Mac, Rewind view: a Q4 roadmap slide captured at 3:34 beside the transcript lines said at that moment, with an Important mark on the timeline and a strip of captured screens below." width="1400" height="875">
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <div class="badge-strip" aria-label="Privacy at a glance">
+    <ul class="wrap">
+      <li><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9"/><path d="M6.3 7A8 8 0 1 0 17.7 7"/></svg>Works offline</li>
+      <li><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Nothing leaves your device</li>
+      <li><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 1.5 7.7"/><path d="M4 4l16 16"/></svg>Data Not Collected</li>
+      <li><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>No account</li>
+    </ul>
+  </div>
+
+  <section id="how-it-works" aria-labelledby="how-title">
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-title">Five steps, no sign-up</h2>
+      <p class="lede">Everything up to the notes runs on your device. AI is Apple's on-device model, or one endpoint you enter yourself.</p>
+      <ol class="grid five" style="list-style:none;padding:0">
+        <li class="card"><span class="step" aria-hidden="true">1</span><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg><h3>Record</h3><p>Tap Record on your iPhone, Apple Watch or Mac. Say what it is: Meeting, Class or Personal, and how long.</p></li>
+<li class="card"><span class="step" aria-hidden="true">2</span><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><h3>Transcribed on your device</h3><p>The transcript appears as people talk. Apple speech recognition on iPhone and iPad, a local speech model on the Mac. No cloud.</p></li>
+<li class="card"><span class="step" aria-hidden="true">3</span><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 17l-5.4 2.8 1.1-6.1L3.2 9.4l6.1-.8z"/></svg><h3>Mark what matters</h3><p>One tap marks a moment Important. Pick Question, or Follow up, On the test or Remember, and add a note.</p></li>
+<li class="card"><span class="step" aria-hidden="true">4</span><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg><h3>Rewind</h3><p>Go back to any moment. On the Mac, Rewind shows the screen that was up next to what was said.</p></li>
+<li class="card"><span class="step" aria-hidden="true">5</span><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7"/></svg><h3>Notes and review</h3><p>Notes in the style of the recording, and a review guide with flashcards and a practice quiz. With Apple on-device AI or your own endpoint.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="who" aria-labelledby="who-title">
+    <div class="wrap">
+      <p class="eyebrow">Meetings, classes and everyday life</p>
+      <h2 id="who-title">One app for all of it</h2>
+      <p class="lede">Say what the recording is and noFriction follows: the notes, the third mark and the review guide change with the type.</p>
+      <div class="grid">
+        <article class="card">
+          <h3>Meetings</h3>
+          <p>Record the call or the room. Calendar matching names the meeting and lists who was there. Mark <strong>Follow up</strong> as you go.</p>
+          <p class="outcome">You leave with decisions, action items and a follow-up email draft, with every claim traceable to the moment it was said.</p>
+        </article>
+        <article class="card">
+          <h3>Classes</h3>
+          <p>Set a 60- or 90-minute limit, put it in a Notebook like "BIO 101", and mark <strong>On the test</strong> when the instructor says so.</p>
+          <p class="outcome">Before the exam: a study guide with key terms, flashcards and a practice quiz that jumps to the moment the professor explained it.</p>
+        </article>
+        <article class="card">
+          <h3>Everyday life</h3>
+          <p>A doctor's visit, a contractor walkthrough, a talk, an idea on the drive home. Personal covers everything else. Mark <strong>Remember</strong> on the detail you'd lose.</p>
+          <p class="outcome">A summary, the key points and the to-dos, and the exact words when you need them: "order the tiles by Friday".</p>
+        </article>
+      </div>
     </div>
   </section>
 
   <section id="features" aria-labelledby="features-title">
     <div class="wrap">
-      <p class="eyebrow">What it does</p>
-      <h2 id="features-title">Built for people who live in meetings</h2>
-      <div class="grid">
+      <p class="eyebrow">Rewind</p>
+      <h2 id="features-title">Go back to any moment</h2>
+      <div class="showcase">
+        <div class="shot"><picture><source srcset="/img/mac-01-rewind.webp" type="image/webp"><img src="/img/mac-01-rewind.png" alt="noFriction for Mac, Rewind view: a Q4 roadmap slide captured at 3:34 beside the transcript lines said at that moment, with an Important mark on the timeline and a strip of captured screens below." width="1400" height="875" loading="lazy" decoding="async"></picture></div>
+        <div>
+          <p class="lede">On the Mac, noFriction keeps the screens you choose next to the transcript. Pick any second of a meeting or a lecture and see the slide that was up and the words that went with it.</p>
+          <ul>
+            <li>Marks sit on the timeline and in the transcript. Filter the list to <strong>On the test</strong> before an exam, or <strong>Follow up</strong> after a meeting.</li>
+            <li>Search every transcript. Play the audio from any line.</li>
+            <li>On iPhone and iPad, add photos of slides and whiteboards; they land in the timeline next to what was said.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:40px">
         <article class="card">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
-          <h3>Record and transcribe on your device</h3>
-          <p>Live transcript as people talk. On iPhone and iPad it uses Apple's on-device speech recognition and keeps recording with the screen locked.
-             On the Mac it runs a Whisper model locally and captures your microphone and the other participants' audio.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 17l-5.4 2.8 1.1-6.1L3.2 9.4l6.1-.8z"/></svg>
+          <h3>Mark this moment</h3>
+          <p>One tap for <strong>Important</strong>. Then <strong>Question</strong>, or the mark for the type: <strong>Follow up</strong> for a meeting, <strong>On the test</strong> for a class, <strong>Remember</strong> for everything else, with a note. On the Mac, Control-Option-Command-M marks even while another app is in front.</p>
         </article>
         <article class="card">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
-          <h3>Knows the meeting and the people</h3>
-          <p>Each recording is matched to your calendar event, so it gets a real name and an attendee list. Keep a people list across meetings and link each person's LinkedIn profile.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z"/></svg>
+          <h3>Notebooks</h3>
+          <p>Group recordings into "Acme project", "BIO 101" or "Health". Filter chips show one Notebook at a time. On Apple Watch, pick from your recent Notebooks before you record.</p>
+          <picture><source srcset="/img/mac-05-notebooks.webp" type="image/webp"><img src="/img/mac-05-notebooks.png" alt="Recordings filtered to the BIO 101 Notebook: four class recordings with their dates and lengths." width="1400" height="875" loading="lazy" decoding="async"></picture>
         </article>
         <article class="card">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          <h3>Keep the slides, not just the words</h3>
-          <p>On the Mac, pick the displays or windows to capture; noFriction saves a screenshot when they change, and Snap saves one on demand.
-             On iPhone and iPad, take photos of slides and whiteboards or add screenshots from Photos.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>
+          <h3>Timed recording</h3>
+          <p>Choose 15, 30, 60 or 90 minutes, or no limit. It stops by itself at the end, after a warning with <strong>+15 min</strong>. Meetings can also stop when the calendar event ends and the room goes quiet.</p>
+          <picture><source srcset="/img/mac-02-record-sheet.webp" type="image/webp"><img src="/img/mac-02-record-sheet.png" alt="The record sheet: What is it? with Meeting, Class and Personal; How long? with 15, 30, 60, 90 minutes or no limit; and an optional Notebook field." width="1400" height="875" loading="lazy" decoding="async"></picture>
         </article>
         <article class="card">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
-          <h3>Notes and follow-ups, with your AI</h3>
-          <p>On iPhone and iPad: one tap for a summary, decisions and action items that only name owners and dates actually said, plus a follow-up email draft.
-             On the Mac: ask questions across all your meetings, get live insights while you talk, and an automatic report after each meeting.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/></svg>
+          <h3>Links</h3>
+          <p>Web addresses said in a recording appear in its Links list with the time they were said. Add your own references: the agenda, the reading, the deck. Nothing is fetched.</p>
+          <picture><source srcset="/img/mac-04-links.webp" type="image/webp"><img src="/img/mac-04-links.png" alt="The Links view listing web addresses said in a recording, each with the time it was first said, and a reference added by hand." width="1400" height="875" loading="lazy" decoding="async"></picture>
         </article>
         <article class="card">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/></svg>
-          <h3>Delete, or strike from the record</h3>
-          <p>Remove words, lines or screens. <strong>Delete</strong> leaves no trace and gives you five seconds to undo.
-             <strong>Strike from the record</strong> destroys the content everywhere it's stored, including saved audio, and leaves only a marker with the time and an optional reason.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8M8 14h5"/></svg>
+          <h3>Review guides <span class="meta">(Pro)</span></h3>
+          <p>Summary, key terms, flashcards, a practice quiz with explanations and <strong>Jump to this moment</strong>, and questions to ask. Called a study guide for a class. Export flashcards as a CSV file that popular flashcard apps can import, or the guide as Markdown.</p>
+          <picture><source srcset="/img/mac-03-review.webp" type="image/webp"><img src="/img/mac-03-review.png" alt="noFriction for Mac, Review tab for a BIO 101 class: a practice quiz question answered correctly, with its explanation and a Jump to this moment link." width="1400" height="875" loading="lazy" decoding="async"></picture>
         </article>
         <article class="card">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-          <h3>Stops when the meeting does</h3>
-          <p>When the calendar event is over and the room goes quiet, or nobody has spoken for a few minutes, noFriction offers to stop.
-             A 30-second banner lets you keep going. On the Mac it also notices when the call app lets go of the microphone or the meeting window closes.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13 7l4 4"/></svg>
+          <h3>Edit, delete, or strike from the record</h3>
+          <p>Fix a word. Delete a line with five seconds to undo. Or <strong>Strike from the record</strong>: the words are removed everywhere, including the saved audio, and only a marker remains. Share any recording as text, export flashcards and guides, or export every recording as Markdown on the Mac.</p>
         </article>
+      </div>
+
+      <h3 style="margin-top:44px">On iPhone and iPad</h3>
+      <div class="phones">
+        <figure class="phone">
+          <picture><source srcset="/img/iphone-01-record.webp" type="image/webp"><img src="/img/iphone-01-record.png" alt="iPhone Record screen during a meeting called Q4 roadmap review: three attendee names, the live transcript with timestamps, and Pause, Stop and Snap buttons." width="600" height="1304" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Live transcript.</strong> Transcribed on the phone with Apple speech recognition, even with the screen locked.</figcaption>
+        </figure>
+        <figure class="phone">
+          <picture><source srcset="/img/iphone-02-notes.webp" type="image/webp"><img src="/img/iphone-02-notes.png" alt="A meeting&#x27;s Notes: summary, decisions and action items with owners, plus Redo notes and Follow-up email buttons, above the People list." width="600" height="1304" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Notes that follow the type.</strong> Meeting notes with decisions and action items, lecture notes for a class, a summary with to-dos for everything else.</figcaption>
+        </figure>
+        <figure class="phone">
+          <picture><source srcset="/img/iphone-03-stricken.webp" type="image/webp"><img src="/img/iphone-03-stricken.png" alt="A transcript with a Stricken from the record marker at 14:05 in place of the removed words, with the reason pricing under NDA." width="600" height="1304" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Strike from the record.</strong> Gone from the transcript, search, audio and exports. Only the marker stays.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
 
-  <section id="how" aria-labelledby="how-title">
+  <section id="watch" aria-labelledby="watch-title">
     <div class="wrap">
-      <p class="eyebrow">How it works</p>
-      <h2 id="how-title">Three steps, no sign-up</h2>
-      <div class="grid three">
-        <div class="card"><h3>1. Record</h3><p>Press Record when the meeting starts. noFriction reminds you to tell people you're recording.</p></div>
-        <div class="card"><h3>2. Read along</h3><p>The transcript appears as people talk, with photos or screenshots in the timeline.</p></div>
-        <div class="card"><h3>3. Get the notes</h3><p>Connect your AI once. Then get a summary, action items and follow-ups, or ask your meetings a question on the Mac.</p></div>
+      <p class="eyebrow">Apple Watch</p>
+      <h2 id="watch-title">Record from your wrist. Transcribed on your iPhone.</h2>
+      <p class="lede">The watch only records. Say what it is, how long and which Notebook, mark moments with a tap, and the audio goes to your iPhone, which transcribes it on the device. The watch keeps each recording until your iPhone confirms it arrived.</p>
+      <div class="watches">
+        <figure class="watch">
+          <picture><source srcset="/img/watch-02-record.webp" type="image/webp"><img src="/img/watch-02-record.png" alt="Apple Watch: a large red Record button with the caption Transcribed on your iPhone." width="416" height="496" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Record</strong>Meeting, Class or Personal; 15 to 90 minutes or no limit.</figcaption>
+        </figure>
+        <figure class="watch">
+          <picture><source srcset="/img/watch-04-class.webp" type="image/webp"><img src="/img/watch-04-class.png" alt="Apple Watch recording a Class in the BIO 101 Notebook: 42:07 left, three Important marks, and Mark, Pause and Stop buttons." width="416" height="496" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Mark</strong>One tap for Important; touch and hold for Question or On the test.</figcaption>
+        </figure>
+        <figure class="watch">
+          <picture><source srcset="/img/watch-03-recordings.webp" type="image/webp"><img src="/img/watch-03-recordings.png" alt="Apple Watch Recordings list: a Class recording Sending to iPhone and an earlier one marked Delivered." width="416" height="496" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Delivered</strong>Sent to your iPhone in the background, deleted from the watch only after it's confirmed.</figcaption>
+        </figure>
+        <figure class="watch">
+          <picture><source srcset="/img/watch-05-discreet.webp" type="image/webp"><img src="/img/watch-05-discreet.png" alt="Apple Watch in Discreet mode: an almost black screen with a faint noFriction logo and the time." width="416" height="496" loading="lazy" decoding="async"></picture>
+          <figcaption><strong>Discreet</strong>A nearly black screen for lectures and quiet rooms. The system microphone indicator still shows.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
 
   <section id="privacy" aria-labelledby="privacy-title">
     <div class="wrap">
-      <p class="eyebrow">Privacy and your own key</p>
-      <h2 id="privacy-title">We run no servers. Your meetings never pass through us.</h2>
-      <div class="grid">
+      <p class="eyebrow">Privacy</p>
+      <h2 id="privacy-title">No servers. No account. Data Not Collected.</h2>
+      <div class="grid two">
         <div class="card accent">
           <h3>On your device</h3>
           <ul>
-            <li>Audio, transcripts, photos and screenshots are stored on your device.</li>
-            <li>Transcription runs on the device.</li>
-            <li>No accounts, no analytics, no tracking.</li>
-            <li>API keys are kept in the system Keychain.</li>
+            <li>Audio, transcripts, photos, screenshots, marks and notes are stored on your device.</li>
+            <li>Transcription runs on the device: Apple speech recognition on iPhone and iPad, a local speech model on the Mac. Watch recordings are transcribed on your iPhone.</li>
+            <li>No noFriction servers, no analytics, no tracking, no account. Apple's privacy label: Data Not Collected.</li>
           </ul>
         </div>
         <div class="card">
-          <h3>Bring your own AI</h3>
-          <p>Use your own local model or Apple's on-device model to keep AI offline after setup. noFriction does not host AI models or include hosted AI usage.
-             You can also enter your own compatible endpoint, model and optional key. No service is preconfigured. The app asks before sending meeting content to a public endpoint; its operator sets any usage charges and retention policy.</p>
-          <ul class="providers" aria-label="AI execution choices">
-            <li>Apple on-device</li><li>Your local compatible endpoint</li><li>Your HTTPS compatible endpoint</li>
-          </ul>
+          <h3>AI is yours to choose</h3>
+          <p>noFriction hosts no AI. Use Apple's on-device model (iOS 26 or macOS 26 and later, with Apple Intelligence), and nothing leaves the device. Or enter one OpenAI-compatible endpoint, with your own key if it needs one: a model on your Mac, on your network, or a service you have an account with. The app asks before it sends anything to a public endpoint and shows the destination. Keys live in the Keychain and are never shown again.</p>
+          <p class="meta"><a href="/privacy/">Read the privacy policy</a></p>
         </div>
       </div>
-      <p class="meta">Apple's on-device model needs iOS 26 or macOS 26 or later with Apple Intelligence turned on. Details: <a href="privacy.html">Privacy Policy</a>.</p>
     </div>
   </section>
 
@@ -135,89 +271,175 @@
     <div class="wrap">
       <p class="eyebrow">Pricing</p>
       <h2 id="pricing-title">Free to record. Pro for AI.</h2>
+      <p class="lede">Recording and transcription stay free. noFriction Pro adds the AI features, with a 1-week free trial.</p>
       <div class="plans">
         <div class="card">
           <h3>Free</h3>
-          <p class="price">Free download</p>
+          <p class="price">$0</p>
+          <p class="trial">&nbsp;</p>
           <ul>
             <li>Recording and on-device transcription</li>
-            <li>Calendar matching, attendees and people</li>
-            <li>Photos and screenshots in the timeline</li>
-            <li>Search, Delete and Strike from the record</li>
-            <li>Export</li>
+            <li>Types: Meeting · Class · Personal</li>
+            <li>Notebooks</li>
+            <li>Timed recording: 15, 30, 60, 90 minutes or no limit</li>
+            <li>Marks: Important, Question, and Follow up / On the test / Remember</li>
+            <li>Links said in a recording, and your references</li>
+            <li>Rewind, search, calendar matching and people</li>
+            <li>Photos and screenshots</li>
+            <li>Editing, Delete and Strike from the record</li>
+            <li>Export and sharing</li>
+            <li>Apple Watch recording</li>
           </ul>
         </div>
         <div class="card accent">
           <h3>noFriction Pro</h3>
-          <p class="price">Monthly or yearly subscription</p>
+          <p class="price">$0.99<small> / month</small></p>
+          <p class="trial">or $5.99 / year · 1-week free trial</p>
           <ul>
-            <li>iPhone and iPad: AI notes (summary, decisions, action items) and follow-up email drafts</li>
-            <li>Mac: chat across your meetings, live insights, automatic meeting reports and meeting prep briefs</li>
-            <li>Works with your own AI key, a local model or Apple on-device</li>
+            <li>Everything in Free</li>
+            <li>AI notes in the style of the recording: meeting notes with decisions and action items, lecture notes, or a summary with to-dos</li>
+            <li>Follow-up email drafts for meetings</li>
+            <li>Review guides: summary, key terms, flashcards, practice quiz with jump-to-moment, questions to ask</li>
+            <li>CSV export of flashcards that popular flashcard apps can import</li>
+            <li>Works with Apple on-device AI or your own endpoint</li>
             <li>One subscription for iPhone, iPad and Mac</li>
           </ul>
         </div>
       </div>
+      <table class="compare">
+        <caption class="visually-hidden">Free and Pro at a glance</caption>
+        <thead><tr><th scope="col">Feature</th><th scope="col">Free</th><th scope="col">Pro</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Record, transcribe, rewind</th><td>Yes</td><td>Yes</td></tr>
+          <tr><th scope="row">Types, Notebooks, timed recording, marks, links</th><td>Yes</td><td>Yes</td></tr>
+          <tr><th scope="row">Editing, Strike from the record, export</th><td>Yes</td><td>Yes</td></tr>
+          <tr><th scope="row">AI notes and follow-up emails</th><td>—</td><td>Yes</td></tr>
+          <tr><th scope="row">Review guides: flashcards and practice quiz</th><td>—</td><td>Yes</td></tr>
+          <tr><th scope="row">Price</th><td>$0</td><td>$0.99/month or $5.99/year, 1-week free trial</td></tr>
+        </tbody>
+      </table>
       <p class="meta">
-        Prices are shown in the App Store in your local currency. New subscribers may get a free trial; its length is shown before you confirm.
-        Subscriptions renew automatically unless canceled at least 24 hours before the end of the period. AI provider usage is billed by your provider, not by us.
-        See the <a href="terms.html">Terms of Use</a>.
+        noFriction Pro is offered in the United States. Prices are shown in the app and on the App Store before you buy. Subscriptions renew automatically unless canceled at least 24 hours before the end of the period; manage or cancel in your Apple Account settings. Any unused part of a free trial ends when you buy a subscription. Pro doesn't include usage from an AI service you connect; its operator bills you, not noFriction.
+        The app is licensed under <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" rel="noopener">Apple's standard EULA</a>. See the <a href="/terms/">Terms</a>.
       </p>
     </div>
   </section>
 
-  <section id="faq" aria-labelledby="faq-title">
-    <div class="wrap">
+  <section id="faq" aria-labelledby="faq-title" class="faq">
+    <div class="wrap narrow">
       <p class="eyebrow">FAQ</p>
       <h2 id="faq-title">Questions</h2>
       <details>
-        <summary>Do I need an account?</summary>
-        <p>No. There's nothing to sign up for. Subscriptions go through your Apple Account.</p>
-      </details>
-      <details>
-        <summary>Do I need an AI key?</summary>
-        <p>No key is needed for recording, transcription or AI with Apple's on-device model on a compatible device. AI features require noFriction Pro and your chosen model: Apple on-device, a local or HTTPS OpenAI-compatible endpoint and model you configure yourself, with an optional key. No AI service or credential is included.</p>
-      </details>
-      <details>
-        <summary>What does the AI provider see?</summary>
-        <p>The transcript and the meeting's title, attendee names, email/company details and invite notes (and on the Mac, screenshots for screen features), when an AI feature runs. On the Mac, once you've configured and approved an endpoint, live insights and the after-meeting report use it automatically (you can turn either off in Settings). It goes straight from your device to that provider. noFriction never sees it.</p>
-      </details>
-      <details>
         <summary>Does it work offline?</summary>
-        <p>Yes. Recording, transcription and AI can work fully offline with local or Apple on-device models after setup and any required model downloads. A model running on another computer needs a reachable local network. Public custom endpoints need internet access; noFriction offers no hosted models.</p>
+        <div><p>Yes. Recording and transcription run on your device with no connection. On the Mac, the speech model is downloaded once during setup. AI also works offline with Apple's on-device model, or with a model running on your own computer.</p></div>
+      </details>
+      <details>
+        <summary>Do I need an account?</summary>
+        <div><p>No. There is nothing to sign up for and no noFriction server. Subscriptions go through your Apple Account.</p></div>
+      </details>
+      <details>
+        <summary>What does "Data Not Collected" mean?</summary>
+        <div><p>It is Apple's privacy-label term: the app sends nothing to us or to any partner. There are no analytics, no crash-reporting SDK and no tracking. Content leaves your device only when you choose: to the AI endpoint you set up, in an export or share, or from your Apple Watch to your own iPhone. <a href="/privacy/">Privacy policy</a>.</p></div>
+      </details>
+      <details>
+        <summary>Which AI does it use?</summary>
+        <div><p>Your choice of two: Apple's on-device model (iOS 26 or macOS 26 and later on a device with Apple Intelligence), or one OpenAI-compatible endpoint you enter yourself: its base URL, model name and, if it needs one, your key. noFriction hosts no AI model and includes no service. The app asks before sending recording content to a public endpoint.</p></div>
+      </details>
+      <details>
+        <summary>What is free, and what needs Pro?</summary>
+        <div><p>Free: recording, on-device transcription, types, Notebooks, timed recording, marks, links, Rewind, search, editing and export. Pro: the AI features, which are notes, follow-up email drafts and review guides. Pro is $0.99 a month or $5.99 a year with a 1-week free trial, in the United States.</p></div>
+      </details>
+      <details>
+        <summary>How does the Apple Watch app work?</summary>
+        <div><p>The watch records; your iPhone transcribes. Choose the type, length and Notebook on the watch, mark moments with a tap, and the audio is sent to your iPhone in the background. The watch deletes its copy only after the iPhone confirms it has it. Discreet mode keeps the watch screen nearly black for lectures and quiet rooms.</p></div>
+      </details>
+      <details>
+        <summary>Can I use it in class?</summary>
+        <div><p>Many schools require the instructor's permission to record a class, and some require classmates' consent. Check your school's policy. noFriction reminds you the first time you record a class.</p></div>
       </details>
       <details>
         <summary>Is recording people legal?</summary>
-        <p>It depends on where you and they are. In many places everyone must agree. noFriction reminds you to tell people; getting consent is up to you.</p>
+        <div><p>Laws vary. In many places everyone in the conversation must agree. noFriction reminds you to tell people; getting consent is up to you.</p></div>
       </details>
       <details>
-        <summary>Can I get my meetings out?</summary>
-        <p>Yes. On iPhone and iPad, share any meeting as text from the meeting view. On the Mac, export meetings as Markdown into an Obsidian vault, or export your data as JSON.</p>
+        <summary>Can I get my recordings out?</summary>
+        <div><p>Yes. Share any recording as text from iPhone and iPad. On the Mac, export recordings as Markdown to a folder you choose, or everything as JSON. Flashcards export as CSV and review guides as Markdown.</p></div>
       </details>
       <details>
-        <summary>Do my meetings sync between devices?</summary>
-        <p>No. Each device keeps its own meetings. Your subscription works on all of them.</p>
+        <summary>Do recordings sync between devices?</summary>
+        <div><p>No. There is no cloud, so each device keeps what it recorded. Your Pro subscription works on iPhone, iPad and Mac.</p></div>
       </details>
     </div>
   </section>
 
-  <section id="contact" aria-labelledby="contact-title">
-    <div class="wrap">
-      <h2 id="contact-title">Need help?</h2>
-      <p>Read the <a href="support.html">support page</a> or email <a href="mailto:casey@nofriction.io">casey@nofriction.io</a>.</p>
+  <section id="notify" class="notify" aria-labelledby="notify-title">
+    <div class="wrap center">
+      <h2 id="notify-title">Be first to know</h2>
+      <p class="lede">noFriction is coming to the App Store for iPhone, iPad, Apple Watch and Mac. Get one email at launch, or try the beta today.</p>
+      <div class="store-cta center">
+  <div data-store="notify">
+    <div class="cta-row">
+      <a class="btn primary large" href="mailto:casey@nofriction.io?subject=noFriction%20launch">Get notified at launch</a>
+      <a class="btn large" href="https://testflight.apple.com/join/4JnJD3Fk" data-store-href="testflight">Join the TestFlight beta</a>
+    </div>
+    <p class="fine">Coming soon to the App Store for iPhone, iPad, Apple Watch and Mac. "Get notified" opens an email to casey@nofriction.io; reply-free, one message at launch.</p>
+  </div>
+  <div data-store="live" hidden>
+    <div class="badges">
+      <a href="https://apps.apple.com/us/app/nofriction-record-your-life/id6818838861" data-store-href="ios"><img src="/img/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="144" height="48"></a>
+      <a href="https://apps.apple.com/us/app/nofriction-record-your-life/id6818838861?mt=12" data-store-href="mac"><img src="/img/badges/download-on-the-mac-app-store.svg" alt="Download on the Mac App Store" width="187" height="48"></a>
+    </div>
+    <p class="fine">Free to download. noFriction Pro is a separate subscription.</p>
+  </div>
+</div>
     </div>
   </section>
+
 </main>
-
 <footer class="site-footer">
   <div class="wrap">
-    <span>© 2026 noFriction</span>
-    <nav aria-label="Footer">
-      <a href="support.html">Support</a>
-      <a href="privacy.html">Privacy Policy</a>
-      <a href="terms.html">Terms of Use</a>
-    </nav>
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/"><img src="/img/icon-192.png" alt="" width="34" height="34"><span>noFriction</span></a>
+        <p>Record your Life. Transcribe, summarize, rewind.</p>
+        <p>Recording and transcription work offline. Nothing leaves your device unless you want it to.</p>
+      </div>
+      <nav aria-labelledby="f-app">
+        <h2 id="f-app">App</h2>
+        <ul>
+          <li><a href="/#how-it-works">How it works</a></li>
+          <li><a href="/#features">Features</a></li>
+          <li><a href="/#pricing">Pricing</a></li>
+          <li><a href="/#faq">FAQ</a></li>
+          <li><a href="/download/">Download</a></li>
+          <li><a href="/support/">Support</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-legal">
+        <h2 id="f-legal">Legal</h2>
+        <ul>
+          <li><a href="/privacy/">Privacy Policy</a></li>
+          <li><a href="/privacy/website/">Website privacy</a></li>
+          <li><a href="/terms/">Terms</a></li>
+          <li><a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" rel="noopener">Apple standard EULA</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-co">
+        <h2 id="f-co">Company</h2>
+        <ul>
+          <li><a href="/about/">About No Friction</a></li>
+          <li><a href="/casey/">Casey Potenzone</a></li>
+          <li><a href="/contact/">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-legal">
+      <p>© 2026 CCA Innovations OU d/b/a No Friction · 120 Vantis, Suite 300, Aliso Viejo, CA 92656 · <a href="mailto:casey@nofriction.io">casey@nofriction.io</a></p>
+      <p class="tm">Apple, the Apple logo, iPhone, iPad, Apple Watch, Mac, App Store, Mac App Store and TestFlight are trademarks of Apple Inc., registered in the U.S. and other countries. Apple Intelligence is a trademark of Apple Inc.</p>
+    </div>
   </div>
 </footer>
+<script src="/js/store.js"></script>
+<script src="/js/site.js"></script>
 </body>
 </html>
