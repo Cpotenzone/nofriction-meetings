@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   People. Long recordings are transcribed in chunks and continue where they
   stopped if the app is closed. See `docs/WATCH_APP.md`.
 
+### Changed
+- **Meetings, classes and everyday life (Mac).** Record asks **What is it?**
+  (Meeting · Class · Personal, remembered; Meeting by default) above **How
+  long?**. "Class" is now an optional **Notebook** for any type, with
+  **Notebooks** filter chips. Notes follow the type: meeting notes, lecture
+  notes, or (Personal) a summary, key points and to-dos. The third mark is
+  ✎ Follow up / On the test / Remember, the STUDY tab is **REVIEW** (a Review
+  guide, or Study guide for a class), and the school-policy notice shows on
+  the first Class recording. Untitled recordings are named "BIO 101 — Oct 7"
+  or "Personal — Oct 7". Recordings that had a class become Class recordings
+  (`meetings.recording_kind`, backfilled once). UI text that meant any
+  recording now says "recording". See `docs/TIMED_RECORDING_AND_NOTEBOOKS.md`.
+
 ---
 
 ## [3.6.0] - 2026-10-01

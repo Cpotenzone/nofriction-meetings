@@ -1,4 +1,4 @@
-// Meeting-end countdown: "Meeting seems to have ended (<reason>) — stopping in 30s"
+// Meeting-end countdown: "This seems to have ended" / "<reason> — stopping in 30s"
 // with [Keep recording] (snooze detection) and [Stop now]. The backend
 // (meeting_end.rs) decides; when the countdown runs out it emits
 // `meeting-end-auto-stop`, which App.tsx handles through the normal Stop path.
@@ -50,7 +50,7 @@ export const MeetingEndBanner: React.FC<MeetingEndBannerProps> = ({ isRecording,
             <div className="meeting-detection-banner sliding-in" role="alertdialog" aria-live="assertive">
                 <div className="mdb-icon">⏹</div>
                 <div className="mdb-content">
-                    <div className="mdb-title">Meeting seems to have ended</div>
+                    <div className="mdb-title">This seems to have ended</div>
                     <div className="mdb-subtitle">
                         {pending.reason} — stopping in {secondsLeft}s
                     </div>

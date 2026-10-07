@@ -664,7 +664,7 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
                     let _ = app.emit("meeting-end-detected", DetectedPayload::new(&meeting_id, &p, now));
                     crate::tray_builder::set_auto_stop_status(
                         &app,
-                        &format!("Meeting ended? Stopping in {}s…", (p.deadline - now).num_seconds()),
+                        &format!("Ended? Stopping in {}s…", (p.deadline - now).num_seconds()),
                         true,
                     );
                     request_attention(&app, &p.reason, (p.deadline - now).num_seconds());

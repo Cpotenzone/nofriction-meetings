@@ -1,7 +1,8 @@
 // Timed recording while it runs: the capture bar's clock ("12:34 left", or
 // elapsed time without a limit) with +15 min / No limit, the warning banner
 // 5 minutes before the end (2 for a 15-minute recording), and the one-time
-// class-recording notice. The backend owns the timer (timed_recording.rs).
+// class-recording notice (first Class-type recording). The backend owns the
+// timer (timed_recording.rs).
 
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -170,7 +171,7 @@ export function TimeLimitBanner({ isRecording }: { isRecording: boolean }) {
     );
 }
 
-/** One-time, non-blocking: shown the first time a class is recorded. */
+/** One-time, non-blocking: shown when the first Class-type recording starts. */
 export function ClassRecordingNotice({ onClose }: { onClose: () => void }) {
     useEffect(() => {
         const id = window.setTimeout(onClose, 30_000);

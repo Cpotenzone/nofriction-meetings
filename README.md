@@ -1,10 +1,11 @@
 # noFriction
 
-Meeting recorder for **iPhone, iPad and Mac**. It records and transcribes on
-the device, matches each meeting to your calendar and its attendees, keeps
-photos (iOS) or screenshots (Mac) next to the transcript, and writes notes
-with **Apple's on-device model or an AI endpoint you set up yourself**. No
-accounts, no noFriction servers, no analytics.
+Recorder with notes and Rewind for **iPhone, iPad and Mac**: meetings,
+classes and everyday life. It records and transcribes on the device, matches
+meetings to your calendar and their attendees, keeps photos (iOS) or
+screenshots (Mac) next to the transcript so you can rewind to any moment, and
+writes notes with **Apple's on-device model or an AI endpoint you set up
+yourself**. No accounts, no noFriction servers, no analytics.
 
 | | iPhone / iPad | Mac |
 |---|---|---|
@@ -12,16 +13,21 @@ accounts, no noFriction servers, no analytics.
 | Version | 1.0.0 | 3.6.0 |
 | Transcription | Apple on-device speech | Local Whisper on the Mac (one-time model download); no cloud transcription |
 | Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |
-| AI (noFriction Pro) | Notes (summary, decisions, action items), follow-up email | Chat across meetings, live insights, after-meeting report, meeting prep brief, screenshot analysis |
-| Also | Calendar match, People + LinkedIn, auto-stop, timed recording, classes + lecture notes, Delete / Strike from the record, Markdown share | Calendar match, People + LinkedIn, auto-stop, timed recording, classes + lecture notes, Delete / Strike from the record, Obsidian export, JSON export |
+| AI (noFriction Pro) | Notes in the recording type's style, review guide, follow-up email | Notes in the recording type's style, review guide, chat across recordings, live insights, meeting prep brief, screenshot analysis |
+| Also | Recording type (Meeting · Class · Personal), notebooks, timed recording, marks, calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Markdown share | Recording type (Meeting · Class · Personal), notebooks, timed recording, marks (⌃⌥⌘M), Rewind, calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Obsidian export, JSON export |
 
-**Timed recording and classes:** Record asks "How long?" (15 / 30 / 60 / 90
-min or no limit; the last choice is remembered) and the recording stops by
-itself at the end, with a warning and +15 min / No limit before it does. A
-recording can belong to a class ("BIO 101 — Cell Biology"): set it when you
-record or later, filter the library by class, and get lecture notes (concepts,
-definitions, examples, announcements) instead of meeting minutes. Spec:
-[docs/TIMED_RECORDING_AND_CLASSES.md](docs/TIMED_RECORDING_AND_CLASSES.md).
+**What is it, how long, notebook:** Record asks **What is it?** (Meeting ·
+Class · Personal; "Personal covers everything else: conversations,
+appointments, talks, ideas") and **How long?** (15 / 30 / 60 / 90 min or no
+limit; the recording stops by itself at the end, with a warning and +15 min /
+No limit before it does). Both are remembered. An optional **Notebook**
+("Acme project", "BIO 101", "Health") groups recordings, with **Notebooks**
+filter chips in the library. The type picks the notes style (meeting notes,
+lecture notes, or a summary with key points and to-dos), the third mark's
+label (✎ Follow up / On the test / Remember) and the guide's name (Review
+guide, or Study guide for a class). Specs:
+[docs/TIMED_RECORDING_AND_NOTEBOOKS.md](docs/TIMED_RECORDING_AND_NOTEBOOKS.md),
+[docs/STUDY_TOOLS.md](docs/STUDY_TOOLS.md).
 
 **AI** has two choices. **Apple on-device** (Foundation Models, iOS/macOS 26+
 with Apple Intelligence on and its model available) needs no key and keeps
@@ -30,7 +36,7 @@ model of one OpenAI-compatible server (for example Ollama or LM Studio on your
 own machine) and, if it needs one, your own key. There are no built-in service
 presets, no default remote URL and no key detection, and noFriction supplies no
 model, service or API key. A key you enter is stored in the Keychain, tied to
-that endpoint. The app asks before it sends meeting content to a public
+that endpoint. The app asks before it sends recording content to a public
 (non-local) endpoint. Spec: [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md).
 
 **Business model:** free download. Recording, transcription, calendar and
@@ -58,7 +64,9 @@ For developers:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the apps fit together
 - [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md): AI contract (Apple on-device or your own endpoint, keys, consent), shared by both apps
 - [docs/REDACTION.md](docs/REDACTION.md): Delete and "Strike from the record" spec
-- [docs/TIMED_RECORDING_AND_CLASSES.md](docs/TIMED_RECORDING_AND_CLASSES.md): "How long?", auto-stop at the time limit, classes and lecture notes
+- [docs/TIMED_RECORDING_AND_NOTEBOOKS.md](docs/TIMED_RECORDING_AND_NOTEBOOKS.md): "What is it?" (recording type), "How long?", auto-stop at the time limit, notebooks, notes by type
+- [docs/STUDY_TOOLS.md](docs/STUDY_TOOLS.md): marks and the Review (study) guide
+- [docs/LINKS.md](docs/LINKS.md): links and references
 - [ios/README.md](ios/README.md): iOS app file map and tests
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): release history
 - [DESIGN.md](DESIGN.md): design system (hazard yellow on matte black)

@@ -61,10 +61,15 @@ impl MeetingNotesGenerator {
         // Combine transcripts into a single text block
         let full_transcript = transcript_for_prompt(&transcripts);
 
-        // Generate notes using AI (lecture notes when the meeting has a class)
-        let class = database.get_meeting_class(meeting_id).await.ok().flatten();
-        let (prompt, label) =
-            crate::classes::report_prompt(class.as_deref(), crate::settings::DEFAULT_REPORT_PROMPT, "default");
+        // Generate notes using AI, in the recording type's style (meeting,
+        // lecture or personal notes; recording_kind.rs)
+        let (kind, notebook) = database.get_kind_and_notebook(meeting_id).await.unwrap_or_default();
+        let (prompt, label) = crate::recording_kind::report_prompt(
+            kind,
+            notebook.as_deref(),
+            crate::settings::DEFAULT_REPORT_PROMPT,
+            "default",
+        );
         let notes = self.analyze_transcript(&full_transcript, Some(&prompt)).await?;
 
         // Save to database
@@ -177,9 +182,11 @@ JSON ARRAY:"#,
 
         let full_transcript = transcript_for_prompt(&transcripts);
 
-        // A class gets lecture notes instead of the meeting report prompt
-        let class = database.get_meeting_class(meeting_id).await.ok().flatten();
-        let (prompt, label) = crate::classes::report_prompt(class.as_deref(), custom_prompt, "auto-report");
+        // A class gets lecture notes and a personal recording personal
+        // notes instead of the meeting report prompt
+        let (kind, notebook) = database.get_kind_and_notebook(meeting_id).await.unwrap_or_default();
+        let (prompt, label) =
+            crate::recording_kind::report_prompt(kind, notebook.as_deref(), custom_prompt, "auto-report");
         let notes = self.analyze_transcript(&full_transcript, Some(&prompt)).await?;
 
         let notes_id = uuid::Uuid::new_v4().to_string();

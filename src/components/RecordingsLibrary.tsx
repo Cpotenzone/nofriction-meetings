@@ -368,7 +368,7 @@ export function RecordingsLibrary() {
                     <div className="empty-state">
                         <div className="empty-icon">📭</div>
                         <h3>No Recordings Found</h3>
-                        <p>{searchQuery ? 'Try a different search term' : 'Start recording to see your meetings here'}</p>
+                        <p>{searchQuery ? 'Try a different search term' : 'Start a recording to see it here'}</p>
                     </div>
                 ) : (
                     recordings.map(recording => (

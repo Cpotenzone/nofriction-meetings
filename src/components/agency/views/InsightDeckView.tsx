@@ -6,7 +6,7 @@ import { RewindGallery } from '../../RewindGallery';
 import { MeetingNotesPanel } from '../../MeetingNotesPanel';
 import { MeetingLinksPanel } from '../../MeetingLinksPanel';
 import { MeetingPeople, PeopleDirectory } from '../../People';
-import { MeetingClassField } from '../../MeetingClass';
+import { RecordingTypeAndNotebook } from '../../Notebook';
 import type { RewindSeek } from '../../RewindGallery';
 import { StudyPanel } from '../../study/StudyPanel';
 
@@ -20,11 +20,12 @@ interface InsightDeckViewProps {
 
 export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeeting, selectedMeetingId, refreshKey }) => {
     const [activeTab, setActiveTab] = useState<DeckTab>('history');
-    // Selected recording: screenshots + transcript, its AI notes, its links or its study guide
-    const [meetingView, setMeetingView] = useState<'rewind' | 'notes' | 'links' | 'study'>('rewind');
-    // Bumped when a recording's class is edited, so the list and its filter refresh
-    const [classEdits, setClassEdits] = useState(0);
-    // Links → "first said at 12:03" and Study → "Jump to this moment" show it in Rewind
+    // Selected recording: screenshots + transcript, its AI notes, its links or
+    // its Review guide ("Study guide" for a class)
+    const [meetingView, setMeetingView] = useState<'rewind' | 'notes' | 'links' | 'review'>('rewind');
+    // Bumped when a recording's type or notebook is edited, so the list and its filter refresh
+    const [metaEdits, setMetaEdits] = useState(0);
+    // Links → "first said at 12:03" and Review → "Jump to this moment" show it in Rewind
     const [seek, setSeek] = useState<RewindSeek | null>(null);
     const jumpTo = (meetingId: string, ms: number) => {
         setSeek({ meetingId, ms, n: Date.now() });
@@ -68,12 +69,12 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                         <MeetingHistory
                             onSelectMeeting={onSelectMeeting}
                             selectedMeetingId={selectedMeetingId}
-                            refreshKey={refreshKey + classEdits}
+                            refreshKey={refreshKey + metaEdits}
                             compact={!!selectedMeetingId}
                         />
                         {selectedMeetingId && (
                             <div className="deck-playback-panel" style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                                <MeetingClassField meetingId={selectedMeetingId} onSaved={() => setClassEdits((n) => n + 1)} />
+                                <RecordingTypeAndNotebook meetingId={selectedMeetingId} onSaved={() => setMetaEdits((n) => n + 1)} />
                                 <MeetingPeople meetingId={selectedMeetingId} />
                                 <div className="deck-tabs" role="tablist" aria-label="Recording view" style={{ padding: '6px 0' }}>
                                     <button
@@ -102,11 +103,11 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                                     </button>
                                     <button
                                         role="tab"
-                                        aria-selected={meetingView === 'study'}
-                                        className={`deck-tab ${meetingView === 'study' ? 'active' : ''}`}
-                                        onClick={() => setMeetingView('study')}
+                                        aria-selected={meetingView === 'review'}
+                                        className={`deck-tab ${meetingView === 'review' ? 'active' : ''}`}
+                                        onClick={() => setMeetingView('review')}
                                     >
-                                        STUDY
+                                        REVIEW
                                     </button>
                                 </div>
                                 <div style={{ flex: 1, minHeight: 0 }}>

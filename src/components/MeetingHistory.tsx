@@ -1,5 +1,5 @@
-// noFriction Meetings - Meeting History Component
-// Past meetings list with selection
+// noFriction Meetings - Recordings list (REWIND → Recordings)
+// Past recordings with selection, filtered by notebook
 
 import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
@@ -8,7 +8,15 @@ import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 import { CalendarIcon, TrashIcon } from "./icons";
 import { withFallback, mockMeetings } from "../lib/offline";
-import { ClassFilterChips, useRecentClasses } from "./MeetingClass";
+import { NotebookFilterChips, useRecentNotebooks } from "./Notebook";
+import { kindLabel, parseKind } from "../lib/recordingKind";
+
+/** "Class" / "Personal" tag; meetings (the default) get none. */
+function KindTag({ meeting }: { meeting: Meeting }) {
+    const kind = parseKind(meeting.recording_kind);
+    if (kind === "meeting") return null;
+    return <span className="kind-tag">{kindLabel(kind)}</span>;
+}
 
 interface MeetingHistoryProps {
     onSelectMeeting: (meetingId: string) => void;
@@ -24,19 +32,19 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     const [calendarMatches, setCalendarMatches] = useState<Record<string, CalendarMatchEvent>>({});
     const [dismissedMatches, setDismissedMatches] = useState<Set<string>>(new Set());
     const [renamingId, setRenamingId] = useState<string | null>(null);
-    // Class filter (null = All); chips come from the classes recordings have
-    const [classFilter, setClassFilter] = useState<string | null>(null);
-    const classes = useRecentClasses(refreshKey);
+    // Notebook filter (null = All); chips come from the notebooks recordings have
+    const [notebookFilter, setNotebookFilter] = useState<string | null>(null);
+    const notebooks = useRecentNotebooks(refreshKey);
 
     useEffect(() => {
         loadMeetings();
-    }, [refreshKey, classFilter]); // Reload when refreshKey or the filter changes
+    }, [refreshKey, notebookFilter]); // Reload when refreshKey or the filter changes
 
     const loadMeetings = async () => {
         setIsLoading(true);
         setLoadError(null);
         try {
-            const data = await withFallback(() => tauri.getMeetings(50, classFilter), mockMeetings);
+            const data = await withFallback(() => tauri.getMeetings(50, notebookFilter), mockMeetings);
             setMeetings(data);
             // Check recent meetings (last 5) for calendar overlap
             checkCalendarOverlaps(data.slice(0, 5));
@@ -135,7 +143,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         }
         return (
             <div className="meeting-history">
-                <h3>Past Meetings</h3>
+                <h3>Recordings</h3>
                 <div className="empty-state">
                     <div className="empty-state-text">Loading...</div>
                 </div>
@@ -146,7 +154,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     if (loadError && meetings.length === 0) {
         return (
             <div className="meeting-history">
-                {!compact && <h3>Past Meetings</h3>}
+                {!compact && <h3>Recordings</h3>}
                 <ErrorState
                     title="Couldn't load your recordings"
                     message="Your recordings are safe on this Mac. Try again; if it keeps happening, quit and reopen the app."
@@ -157,16 +165,16 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     }
 
     const filterChips = (
-        <ClassFilterChips classes={classes} value={classFilter} onChange={setClassFilter} />
+        <NotebookFilterChips notebooks={notebooks} value={notebookFilter} onChange={setNotebookFilter} />
     );
 
-    if (meetings.length === 0 && classFilter) {
+    if (meetings.length === 0 && notebookFilter) {
         return (
             <div className="meeting-history">
-                {!compact && <h3>Past Meetings</h3>}
+                {!compact && <h3>Recordings</h3>}
                 {filterChips}
                 <div className="empty-state">
-                    <div className="empty-state-text">No recordings in {classFilter}.</div>
+                    <div className="empty-state-text">No recordings in {notebookFilter}.</div>
                 </div>
             </div>
         );
@@ -174,15 +182,15 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
 
     if (meetings.length === 0) {
         if (compact) {
-            return <div className="compact-empty">No meetings yet</div>;
+            return <div className="compact-empty">No recordings yet</div>;
         }
         return (
             <div className="meeting-history">
-                <h3>Past Meetings</h3>
+                <h3>Recordings</h3>
                 <EmptyState
                     icon={<CalendarIcon size={44} strokeWidth={1.5} />}
                     title="No recordings yet"
-                    message="Click START CAPTURE in the top bar (or press ⌘N) when your next meeting begins. The transcript and screenshots land here, ready to rewind, edit and summarize. Recording stops by itself when the meeting ends."
+                    message="Click START CAPTURE in the top bar (or press ⌘N) for a meeting, a class or anything else. The transcript and screenshots land here, ready to rewind, edit and summarize. You pick how long it records."
                 />
             </div>
         );
@@ -200,6 +208,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                         onClick={() => onSelectMeeting(meeting.id)}
                     >
                         <div className="compact-meeting-title">{meeting.title}</div>
+                        <KindTag meeting={meeting} />
                         {meeting.class_name && <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>}
                         <div className="compact-meeting-date">
                             {formatDate(meeting.started_at)}
@@ -212,7 +221,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
 
     return (
         <div className="meeting-history">
-            <h3>{classFilter ? `${classFilter} (${meetings.length})` : `Past Meetings (${meetings.length})`}</h3>
+            <h3>{notebookFilter ? `${notebookFilter} (${meetings.length})` : `Recordings (${meetings.length})`}</h3>
             {filterChips}
             <div className="meeting-list scrollable">
                 {meetings.map((meeting) => {
@@ -272,7 +281,8 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                                 <div>
                                     <div className="meeting-title">
                                         {meeting.title}
-                                        {meeting.class_name && !classFilter && (
+                                        <KindTag meeting={meeting} />
+                                        {meeting.class_name && !notebookFilter && (
                                             <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>
                                         )}
                                     </div>
@@ -286,7 +296,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                                 <button
                                     className="btn btn-ghost"
                                     onClick={(e) => handleDelete(e, meeting.id)}
-                                    title="Delete meeting"
+                                    title="Delete recording"
                                     style={{ padding: "4px 8px", fontSize: "0.75rem", opacity: 0.5 }}
                                 >
                                     <TrashIcon size={14} />

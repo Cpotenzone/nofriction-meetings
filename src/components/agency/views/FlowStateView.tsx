@@ -39,7 +39,7 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
     const [sttStatus, setSttStatus] = useState<TranscriptionStatus | null>(null);
     // No AI provider yet: say so (with a way to add one) instead of implying analysis runs
     const { configured: aiConfigured, refresh: refreshAi } = useAiStatus();
-    // "Live insights during meetings" (Settings → AI Engine → Automatic AI)
+    // "Live insights while recording" (Settings → AI Engine → Automatic AI)
     const [liveInsightsOn, setLiveInsightsOn] = useState(true);
     useEffect(() => {
         refreshAi();
@@ -144,7 +144,7 @@ export const FlowStateView: React.FC<FlowStateViewProps> = ({ recording, transcr
                                                 : "Action items, decisions and risks surface here while you record."}
                                     </p>
                                     {aiConfigured === false && (
-                                        <AiSetupNotice feature="After-meeting AI notes" compact />
+                                        <AiSetupNotice feature="AI notes" compact />
                                     )}
                                 </motion.div>
                             ) : (

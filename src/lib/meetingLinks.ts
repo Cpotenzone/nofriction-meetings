@@ -130,7 +130,7 @@ function mdUrl(url: string): string {
 /** "Copy all as Markdown": one bullet per link, with its sources, first
  *  time and note. Only openable links are written as links. */
 export function linksMarkdown(meetingTitle: string, links: MeetingLink[]): string {
-    const lines = [`## Links — ${mdText(meetingTitle || "Meeting")}`, ""];
+    const lines = [`## Links — ${mdText(meetingTitle || "Recording")}`, ""];
     for (const l of links) {
         const label = mdText(l.title || displayLink(l) || l.url);
         const head = isOpenableUrl(l.url) ? `[${label}](${mdUrl(l.url)})` : label;

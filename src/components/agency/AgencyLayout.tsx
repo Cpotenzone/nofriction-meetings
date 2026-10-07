@@ -78,7 +78,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
     }, [recording.isRecording]);
 
     const handleSegmentConfirm = async () => {
-        // The new segment keeps the class and the time that was left (no
+        // The new segment keeps the type, the notebook and the time that was left (no
         // "how long?" sheet: the user already chose)
         let carry = segmentCarryOver(null, null, Date.now());
         try {
@@ -86,7 +86,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                 getTimedRecordingStatus(),
                 recording.meetingId ? getMeeting(recording.meetingId) : Promise.resolve(null),
             ]);
-            carry = segmentCarryOver(status, meeting?.class_name, Date.now());
+            carry = segmentCarryOver(status, meeting, Date.now());
         } catch (e) {
             console.warn('Segment carry-over unavailable:', e);
         }

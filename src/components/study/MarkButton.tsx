@@ -1,14 +1,17 @@
 // Capture bar: "Mark" the moment while recording. One click marks ★
-// Important; a small card then offers the other types and a note for a few
-// seconds. ⌃⌥⌘M (global) and File → Mark Moment do the same from anywhere;
-// their marks show the same card here. docs/STUDY_TOOLS.md
+// Important; a small card then offers the other types (the third is
+// labelled by the recording's type: On the test / Follow up / Remember) and
+// a note for a few seconds. ⌃⌥⌘M (global) and File → Mark Moment do the
+// same from anywhere; their marks show the same card here.
+// docs/STUDY_TOOLS.md
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { MarkIcon } from "../icons";
-import { KindPicker, MarkerGlyph } from "./MarkerBits";
+import { KindPicker, MarkKindContext, MarkerGlyph } from "./MarkerBits";
 import { MARKER_ADDED_EVENT, MARKER_FAILED_EVENT, markersApi, notifyMarkersChanged } from "../../lib/study";
-import { MARKER_META, clock, type Marker, type MarkerKind } from "../../lib/studyLogic";
+import { clock, markerLabel, type Marker, type MarkerKind } from "../../lib/studyLogic";
+import { useRecordingKind } from "../../hooks/useRecordingKind";
 
 /** How long the type/note card stays without interaction */
 const CARD_MS = 7000;
@@ -21,6 +24,7 @@ export function MarkButton({ isRecording }: { isRecording: boolean }) {
     const timer = useRef<number | null>(null);
     const holding = useRef(false);
     const shownId = useRef<string | null>(null);
+    const recKind = useRecordingKind(marker?.meeting_id ?? null);
 
     const clearTimer = () => {
         if (timer.current !== null) window.clearTimeout(timer.current);
@@ -123,6 +127,7 @@ export function MarkButton({ isRecording }: { isRecording: boolean }) {
             </button>
 
             {marker && (
+                <MarkKindContext.Provider value={recKind}>
                 <div
                     className="study-mark__card"
                     role="dialog"
@@ -136,7 +141,7 @@ export function MarkButton({ isRecording }: { isRecording: boolean }) {
                     <div className="study-mark__head">
                         <MarkerGlyph kind={marker.kind} />
                         <span>
-                            Marked {MARKER_META[marker.kind].label} at {clock(marker.offset_ms)}
+                            Marked {markerLabel(marker.kind, recKind)} at {clock(marker.offset_ms)}
                         </span>
                         <button className="rd-btn rd-btn-ghost study-mark__close" type="button" onClick={close} aria-label="Close">
                             Done
@@ -168,6 +173,7 @@ export function MarkButton({ isRecording }: { isRecording: boolean }) {
                         }}
                     />
                 </div>
+                </MarkKindContext.Provider>
             )}
             {error && !marker && (
                 <div className="study-mark__card is-error" role="status">

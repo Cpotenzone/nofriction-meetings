@@ -1,11 +1,12 @@
 //! Timed recording: "how long?" (15 / 30 / 60 / 90 min, or no limit) and the
 //! backend timer that stops the recording at the deadline. See
-//! docs/TIMED_RECORDING_AND_CLASSES.md.
+//! docs/TIMED_RECORDING_AND_NOTEBOOKS.md.
 //!
 //! - Every start arms a plan, whichever path started it. A click on a Record
 //!   button passes the picker's choice; the menu shortcut, the tray and the
 //!   command palette pass nothing and get the remembered choice
-//!   (`recording_default_duration`, "none" until the user picks one).
+//!   (`recording_default_duration`, "none" until the user picks one), and
+//!   the remembered type (recording_kind.rs).
 //! - The deadline is wall-clock time from the start (pauses don't move it:
 //!   a class ends when it ends). Its length is stored on the meeting
 //!   (`meetings.planned_minutes`).
@@ -347,13 +348,28 @@ pub async fn remember(app: &AppHandle, limit: Limit) {
             log::warn!("Could not save the recording length: {}", e);
         }
     }
-    crate::tray_builder::set_start_recording_label(app, &limit.label());
+    refresh_start_label(app).await;
+}
+
+/// "Meeting, 60 min": what a tray / shortcut start records (remembered type
+/// and length).
+pub fn start_label(kind: crate::recording_kind::RecordingKind, limit: Limit) -> String {
+    format!("{}, {}", kind.label(), limit.label())
+}
+
+/// Show the remembered type and length on the tray's Start Recording item.
+pub async fn refresh_start_label(app: &AppHandle) {
+    let limit = remembered(app).await;
+    let kind = match app.try_state::<crate::AppState>() {
+        Some(state) => crate::recording_kind::remembered(&state.settings).await,
+        None => Default::default(),
+    };
+    crate::tray_builder::set_start_recording_label(app, &start_label(kind, limit));
 }
 
 /// Tray label at launch.
 pub async fn refresh_tray(app: &AppHandle) {
-    let limit = remembered(app).await;
-    crate::tray_builder::set_start_recording_label(app, &limit.label());
+    refresh_start_label(app).await;
     publish(app);
 }
 
@@ -489,26 +505,33 @@ fn request_stop(app: &AppHandle, generation: u64, meeting_id: &str) {
 
 // ─── Commands ────────────────────────────────────────────────────────────────
 
-/// Picker defaults: the remembered length and recent classes.
+/// Picker defaults: the remembered type and length, and recent notebooks.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordPrefs {
+    /// "meeting" | "class" | "personal" ("meeting" until one is picked)
+    pub default_kind: String,
     /// "15" | "30" | "60" | "90" | "none"
     pub default_duration: String,
-    /// Most recent first; derived from saved meetings (deleting a meeting
-    /// removes its class from this list once no other meeting has it).
-    pub recent_classes: Vec<String>,
+    /// Most recent first; derived from saved recordings (deleting a
+    /// recording removes its notebook from this list once no other
+    /// recording has it).
+    pub recent_notebooks: Vec<String>,
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_record_prefs(app: AppHandle) -> Result<RecordPrefs, String> {
     let state = app.try_state::<crate::AppState>().ok_or("App not ready")?;
-    let recent_classes = state
+    let recent_notebooks = state
         .database
-        .recent_classes(crate::classes::RECENT_LIMIT)
+        .recent_notebooks(crate::notebooks::RECENT_LIMIT)
         .await
-        .map_err(|e| format!("Failed to list classes: {}", e))?;
-    Ok(RecordPrefs { default_duration: remembered(&app).await.as_setting(), recent_classes })
+        .map_err(|e| format!("Failed to list notebooks: {}", e))?;
+    Ok(RecordPrefs {
+        default_kind: crate::recording_kind::remembered(&state.settings).await.as_str().to_string(),
+        default_duration: remembered(&app).await.as_setting(),
+        recent_notebooks,
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -558,15 +581,21 @@ fn store_planned_minutes(app: &AppHandle, status: &Status) {
 }
 
 /// What `start_recording` receives from the UI. All optional: a start with
-/// no plan (menu shortcut, tray, command palette) uses the remembered length.
+/// no plan (menu shortcut, tray, command palette) uses the remembered type
+/// and length.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartPlan {
     /// "15" | "30" | "60" | "90" | "none", or any whole minutes up to 12 h
     /// (a carried-over segment). Missing: the remembered choice.
     pub duration: Option<String>,
-    pub class_name: Option<String>,
-    /// Save `duration` as the remembered choice (picker, tray submenu).
+    /// "meeting" | "class" | "personal". Missing: the remembered type.
+    pub recording_kind: Option<String>,
+    /// The optional notebook (stored in `meetings.class_name`)
+    #[serde(alias = "className")]
+    pub notebook: Option<String>,
+    /// Save `duration` (and `recording_kind`, when given) as the remembered
+    /// choice (picker, tray submenu).
     #[serde(default)]
     pub remember: bool,
 }
@@ -619,7 +648,7 @@ mod tests {
     fn start_plan_resolution() {
         let remembered = Limit::Minutes(30);
         assert_eq!(resolve_limit(None, remembered), Ok(Limit::Minutes(30)), "hotkey / tray / palette");
-        let p = StartPlan { duration: None, class_name: Some("BIO 101".into()), remember: false };
+        let p = StartPlan { notebook: Some("BIO 101".into()), ..Default::default() };
         assert_eq!(resolve_limit(Some(&p), remembered), Ok(Limit::Minutes(30)));
         let p = StartPlan { duration: Some("none".into()), ..Default::default() };
         assert_eq!(resolve_limit(Some(&p), remembered), Ok(Limit::NoLimit));
@@ -628,10 +657,21 @@ mod tests {
         let p = StartPlan { duration: Some("forever".into()), ..Default::default() };
         assert!(resolve_limit(Some(&p), remembered).is_err());
         // The UI's JSON shape
-        let p: StartPlan = serde_json::from_str(r#"{"duration":"60","className":"BIO 101","remember":true}"#).unwrap();
-        assert_eq!((p.duration.as_deref(), p.class_name.as_deref(), p.remember), (Some("60"), Some("BIO 101"), true));
+        let p: StartPlan =
+            serde_json::from_str(r#"{"duration":"60","recordingKind":"class","notebook":"BIO 101","remember":true}"#).unwrap();
+        assert_eq!(
+            (p.duration.as_deref(), p.recording_kind.as_deref(), p.notebook.as_deref(), p.remember),
+            (Some("60"), Some("class"), Some("BIO 101"), true)
+        );
+        // An older UI's field name still reads as the notebook
+        let p: StartPlan = serde_json::from_str(r#"{"className":"BIO 101"}"#).unwrap();
+        assert_eq!(p.notebook.as_deref(), Some("BIO 101"));
         let p: StartPlan = serde_json::from_str("{}").unwrap();
-        assert!(p.duration.is_none() && !p.remember);
+        assert!(p.duration.is_none() && p.recording_kind.is_none() && !p.remember);
+        // The tray item shows what a shortcut start records
+        use crate::recording_kind::RecordingKind;
+        assert_eq!(start_label(RecordingKind::Meeting, Limit::Minutes(60)), "Meeting, 60 min");
+        assert_eq!(start_label(RecordingKind::Class, Limit::NoLimit), "Class, No limit");
     }
 
     #[test]

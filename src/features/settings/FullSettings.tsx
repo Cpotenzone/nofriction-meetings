@@ -368,7 +368,7 @@ export function FullSettings({ onSave: _onSave, initialCategory = "general" }: F
                     <div className="settings-content-panel fade-in">
                         <section className="settings-section">
                             <h3>Obsidian Integration</h3>
-                            <p className="section-desc">Connect noFriction to your Obsidian vault for meeting knowledge management.</p>
+                            <p className="section-desc">Connect noFriction to your Obsidian vault to save and organize your recordings.</p>
 
                             <div className="input-group">
                                 <label>Vault Root Path</label>
@@ -414,8 +414,8 @@ export function FullSettings({ onSave: _onSave, initialCategory = "general" }: F
                             <h3>Auto-Export</h3>
                             <div className="settings-row">
                                 <div className="settings-label">
-                                    <span className="label-main">Auto-Export Meetings</span>
-                                    <span className="label-sub">Automatically save meetings to vault when capture stops.</span>
+                                    <span className="label-main">Auto-Export Recordings</span>
+                                    <span className="label-sub">Automatically save recordings to the vault when capture stops.</span>
                                 </div>
                                 <div
                                     className={`toggle-switch ${autoExport ? 'active' : ''}`}
@@ -503,7 +503,7 @@ export function FullSettings({ onSave: _onSave, initialCategory = "general" }: F
                             </div>
                             <p className="section-desc">
                                 Recordings, transcripts and notes are stored on this Mac. Local and Apple on-device models
-                                support offline AI after setup. Optional cloud AI sends meeting content directly to your
+                                support offline AI after setup. Optional cloud AI sends recording content directly to your
                                 configured endpoint with your own optional key. Transcription remains on this Mac.
                                 noFriction offers no hosted models and receives none of this content.
                             </p>

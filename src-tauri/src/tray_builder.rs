@@ -19,10 +19,11 @@ struct TimedItems {
 
 static TIMED_ITEMS: OnceCell<TimedItems> = OnceCell::new();
 
-/// "Start Recording (60 min)": the length a tray / shortcut start uses.
-pub fn set_start_recording_label<R: Runtime>(_app: &AppHandle<R>, length: &str) {
+/// "Start Recording (Meeting, 60 min)": the type and length a tray /
+/// shortcut start uses (`timed_recording::start_label`).
+pub fn set_start_recording_label<R: Runtime>(_app: &AppHandle<R>, what: &str) {
     if let Some(items) = TIMED_ITEMS.get() {
-        let _ = items.start.set_text(format!("Start Recording ({})", length));
+        let _ = items.start.set_text(format!("Start Recording ({})", what));
     }
 }
 
@@ -134,8 +135,9 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .enabled(false)
         .build(app)?;
 
-    // Timed recording: the plain item uses the remembered length (label set
-    // once settings load); the submenu picks one (and remembers it)
+    // Timed recording: the plain item uses the remembered type and length
+    // (label set once settings load); the submenu picks a length (and
+    // remembers it) and records the remembered type
     let start_item = MenuItemBuilder::with_id(tray_ids::START_RECORDING, "Start Recording").build(app)?;
     let start_for = SubmenuBuilder::new(app, "Start Recording For")
         .item(&MenuItemBuilder::with_id(tray_ids::START_15, "15 Minutes").build(app)?)

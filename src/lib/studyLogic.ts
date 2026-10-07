@@ -1,18 +1,41 @@
-// Moment markers and study tools: pure logic, tested in studyLogic.test.ts
+// Moment markers and review tools: pure logic, tested in studyLogic.test.ts
 // (`npm test`). No Tauri imports here, so node's test runner can load it.
 // docs/STUDY_TOOLS.md
 
+import { thirdMarkHint, thirdMarkLabel, type RecordingKind } from "./recordingKind.ts";
+
 // ── Markers ─────────────────────────────────────────────────────────────
 
+/** Stored kinds, the same for every recording type. */
 export type MarkerKind = "important" | "question" | "test";
 
 export const MARKER_KINDS: MarkerKind[] = ["important", "question", "test"];
 
-export const MARKER_META: Record<MarkerKind, { symbol: string; label: string; hint: string }> = {
-    important: { symbol: "★", label: "Important", hint: "Something that matters" },
-    question: { symbol: "?", label: "Question", hint: "Confused, or something to ask" },
-    test: { symbol: "✎", label: "On the test", hint: "Said to be on the exam" },
-};
+export interface MarkerMeta {
+    symbol: string;
+    label: string;
+    hint: string;
+}
+
+/**
+ * ★ Important · ? Question · ✎ and a third label by the recording's type:
+ * "On the test" (class), "Follow up" (meeting), "Remember" (personal). The
+ * stored kind (`test`) doesn't change; only the label does.
+ */
+export function markerMeta(kind: MarkerKind, rec: RecordingKind): MarkerMeta {
+    switch (kind) {
+        case "question":
+            return { symbol: "?", label: "Question", hint: "Something to ask, or unclear" };
+        case "test":
+            return { symbol: "✎", label: thirdMarkLabel(rec), hint: thirdMarkHint(rec) };
+        default:
+            return { symbol: "★", label: "Important", hint: "Something that matters" };
+    }
+}
+
+export function markerLabel(kind: MarkerKind, rec: RecordingKind): string {
+    return markerMeta(kind, rec).label;
+}
 
 export interface Marker {
     id: string;

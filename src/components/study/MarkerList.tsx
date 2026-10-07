@@ -1,15 +1,15 @@
-// Recordings view: the meeting's moment markers. A list that jumps to each
-// moment, filtered by type ("everything marked for the test"); markers on
-// the scrubber; and a marker chip inline in the transcript at its time.
-// docs/STUDY_TOOLS.md
+// Recordings view: the recording's moment markers. A list that jumps to
+// each moment, filtered by type ("everything marked to follow up" / "for
+// the test"); markers on the scrubber; and a marker chip inline in the
+// transcript at its time. Labels follow the recording's type
+// (MarkKindContext). docs/STUDY_TOOLS.md
 
 import { useCallback, useEffect, useState } from "react";
 import { TrashIcon } from "../icons";
-import { KindPicker, MarkerGlyph } from "./MarkerBits";
+import { KindPicker, MarkerGlyph, useMarkerMeta } from "./MarkerBits";
 import { MARKERS_CHANGED_EVENT, markersApi, notifyMarkersChanged } from "../../lib/study";
 import {
     MARKER_KINDS,
-    MARKER_META,
     clock,
     countByKind,
     filterMarkers,
@@ -18,7 +18,7 @@ import {
     type MarkerKind,
 } from "../../lib/studyLogic";
 
-/** A meeting's markers, kept fresh when any view changes them. */
+/** A recording's markers, kept fresh when any view changes them. */
 export function useMarkers(meetingId: string | null, reloadKey = 0) {
     const [markers, setMarkers] = useState<Marker[]>([]);
     const load = useCallback(() => {
@@ -58,6 +58,7 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
     const [error, setError] = useState<string | null>(null);
     const counts = countByKind(markers);
     const shown = filterMarkers(markers, filter);
+    const meta = useMarkerMeta();
 
     const run = async (fn: () => Promise<unknown>) => {
         setError(null);
@@ -91,7 +92,8 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
                             type="button"
                             className={`study-chip is-${k}${filter === k ? " is-on" : ""}`}
                             aria-pressed={filter === k}
-                            title={`Only ${MARKER_META[k].label}`}
+                            title={`Only ${meta(k).label}`}
+                            aria-label={`Only ${meta(k).label} (${counts[k]})`}
                             onClick={() => {
                                 setFilter(k);
                                 setOpen(true);
@@ -124,7 +126,7 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
                 </ul>
             )}
             {open && markers.length > 0 && shown.length === 0 && (
-                <p className="study-muted">No {MARKER_META[filter as MarkerKind]?.label ?? ""} markers.</p>
+                <p className="study-muted">No {filter === "all" ? "" : meta(filter as MarkerKind).label} markers.</p>
             )}
         </section>
     );
@@ -133,6 +135,7 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
 function MarkerRow({ m, onJump, run }: { m: Marker; onJump: (ms: number) => void; run: (fn: () => Promise<unknown>) => void }) {
     const [editing, setEditing] = useState(false);
     const [note, setNote] = useState(m.note ?? "");
+    const meta = useMarkerMeta();
     useEffect(() => setNote(m.note ?? ""), [m.note]);
     const save = () => {
         setEditing(false);
@@ -163,7 +166,7 @@ function MarkerRow({ m, onJump, run }: { m: Marker; onJump: (ms: number) => void
                 />
             ) : (
                 <button type="button" className="study-note" onClick={() => setEditing(true)} title="Edit the note">
-                    {m.note ? m.note : <span className="study-muted">{MARKER_META[m.kind].label} · add a note</span>}
+                    {m.note ? m.note : <span className="study-muted">{meta(m.kind).label} · add a note</span>}
                 </button>
             )}
             <KindPicker compact value={m.kind} onChange={(k) => run(() => markersApi.setKind(m.id, k))} />
@@ -182,6 +185,7 @@ function MarkerRow({ m, onJump, run }: { m: Marker; onJump: (ms: number) => void
 
 /** A marker inside the transcript, at its time. */
 export function MarkerInline({ m, onJump }: { m: Marker; onJump: (ms: number) => void }) {
+    const label = useMarkerMeta()(m.kind).label;
     return (
         <button
             type="button"
@@ -190,10 +194,10 @@ export function MarkerInline({ m, onJump }: { m: Marker; onJump: (ms: number) =>
                 e.stopPropagation();
                 onJump(m.offset_ms);
             }}
-            title={`${MARKER_META[m.kind].label} at ${clock(m.offset_ms)}`}
+            title={`${label} at ${clock(m.offset_ms)}`}
         >
             <MarkerGlyph kind={m.kind} size={12} />
-            <span className="study-inline__label">{MARKER_META[m.kind].label}</span>
+            <span className="study-inline__label">{label}</span>
             <span className="study-inline__time">{clock(m.offset_ms)}</span>
             {m.note && <span className="study-inline__note">{m.note}</span>}
         </button>
@@ -202,6 +206,7 @@ export function MarkerInline({ m, onJump }: { m: Marker; onJump: (ms: number) =>
 
 /** Pins above the scrubber; click one to jump there. */
 export function MarkerPins({ markers, pct, onJump }: { markers: Marker[]; pct: (ms: number) => number; onJump: (ms: number) => void }) {
+    const meta = useMarkerMeta();
     if (markers.length === 0) return null;
     return (
         <div className="study-pins" aria-label="Markers on the timeline">
@@ -211,8 +216,8 @@ export function MarkerPins({ markers, pct, onJump }: { markers: Marker[]; pct: (
                     type="button"
                     className={`study-pin is-${m.kind}`}
                     style={{ left: `${pct(m.offset_ms)}%` }}
-                    title={`${MARKER_META[m.kind].symbol} ${MARKER_META[m.kind].label} · ${clock(m.offset_ms)}${m.note ? ` · ${m.note}` : ""}`}
-                    aria-label={`${MARKER_META[m.kind].label} at ${clock(m.offset_ms)}`}
+                    title={`${meta(m.kind).symbol} ${meta(m.kind).label} · ${clock(m.offset_ms)}${m.note ? ` · ${m.note}` : ""}`}
+                    aria-label={`${meta(m.kind).label} at ${clock(m.offset_ms)}`}
                     onClick={() => onJump(m.offset_ms)}
                 >
                     <MarkerGlyph kind={m.kind} size={10} />

@@ -1,7 +1,9 @@
-//! Exports: flashcards as CSV (Anki and Quizlet import it) and the study
-//! guide as Markdown. Built from the validated, stored material only.
+//! Exports: flashcards as CSV (popular flashcard apps import it) and the
+//! guide as Markdown ("Study guide" for a class, "Review guide" otherwise).
+//! Built from the validated, stored material only.
 
 use super::prompt::clock;
+use crate::recording_kind::RecordingKind;
 use serde_json::Value;
 
 /// One RFC 4180 field. Always quoted (inner quotes doubled), so commas,
@@ -77,6 +79,8 @@ pub struct GuideMark {
 #[derive(Debug, Clone, Default)]
 pub struct GuideParts<'a> {
     pub title: &'a str,
+    /// Names the guide and labels the marks
+    pub kind: RecordingKind,
     pub when: &'a str,
     pub summary: Option<&'a Value>,
     pub terms: Option<&'a Value>,
@@ -94,10 +98,10 @@ fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or("")
 }
 
-/// The study guide as Markdown: summary, key terms, marked moments,
-/// questions to ask, then the practice quiz with its answer key.
+/// The guide as Markdown: summary, key terms, marked moments, questions to
+/// ask, then the practice quiz with its answer key.
 pub fn guide_markdown(g: &GuideParts) -> String {
-    let mut out = format!("# Study guide: {}\n\n", md_escape(g.title));
+    let mut out = format!("# {}: {}\n\n", g.kind.guide_title(), md_escape(g.title));
     if !g.when.is_empty() {
         out.push_str(&format!("{}\n\n", md_escape(g.when)));
     }
@@ -131,7 +135,7 @@ pub fn guide_markdown(g: &GuideParts) -> String {
                 "- {} {} {}",
                 clock(m.ms),
                 crate::markers::symbol(&m.kind),
-                crate::markers::label(&m.kind)
+                crate::markers::label(&m.kind, g.kind)
             );
             if let Some(n) = m.note.as_deref().filter(|n| !n.trim().is_empty()) {
                 line.push_str(&format!(": {}", md_escape(n.trim())));
@@ -152,11 +156,13 @@ pub fn guide_markdown(g: &GuideParts) -> String {
                 None => out.push_str(&format!("- {}\n", md_escape(s(q, "question")))),
             }
         }
+        let marked_as = if g.kind == RecordingKind::Class { "as confusing" } else { "with a question" };
         for m in confused {
             let note = m.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
             out.push_str(&format!(
-                "- You marked {} as confusing{}\n",
+                "- You marked {} {}{}\n",
                 clock(m.ms),
+                marked_as,
                 note.map(|n| format!(": {}", md_escape(n))).unwrap_or_default()
             ));
         }
@@ -204,8 +210,23 @@ pub fn guide_markdown(g: &GuideParts) -> String {
         }
     }
 
-    out.push_str("_Made with noFriction Meetings from the lecture transcript. AI can make mistakes; check against the lecture._\n");
+    out.push_str(match g.kind {
+        RecordingKind::Class => {
+            "_Made with noFriction Meetings from the lecture transcript. AI can make mistakes; check against the lecture._\n"
+        }
+        RecordingKind::Meeting => {
+            "_Made with noFriction Meetings from the meeting transcript. AI can make mistakes; check against the recording._\n"
+        }
+        RecordingKind::Personal => {
+            "_Made with noFriction Meetings from the transcript. AI can make mistakes; check against the recording._\n"
+        }
+    });
     out
+}
+
+/// "Bio 101 study guide.md" for a class, "Weekly sync review guide.md" otherwise.
+pub fn guide_file_name(title: &str, kind: RecordingKind) -> String {
+    format!("{} {}.md", file_stem(title), kind.guide_title().to_lowercase())
 }
 
 /// Marker lines are built from our own text; nothing to escape but keep
@@ -223,7 +244,7 @@ pub fn file_stem(title: &str) -> String {
     let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
     let s: String = s.chars().take(60).collect();
     if s.is_empty() {
-        "Lecture".into()
+        "Recording".into()
     } else {
         s
     }

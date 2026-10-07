@@ -17,7 +17,7 @@ import { AgencyLayout, AgencyMode } from "./components/agency/AgencyLayout";
 import { openSettings } from "./lib/navigation";
 import { RecordPicker, RecordPickerContext } from "./components/RecordPicker";
 import { ClassRecordingNotice, TimeLimitBanner } from "./components/TimedRecording";
-import { TIMED_EVENTS, takeClassRecordingNotice, type TimedAutoStop } from "./lib/timedRecording";
+import { CLASS_NOTICE_EVENT, TIMED_EVENTS, type TimedAutoStop } from "./lib/timedRecording";
 import type { StartPlan } from "./lib/recordPlan";
 
 
@@ -31,7 +31,7 @@ function App() {
   const commandPalette = useCommandPalette();
   const [setupRequired, setSetupRequired] = useSetupRequired();
   const [isGenieMode, setIsGenieMode] = useState(false);
-  // "How long?" sheet (Record button clicks) and the one-time class notice
+  // The Record sheet (Record button clicks) and the one-time class notice
   const [recordPickerOpen, setRecordPickerOpen] = useState(false);
   const [showClassNotice, setShowClassNotice] = useState(false);
   const closeClassNotice = useCallback(() => setShowClassNotice(false), []);
@@ -64,7 +64,7 @@ function App() {
         get isRecording() { return recordingRef.current.isRecording; },
         get isPaused() { return recordingRef.current.isPaused; },
         get meetingId() { return recordingRef.current.meetingId; },
-        // No plan: the remembered length (shortcut, tray, capture modes)
+        // No plan: the remembered type and length (shortcut, tray, capture modes)
         startRecording: (plan?: StartPlan) => recordingRef.current.startRecording(plan),
         stopRecording: () => recordingRef.current.stopRecording(),
         pauseRecording: () => recordingRef.current.pauseRecording(),
@@ -96,8 +96,9 @@ function App() {
           setMeetingListRefreshKey((k) => k + 1);
         }
       }));
-      // Tray menu events. "Start Recording" uses the remembered length;
-      // "Start Recording For > 30 Minutes" sends one (and remembers it).
+      // Tray menu events. "Start Recording" uses the remembered type and
+      // length; "Start Recording For > 30 Minutes" sends a length (and
+      // remembers it) and records the remembered type.
       add(await listen<{ duration?: string } | null>("tray:start_recording", async (e) => {
         if (!recording.isRecording) {
           transcripts.clearLiveTranscripts();
@@ -179,6 +180,9 @@ function App() {
           setIsGenieMode(true);
         }
       }));
+      // First Class-type recording ever (any start path; recording_kind.rs):
+      // a one-time reminder about school policy
+      add(await listen(CLASS_NOTICE_EVENT, () => setShowClassNotice(true)));
       // Calendar integration: log when recording matches a calendar event
       add(await listen<{ event_title: string; attendee_count: number; attendee_names: string[] }>("calendar_match", (event) => {
         const { event_title, attendee_count, attendee_names } = event.payload;
@@ -280,7 +284,7 @@ function App() {
         // Refresh meeting list after recording stops
         setMeetingListRefreshKey((k) => k + 1);
       } else {
-        // A Record button: ask "how long?" (and which class) first
+        // A Record button: ask "What is it?" and "How long?" first
         setRecordPickerOpen(true);
       }
     } catch (err) {
@@ -297,12 +301,6 @@ function App() {
     transcripts.clearLiveTranscripts();
     await recording.startRecording(plan);
     setRecordPickerOpen(false);
-    if (plan.className) {
-      // First class recording ever: a one-time reminder about school policy
-      takeClassRecordingNotice()
-        .then((first) => { if (first) setShowClassNotice(true); })
-        .catch(() => {});
-    }
   };
 
   if (setupRequired === null || !isBackendReady || initError) {
@@ -393,11 +391,11 @@ function App() {
         onOpenCommandPalette={commandPalette.open}
       />
 
-      {/* "Send meeting content to {Provider}?" (App Review 5.1.2(i)) */}
+      {/* "Send recording content to your endpoint?" (App Review 5.1.2(i)) */}
       <AiConsentModal />
       <PaywallModal />
 
-      {/* "Meeting seems to have ended — stopping in 30s" */}
+      {/* "This seems to have ended — stopping in 30s" */}
       {meetingEndBanner}
 
       {/* Timed recording: "5 minutes left" with +15 min / No limit */}

@@ -113,7 +113,7 @@ export function MeetingLinksPanel({ meetingId, onJump }: MeetingLinksPanelProps)
 
     const remove = (l: MeetingLink) => {
         if (!l.reference_id) return;
-        if (!confirm(`Remove "${l.title || displayLink(l)}" from this meeting's references?`)) return;
+        if (!confirm(`Remove "${l.title || displayLink(l)}" from this recording's references?`)) return;
         act("Couldn't remove the reference", async () => {
             await deleteMeetingReference(l.reference_id!);
             await load();
@@ -210,7 +210,7 @@ export function MeetingLinksPanel({ meetingId, onJump }: MeetingLinksPanelProps)
                     <h4>No links yet</h4>
                     <p>
                         Sites mentioned in the transcript ("example dot com") and addresses seen on screen show up here.
-                        Add the syllabus, a reading or the slides with <strong>Add reference</strong>.
+                        Add the agenda, the slides or a reading with <strong>Add reference</strong>.
                     </p>
                 </div>
             ) : (
@@ -255,7 +255,7 @@ export function MeetingLinksPanel({ meetingId, onJump }: MeetingLinksPanelProps)
                 <label className="ml-setting">
                     <input type="checkbox" checked={capture} onChange={(e) => toggleCapture(e.target.checked)} />
                     <span>
-                        Record the browser's address during meetings
+                        Record the browser's address while recording
                         <span className="ml-muted">
                             {" "}
                             (Safari, Chrome, Arc, Edge and Brave, while screen capture is on and Accessibility is already
@@ -377,7 +377,7 @@ function ReferenceForm({
                 id="ml-url"
                 className="ml-input"
                 value={form.url}
-                placeholder="https://example.edu/syllabus"
+                placeholder="https://example.com/slides"
                 autoFocus
                 spellCheck={false}
                 autoCapitalize="off"
@@ -392,7 +392,7 @@ function ReferenceForm({
                 className="ml-input"
                 value={form.title}
                 maxLength={200}
-                placeholder="Syllabus, Chapter 3 reading, Lecture slides…"
+                placeholder="Agenda, slides, Chapter 3 reading…"
                 onChange={(e) => onChange({ ...form, title: e.target.value })}
             />
             <label className="ml-label" htmlFor="ml-note">

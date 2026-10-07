@@ -106,7 +106,7 @@ function WelcomeStep() {
             <div className="step-icon">
                 <MicIcon size={22} />
             </div>
-            <h2>Record, transcribe and remember your meetings</h2>
+            <h2>Record, transcribe and remember meetings, classes and everyday conversations</h2>
             <p className="step-description">
                 noFriction captures your microphone, the call audio and screenshots of your screen while you record,
                 transcribes on this Mac, and keeps everything in a private library you can search, edit and delete.
@@ -286,7 +286,7 @@ function PermissionsStep() {
 
             <p className="setup-footnote">
                 Notifications are requested when you start your first recording, so noFriction can tell you when a
-                meeting seems to have ended.
+                recording seems to have ended.
             </p>
 
             {perms && !perms.microphone && (
@@ -524,8 +524,9 @@ function DoneStep() {
             </div>
             <h2>You're all set</h2>
             <p className="step-description">
-                Click START CAPTURE when your meeting begins. Recording stops by itself when the meeting ends (you get a
-                30-second heads-up), and the recording lands in REWIND with its transcript, screenshots and notes.
+                Click START CAPTURE when you're ready. You pick how long it records, and it can also stop by itself when a
+                meeting ends (you get a 30-second heads-up). The recording lands in REWIND with its transcript,
+                screenshots and notes.
             </p>
             <div className="quick-start">
                 <h3>Shortcuts</h3>
@@ -537,7 +538,7 @@ function DoneStep() {
                         <kbd>⌘K</kbd> command palette · <kbd>⌘,</kbd> settings
                     </li>
                     <li>
-                        <kbd>⌘2</kbd> your recordings · <kbd>⇧⌘I</kbd> chat with your meetings
+                        <kbd>⌘2</kbd> your recordings · <kbd>⇧⌘I</kbd> chat with your recordings
                     </li>
                 </ul>
             </div>

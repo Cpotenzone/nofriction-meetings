@@ -19,14 +19,23 @@ pub struct Meeting {
     /// Planned length in minutes (timed recording); None = no limit
     #[serde(default)]
     pub planned_minutes: Option<i64>,
-    /// Class this recording belongs to (classes.rs); None = not a class
+    /// The recording's notebook (notebooks.rs). The column keeps its old
+    /// name `class_name`; None = no notebook
     #[serde(default)]
     pub class_name: Option<String>,
+    /// "meeting" | "class" | "personal" (recording_kind.rs); a NULL column
+    /// reads as "meeting"
+    #[serde(default = "default_recording_kind")]
+    pub recording_kind: String,
+}
+
+fn default_recording_kind() -> String {
+    crate::recording_kind::RecordingKind::default().as_str().to_string()
 }
 
 /// Columns read into [`Meeting`] by [`meeting_from_row`].
 pub(crate) const MEETING_COLUMNS: &str =
-    "id, title, started_at, ended_at, duration_seconds, planned_minutes, class_name";
+    "id, title, started_at, ended_at, duration_seconds, planned_minutes, class_name, recording_kind";
 
 /// A `meetings` row selected with [`MEETING_COLUMNS`].
 pub(crate) fn meeting_from_row(r: &sqlx::sqlite::SqliteRow) -> Meeting {
@@ -44,6 +53,11 @@ pub(crate) fn meeting_from_row(r: &sqlx::sqlite::SqliteRow) -> Meeting {
         calendar_event_id: None,
         planned_minutes: r.get("planned_minutes"),
         class_name: r.get("class_name"),
+        recording_kind: crate::recording_kind::RecordingKind::from_stored(
+            r.get::<Option<String>, _>("recording_kind").as_deref(),
+        )
+        .as_str()
+        .to_string(),
     }
 }
 
@@ -1044,8 +1058,10 @@ impl DatabaseManager {
         // People + calendar meeting details (owned by people.rs)
         crate::people::ensure_schema(&mut conn).await?;
 
-        // Timed recording + classes: meetings.planned_minutes / class_name (classes.rs)
-        crate::classes::ensure_schema(&mut conn).await?;
+        // Timed recording + notebooks: meetings.planned_minutes / class_name (notebooks.rs)
+        crate::notebooks::ensure_schema(&mut conn).await?;
+        // Recording type: meetings.recording_kind, backfilled once from class_name
+        crate::recording_kind::ensure_schema(&mut conn).await?;
 
         // Editing + "Strike from the record" (docs/REDACTION.md)
         crate::redaction::ensure_schema(&mut conn).await?;
@@ -1081,6 +1097,7 @@ impl DatabaseManager {
             calendar_event_id: None,
             planned_minutes: None,
             class_name: None,
+            recording_kind: default_recording_kind(),
         })
     }
 
@@ -1290,13 +1307,13 @@ impl DatabaseManager {
         Ok(rows.iter().map(meeting_from_row).collect())
     }
 
-    /// Meetings of one class (matched ignoring case), newest first
-    pub async fn list_meetings_in_class(&self, class_name: &str, limit: i32) -> Result<Vec<Meeting>, sqlx::Error> {
+    /// Recordings in one notebook (matched ignoring case), newest first
+    pub async fn list_meetings_in_notebook(&self, notebook: &str, limit: i32) -> Result<Vec<Meeting>, sqlx::Error> {
         let rows = sqlx::query(&format!(
             "SELECT {} FROM meetings WHERE class_name = ? COLLATE NOCASE ORDER BY started_at DESC LIMIT ?",
             MEETING_COLUMNS
         ))
-        .bind(class_name.trim())
+        .bind(notebook.trim())
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;

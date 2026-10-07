@@ -100,7 +100,7 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(menu_ids::ASK_AI, "Chat with Your Meetings")
+            &MenuItemBuilder::with_id(menu_ids::ASK_AI, "Chat with Your Recordings")
                 .accelerator("CmdOrCtrl+Shift+I")
                 .build(app)?,
         )

@@ -1,7 +1,8 @@
 //! Moment markers (docs/STUDY_TOOLS.md): while recording, the user marks a
-//! moment as ★ Important, ? Question (confused) or ✎ On the test, with an
-//! optional short note. One tap marks ★; the kind and note can be changed
-//! afterwards.
+//! moment as ★ Important, ? Question or ✎ (labelled by the recording's
+//! type: On the test for a class, Follow up for a meeting, Remember for
+//! personal; stored as `test` for all three), with an optional short note.
+//! One tap marks ★; the kind and note can be changed afterwards.
 //!
 //! Markers live in `meeting_markers` (this module owns the table) and go
 //! with their meeting (`ON DELETE CASCADE`). A note is user content: a
@@ -50,10 +51,13 @@ pub fn symbol(kind: &str) -> &'static str {
     }
 }
 
-pub fn label(kind: &str) -> &'static str {
+/// The kind's label in a recording of type `rec`: the stored `test` kind is
+/// "On the test" in a class, "Follow up" in a meeting, "Remember" in a
+/// personal recording.
+pub fn label(kind: &str, rec: crate::recording_kind::RecordingKind) -> &'static str {
     match kind {
         "question" => "Question",
-        "test" => "On the test",
+        "test" => rec.third_mark_label(),
         _ => "Important",
     }
 }
@@ -435,7 +439,20 @@ mod tests {
         assert!(clean_note(Some(&"x".repeat(MAX_NOTE_CHARS + 1))).is_err());
         assert!(clean_note(Some(&"é".repeat(MAX_NOTE_CHARS))).unwrap().is_some(), "counts characters, not bytes");
         assert_eq!((symbol("important"), symbol("question"), symbol("test")), ("★", "?", "✎"));
-        assert_eq!(label("test"), "On the test");
+    }
+
+    #[test]
+    fn labels_follow_the_recording_type_and_the_stored_kind_does_not() {
+        use crate::recording_kind::RecordingKind::*;
+        assert_eq!(label("test", Class), "On the test");
+        assert_eq!(label("test", Meeting), "Follow up");
+        assert_eq!(label("test", Personal), "Remember");
+        for rec in [Class, Meeting, Personal] {
+            assert_eq!(label("important", rec), "Important");
+            assert_eq!(label("question", rec), "Question");
+        }
+        // One stored value for the third mark, whatever the type
+        assert_eq!(KINDS, &["important", "question", "test"]);
     }
 
     #[tokio::test]

@@ -24,7 +24,7 @@ export const HelpView: React.FC = () => {
         <div className="help-view">
             <div className="help-header">
                 <h2>noFriction Documentation</h2>
-                <p>How to record, review and work with your meetings, and where your data goes.</p>
+                <p>How to record, review and work with your meetings, classes and everything else, and where your data goes.</p>
             </div>
 
             <div className="help-tabs">
@@ -55,8 +55,8 @@ const ProNote: React.FC<Caps> = ({ caps }) =>
     caps?.pro_gating ? (
         <div className="help-callout">
             <p><strong>noFriction Pro:</strong> in the Mac App Store version, AI features (notes, summaries,
-                action items, follow-up emails, chat and briefings) need a noFriction Pro subscription. Recording, transcription,
-                Rewind, editing, calendar and export are free. Manage it in <strong>Settings → Subscription</strong>.</p>
+                to-dos, review guides, follow-up emails, chat and briefings) need a noFriction Pro subscription. Recording,
+                transcription, marks, Rewind, editing, calendar and export are free. Manage it in <strong>Settings → Subscription</strong>.</p>
         </div>
     ) : null;
 
@@ -68,10 +68,10 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Getting Started</h3>
             <p>
-                noFriction Meetings records your meetings on your Mac. It captures your microphone and the
-                sound from your call app, transcribes it live with Whisper running on this Mac (no account or
-                key needed), takes screenshots for a visual timeline, and can write AI meeting notes with the
-                AI provider you choose.
+                noFriction records meetings, classes and everyday conversations on your Mac. It captures your
+                microphone and (for calls) the sound from your call app, transcribes it live with Whisper running on
+                this Mac (no account or key needed), takes screenshots for a visual timeline you can rewind, and can
+                write AI notes with the AI provider you choose.
             </p>
             <div className="help-callout">
                 <p><strong>Quick Start:</strong> On first launch the setup assistant walks you through permissions,
@@ -90,10 +90,10 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
                 </thead>
                 <tbody>
                     <tr><td>LIVE</td><td>The current recording: live transcript, screen captures, and a Snap button to capture a screen or window on demand.</td></tr>
-                    <tr><td>REWIND</td><td>Your recordings. Pick a meeting and switch between Rewind (screenshots + transcript) and Notes (AI notes). Tabs: Recordings, People, Insights, Search.</td></tr>
-                    <tr><td>INTEL</td><td>Upcoming calendar meetings with AI attendee briefings, recent meetings, and your Obsidian knowledge graph.</td></tr>
-                    <tr><td>CHAT</td><td>Ask questions about your meetings and get answers with links to the sources.</td></tr>
-                    <tr><td>MORE → VAULT</td><td>Browse the meeting notes exported to your Obsidian vault, by topic and tag.</td></tr>
+                    <tr><td>REWIND</td><td>Your recordings, filtered by Notebook. Pick one and switch between Rewind (screenshots + transcript), Notes (AI notes), Links and Review (a review guide). Tabs: Recordings, People, Insights, Search.</td></tr>
+                    <tr><td>INTEL</td><td>Upcoming calendar meetings with AI attendee briefings, recent recordings, and your Obsidian knowledge graph.</td></tr>
+                    <tr><td>CHAT</td><td>Ask questions about your recordings and get answers with links to the sources.</td></tr>
+                    <tr><td>MORE → VAULT</td><td>Browse the notes exported to your Obsidian vault, by topic and tag.</td></tr>
                     <tr><td>MORE → ZEN</td><td>A minimal, distraction-free recording screen.</td></tr>
                     <tr><td>MORE → PROMPTS</td><td>Prompt Studio: view, edit, test and duplicate the AI prompts, per persona.</td></tr>
                     <tr><td>MORE → HELP</td><td>This documentation.</td></tr>
@@ -111,8 +111,8 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
             <p>
                 While recording, click <strong>GENIE</strong> in the toolbar to shrink noFriction to a small floating
                 overlay showing recording status and transcript snippets, so you can keep working. With an AI
-                provider set up, live insights appear during the meeting (turn off with <strong>Live insights
-                during meetings</strong> in Settings → AI Engine).
+                provider set up, live insights appear while you record (turn off with <strong>Live insights
+                while recording</strong> in Settings → AI Engine).
             </p>
         </div>
 
@@ -127,7 +127,8 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
                     <tr><td>⌘.</td><td>Stop recording</td></tr>
                     <tr><td>⌘1</td><td>Live</td></tr>
                     <tr><td>⌘2</td><td>Recordings (REWIND)</td></tr>
-                    <tr><td>⇧⌘I</td><td>Chat with your meetings</td></tr>
+                    <tr><td>⇧⌘I</td><td>Chat with your recordings</td></tr>
+                    <tr><td>⌃⌥⌘M</td><td>Mark this moment (works while another app is in front)</td></tr>
                     <tr><td>⇧⌘P</td><td>Prompts</td></tr>
                     <tr><td>⌘K</td><td>Command palette</td></tr>
                     <tr><td>⌘,</td><td>Settings</td></tr>
@@ -145,8 +146,8 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
                 window closes, the calendar event ends, or nobody speaks for a set time (3 minutes by default).
                 A 30-second countdown banner then appears with <strong>Keep recording</strong> and
                 <strong> Stop now</strong>. If noFriction isn't in front, you get a macOS notification
-                ("Meeting seems to have ended — stopping in 30 s"); notification permission is requested the
-                first time you record.
+                ("Seems to have ended — stopping the recording in 30 s"); notification permission is requested
+                the first time you record. The in-app banner reads "This seems to have ended".
             </p>
             <p>
                 Turn it on or off and set the silence time in <strong>Settings → General → Recording</strong>, or
@@ -155,51 +156,81 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
         </div>
 
         <div className="help-section">
-            <h3>Timed Recording and Classes</h3>
+            <h3>What Is It? Type, Length and Notebook</h3>
             <p>
-                Clicking a Record button asks <strong>How long?</strong>: 15, 30, 60 or 90 minutes, or no limit
-                (keys 1–5, Enter starts, Esc cancels). Your last choice is remembered and used by ⌘N, the
-                menu-bar icon and the command palette. The recording stops by itself at the end, even with the
-                window closed. Five minutes before (two for a 15-minute recording) you get a warning with
-                <strong> +15 min</strong> and <strong>No limit</strong>; both are also in the capture bar and the
-                menu-bar icon.
+                Clicking a Record button opens a sheet with three questions:
             </p>
+            <ul>
+                <li><strong>What is it?</strong> <strong>Meeting</strong>, <strong>Class</strong> or
+                    <strong> Personal</strong> (keys M, C, P). Personal covers everything else: conversations,
+                    appointments, talks, ideas. The type sets how notes are written, what the third mark is called
+                    and the name of the Review guide. You can change it later on the recording.</li>
+                <li><strong>How long?</strong> 15, 30, 60 or 90 minutes, or no limit (keys 1–5). The recording stops
+                    by itself at the end, even with the window closed. Five minutes before (two for a 15-minute
+                    recording) you get a warning with <strong>+15 min</strong> and <strong>No limit</strong>; both are
+                    also in the capture bar and the menu-bar icon.</li>
+                <li><strong>Notebook</strong> (optional): a group for related recordings, such as "Acme project",
+                    "BIO 101" or "Health". Recent notebooks appear as chips. Filter Recordings with the
+                    <strong> Notebooks</strong> chips, and change a recording's notebook later on the recording.</li>
+            </ul>
             <p>
-                Add a <strong>Class</strong> (for example "BIO 101 — Cell Biology") in the same sheet, or later on
-                the recording. Filter Recordings by class, and a class recording's AI notes are lecture notes: key
-                concepts, definitions, examples, and the announcements and deadlines the instructor mentioned.
+                Enter starts and Esc cancels; the letter and number keys type normally while you're in the Notebook
+                field. Your last type and length are remembered and used by ⌘N, the menu-bar icon and the command
+                palette. A recording without a calendar event is titled with its notebook (or its type) and the
+                date, for example "BIO 101 — Oct 7" or "Personal — Oct 7". The first Class recording shows a one-time
+                reminder to check your school's recording policy.
             </p>
         </div>
 
         <div className="help-section">
-            <h3>Meeting Notes</h3>
+            <h3>AI Notes</h3>
             <p>
                 When you stop a recording longer than <strong>6 minutes</strong> and an AI provider is set up,
-                noFriction writes meeting notes automatically. You can also generate or regenerate them for
-                any meeting from its <strong>Notes</strong> view in REWIND. Notes include:
+                noFriction writes notes automatically. You can also generate or regenerate them for any recording
+                from its <strong>Notes</strong> view in REWIND. The notes follow the recording's type:
             </p>
             <ul>
-                <li><strong>Summary</strong>: a short overview of the meeting</li>
-                <li><strong>Key Topics</strong>: the main areas discussed</li>
-                <li><strong>Decisions</strong>: what was decided</li>
-                <li><strong>Action Items</strong>: tasks and who owns them</li>
+                <li><strong>Meeting</strong>: summary, key topics, decisions, and action items with who owns them.</li>
+                <li><strong>Class</strong>: lecture notes with key concepts, definitions and examples, and the
+                    announcements and deadlines the instructor mentioned.</li>
+                <li><strong>Personal</strong>: summary, key points, and to-dos and reminders.</li>
             </ul>
             <p>
-                <strong>Follow-up email</strong> on a meeting drafts a plain-text follow-up with your AI provider,
-                which you can copy or open in Mail.
+                <strong>Follow-up email</strong> on a meeting drafts a plain-text follow-up to the people in it with
+                your AI provider, which you can copy or open in Mail.
             </p>
             <div className="help-callout">
                 <p><strong>Tip:</strong> No AI provider yet? Recording and transcription work fully without one; AI
                     features show an "Add an AI key" button that takes you to <strong>Settings → AI Engine</strong>.
-                    Turn automatic notes off there with <strong>Write a report after each meeting</strong>. You can
-                    change the notes prompt per persona in <strong>PROMPTS</strong>.</p>
+                    Turn automatic notes off there with <strong>Write notes after each recording</strong>. You can
+                    change the meeting notes prompt per persona in <strong>PROMPTS</strong>.</p>
             </div>
+        </div>
+
+        <div className="help-section">
+            <h3>Marks and the Review Guide</h3>
+            <p>
+                While recording, click <strong>Mark</strong> in the capture bar, choose <strong>File → Mark
+                Moment</strong>, or press <strong>⌃⌥⌘M</strong> from any app to mark the moment. A mark is
+                <strong> ★ Important</strong> unless you pick another type in the card that appears:
+                <strong> ? Question</strong>, or a third mark named for the recording's type:
+                <strong> ✎ Follow up</strong> (meeting), <strong>✎ On the test</strong> (class) or
+                <strong> ✎ Remember</strong> (personal). Add a note if you like. Marks show on the scrubber, in the
+                transcript and in a list you can filter in Rewind.
+            </p>
+            <p>
+                <strong>REVIEW</strong> turns a stopped recording into a <strong>Review guide</strong> (a
+                <strong> Study guide</strong> for a class): a summary, key terms, flashcards, a practice quiz and
+                questions to ask, with extra weight on what you marked. Export the flashcards as a CSV file that
+                flashcard apps can import, or the whole guide as Markdown. Deleting or striking transcript text
+                deletes the guide.
+            </p>
         </div>
 
         <div className="help-section">
             <h3>Editing and "Strike from the record"</h3>
             <p>
-                In a past meeting's Rewind, click a word to select it (shift-click or drag for more,
+                In a past recording's Rewind, click a word to select it (shift-click or drag for more,
                 double-click for a whole line), or select screenshots with ⌘-click or <strong>Select screens</strong>.
                 Then choose:
             </p>
@@ -221,7 +252,7 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
             <h3>Links and References</h3>
             <p>
                 Each recording has a <strong>Links</strong> view (next to Rewind and Notes) with every site that came
-                up in the meeting:
+                up in it:
             </p>
             <ul>
                 <li><strong>Said</strong>: addresses in the transcript, including spoken ones like "khan academy dot org slash math".</li>
@@ -229,7 +260,7 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
                     Safari, Chrome, Arc, Edge or Brave page you had in front while recording. That needs Accessibility to
                     be allowed already; noFriction never asks for it just for this, and you can turn it off at the bottom
                     of the Links view.</li>
-                <li><strong>Added</strong>: references you add yourself, like the syllabus, a reading or the slides, with an
+                <li><strong>Added</strong>: references you add yourself, like the agenda, the slides or a reading, with an
                     optional title and note.</li>
             </ul>
             <p>
@@ -237,22 +268,22 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
                 links in your browser; <strong>Hide</strong> takes a detected link off the list;{" "}
                 <strong>Copy all as Markdown</strong> copies the list. Links are found on this Mac: noFriction never
                 visits the pages, not even for titles or icons. Deleting or striking the words or screens a link came
-                from removes the link too, and deleting the meeting removes its references.
+                from removes the link too, and deleting the recording removes its references.
             </p>
         </div>
 
         <div className="help-section">
-            <h3>Chat — Asking AI About Your Meetings</h3>
+            <h3>Chat — Asking AI About Your Recordings</h3>
             <p>
-                <strong>CHAT</strong> answers natural-language questions from your own meetings, for example:
+                <strong>CHAT</strong> answers natural-language questions from your own recordings, for example:
             </p>
             <ul>
                 <li>"What decisions were made in last Tuesday's standup?"</li>
-                <li>"Summarize all mentions of the budget across my meetings."</li>
-                <li>"Who has action items from the last 3 meetings?"</li>
+                <li>"What did the professor say about the midterm?"</li>
+                <li>"What did the doctor say about the new prescription?"</li>
             </ul>
             <p>
-                noFriction searches your meetings on this Mac, sends the most relevant passages with your question
+                noFriction searches your recordings on this Mac, sends the most relevant passages with your question
                 to your AI provider, and shows which sources the answer came from.
             </p>
         </div>
@@ -261,7 +292,8 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
             <h3>Long Recordings</h3>
             <p>
                 At <strong>75 minutes</strong>, noFriction asks whether to start a new segment. Splitting very long
-                recordings keeps transcription quality up; choose Keep Recording to carry on.
+                recordings keeps transcription quality up; choose Keep Recording to carry on. A new segment keeps the
+                type, the notebook and the time that was left.
             </p>
         </div>
 
@@ -277,7 +309,7 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
             <h3>Obsidian Export</h3>
             <p>
                 Point noFriction at your Obsidian vault in <strong>Settings → Obsidian</strong> and turn on
-                Auto-Export to save each meeting as Markdown in a <code>noFriction</code> folder inside the vault
+                Auto-Export to save each recording as Markdown in a <code>noFriction</code> folder inside the vault
                 when recording stops.
             </p>
         </div>
@@ -290,14 +322,14 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
 const HowTo: React.FC<Caps> = ({ caps }) => (
     <>
         <div className="help-section">
-            <h3>How to Record a Meeting</h3>
+            <h3>How to Record</h3>
             <ol>
                 <li>Pick your microphone in <strong>Settings → General → Microphone</strong> (optional; the system default is used otherwise).</li>
-                <li>Leave <strong>Capture System Audio</strong> on (Settings → General) to record the other people on the call.</li>
-                <li>Click <strong>START CAPTURE</strong> in the top-right and choose how long (and, for a lecture, the class), or press ⌘N or use the menu-bar icon to start with your last length. The status pill shows <strong>RECORDING</strong>.</li>
-                <li>The live transcript appears in <strong>LIVE</strong>.</li>
-                <li>Click <strong>STOP CAPTURE</strong> (⌘.), or let auto-stop end it when the meeting is over.</li>
-                <li>For recordings over 6 minutes, AI notes are written automatically if an AI provider is set up and <strong>Write a report after each meeting</strong> is on.</li>
+                <li>For a call, leave <strong>Capture System Audio</strong> on (Settings → General) to record the other people on it.</li>
+                <li>Click <strong>START CAPTURE</strong> in the top-right, pick what it is (Meeting, Class or Personal), how long, and optionally a notebook. Or press ⌘N or use the menu-bar icon to start with your last type and length. The status pill shows <strong>RECORDING</strong>.</li>
+                <li>The live transcript appears in <strong>LIVE</strong>. Press <strong>⌃⌥⌘M</strong> to mark a moment.</li>
+                <li>Click <strong>STOP CAPTURE</strong> (⌘.), wait for the time limit, or let auto-stop end it when a meeting is over.</li>
+                <li>For recordings over 6 minutes, AI notes are written automatically if an AI provider is set up and <strong>Write notes after each recording</strong> is on.</li>
             </ol>
         </div>
 
@@ -306,8 +338,8 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
             <ol>
                 <li>Open <strong>Settings → AI Engine</strong>.</li>
                 <li>Enter your own OpenAI-compatible endpoint URL, model name and optional API key. Nothing is preconfigured; saving the connection sends no test request.</li>
-                <li>The first time, confirm <strong>"Send meeting content to {"{Provider}"}?"</strong>. Nothing is sent until you allow it.</li>
-                <li>Choose whether to get <strong>Live insights during meetings</strong> and <strong>Write a report after each meeting</strong> (both on by default).</li>
+                <li>The first time, confirm <strong>"Send recording content to your endpoint?"</strong>. Nothing is sent until you allow it.</li>
+                <li>Choose whether to get <strong>Live insights while recording</strong> and <strong>Write notes after each recording</strong> (both on by default).</li>
                 <li>Prefer to stay offline? Enter a local OpenAI-compatible server under
                     <strong> Local &amp; custom servers</strong>, or Apple's on-device model on macOS 26 with Apple Intelligence on (no key).</li>
             </ol>
@@ -317,29 +349,39 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>How to View and Regenerate Notes</h3>
             <ol>
-                <li>Go to <strong>REWIND</strong> and select a meeting.</li>
-                <li>Switch to <strong>Notes</strong> to see the summary, key topics, decisions and action items.</li>
-                <li>Click <strong>Generate notes</strong> (no notes yet) or <strong>Regenerate</strong> (to redo them, for example after an edit).</li>
-                <li>For a follow-up email, use <strong>Follow-up email</strong> on the meeting, then Copy or Open in Mail.</li>
+                <li>Go to <strong>REWIND</strong> and select a recording.</li>
+                <li>Switch to <strong>Notes</strong> to see the notes for its type (meeting notes, lecture notes, or a summary with key points and to-dos).</li>
+                <li>Click <strong>Generate notes</strong> (no notes yet) or <strong>Regenerate</strong> (to redo them, for example after an edit or after changing the recording's type).</li>
+                <li>For a follow-up email, use <strong>Follow-up email</strong> on a meeting, then Copy or Open in Mail.</li>
+            </ol>
+        </div>
+
+        <div className="help-section">
+            <h3>How to Make a Review Guide</h3>
+            <ol>
+                <li>Go to <strong>REWIND</strong>, select a stopped recording, and switch to <strong>REVIEW</strong>.</li>
+                <li>Click <strong>Make review guide</strong> (<strong>Make study guide</strong> for a class).</li>
+                <li>Use the tabs for the summary, key terms, flashcards, the practice quiz, questions to ask and your marks. "Jump to this moment" shows the moment in Rewind.</li>
+                <li>Export the flashcards (CSV) or the whole guide (Markdown) with the buttons below it.</li>
             </ol>
         </div>
 
         <div className="help-section">
             <h3>How to Delete or Strike Something</h3>
             <ol>
-                <li>Go to <strong>REWIND</strong>, select a meeting, and find the words or screenshots in its Rewind view.</li>
+                <li>Go to <strong>REWIND</strong>, select a recording, and find the words or screenshots in its Rewind view.</li>
                 <li>Click a word (shift-click or drag for more), or ⌘-click screenshots / use <strong>Select screens</strong>.</li>
                 <li>Choose <strong>Delete</strong> (5-second Undo) or <strong>Strike from the record…</strong> (permanent, leaves a marker).</li>
                 <li>Press <strong>Esc</strong> to clear the selection.</li>
             </ol>
-            <p>To delete a whole meeting, use the delete button next to it in the REWIND list.</p>
+            <p>To delete a whole recording, use the delete button next to it in the REWIND list.</p>
         </div>
 
         <div className="help-section">
             <h3>How to Use Chat</h3>
             <ol>
-                <li>Open <strong>CHAT</strong> (⇧⌘I) and type a question about your meetings.</li>
-                <li>Press Enter. The answer lists the meetings and passages it used.</li>
+                <li>Open <strong>CHAT</strong> (⇧⌘I) and type a question about your recordings.</li>
+                <li>Press Enter. The answer lists the recordings and passages it used.</li>
             </ol>
         </div>
 
@@ -353,7 +395,8 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
             </ol>
             <div className="help-callout">
                 <p><strong>Tip:</strong> To change the format of your meeting notes, edit the <strong>meeting_report</strong> prompt
-                    for your persona (Meeting category). It's used when you generate or regenerate notes.</p>
+                    for your persona (Meeting category). It's used when you generate or regenerate notes for a Meeting-type
+                    recording; Class and Personal recordings use their own built-in notes styles.</p>
             </div>
         </div>
 
@@ -361,7 +404,7 @@ const HowTo: React.FC<Caps> = ({ caps }) => (
             <h3>How to Export to Obsidian</h3>
             <ol>
                 <li>Open <strong>Settings → Obsidian</strong> and choose your vault folder, then click Save.</li>
-                <li>Turn on <strong>Auto-Export Meetings</strong> to save each meeting to the vault when recording stops.</li>
+                <li>Turn on <strong>Auto-Export Recordings</strong> to save each recording to the vault when recording stops.</li>
             </ol>
         </div>
 
@@ -426,17 +469,17 @@ const TechSpec: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>How Notes Are Made</h3>
             <ol>
-                <li><strong>Trigger</strong>: automatically when you stop a recording longer than 6 minutes (if an AI provider is ready and "Write a report after each meeting" is on), or when you click Generate notes / Regenerate.</li>
-                <li><strong>Prompt</strong>: the transcript is combined with the notes prompt (editable in PROMPTS). Stricken passages appear only as "[stricken from the record]".</li>
+                <li><strong>Trigger</strong>: automatically when you stop a recording longer than 6 minutes (if an AI provider is ready and "Write notes after each recording" is on), or when you click Generate notes / Regenerate.</li>
+                <li><strong>Prompt</strong>: the transcript is combined with the notes prompt for the recording's type: the meeting notes prompt (editable in PROMPTS), or the built-in lecture or personal notes prompt. Stricken passages appear only as "[stricken from the record]".</li>
                 <li><strong>Send</strong>: the request goes straight from this Mac to the provider you chose in Settings → AI Engine, using your key, after you've allowed that provider. With Apple's on-device model or a local server it never leaves your Mac or network.</li>
-                <li><strong>Save</strong>: the notes are stored with the meeting and shown in its Notes view.</li>
+                <li><strong>Save</strong>: the notes are stored with the recording and shown in its Notes view.</li>
             </ol>
         </div>
 
         <div className="help-section">
             <h3>Chat</h3>
             <p>
-                Your question is matched against your meetings with local full-text search. The best-matching
+                Your question is matched against your recordings with local full-text search. The best-matching
                 passages are sent with the question to your AI provider, and the answer lists its sources.
             </p>
         </div>
@@ -468,11 +511,11 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Data Privacy & Local Storage</h3>
             <div className="help-callout security">
-                <p><strong>Meeting content is stored on this Mac.</strong> Recordings, transcripts, screenshots and meeting
-                    notes live in a local database. Optional AI requests go directly to the endpoint you configure;
-                    the app asks before sending meeting content to a public endpoint. Your selected server may retain
-                    a copy under its policy. Transcription uses Local Whisper. Model downloads and Apple services
-                    also use the network; noFriction operates no meeting-data server.</p>
+                <p><strong>Everything you record is stored on this Mac.</strong> Recordings, transcripts, screenshots,
+                    notes and review guides live in a local database. Optional AI requests go directly to the endpoint
+                    you configure; the app asks before sending recording content to a public endpoint. Your selected
+                    server may retain a copy under its policy. Transcription uses Local Whisper. Model downloads and
+                    Apple services also use the network; noFriction operates no server for your data.</p>
             </div>
             <p>Your data folder:</p>
             <div className="help-code">
@@ -497,8 +540,8 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Consent Before Sending</h3>
             <p>
-                Before the first request to a cloud AI provider, noFriction asks <strong>"Send meeting content to
-                {" {Provider}"}?"</strong> and explains what will be sent. You approve each provider once.
+                Before the first request to a cloud AI provider, noFriction asks <strong>"Send recording content to
+                your endpoint?"</strong>, shows the destination and explains what will be sent. You approve each provider once.
                 Settings → AI Engine shows what leaves this device for the active provider and lets you revoke the
                 permission. Local servers and Apple's on-device model don't need this, because nothing leaves your Mac.
             </p>
@@ -511,7 +554,7 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
                     <tr><th>Service</th><th>Protocol</th><th>Data Sent</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td>Your AI provider (only once you've added a key and allowed it)</td><td>HTTPS</td><td>Transcript text, meeting title, attendee names; screenshots for screen features</td></tr>
+                    <tr><td>Your AI provider (only once you've added a key and allowed it)</td><td>HTTPS</td><td>Transcript text, the recording's title and notebook, attendee names; screenshots for screen features</td></tr>
                     <tr><td>Hugging Face (once)</td><td>HTTPS</td><td>Nothing; downloads the Whisper model</td></tr>
                     {caps?.storekit && <tr><td>Apple App Store</td><td>HTTPS</td><td>Subscription purchase and status (handled by Apple)</td></tr>}
                 </tbody>
@@ -532,7 +575,7 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
                     <tr><td>Microphone</td><td>Recording your voice for transcription</td></tr>
                     <tr><td>Screen Recording</td><td>Screenshots for the visual timeline, and system audio from your call app</td></tr>
                     <tr><td>Calendar</td><td>Meeting titles, attendees and end times</td></tr>
-                    <tr><td>Notifications</td><td>The "meeting seems to have ended" alert (optional)</td></tr>
+                    <tr><td>Notifications</td><td>The time-limit warning and the "seems to have ended" alert (optional)</td></tr>
                     {caps?.accessibility_capture && <tr><td>Accessibility</td><td>Reading on-screen text from other apps (optional; not in the Mac App Store version)</td></tr>}
                 </tbody>
             </table>
@@ -541,8 +584,8 @@ const SecurityManual: React.FC<Caps> = ({ caps }) => (
         <div className="help-section">
             <h3>Data Retention & Deletion</h3>
             <p>
-                Your data stays until you delete it. Delete a whole meeting with the delete button in the REWIND
-                list. To remove part of a meeting everywhere it appears, use Delete or Strike from the record
+                Your data stays until you delete it. Delete a whole recording with the delete button in the REWIND
+                list. To remove part of a recording everywhere it appears, use Delete or Strike from the record
                 (see Help Guide). <strong>Settings → Data</strong> has storage cleanup and an export of your data.
             </p>
             <p>
@@ -573,7 +616,7 @@ const ServicesManual: React.FC<Caps> = ({ caps }) => (
                     <tr><td><strong>Cloud (your key)</strong></td><td>Your own OpenAI-compatible endpoint URL and model; no built-in service</td></tr>
                     <tr><td><strong>Local (no key)</strong></td><td>A local OpenAI-compatible endpoint you configure</td></tr>
                     <tr><td><strong>On-device</strong></td><td>Apple's model on macOS 26 with Apple Intelligence on (no key, never leaves your Mac)</td></tr>
-                    <tr><td><strong>Used For</strong></td><td>Meeting notes, follow-up emails, live insights, Chat answers, attendee briefings, screen analysis</td></tr>
+                    <tr><td><strong>Used For</strong></td><td>Notes, review guides, follow-up emails, live insights, Chat answers, attendee briefings, screen analysis</td></tr>
                     <tr><td><strong>Billing</strong></td><td>By your provider, under your account; their privacy policy and terms apply</td></tr>
                     <tr><td><strong>Setup</strong></td><td>Settings → AI Engine → enter endpoint, model and optional key</td></tr>
                 </tbody>
@@ -601,7 +644,7 @@ const ServicesManual: React.FC<Caps> = ({ caps }) => (
             <table className="help-table">
                 <tbody>
                     <tr><td><strong>Integration Type</strong></td><td>Local files only (writes Markdown into the folder you choose)</td></tr>
-                    <tr><td><strong>Used For</strong></td><td>Exporting meetings; the VAULT and INTEL views read it back</td></tr>
+                    <tr><td><strong>Used For</strong></td><td>Exporting recordings; the VAULT and INTEL views read it back</td></tr>
                     <tr><td><strong>Setup</strong></td><td>Settings → Obsidian → choose your vault, turn on Auto-Export</td></tr>
                 </tbody>
             </table>

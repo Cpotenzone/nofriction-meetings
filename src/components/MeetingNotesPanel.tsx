@@ -1,7 +1,9 @@
 // noFriction Meetings - Notes for one recording (Recordings → Notes)
-// Shows the saved AI notes (written automatically after meetings over 6
+// Shows the saved AI notes (written automatically after recordings over 6
 // minutes, or on demand), with Generate / Regenerate, the "made before an
-// edit" banner, and a follow-up email draft.
+// edit" banner, and (meetings) a follow-up email draft. The notes' style
+// follows the recording's type: meeting notes, lecture notes (class) or
+// personal notes (summary, key points, to-dos and reminders).
 
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -10,6 +12,8 @@ import * as tauri from "../lib/tauri";
 import { aiErrorClass, friendlyAiError, isNoProviderError, withAiConsent } from "../lib/ai";
 import { useCapabilities } from "../lib/build";
 import { AiSetupNotice, useAiStatus } from "./AiSetupNotice";
+import { notesLayout, notesStyleHint } from "../lib/recordingKind";
+import { useRecordingKind } from "../hooks/useRecordingKind";
 import ErrorState from "./ErrorState";
 import "./MeetingNotesPanel.css";
 
@@ -50,7 +54,7 @@ function aiFailure(e: unknown, what: string): string {
         case "pro_required":
             return `${what} are part of noFriction Pro.`;
         case "consent_required":
-            return `${what} need your permission to send this meeting to your AI provider. Try again and choose Allow.`;
+            return `${what} need your permission to send this recording to your AI provider. Try again and choose Allow.`;
         default:
             return friendlyAiError(e);
     }
@@ -67,6 +71,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
     const [drafting, setDrafting] = useState(false);
     const { configured } = useAiStatus();
     const caps = useCapabilities();
+    const kind = useRecordingKind(meetingId);
     // A provider was just connected in Settings: clear the earlier failure
     useEffect(() => {
         if (configured) setNeedsAi(false);
@@ -97,7 +102,8 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
         setActionError(null);
         setNeedsAi(false);
         try {
-            // Uses the persona's meeting_report prompt (PROMPTS) and saves it
+            // A meeting uses the persona's meeting_report prompt (PROMPTS); a
+            // class or personal recording its own prompt (recording_kind.rs)
             await tauri.generateMeetingReport(meetingId);
             await load();
         } catch (e) {
@@ -146,15 +152,17 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
             <button className="mn-btn primary" onClick={generate} disabled={generating || showSetup}>
                 {generating ? (notes ? "Regenerating…" : "Writing notes…") : notes ? "Regenerate" : "Generate notes"}
             </button>
-            <button className="mn-btn" onClick={draftEmail} disabled={drafting || showSetup}>
-                {drafting ? "Drafting…" : `Follow-up email${proNote}`}
-            </button>
+            {kind === "meeting" && (
+                <button className="mn-btn" onClick={draftEmail} disabled={drafting || showSetup}>
+                    {drafting ? "Drafting…" : `Follow-up email${proNote}`}
+                </button>
+            )}
         </div>
     );
 
     return (
         <div className="mn-panel">
-            {showSetup && <AiSetupNotice feature="AI notes and follow-up emails" />}
+            {showSetup && <AiSetupNotice feature={kind === "meeting" ? "AI notes and follow-up emails" : "AI notes"} />}
             {actionError && (
                 <p className="mn-error" role="alert">
                     {actionError}
@@ -166,7 +174,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
                     <h3>No AI notes yet</h3>
                     <p>
                         Notes are written automatically when a recording longer than 6 minutes stops (Settings → AI
-                        Engine → Automatic AI). Generate them now from the transcript{proNote}.
+                        Engine → Automatic AI). Generate them now from the transcript{proNote}. {notesStyleHint(kind)}
                     </p>
                     {actions}
                 </div>
@@ -193,15 +201,18 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
     );
 }
 
-/** Notes written with the lecture prompt (the recording has a class; classes.rs). */
-const LECTURE_NOTES = "lecture-notes";
-
+/** The layout follows the prompt that wrote the notes (`model_used`), so
+ *  notes written before a type change keep their headings until regenerated. */
 function NotesBody({ notes }: { notes: SavedNotes }) {
     const topics = parseList<string>(notes.key_topics);
     const decisions = parseList<Decision>(notes.decisions);
     const actions = parseList<ActionItem>(notes.action_items);
-    if (notes.model_used === LECTURE_NOTES) {
+    const layout = notesLayout(notes.model_used);
+    if (layout === "lecture") {
         return <LectureNotesBody summary={notes.summary} concepts={topics} definitions={decisions} announcements={actions} />;
+    }
+    if (layout === "personal") {
+        return <PersonalNotesBody summary={notes.summary} points={topics} todos={actions} />;
     }
     return (
         <>
@@ -309,6 +320,45 @@ function LectureNotesBody({
                 ) : (
                     <ul>
                         {announcements.map((a, i) => (
+                            <li key={i}>
+                                {a.task}
+                                {a.due_date && <span className="mn-muted"> — {a.due_date}</span>}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+        </>
+    );
+}
+
+/** Same stored shape, framed for a personal recording: key points, to-dos and reminders. */
+function PersonalNotesBody({ summary, points, todos }: { summary: string | null; points: string[]; todos: ActionItem[] }) {
+    return (
+        <>
+            <section className="mn-section">
+                <h4>Summary</h4>
+                <p>{summary?.trim() || "No summary."}</p>
+            </section>
+            <section className="mn-section">
+                <h4>Key points</h4>
+                {points.length === 0 ? (
+                    <p className="mn-muted">None recorded.</p>
+                ) : (
+                    <ul>
+                        {points.map((t, i) => (
+                            <li key={i}>{t}</li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+            <section className="mn-section">
+                <h4>To-dos and reminders</h4>
+                {todos.length === 0 ? (
+                    <p className="mn-muted">None mentioned.</p>
+                ) : (
+                    <ul>
+                        {todos.map((a, i) => (
                             <li key={i}>
                                 {a.task}
                                 {a.due_date && <span className="mn-muted"> — {a.due_date}</span>}

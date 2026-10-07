@@ -36,12 +36,45 @@
 }
 
 .rpick__sub {
-  margin: 4px 0 16px;
+  margin: 4px 0 0;
   font-size: 13px;
   color: var(--text-secondary, #a3a3a3);
 }
 
+.rpick__section { margin-top: 18px; }
+
+/* "What is it?": Meeting · Class · Personal */
+.rpick__kinds {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #262626);
+}
+.rpick__kind {
+  position: relative;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.rpick__kind:hover { background: rgba(255, 255, 255, 0.04); }
+.rpick__kind.is-on {
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--hazard-yellow, #facc15);
+}
+.rpick__kind:focus-visible { outline: 2px solid var(--hazard-yellow, #facc15); outline-offset: 1px; }
+.rpick__kind .rpick__key { top: 50%; transform: translateY(-50%); right: 9px; }
+
 .rpick__choices {
+  margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
@@ -205,7 +238,7 @@
   z-index: 120;
 }
 
-/* ── One-time class notice ────────────────────────────────────────────── */
+/* ── One-time class notice (first Class-type recording) ────────────────────────────────────────── */
 
 .class-notice {
   position: fixed;
@@ -236,10 +269,11 @@
   cursor: pointer;
 }
 
-/* ── Library filter + meeting class ───────────────────────────────────── */
+/* ── Library filter (Notebooks) + a recording's type and notebook ─────── */
 
 .class-filter {
   display: flex;
+  align-items: center;
   gap: 6px;
   overflow-x: auto;
   padding: 2px 0 10px;
@@ -260,6 +294,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.class-filter__title {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #737373;
+}
+
+.kind-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color, #262626);
+  color: var(--text-secondary, #a3a3a3);
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.rec-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.class-field select {
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #262626);
+  background: var(--tactical-gray, #171717);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+}
+.class-field select:focus { outline: none; border-color: var(--hazard-yellow, #facc15); }
 
 .class-field {
   display: flex;

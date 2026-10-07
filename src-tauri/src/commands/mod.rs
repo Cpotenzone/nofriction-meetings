@@ -471,47 +471,59 @@ pub async fn request_permission(permission_type: String) -> Result<bool, String>
 
 /// Start recording with frame capture and live transcription.
 ///
-/// `plan` comes from the Record sheet ("how long?" + class). Starts that
-/// skip the sheet (menu shortcut, tray, command palette) pass none and get
-/// the remembered length. Every start arms the timer (timed_recording.rs).
+/// `plan` comes from the Record sheet ("What is it?", "How long?" and the
+/// notebook). Starts that skip the sheet (menu shortcut, tray, command
+/// palette) pass none and get the remembered type and length. Every start
+/// arms the timer (timed_recording.rs).
 #[tauri::command(rename_all = "camelCase")]
 pub async fn start_recording(
     app: AppHandle,
     state: State<'_, AppState>,
     plan: Option<crate::timed_recording::StartPlan>,
 ) -> Result<String, String> {
+    use crate::recording_kind::{self, RecordingKind};
     let remembered = crate::timed_recording::remembered(&app).await;
     let limit = crate::timed_recording::resolve_limit(plan.as_ref(), remembered)?;
-    let class_input = plan
+    let requested_kind = plan.as_ref().and_then(|p| p.recording_kind.as_deref());
+    let kind = recording_kind::resolve(requested_kind, recording_kind::remembered(&state.settings).await)?;
+    let notebook_input = plan
         .as_ref()
-        .and_then(|p| p.class_name.as_deref())
-        .and_then(crate::classes::normalize);
+        .and_then(|p| p.notebook.as_deref())
+        .and_then(crate::notebooks::normalize);
 
-    // Generate a new meeting ID
+    // Generate a new meeting ID. Untitled: "BIO 101 — Oct 7" / "Class — Oct 7"
+    // (a calendar match below replaces it with the event's title)
     let meeting_id = uuid::Uuid::new_v4().to_string();
-    let title = match &class_input {
-        Some(class) => format!("{} {}", class, chrono::Local::now().format("%Y-%m-%d %H:%M")),
-        None => format!("Meeting {}", chrono::Local::now().format("%Y-%m-%d %H:%M")),
-    };
+    let title = recording_kind::untitled_title(kind, notebook_input.as_deref(), &chrono::Local::now());
 
     // Create meeting in database
     state
         .database
         .create_meeting(&meeting_id, &title)
         .await
-        .map_err(|e| format!("Failed to create meeting: {}", e))?;
+        .map_err(|e| format!("Failed to create the recording: {}", e))?;
 
-    // Timed recording + class (user-entered metadata on the meeting row)
+    // Type, timed recording, notebook (user-entered metadata on the row)
+    if let Err(e) = state.database.set_meeting_kind(&meeting_id, kind).await {
+        log::warn!("Failed to save the recording type: {}", e);
+    }
     if let Err(e) = state.database.set_meeting_planned_minutes(&meeting_id, limit.minutes()).await {
         log::warn!("Failed to save the planned length: {}", e);
     }
-    if class_input.is_some() {
-        if let Err(e) = state.database.set_meeting_class(&meeting_id, class_input.as_deref()).await {
-            log::warn!("Failed to save the class: {}", e);
+    if notebook_input.is_some() {
+        if let Err(e) = state.database.set_meeting_notebook(&meeting_id, notebook_input.as_deref()).await {
+            log::warn!("Failed to save the notebook: {}", e);
         }
     }
     if plan.as_ref().map(|p| p.remember).unwrap_or(false) {
+        if requested_kind.is_some() {
+            recording_kind::remember(&state.settings, kind).await;
+        }
         crate::timed_recording::remember(&app, limit).await;
+    }
+    // First Class-type recording ever: a one-time reminder about school policy
+    if kind == RecordingKind::Class && recording_kind::take_class_notice(&state.settings).await {
+        let _ = app.emit(recording_kind::CLASS_NOTICE_EVENT, ());
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1549,13 +1561,13 @@ pub async fn set_setting(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_meetings(
     limit: Option<i32>,
-    class_name: Option<String>,
+    notebook: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Meeting>, String> {
     let limit = limit.unwrap_or(50);
-    // Library filter: one class (classes.rs), or everything
-    let listed = match class_name.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
-        Some(class) => state.database.list_meetings_in_class(class, limit).await,
+    // Library filter: one notebook (notebooks.rs), or everything
+    let listed = match notebook.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        Some(nb) => state.database.list_meetings_in_notebook(nb, limit).await,
         None => state.database.list_meetings(limit).await,
     };
     listed.map_err(|e| format!("Failed to list meetings: {}", e))

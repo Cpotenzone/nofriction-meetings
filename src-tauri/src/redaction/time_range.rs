@@ -1059,7 +1059,7 @@ pub(crate) async fn apply_range_locked(
     post_commit_purge(pool, env, meeting_id, &changes, jobs, action.replacement(), &mut out).await;
     if !file_errors.is_empty() {
         return Err(format!(
-            "The time range was removed from the meeting, but these files could not be deleted: {}",
+            "The time range was removed from the recording, but these files could not be deleted: {}",
             file_errors.join("; ")
         ));
     }

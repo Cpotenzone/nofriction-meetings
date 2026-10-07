@@ -1,6 +1,6 @@
 //! macOS notifications (tauri-plugin-notification) for events the user must
 //! see while the window is in the background — today the meeting-end
-//! countdown ("Meeting seems to have ended — stopping in 30 s").
+//! countdown ("Seems to have ended — stopping the recording in 30 s").
 //!
 //! - Posting goes through tauri-plugin-notification (NSUserNotificationCenter
 //!   on macOS). No entitlement is needed and it works in the App Sandbox.
@@ -38,7 +38,7 @@ mod ffi {
 
 /// Title for the meeting-end countdown notification.
 pub fn meeting_end_title(countdown_secs: i64) -> String {
-    format!("Meeting seems to have ended — stopping in {} s", countdown_secs.max(0))
+    format!("Seems to have ended — stopping the recording in {} s", countdown_secs.max(0))
 }
 
 /// Body: the detector's reason (app/window/calendar names only, never
@@ -142,8 +142,8 @@ mod tests {
 
     #[test]
     fn meeting_end_copy() {
-        assert_eq!(meeting_end_title(30), "Meeting seems to have ended — stopping in 30 s");
-        assert_eq!(meeting_end_title(-3), "Meeting seems to have ended — stopping in 0 s");
+        assert_eq!(meeting_end_title(30), "Seems to have ended — stopping the recording in 30 s");
+        assert_eq!(meeting_end_title(-3), "Seems to have ended — stopping the recording in 0 s");
         assert_eq!(
             meeting_end_body("Zoom stopped using the microphone"),
             "Zoom stopped using the microphone. Click to keep recording or stop now."
