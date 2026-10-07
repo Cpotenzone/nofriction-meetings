@@ -32,6 +32,12 @@ in a website hero. The music is optional.
   - Mac: the Mac app's real React UI (`src/`) running in Chromium with a
     mocked Tauri backend and invented demo data (`mac-harness/`), captured
     with Playwright.
+  - What is simulated inside that real UI: the words of the live
+    transcripts (the Simulator has no speech recognition, and the Mac
+    harness has no Rust backend, so invented lines are fed in at speaking
+    pace), the AI notes and study guides (stored demo text, no AI call),
+    and the Mac's screen captures (invented slides). The Mac UI is the Mac
+    App Store flavor with Pro active, so no paywall or prices appear.
 - **Motion graphics** (Remotion, `src/`): the type, the moment cards, the
   record button, mark chips, the timeline motif, backgrounds and the end
   card. The app previews add only captions above the real footage (Apple
@@ -60,8 +66,9 @@ npm --prefix marketing/film/mac-harness install
 npm install                                   # repo root, for the Mac UI harness (vite, react)
 
 # 1. footage (writes marketing/out/footage/{ios,watch,mac}/)
-marketing/film/capture/ios/capture.sh         # iPhone + Apple Watch clips and the 6.9" stills
-node marketing/film/mac-harness/capture.mjs   # Mac clips and the 2880x1800 stills
+marketing/film/capture/ios/capture.sh         # iPhone + Apple Watch clips and the 6.9" stills (details: capture/README.md)
+node marketing/film/mac-harness/make-frames.mjs   # the invented slides the Mac "captures"
+node marketing/film/mac-harness/capture.mjs       # Mac clips (3840x2160) and the 2880x1800 stills; or: stills | clips | mac-01-rewind …
 
 # 2. music (writes marketing/out/audio/score-*.wav)
 node marketing/film/scripts/make-score.mjs
@@ -75,6 +82,12 @@ node marketing/film/scripts/render-all.mjs            # or: film | previews
 composition with Remotion, encodes the deliverables with ffmpeg, and checks
 the app previews against Apple's spec (it prints `OK … meets Apple's app
 preview spec` or the problem).
+
+The Mac harness films in 10x slow motion (page clocks, timers, CSS and Web
+Animations slowed, frame times mapped back onto an exact 30 fps grid), so the
+clips stay smooth even on a busy machine; each clip takes a few minutes. To
+browse the harness yourself: `npx vite --config marketing/film/mac-harness/vite.config.mjs`
+from the repo root, then open `http://127.0.0.1:5193/?cursor=1`.
 
 To edit, run `npm --prefix marketing/film run studio` (Remotion Studio) after
 step 1 and 2. Which clip each shot uses, and from which second, is in

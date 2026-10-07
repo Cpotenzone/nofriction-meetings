@@ -30,10 +30,13 @@ const STILLS = join(FILM, "stills");
 const VPX_FFMPEG = join(FILM, "node_modules", "@remotion", "compositor-darwin-arm64", "ffmpeg");
 const which = process.argv[2] ?? "all";
 
-const run = (cmd, args, env) => {
+const run = (cmd, args, { cwd, env } = {}) => {
   console.log(`$ ${cmd.split("/").pop()} ${args.join(" ")}`);
-  execFileSync(cmd, args, { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, ...env } });
+  execFileSync(cmd, args, { cwd, stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, ...env } });
 };
+// Remotion's ffmpeg loads its dylibs from its own folder (as Remotion runs it)
+const VPX_DIR = dirname(VPX_FFMPEG);
+const runVpx = (args) => run(VPX_FFMPEG, args, { cwd: VPX_DIR, env: { DYLD_LIBRARY_PATH: VPX_DIR } });
 const mb = (f) => (statSync(f).size / 1e6).toFixed(2);
 
 mkdirSync(MASTERS, { recursive: true });
@@ -48,8 +51,13 @@ const serveUrl = await bundle({ entryPoint: join(FILM, "src", "index.ts"), publi
 
 async function master(id) {
   const inputProps = { music: true };
-  const composition = await selectComposition({ serveUrl, id, inputProps });
   const output = join(MASTERS, `${id}.mp4`);
+  // REUSE_MASTERS=1: re-encode the deliverables from the last masters
+  if (process.env.REUSE_MASTERS === "1" && existsSync(output)) {
+    console.log(`  ${id}: reusing ${output}`);
+    return output;
+  }
+  const composition = await selectComposition({ serveUrl, id, inputProps });
   let last = -1;
   await renderMedia({
     serveUrl,
@@ -127,8 +135,8 @@ if (which === "all" || which === "film") {
   // WebM: VP9 two-pass to a target bitrate so it stays under 12 MB
   const passlog = join(MASTERS, "vp9pass");
   const vp9 = ["-c:v", "libvpx-vp9", "-b:v", "1250k", "-minrate", "500k", "-maxrate", "2000k", "-row-mt", "1", "-tile-columns", "2", "-deadline", "good", "-pix_fmt", "yuv420p", "-r", "30", "-g", "120", "-passlogfile", passlog];
-  run(VPX_FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", m, ...vp9, "-pass", "1", "-cpu-used", "4", "-an", "-f", "webm", "/dev/null"]);
-  run(VPX_FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", m, ...vp9, "-pass", "2", "-cpu-used", "1", "-c:a", "libopus", "-b:a", "96k", "-ar", "48000", webm]);
+  runVpx(["-hide_banner", "-loglevel", "error", "-y", "-i", m, ...vp9, "-pass", "1", "-cpu-used", "4", "-an", "-f", "webm", "/dev/null"]);
+  runVpx(["-hide_banner", "-loglevel", "error", "-y", "-i", m, ...vp9, "-pass", "2", "-cpu-used", "1", "-c:a", "libopus", "-b:a", "96k", "-ar", "48000", webm]);
 
   // Poster: the signature Rewind shot, with its headline
   const film = await selectComposition({ serveUrl, id: "Film", inputProps: { music: false } });
