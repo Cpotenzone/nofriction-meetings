@@ -31,6 +31,7 @@ struct MeetingDetailView: View {
     @State private var studyProgress: MeetingAI.StudyProgress?
     @State private var studyFailures: [String] = []
     @State private var showStudy = false
+    @State private var studyRunning = false
     @State private var jumpTarget: PersistentIdentifier?
 
     enum AIAction { case notes, email, study }
@@ -43,7 +44,8 @@ struct MeetingDetailView: View {
                     if meeting.audioFileName != nil { playback }
                     if !meeting.segments.isEmpty { notes }
                     if !meeting.segments.isEmpty {
-                        StudySection(meeting: meeting, working: aiWorking, progress: studyProgress, failures: studyFailures,
+                        StudySection(meeting: meeting, working: studyRunning ? aiWorking : nil, busy: aiWorking != nil,
+                                     progress: studyProgress, failures: studyFailures,
                                      onMake: { requestAI(.study) }, onOpen: { showStudy = true })
                     }
                     if !meeting.markers.isEmpty { MarkersSection(meeting: meeting, onJump: jump) }
@@ -283,18 +285,24 @@ struct MeetingDetailView: View {
         let fingerprint = input.fingerprint
         studyFailures = []
         studyProgress = nil
+        studyRunning = true
         runAI("Making the study guide with \(endpoint.provider.name)…") {
-            defer { studyProgress = nil }
-            let results = try await MeetingAI.studyGuide(input, contextTokens: endpoint.contextTokens,
-                                                         complete: MeetingAI.liveComplete(endpoint)) { p in
-                await MainActor.run { studyProgress = p }
+            defer { studyProgress = nil; studyRunning = false }
+            do {
+                let results = try await MeetingAI.studyGuide(input, contextTokens: endpoint.contextTokens,
+                                                             complete: MeetingAI.liveComplete(endpoint)) { p in
+                    await MainActor.run { studyProgress = p }
+                }
+                let ok = results.compactMap { kind, r in (try? r.get()).map { (kind, $0) } }
+                studyFailures = results.compactMap { _, r in
+                    if case .failure(let f) = r { return f.errorDescription } else { return nil }
+                }
+                try StudyStore.save(ok, fingerprint: fingerprint, meeting: meeting, context: context)
+                if !ok.isEmpty { showStudy = true }
+            } catch {
+                // Shown in the Study section, not under the notes
+                studyFailures = [error.localizedDescription]
             }
-            let ok = results.compactMap { kind, r in (try? r.get()).map { (kind, $0) } }
-            studyFailures = results.compactMap { _, r in
-                if case .failure(let f) = r { return f.errorDescription } else { return nil }
-            }
-            try StudyStore.save(ok, fingerprint: fingerprint, meeting: meeting, context: context)
-            if !ok.isEmpty { showStudy = true }
         }
     }
 

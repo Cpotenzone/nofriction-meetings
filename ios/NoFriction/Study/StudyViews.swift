@@ -194,7 +194,10 @@ struct MarkerInlineRow: View {
 
 struct StudySection: View {
     let meeting: Meeting
+    /// The study guide is being made (label)
     let working: String?
+    /// Any AI action is running (one at a time)
+    let busy: Bool
     let progress: MeetingAI.StudyProgress?
     let failures: [String]
     let onMake: () -> Void
@@ -235,7 +238,7 @@ struct StudySection: View {
                 Button(has ? "Remake study guide" : "Make study guide", systemImage: "sparkles", action: onMake)
                     .buttonStyle(.bordered)
                     .tint(Theme.ai)
-                    .disabled(working != nil)
+                    .disabled(busy)
                     .font(.subheadline)
                     .accessibilityIdentifier("study-make")
             }
