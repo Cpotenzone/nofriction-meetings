@@ -151,15 +151,20 @@ pub async fn store(
 pub fn start(app: AppHandle, meeting_id: String) {
     tauri::async_runtime::spawn(async move {
         let mut tracker = Tracker::default();
-        loop {
-            tokio::time::sleep(POLL).await;
-            let Some(state) = app.try_state::<AppState>() else { break };
+        // (recording this meeting, paused)
+        let status = |state: &AppState| {
             let (recording, paused) = {
                 let engine = state.capture_engine.read();
                 (engine.is_recording(), engine.is_paused())
             };
             let current = state.state_builder.read().current_meeting_id();
-            if !recording || current.as_deref() != Some(meeting_id.as_str()) {
+            (recording && current.as_deref() == Some(meeting_id.as_str()), paused)
+        };
+        loop {
+            tokio::time::sleep(POLL).await;
+            let Some(state) = app.try_state::<AppState>() else { break };
+            let (recording, paused) = status(&state);
+            if !recording {
                 break;
             }
             if paused {
@@ -175,6 +180,10 @@ pub fn start(app: AppHandle, meeting_id: String) {
             }
             let page = tokio::task::spawn_blocking(read_frontmost_browser).await.ok().flatten();
             let Some(page) = page else { continue };
+            // The read can take a moment: store only if still recording, unpaused
+            if status(&state) != (true, false) {
+                continue;
+            }
             if let Some(cap) = tracker.next(&page) {
                 if let Err(e) = store(&state.database, &meeting_id, &cap, chrono::Utc::now()).await {
                     // Never the address itself
@@ -241,6 +250,11 @@ mod ax {
     /// Once an address field is found, how much further to look for the
     /// web area (whose `AXURL` is exact; the field may hide the scheme)
     const EXTRA_NODES: usize = 150;
+    /// Each AX call waits at most this long for a busy browser (the system
+    /// default is about 6 s, and it isn't inherited from the app element)
+    const CALL_TIMEOUT_SECS: f32 = 0.25;
+    /// One check gives up after this long
+    const BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 
     // Same signatures as accessibility_extractor.rs declares them
     #[link(name = "ApplicationServices", kind = "framework")]
@@ -308,9 +322,15 @@ mod ax {
             return None;
         }
         let app = Owned(app as CFTypeRef);
-        // A busy browser can't stall the check
-        AXUIElementSetMessagingTimeout(app.0 as *mut c_void, 0.5);
+        let started = std::time::Instant::now();
+        // A busy browser can't stall the check: a short timeout on every
+        // element asked, and a budget for the whole walk
+        let short = |el: CFTypeRef| {
+            AXUIElementSetMessagingTimeout(el as *mut c_void, CALL_TIMEOUT_SECS);
+        };
+        short(app.0);
         let window = copy(app.0, "AXFocusedWindow").or_else(|| copy(app.0, "AXMainWindow"))?;
+        short(window.0);
         let title = attr_text(window.0, "AXTitle").filter(|t| !t.trim().is_empty());
 
         // Breadth-first over the browser's own UI. Children arrays are kept
@@ -322,9 +342,10 @@ mod ax {
         let mut after_address = 0;
         while let Some((el, depth)) = queue.pop_front() {
             visited += 1;
-            if visited > MAX_NODES {
+            if visited > MAX_NODES || started.elapsed() > BUDGET {
                 break;
             }
+            short(el);
             if address.is_some() {
                 after_address += 1;
                 if after_address > EXTRA_NODES {
