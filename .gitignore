@@ -52,5 +52,7 @@ src-tauri/icons/ios/
 # Mac App Store build output (release-mas.sh)
 dist-mas/
 
+# Launch film renders and raw footage (marketing/film/README.md)
+marketing/out/
 # Website: the hero film is copied in by infra/site/deploy.sh, never committed
 site/video/

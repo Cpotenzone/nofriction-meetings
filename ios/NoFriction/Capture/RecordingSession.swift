@@ -65,6 +65,14 @@ final class RecordingSession {
     /// Record sheet). The sheet passes its choices and an optional notebook.
     func start(limit: RecordingLimit? = nil, kind: RecordingKind? = nil, notebook: String? = nil) async {
         guard phase == .idle, let context else { return }
+        #if DEBUG
+        // Film footage (-NFFilm): a demo recording; the Simulator has no speech recognition
+        if FilmDemo.isOn {
+            return FilmDemo.startRecording(session: self, limit: limit ?? RecordingLimitStore.remembered(),
+                                           kind: kind ?? RecordingKindStore.remembered(),
+                                           notebook: Notebook.normalize(notebook), context: context)
+        }
+        #endif
         phase = .starting
         notice = nil
         let limit = limit ?? RecordingLimitStore.remembered()
@@ -414,7 +422,8 @@ final class RecordingSession {
     #if DEBUG
     /// Screenshots / layout checks: show `meeting` as if it were being
     /// recorded right now. No mic, no engine; Stop just ends the demo.
-    func showDemo(meeting: Meeting, startedAt: Date, partial: String, level: Float = 0.4) {
+    /// `limit`: a time limit counted from `startedAt` (film footage).
+    func showDemo(meeting: Meeting, startedAt: Date, partial: String, level: Float = 0.4, limit: RecordingLimit? = nil) {
         guard phase == .idle else { return }
         self.meeting = meeting
         self.startedAt = startedAt
@@ -423,7 +432,18 @@ final class RecordingSession {
         self.pausedTotal = 0
         self.pausedAt = nil
         self.engineName = "Demo"
+        if let limit {
+            timeLimit.arm(meetingID: meeting.id, plan: TimeLimitPlan(startedAt: startedAt, limit: limit))
+            timeWarningVisible = false
+        }
         phase = .recording
+    }
+
+    /// Film footage: simulated speech (FilmDemo.startFeed) — the live text and the meter.
+    func setDemoFeed(partial: String, level: Float) {
+        guard isActive else { return }
+        self.partial = phase == .paused ? "" : partial
+        self.level = phase == .paused ? 0 : level
     }
     #endif
 

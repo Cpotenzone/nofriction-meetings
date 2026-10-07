@@ -1,0 +1,27 @@
+{
+  "name": "nofriction-launch-film",
+  "private": true,
+  "version": "1.0.0",
+  "description": "noFriction launch film and App Store app previews (Remotion). See README.md.",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "score": "node scripts/make-score.mjs",
+    "render": "node scripts/render-all.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.533",
+    "@remotion/cli": "4.0.533",
+    "@remotion/google-fonts": "4.0.533",
+    "@remotion/renderer": "4.0.533",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.533",
+    "sharp": "0.34.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3"
+  }
+}

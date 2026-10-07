@@ -1,0 +1,14 @@
+{
+  "name": "nofriction-mac-harness",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Runs the Mac app's React UI in a browser with a mocked Tauri backend and fictional demo data, and records film footage and App Store stills with Playwright.",
+  "scripts": {
+    "frames": "node make-frames.mjs",
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2"
+  }
+}

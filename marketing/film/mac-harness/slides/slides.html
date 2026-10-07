@@ -1,0 +1,490 @@
+<!doctype html>
+<!--
+  Fictional "screen captures" for the Rewind demo data: presentation slides a
+  meeting or a lecture might share. All content is invented and neutral (no
+  logos, products or real people). make-frames.mjs renders each <section>
+  to frames/<id>.jpg (2400x1350) and frames/<id>-thumb.jpg (480x270).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root {
+    --paper: #f5f3ee;
+    --paper-2: #ebe8e1;
+    --ink: #1d2127;
+    --ink-2: #4b5260;
+    --muted: #8a8f99;
+    --line: #d9d5cc;
+    --amber: #d99a00;
+    --amber-soft: #f6dc8c;
+    --teal: #2a8c80;
+    --teal-soft: #bfe3dd;
+    --slate: #4d6a96;
+    --slate-soft: #c9d5e8;
+    --coral: #d4664a;
+    --coral-soft: #f3cfc4;
+    --night: #121416;
+    --night-2: #1c1f23;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #777; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  .slide { width: 1600px; height: 900px; position: relative; overflow: hidden; background: var(--paper); padding: 84px 104px; margin-bottom: 40px; }
+  .slide.dark { background: var(--night); color: #f2f1ee; }
+  .eyebrow { font-size: 20px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .dark .eyebrow { color: #9aa0a8; }
+  h1 { font-size: 64px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; }
+  h2 { font-size: 52px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.1; margin-top: 14px; }
+  .sub { font-size: 26px; color: var(--ink-2); margin-top: 16px; line-height: 1.4; }
+  .dark .sub { color: #b4b8bf; }
+  .foot { position: absolute; left: 104px; right: 104px; bottom: 44px; display: flex; justify-content: space-between; font-size: 18px; color: var(--muted); }
+  .rule { position: absolute; left: 104px; top: 60px; width: 64px; height: 6px; background: var(--amber); border-radius: 3px; }
+  .dark .rule { background: #facc15; }
+
+  /* Title slides */
+  .title-wrap { position: absolute; left: 104px; top: 230px; right: 104px; }
+  .title-wrap h1 { font-size: 104px; margin-top: 22px; }
+  .agenda { position: absolute; left: 104px; bottom: 120px; display: grid; grid-template-columns: repeat(4, 300px); gap: 24px; }
+  .agenda div { border-top: 2px solid #343840; padding-top: 18px; font-size: 26px; color: #d8d9dc; }
+  .agenda b { display: block; font-size: 18px; color: #facc15; letter-spacing: 0.12em; margin-bottom: 8px; }
+
+  /* Roadmap */
+  .gantt { position: absolute; left: 104px; right: 104px; top: 250px; bottom: 120px; }
+  .gantt .months { display: grid; grid-template-columns: 300px 1fr 1fr 1fr; font-size: 22px; color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--line); padding-bottom: 12px; }
+  .gantt .row { display: grid; grid-template-columns: 300px 1fr; align-items: center; height: 92px; border-bottom: 1px solid var(--line); }
+  .gantt .row .name { font-size: 26px; font-weight: 600; }
+  .gantt .track { position: relative; height: 100%; }
+  .bar { position: absolute; top: 24px; height: 44px; border-radius: 10px; font-size: 19px; font-weight: 600; display: flex; align-items: center; padding: 0 16px; color: #fff; white-space: nowrap; }
+  .today { position: absolute; top: 40px; bottom: -6px; width: 3px; background: var(--coral); }
+  .today span { position: absolute; top: -34px; left: -30px; font-size: 18px; color: var(--coral); font-weight: 700; }
+  .diamond { position: absolute; top: 30px; width: 32px; height: 32px; background: var(--ink); transform: rotate(45deg); border-radius: 4px; }
+
+  /* Charts */
+  .chart { position: absolute; left: 104px; right: 520px; top: 260px; bottom: 130px; display: flex; align-items: flex-end; gap: 30px; border-bottom: 2px solid var(--line); padding: 0 10px; }
+  .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
+  .chart .col i { display: block; width: 100%; border-radius: 10px 10px 0 0; background: var(--slate-soft); }
+  .chart .col.hot i { background: var(--slate); }
+  .chart .col b { font-size: 20px; color: var(--ink-2); margin-bottom: 10px; }
+  .chart .col em { position: absolute; bottom: -42px; font-style: normal; font-size: 20px; color: var(--muted); }
+  .gridlines { position: absolute; left: 104px; right: 520px; top: 260px; bottom: 130px; }
+  .gridlines div { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line); }
+  .callout { position: absolute; right: 104px; top: 280px; width: 360px; }
+  .callout .big { font-size: 96px; font-weight: 800; color: var(--teal); letter-spacing: -0.03em; line-height: 1; }
+  .callout p { font-size: 24px; color: var(--ink-2); margin-top: 14px; line-height: 1.4; }
+  .callout .card { margin-top: 40px; background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 24px 26px; }
+  .callout .card b { font-size: 44px; display: block; }
+  .callout .card span { font-size: 20px; color: var(--muted); }
+
+  /* Feedback bars */
+  .hbars { position: absolute; left: 104px; right: 104px; top: 270px; }
+  .hbar { display: grid; grid-template-columns: 520px 1fr 90px; align-items: center; height: 92px; border-bottom: 1px solid var(--line); font-size: 27px; }
+  .hbar .t { position: relative; height: 34px; background: var(--paper-2); border-radius: 17px; overflow: hidden; }
+  .hbar .t i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 17px; }
+  .hbar b { text-align: right; font-size: 28px; }
+  .quote { position: absolute; left: 104px; right: 104px; bottom: 96px; font-size: 26px; color: var(--ink-2); font-style: italic; border-left: 6px solid var(--amber); padding-left: 24px; }
+
+  /* Wireframes */
+  .flow { position: absolute; left: 104px; right: 104px; top: 260px; display: grid; grid-template-columns: 1fr 70px 1fr 70px 1fr; align-items: center; }
+  .screen { height: 470px; background: #fff; border: 2px solid var(--line); border-radius: 22px; padding: 26px; position: relative; }
+  .screen .step { font-size: 18px; font-weight: 700; color: var(--amber); letter-spacing: 0.12em; }
+  .screen h3 { font-size: 30px; margin: 10px 0 22px; }
+  .blk { height: 22px; background: var(--paper-2); border-radius: 6px; margin-bottom: 14px; }
+  .field { height: 54px; border: 2px solid var(--line); border-radius: 12px; margin-bottom: 16px; }
+  .btn { position: absolute; left: 26px; right: 26px; bottom: 26px; height: 58px; border-radius: 14px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; }
+  .arrow { text-align: center; font-size: 46px; color: var(--muted); }
+  .avatars { display: flex; gap: 12px; margin: 10px 0 20px; }
+  .avatars i { width: 64px; height: 64px; border-radius: 50%; display: block; }
+  .tag { position: absolute; top: 22px; right: 22px; background: var(--teal-soft); color: var(--teal); font-size: 16px; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
+
+  /* Checklist */
+  .checks { position: absolute; left: 104px; right: 104px; top: 260px; display: grid; grid-template-columns: 1fr 1fr; gap: 0 70px; }
+  .check { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; height: 96px; border-bottom: 1px solid var(--line); font-size: 29px; }
+  .box { width: 36px; height: 36px; border-radius: 9px; border: 3px solid #b9b4a9; position: relative; }
+  .done .box { background: var(--teal); border-color: var(--teal); }
+  .done .box::after { content: ""; position: absolute; left: 9px; top: 3px; width: 10px; height: 19px; border: solid #fff; border-width: 0 4px 4px 0; transform: rotate(45deg); }
+  .done span.lbl { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 2px; }
+  .who { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: #fff; }
+  .progress { position: absolute; left: 104px; right: 104px; bottom: 110px; height: 18px; background: var(--paper-2); border-radius: 9px; overflow: hidden; }
+  .progress i { position: absolute; left: 0; top: 0; bottom: 0; width: 42%; background: var(--teal); border-radius: 9px; }
+  .progress-l { position: absolute; left: 104px; bottom: 140px; font-size: 22px; color: var(--ink-2); }
+
+  /* Risk cards */
+  .cards { position: absolute; left: 104px; right: 104px; top: 270px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
+  .rcard { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 34px; height: 440px; position: relative; }
+  .rcard .lvl { display: inline-block; font-size: 17px; font-weight: 700; letter-spacing: 0.1em; padding: 7px 14px; border-radius: 999px; }
+  .rcard h3 { font-size: 34px; margin: 22px 0 16px; line-height: 1.2; }
+  .rcard p { font-size: 23px; color: var(--ink-2); line-height: 1.45; }
+  .rcard .own { position: absolute; left: 34px; bottom: 30px; font-size: 20px; color: var(--muted); }
+
+  /* Biology */
+  .diagram { position: absolute; left: 104px; right: 104px; top: 230px; bottom: 90px; }
+  .bul { position: absolute; left: 104px; top: 270px; width: 700px; }
+  .bul li { list-style: none; font-size: 30px; line-height: 1.35; padding: 0 0 26px 46px; position: relative; color: var(--ink); }
+  .bul li::before { content: ""; position: absolute; left: 4px; top: 14px; width: 16px; height: 16px; border-radius: 50%; background: var(--amber); }
+  .bul li span { color: var(--ink-2); }
+  .lbl-svg { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  .pill { display: inline-block; font-size: 20px; font-weight: 700; padding: 8px 16px; border-radius: 999px; }
+  .exam { position: absolute; left: 104px; right: 104px; top: 260px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px 40px; }
+  .exam div { border: 1px solid #30343a; border-radius: 20px; padding: 30px 32px; font-size: 29px; line-height: 1.35; color: #e6e6e3; background: var(--night-2); }
+  .exam b { display: block; font-size: 18px; color: #facc15; letter-spacing: 0.14em; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ Acme project sync ═══════════════ -->
+
+<section class="slide dark" id="acme-1">
+  <div class="rule"></div>
+  <div class="title-wrap">
+    <div class="eyebrow">Acme project · Weekly sync</div>
+    <h1>Road to launch</h1>
+    <p class="sub" style="font-size:30px;margin-top:26px">Roadmap, beta feedback, onboarding and the launch checklist</p>
+  </div>
+  <div class="agenda">
+    <div><b>01</b>Q4 roadmap</div>
+    <div><b>02</b>Beta sign-ups</div>
+    <div><b>03</b>New onboarding</div>
+    <div><b>04</b>Launch checklist</div>
+  </div>
+</section>
+
+<section class="slide" id="acme-2">
+  <div class="rule"></div>
+  <div class="eyebrow">Acme project</div>
+  <h2>Q4 roadmap</h2>
+  <div class="gantt">
+    <div class="months"><span></span><span>October</span><span>November</span><span>December</span></div>
+    <div class="row"><div class="name">Private beta</div><div class="track"><div class="bar" style="left:0%;width:25%;background:var(--teal)">Wraps Oct 24</div><div class="today" style="left:6%"></div></div></div>
+    <div class="row"><div class="name">Onboarding redesign</div><div class="track"><div class="bar" style="left:12%;width:27%;background:var(--amber)">3-step flow</div><div class="today" style="left:6%;top:-6px"></div></div></div>
+    <div class="row"><div class="name">Billing &amp; plans</div><div class="track"><div class="bar" style="left:28%;width:32%;background:var(--slate)">Plan names locked Fri</div><div class="today" style="left:6%;top:-6px"></div></div></div>
+    <div class="row"><div class="name">Help center</div><div class="track"><div class="bar" style="left:43%;width:28%;background:#8b8f97">12 articles</div><div class="today" style="left:6%;top:-6px"></div></div></div>
+    <div class="row"><div class="name">Public launch</div><div class="track"><div class="diamond" style="left:74%"></div><span style="position:absolute;left:77.5%;top:30px;font-size:22px;font-weight:700">Dec 8</span><div class="today" style="left:6%;top:-6px;bottom:6px"><span style="top:auto;bottom:-36px;left:-28px">Today</span></div></div></div>
+  </div>
+  <div class="foot"><span>Acme project · Weekly sync</span><span>2</span></div>
+</section>
+
+<section class="slide" id="acme-3">
+  <div class="rule"></div>
+  <div class="eyebrow">Beta</div>
+  <h2>Sign-ups per week</h2>
+  <div class="gridlines"><div style="top:0"></div><div style="top:25%"></div><div style="top:50%"></div><div style="top:75%"></div></div>
+  <div class="chart">
+    <div class="col"><b>120</b><i style="height:18%"></i><em>W1</em></div>
+    <div class="col"><b>180</b><i style="height:27%"></i><em>W2</em></div>
+    <div class="col"><b>240</b><i style="height:36%"></i><em>W3</em></div>
+    <div class="col"><b>310</b><i style="height:46%"></i><em>W4</em></div>
+    <div class="col"><b>290</b><i style="height:43%"></i><em>W5</em></div>
+    <div class="col"><b>420</b><i style="height:62%"></i><em>W6</em></div>
+    <div class="col"><b>515</b><i style="height:76%"></i><em>W7</em></div>
+    <div class="col hot"><b>640</b><i style="height:94%"></i><em>W8</em></div>
+  </div>
+  <div class="callout">
+    <div class="big">+24%</div>
+    <p>week over week, driven by the public roadmap page</p>
+    <div class="card"><b>2,715</b><span>beta sign-ups to date</span></div>
+  </div>
+  <div class="foot"><span>Acme project · Weekly sync</span><span>3</span></div>
+</section>
+
+<section class="slide" id="acme-4">
+  <div class="rule"></div>
+  <div class="eyebrow">Beta feedback · 86 teams</div>
+  <h2>What beta teams told us</h2>
+  <div class="hbars">
+    <div class="hbar"><span>Search is fast and useful</span><div class="t"><i style="width:58%;background:var(--teal)"></i></div><b>58%</b></div>
+    <div class="hbar"><span>Setup takes too long</span><div class="t"><i style="width:42%;background:var(--coral)"></i></div><b>42%</b></div>
+    <div class="hbar"><span>Want shared notebooks</span><div class="t"><i style="width:31%;background:var(--amber)"></i></div><b>31%</b></div>
+    <div class="hbar"><span>Invites are confusing</span><div class="t"><i style="width:24%;background:var(--coral)"></i></div><b>24%</b></div>
+  </div>
+  <p class="quote">"We loved it once we were in. Getting the whole team in took a week."</p>
+</section>
+
+<section class="slide" id="acme-5">
+  <div class="rule"></div>
+  <div class="eyebrow">Design · Draft 2</div>
+  <h2>New onboarding: three steps</h2>
+  <div class="flow">
+    <div class="screen"><div class="step">STEP 1</div><h3>Name your workspace</h3><div class="field"></div><div class="blk" style="width:70%"></div><div class="blk" style="width:50%"></div><div class="btn">Continue</div></div>
+    <div class="arrow">→</div>
+    <div class="screen"><div class="step">STEP 2</div><h3>Start a first project</h3><div class="field"></div><div class="field" style="height:110px"></div><div class="btn">Create project</div><div class="tag">Moved up</div></div>
+    <div class="arrow">→</div>
+    <div class="screen"><div class="step">STEP 3</div><h3>Invite your team</h3><div class="avatars"><i style="background:var(--teal-soft)"></i><i style="background:var(--amber-soft)"></i><i style="background:var(--slate-soft)"></i><i style="background:var(--paper-2)"></i></div><div class="blk" style="width:80%"></div><div class="blk" style="width:60%"></div><div class="btn">Send invites</div></div>
+  </div>
+  <div class="foot"><span>Target: set up in under 2 minutes</span><span>5</span></div>
+</section>
+
+<section class="slide" id="acme-6">
+  <div class="rule"></div>
+  <div class="eyebrow">Launch · Dec 8</div>
+  <h2>Launch checklist</h2>
+  <div class="checks">
+    <div class="check done"><div class="box"></div><span class="lbl">Pricing page copy</span><div class="who" style="background:var(--slate)">P</div></div>
+    <div class="check"><div class="box"></div><span class="lbl">Help center articles</span><div class="who" style="background:var(--amber)">D</div></div>
+    <div class="check done"><div class="box"></div><span class="lbl">Beta feedback survey</span><div class="who" style="background:var(--amber)">D</div></div>
+    <div class="check"><div class="box"></div><span class="lbl">Status page</span><div class="who" style="background:var(--teal)">M</div></div>
+    <div class="check done"><div class="box"></div><span class="lbl">Plan names</span><div class="who" style="background:var(--slate)">P</div></div>
+    <div class="check"><div class="box"></div><span class="lbl">Launch email</span><div class="who" style="background:var(--amber)">D</div></div>
+    <div class="check"><div class="box"></div><span class="lbl">Onboarding tests (5 teams)</span><div class="who" style="background:var(--amber)">D</div></div>
+    <div class="check"><div class="box"></div><span class="lbl">Billing load test</span><div class="who" style="background:var(--teal)">M</div></div>
+  </div>
+  <div class="progress-l">3 of 8 done</div>
+  <div class="progress"><i style="width:37.5%"></i></div>
+</section>
+
+<section class="slide" id="acme-7">
+  <div class="rule"></div>
+  <div class="eyebrow">Before launch</div>
+  <h2>Open risks</h2>
+  <div class="cards">
+    <div class="rcard"><span class="lvl" style="background:var(--coral-soft);color:var(--coral)">HIGH</span><h3>Billing under load</h3><p>No load test yet. Checkout must hold 10× beta traffic on launch day.</p><div class="own">Owner: Marcus</div></div>
+    <div class="rcard"><span class="lvl" style="background:var(--amber-soft);color:#8a6200">MEDIUM</span><h3>Help center content</h3><p>12 articles planned, 3 drafted. Setup and invites first.</p><div class="own">Owner: Dana</div></div>
+    <div class="rcard"><span class="lvl" style="background:var(--teal-soft);color:var(--teal)">LOW</span><h3>Plan names</h3><p>Two options left. Decision due Friday so billing can start.</p><div class="own">Owner: Priya</div></div>
+  </div>
+</section>
+
+<!-- ═══════════════ BIO 101: Cell Biology ═══════════════ -->
+
+<section class="slide dark" id="bio-1">
+  <div class="rule"></div>
+  <div class="title-wrap">
+    <div class="eyebrow">BIO 101 · Lecture 7</div>
+    <h1>The Cell Membrane</h1>
+    <p class="sub" style="font-size:32px;margin-top:26px">Structure, transport, and why it matters</p>
+  </div>
+  <div class="agenda" style="grid-template-columns:repeat(4,300px)">
+    <div><b>PART 1</b>The bilayer</div>
+    <div><b>PART 2</b>Fluid mosaic</div>
+    <div><b>PART 3</b>Passive transport</div>
+    <div><b>PART 4</b>Active transport</div>
+  </div>
+</section>
+
+<section class="slide" id="bio-2">
+  <div class="rule"></div>
+  <div class="eyebrow">Part 1</div>
+  <h2>The phospholipid bilayer</h2>
+  <svg class="diagram lbl-svg" viewBox="0 0 1392 580" id="bilayer"></svg>
+</section>
+
+<section class="slide" id="bio-3">
+  <div class="rule"></div>
+  <div class="eyebrow">Part 2</div>
+  <h2>The fluid mosaic model</h2>
+  <ul class="bul">
+    <li>Lipids and proteins <span>drift sideways within the layer</span></li>
+    <li>Cholesterol <span>keeps the membrane fluid across temperatures</span></li>
+    <li>Proteins <span>act as channels, pumps, receptors and ID tags</span></li>
+    <li>Carbohydrate chains <span>face the outside of the cell</span></li>
+  </ul>
+  <svg viewBox="0 0 640 520" style="position:absolute;right:90px;top:250px;width:640px;height:520px" id="mosaic" class="lbl-svg"></svg>
+</section>
+
+<section class="slide" id="bio-4">
+  <div class="rule"></div>
+  <div class="eyebrow">Part 3</div>
+  <h2>Passive transport</h2>
+  <p class="sub">From high to low concentration. <b style="color:var(--teal)">No ATP needed.</b></p>
+  <svg viewBox="0 0 1392 520" style="position:absolute;left:104px;top:330px;width:1392px;height:520px" id="passive" class="lbl-svg"></svg>
+</section>
+
+<section class="slide" id="bio-5">
+  <div class="rule"></div>
+  <div class="eyebrow">Part 3</div>
+  <h2>Osmosis: water follows solute</h2>
+  <svg viewBox="0 0 1392 560" style="position:absolute;left:104px;top:270px;width:1392px;height:560px" id="osmosis" class="lbl-svg"></svg>
+</section>
+
+<section class="slide" id="bio-6">
+  <div class="rule"></div>
+  <div class="eyebrow">Part 4</div>
+  <h2>Active transport: the Na⁺/K⁺ pump</h2>
+  <svg viewBox="0 0 1392 560" style="position:absolute;left:104px;top:270px;width:1392px;height:560px" id="pump" class="lbl-svg"></svg>
+</section>
+
+<section class="slide dark" id="bio-7">
+  <div class="rule"></div>
+  <div class="eyebrow">Review</div>
+  <h2 style="color:#fff">For the exam</h2>
+  <div class="exam">
+    <div><b>KNOW</b>The four parts of the membrane and what each one does</div>
+    <div><b>COMPARE</b>Passive vs. active transport, with one example of each</div>
+    <div><b>PREDICT</b>What a cell does in hypotonic, isotonic and hypertonic solutions</div>
+    <div><b>REMEMBER</b>The Na⁺/K⁺ pump: 3 Na⁺ out, 2 K⁺ in, per ATP</div>
+  </div>
+  <div class="foot" style="color:#7d838b"><span>Quiz on membranes next Wednesday · Read chapter 7, sections 1–3</span><span>7</span></div>
+</section>
+
+<script>
+  // acme-2b: the roadmap again, after the presenter marked the decision on it
+  (() => {
+    const src = document.getElementById("acme-2");
+    const c = src.cloneNode(true);
+    c.id = "acme-2b";
+    src.after(c);
+    const s = c.getBoundingClientRect();
+    const b = c.querySelectorAll(".bar")[2].getBoundingClientRect();
+    const x = b.left - s.left - 12, y = b.top - s.top - 12, w = b.width + 24, h = b.height + 24;
+    c.insertAdjacentHTML(
+      "beforeend",
+      `<div style="position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;border:4px solid var(--coral);border-radius:18px"></div>
+       <div style="position:absolute;left:${x + w + 18}px;top:${y + 7}px;background:var(--coral);color:#fff;font-size:22px;font-weight:700;padding:12px 18px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.12)">Decided: lock plan names by Friday</div>`,
+    );
+  })();
+
+  const NS = "http://www.w3.org/2000/svg";
+  const C = { head: "#e3a21a", headDark: "#b07a08", tail: "#9b978e", prot: "#4d8fa0", protDark: "#2f6f80", chol: "#e8c547", sugar: "#d4664a", ink: "#1d2127", ink2: "#4b5260", water: "#5b9bd5", na: "#d4664a", k: "#4d6a96" };
+  const el = (svg, tag, attrs, text) => {
+    const n = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (text !== undefined) n.textContent = text;
+    svg.appendChild(n);
+    return n;
+  };
+
+  // One phospholipid: head circle + two wavy tails toward the middle
+  function lipid(svg, x, y, dir, r = 15, len = 66) {
+    for (const dx of [-5, 5]) {
+      const y1 = y + dir * r * 0.8;
+      const y2 = y + dir * (r + len);
+      el(svg, "path", { d: `M${x + dx} ${y1} C ${x + dx + 6} ${y1 + dir * len * 0.33}, ${x + dx - 6} ${y1 + dir * len * 0.66}, ${x + dx} ${y2}`, stroke: C.tail, "stroke-width": 4, fill: "none", "stroke-linecap": "round" });
+    }
+    el(svg, "circle", { cx: x, cy: y, r, fill: C.head, stroke: C.headDark, "stroke-width": 2 });
+  }
+
+  function bilayer(svg, x0, x1, top, gap = 2 * 15 + 2 * 66 + 8, step = 34, skip = []) {
+    for (let x = x0; x <= x1; x += step) {
+      if (skip.some(([a, b]) => x > a && x < b)) continue;
+      lipid(svg, x, top, 1);
+      lipid(svg, x, top + gap, -1);
+    }
+  }
+
+  // Bio-2: labelled bilayer with proteins
+  (() => {
+    const s = document.getElementById("bilayer");
+    const top = 170, gap = 170;
+    el(s, "rect", { x: 0, y: 0, width: 1392, height: 130, fill: "#e6eef5", rx: 18 });
+    el(s, "rect", { x: 0, y: 440, width: 1392, height: 140, fill: "#f3ece0", rx: 18 });
+    el(s, "text", { x: 1366, y: 46, "font-size": 24, fill: C.ink2, "font-weight": 600, "text-anchor": "end" }, "Outside the cell (extracellular fluid)");
+    el(s, "text", { x: 1366, y: 558, "font-size": 24, fill: C.ink2, "font-weight": 600, "text-anchor": "end" }, "Inside the cell (cytoplasm)");
+    bilayer(s, 40, 1350, top, gap, 34, [[330, 470], [760, 840], [1040, 1180]]);
+    // Transmembrane protein
+    el(s, "rect", { x: 335, y: 130, width: 130, height: 250, rx: 54, fill: C.prot, stroke: C.protDark, "stroke-width": 3 });
+    // glycoprotein sugar chain
+    const sx = 400;
+    el(s, "path", { d: `M${sx} 130 L${sx} 92 M${sx} 108 L${sx - 22} 82 M${sx} 108 L${sx + 22} 82 M${sx - 22} 82 L${sx - 34} 60 M${sx + 22} 82 L${sx + 34} 60`, stroke: C.sugar, "stroke-width": 5, fill: "none", "stroke-linecap": "round" });
+    for (const [cx, cy] of [[sx, 92], [sx - 22, 82], [sx + 22, 82], [sx - 34, 60], [sx + 34, 60]]) el(s, "circle", { cx, cy, r: 8, fill: C.sugar });
+    // Channel protein (two halves, open pore)
+    el(s, "rect", { x: 1040, y: 140, width: 56, height: 230, rx: 26, fill: C.prot, stroke: C.protDark, "stroke-width": 3 });
+    el(s, "rect", { x: 1124, y: 140, width: 56, height: 230, rx: 26, fill: C.prot, stroke: C.protDark, "stroke-width": 3 });
+    for (const y of [110, 250, 400]) el(s, "circle", { cx: 1110, cy: y, r: 9, fill: "#5b9bd5" });
+    // Cholesterol
+    el(s, "rect", { x: 772, y: 190, width: 26, height: 66, rx: 9, fill: C.chol, stroke: "#b8961e", "stroke-width": 2 });
+    el(s, "rect", { x: 800, y: 290, width: 26, height: 66, rx: 9, fill: C.chol, stroke: "#b8961e", "stroke-width": 2 });
+    // Labels with leader lines
+    // Leader from a point on the drawing to a label in the outside/inside band
+    const label = (x, y, lx, ly, text) => {
+      el(s, "line", { x1: x, y1: y, x2: lx, y2: ly, stroke: C.ink, "stroke-width": 2 });
+      el(s, "circle", { cx: x, cy: y, r: 5, fill: C.ink });
+      el(s, "text", { x: lx + 10, y: ly + 9, "font-size": 26, fill: C.ink, "font-weight": 700 }, text);
+    };
+    label(108, 170, 60, 92, "Hydrophilic head");
+    label(434, 60, 474, 60, "Glycoprotein");
+    label(1180, 196, 1140, 100, "Channel protein");
+    label(176, 262, 120, 500, "Hydrophobic tails");
+    label(400, 382, 446, 500, "Transport protein");
+    label(813, 330, 853, 500, "Cholesterol");
+  })();
+
+  // Bio-3: small mosaic patch (top view-ish)
+  (() => {
+    const s = document.getElementById("mosaic");
+    el(s, "rect", { x: 0, y: 0, width: 640, height: 520, rx: 26, fill: "#fbf6ea", stroke: "#e2d9c4" });
+    for (let y = 30; y < 500; y += 36) for (let x = 30 + ((y / 36) % 2) * 18; x < 620; x += 36) el(s, "circle", { cx: x, cy: y, r: 14, fill: C.head, opacity: 0.9 });
+    for (const [x, y, w, h] of [[120, 120, 110, 80], [380, 90, 90, 120], [260, 300, 140, 90], [470, 330, 90, 110]]) el(s, "rect", { x, y, width: w, height: h, rx: 36, fill: C.prot, stroke: C.protDark, "stroke-width": 3 });
+    for (const [x, y] of [[90, 380], [320, 200], [540, 220], [200, 460]]) el(s, "rect", { x, y, width: 18, height: 40, rx: 7, fill: C.chol, stroke: "#b8961e", "stroke-width": 2 });
+  })();
+
+  // Bio-4: diffusion and facilitated diffusion
+  (() => {
+    const s = document.getElementById("passive");
+    const panel = (x, title) => {
+      el(s, "rect", { x, y: 0, width: 660, height: 500, rx: 22, fill: "#fff", stroke: "#d9d5cc" });
+      el(s, "text", { x: x + 30, y: 52, "font-size": 28, "font-weight": 700, fill: C.ink }, title);
+      el(s, "rect", { x: x + 316, y: 80, width: 28, height: 390, fill: C.head, opacity: 0.85, rx: 6 });
+    };
+    panel(0, "Simple diffusion");
+    panel(732, "Facilitated diffusion");
+    let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    for (let i = 0; i < 34; i++) el(s, "circle", { cx: 40 + rnd() * 250, cy: 110 + rnd() * 340, r: 10, fill: C.slate || "#4d6a96" });
+    for (let i = 0; i < 7; i++) el(s, "circle", { cx: 380 + rnd() * 250, cy: 110 + rnd() * 340, r: 10, fill: "#4d6a96" });
+    for (let i = 0; i < 30; i++) el(s, "circle", { cx: 772 + rnd() * 250, cy: 110 + rnd() * 340, r: 10, fill: "#d4664a" });
+    for (let i = 0; i < 6; i++) el(s, "circle", { cx: 1112 + rnd() * 250, cy: 110 + rnd() * 340, r: 10, fill: "#d4664a" });
+    // channel gap in right membrane
+    el(s, "rect", { x: 732 + 300, y: 230, width: 60, height: 110, fill: "#fff" });
+    el(s, "rect", { x: 732 + 296, y: 210, width: 22, height: 150, rx: 10, fill: C.prot });
+    el(s, "rect", { x: 732 + 342, y: 210, width: 22, height: 150, rx: 10, fill: C.prot });
+    const arrow = (x1, y, x2, color) => {
+      el(s, "line", { x1, y1: y, x2: x2 - 14, y2: y, stroke: color, "stroke-width": 6, "stroke-linecap": "round" });
+      el(s, "path", { d: `M${x2} ${y} L${x2 - 22} ${y - 13} L${x2 - 22} ${y + 13} z`, fill: color });
+    };
+    arrow(250, 285, 420, C.ink);
+    arrow(732 + 250, 285, 732 + 420, C.ink);
+    el(s, "text", { x: 30, y: 492, "font-size": 21, fill: C.ink2 }, "O₂ and CO₂ slip straight through");
+    el(s, "text", { x: 762, y: 492, "font-size": 21, fill: C.ink2 }, "Ions and glucose need a channel or carrier");
+  })();
+
+  // Bio-5: three red blood cells in different solutions
+  (() => {
+    const s = document.getElementById("osmosis");
+    const cols = [
+      { x: 0, name: "Hypotonic", sub: "Water rushes in: the cell swells", rx: 150, ry: 132, dots: 6, inArrows: true },
+      { x: 472, name: "Isotonic", sub: "No net movement: normal shape", rx: 150, ry: 92, dots: 14, both: true },
+      { x: 944, name: "Hypertonic", sub: "Water leaves: the cell shrinks", rx: 104, ry: 64, dots: 28, outArrows: true },
+    ];
+    let seed = 3; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    for (const c of cols) {
+      el(s, "rect", { x: c.x, y: 0, width: 448, height: 520, rx: 24, fill: "#eaf2f9", stroke: "#cfdbe7" });
+      el(s, "text", { x: c.x + 224, y: 58, "font-size": 32, "font-weight": 700, fill: C.ink, "text-anchor": "middle" }, c.name);
+      for (let i = 0; i < c.dots; i++) el(s, "circle", { cx: c.x + 24 + rnd() * 400, cy: 90 + rnd() * 50 + (i % 2) * 330, r: 7, fill: "#e3a21a", opacity: 0.9 });
+      const cx = c.x + 224, cy = 285;
+      el(s, "ellipse", { cx, cy, rx: c.rx, ry: c.ry, fill: "#e07a6a", stroke: "#b5503f", "stroke-width": 4 });
+      el(s, "ellipse", { cx, cy, rx: c.rx * 0.45, ry: c.ry * 0.35, fill: "#c9604f", opacity: 0.6 });
+      const arr = (x1, y1, x2, y2) => {
+        el(s, "line", { x1, y1, x2, y2, stroke: C.water, "stroke-width": 6, "stroke-linecap": "round" });
+        const a = Math.atan2(y2 - y1, x2 - x1), L = 18;
+        el(s, "path", { d: `M${x2 + Math.cos(a) * 6} ${y2 + Math.sin(a) * 6} L${x2 - Math.cos(a - 0.5) * L} ${y2 - Math.sin(a - 0.5) * L} L${x2 - Math.cos(a + 0.5) * L} ${y2 - Math.sin(a + 0.5) * L} z`, fill: C.water });
+      };
+      if (c.inArrows) { arr(cx - 205, cy, cx - c.rx - 12, cy); arr(cx + 205, cy, cx + c.rx + 12, cy); }
+      if (c.outArrows) { arr(cx - c.rx - 8, cy, cx - 190, cy); arr(cx + c.rx + 8, cy, cx + 190, cy); }
+      if (c.both) { arr(cx - 205, cy - 22, cx - c.rx - 12, cy - 22); arr(cx - c.rx - 12, cy + 22, cx - 205, cy + 22); }
+      el(s, "text", { x: c.x + 224, y: 490, "font-size": 23, fill: C.ink2, "text-anchor": "middle" }, c.sub);
+    }
+  })();
+
+  // Bio-6: sodium-potassium pump
+  (() => {
+    const s = document.getElementById("pump");
+    el(s, "rect", { x: 0, y: 0, width: 1392, height: 170, fill: "#e6eef5", rx: 18 });
+    el(s, "rect", { x: 0, y: 390, width: 1392, height: 170, fill: "#f3ece0", rx: 18 });
+    el(s, "text", { x: 26, y: 46, "font-size": 24, fill: C.ink2, "font-weight": 600 }, "Outside: high Na⁺, low K⁺");
+    el(s, "text", { x: 26, y: 540, "font-size": 24, fill: C.ink2, "font-weight": 600 }, "Inside: low Na⁺, high K⁺");
+    bilayer(s, 30, 1360, 196, 168, 34, [[560, 830]]);
+    el(s, "path", { d: "M575 160 Q 695 120 815 160 L 815 400 Q 695 440 575 400 Z", fill: C.prot, stroke: C.protDark, "stroke-width": 4 });
+    el(s, "text", { x: 695, y: 290, "font-size": 26, "font-weight": 700, fill: "#fff", "text-anchor": "middle" }, "Na⁺/K⁺ pump");
+    const ion = (x, y, color, t) => { el(s, "circle", { cx: x, cy: y, r: 26, fill: color }); el(s, "text", { x, y: y + 8, "font-size": 22, "font-weight": 700, fill: "#fff", "text-anchor": "middle" }, t); };
+    for (const [i, x] of [470, 520, 570].entries()) ion(x - 40, 470 - i * 0, C.na, "Na⁺");
+    for (const [i, x] of [870, 920].entries()) ion(x + 40, 92, C.k, "K⁺");
+    const arc = (d, color) => { el(s, "path", { d, stroke: color, "stroke-width": 7, fill: "none", "stroke-linecap": "round" }); };
+    arc("M 520 430 C 560 360, 560 220, 600 124", C.na);
+    el(s, "path", { d: "M604 102 L 584 132 L 616 134 z", fill: C.na });
+    arc("M 870 120 C 830 200, 830 340, 792 436", C.k);
+    el(s, "path", { d: "M786 458 L 776 426 L 806 434 z", fill: C.k });
+    el(s, "text", { x: 380, y: 112, "font-size": 32, "font-weight": 800, fill: C.na }, "3 Na⁺ out");
+    el(s, "text", { x: 880, y: 486, "font-size": 32, "font-weight": 800, fill: C.k }, "2 K⁺ in");
+    el(s, "rect", { x: 1040, y: 430, width: 300, height: 76, rx: 38, fill: "#fff", stroke: "#e3a21a", "stroke-width": 4 });
+    el(s, "text", { x: 1190, y: 479, "font-size": 27, "font-weight": 700, fill: C.ink, "text-anchor": "middle" }, "ATP → ADP + P");
+  })();
+</script>
+</body>
+</html>

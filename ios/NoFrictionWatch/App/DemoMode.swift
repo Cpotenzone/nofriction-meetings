@@ -12,6 +12,13 @@ import Foundation
 ///                                               in a notebook with time left and
 ///                                               marks; its 5-minute warning; the
 ///                                               Discreet screen
+///     -NFWatchDemo flow                         film footage: the Record flow steps
+///                                               through Class → 60 min → BIO 101 by
+///                                               itself, then records and marks ★
+///     -NFWatchFilm                              with a demo state: the clock runs, the
+///                                               meter moves, and the first frame's time
+///                                               goes to Documents/film-marks.txt
+///                                               (marketing/film/capture)
 ///     -NFWatchSendTestRecording                 write a 3-second synthetic tone and
 ///                                               send it to the paired iPhone (E2E check)
 ///     -NFWatchAutoRecord                        the real recorder: 2 s, pause 2 s,
@@ -21,6 +28,8 @@ import Foundation
 enum DemoMode: String {
     case idle, recording, paused, list
     case start, `class`, warning, discreet
+    /// Film footage: the Record flow, stepping by itself
+    case flow
     /// Layout checks: the Record flow's later steps and the Discreet controls
     case length, notebook, controls
 
@@ -31,6 +40,22 @@ enum DemoMode: String {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-NFWatchDemo"), i + 1 < args.count else { return nil }
         return DemoMode(rawValue: args[i + 1])
+    }
+
+    /// When the app's first screen appeared (film footage times its steps from it)
+    @MainActor static var uiAppearedAt: Date?
+
+    /// The root view appeared. With -NFWatchFilm, writes the wall-clock time to
+    /// Documents/film-marks.txt so marketing/film/capture can cut the clip from
+    /// the first real frame (never the launch screen).
+    @MainActor
+    static func noteAppeared() {
+        guard current != nil, uiAppearedAt == nil else { return }
+        let now = Date()
+        uiAppearedAt = now
+        guard ProcessInfo.processInfo.arguments.contains("-NFWatchFilm") else { return }
+        let line = "ui \(String(format: "%.3f", now.timeIntervalSince1970))\n"
+        try? line.write(to: URL.documentsDirectory.appending(path: "film-marks.txt"), atomically: true, encoding: .utf8)
     }
 
     @MainActor
@@ -73,7 +98,28 @@ enum DemoMode: String {
             model.recorder.showDemo(elapsed: 31 * 60 + 5,
                                     options: WatchStartOptions(kind: .class, limit: .minutes(90), notebook: "BIO 101", discreet: true),
                                     marks: [.important])
+        case .flow:
+            model.connection.showDemoNotebooks(notebooks)
+            model.demoStartPath = []
+            model.showStartFlow = true
+            Task { @MainActor in
+                // Counted from the first frame on screen (launch time varies with load).
+                // What is it? → Class; How long? → 60 min; Notebook → BIO 101; recording; ★
+                while uiAppearedAt == nil { try? await Task.sleep(for: .milliseconds(50)) }
+                try? await Task.sleep(for: .seconds(3.2))
+                model.demoStartPath = [.length(.class)]
+                try? await Task.sleep(for: .seconds(2.2))
+                model.demoStartPath = [.length(.class), .notebook(.class, .minutes(60))]
+                try? await Task.sleep(for: .seconds(2.2))
+                model.showStartFlow = false
+                model.recorder.showDemo(elapsed: 0, level: 0.5,
+                                        options: WatchStartOptions(kind: .class, limit: .minutes(60), notebook: "BIO 101"))
+                model.recorder.filmDemoMotion()
+                try? await Task.sleep(for: .seconds(2.6))
+                model.recorder.mark(.important)
+            }
         }
+        if ProcessInfo.processInfo.arguments.contains("-NFWatchFilm") { model.recorder.filmDemoMotion() }
         model.refresh()
     }
 
