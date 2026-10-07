@@ -11,6 +11,28 @@ Everything below is one-time setup in the AWS console or CLI. Region for the
 certificate is **us-east-1** (CloudFront requires it); the bucket can live
 anywhere, but us-east-1 keeps it simple.
 
+## Live resources (created 2026-10-07, AWS account 415846853656 "ca2", profile `quick-admin`)
+
+| Resource | Value |
+|---|---|
+| S3 bucket | `nofriction-io-site` (us-east-1, private, versioned) |
+| CloudFront distribution | `E2AHX31YV2TCE4` → `dsdh8rrnay7bm.cloudfront.net` |
+| Origin Access Control | `E1E92WXZAHEIX7` |
+| CloudFront Function | `nofriction-io-rewrite` (published) |
+| ACM certificate (us-east-1) | `arn:aws:acm:us-east-1:415846853656:certificate/e4a3d2bb-36b3-4533-a83e-9f69a564a1c5` for `nofriction.io` + `www.nofriction.io` |
+
+Deploy: `AWS_PROFILE=quick-admin BUCKET=nofriction-io-site DISTRIBUTION_ID=E2AHX31YV2TCE4 infra/site/deploy.sh`
+
+### DNS cutover (nofriction.io is at Cloudflare; nameservers at GoDaddy)
+
+1. Certificate validation CNAMEs (DNS only, not proxied):
+   - `_1590c2c9ca450ae927b8557e4a6ad437.nofriction.io` → `_da4b66944f029f5ba9ccf22bcf671939.wzccmgtwzk.acm-validations.aws.`
+   - `_6c6043437c5199e63365741918d126cb.www.nofriction.io` → `_baf69ad9ecf72a6ba3efeb018eae26e3.wzccmgtwzk.acm-validations.aws.`
+2. When the certificate is ISSUED, attach it and the aliases to the distribution (see step 5 above).
+3. Point the site (DNS only, not proxied, so CloudFront terminates TLS):
+   - `nofriction.io` CNAME → `dsdh8rrnay7bm.cloudfront.net` (Cloudflare flattens the apex)
+   - `www.nofriction.io` CNAME → `dsdh8rrnay7bm.cloudfront.net`
+
 ## 1. S3 bucket (private)
 
 ```bash
