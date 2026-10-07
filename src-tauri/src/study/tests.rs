@@ -6,6 +6,7 @@ use super::parse::*;
 use super::prompt::*;
 use super::*;
 use crate::database::DatabaseManager;
+use crate::recording_kind::RecordingKind;
 use crate::redaction::time_range::{self, MsRange};
 use crate::redaction::{self as rd, RedactionEnv, WordTarget};
 use parking_lot::Mutex;
@@ -160,7 +161,8 @@ fn condensed_lines_keep_times_and_drop_noise() {
 fn input_with(lines: &[(i64, &str)], marks: &[(i64, &str, Option<&str>)]) -> StudyInput {
     StudyInput {
         title: "Biology 101".into(),
-        class_name: Some("BIO 101".into()),
+        kind: RecordingKind::Class,
+        notebook: Some("BIO 101".into()),
         duration_ms: lines.iter().map(|l| l.0).max().unwrap_or(0) + 5_000,
         lines: lines.iter().map(|(ms, t)| StudyLine { ms: *ms, text: t.to_string() }).collect(),
         marks: marks.iter().map(|(ms, k, n)| StudyMark { ms: *ms, kind: k.to_string(), note: n.map(String::from) }).collect(),
@@ -179,13 +181,63 @@ fn prompt_lines_carry_times_and_marks() {
     assert!(m.contains("[0:10] ? Question"), "{}", m);
     assert!(m.contains("TRANSCRIPT:\n[0:00] Welcome."));
     assert!(m.starts_with("Lecture: Biology 101\nClass: BIO 101\n"), "{}", m);
-    assert!(system_for(StudyKind::Quiz).contains("0-based index"));
-    assert!(system_for(StudyKind::Summary).contains("never guess at or mention"));
+    assert!(system_for(StudyKind::Quiz, RecordingKind::Class).contains("0-based index"));
+    assert!(system_for(StudyKind::Summary, RecordingKind::Class).contains("never guess at or mention"));
     // The fingerprint follows the text
     let mut j = i.clone();
     assert_eq!(i.fingerprint(), j.fingerprint());
     j.lines[0].text = "Welcome!".into();
     assert_ne!(i.fingerprint(), j.fingerprint());
+}
+
+#[test]
+fn prompts_are_framed_by_recording_type() {
+    // Class: what to study, for a student, ✎ On the test
+    let class = system_for(StudyKind::Summary, RecordingKind::Class);
+    assert!(class.contains("study material for a student: what to study"), "{}", class);
+    assert!(class.contains("Write lecture notes") && class.contains("✎ On the test matter most"));
+    assert!(system_for(StudyKind::Questions, RecordingKind::Class).contains("ask the instructor"));
+    // Meeting: what to remember and follow up, ✎ Follow up
+    let meeting = system_for(StudyKind::Summary, RecordingKind::Meeting);
+    assert!(meeting.contains("what to remember and follow up"), "{}", meeting);
+    assert!(meeting.contains("Write review notes") && meeting.contains("✎ Follow up matter most"));
+    assert!(system_for(StudyKind::Questions, RecordingKind::Meeting).contains("questions to follow up on"));
+    // Personal: what to remember, ✎ Remember
+    let personal = system_for(StudyKind::Flashcards, RecordingKind::Personal);
+    assert!(personal.contains("what to remember.") && personal.contains("✎ Remember matter most"), "{}", personal);
+    for rec in [RecordingKind::Meeting, RecordingKind::Personal] {
+        for k in StudyKind::ALL {
+            let sys = system_for(k, rec);
+            for word in ["student", "lecture", "instructor", "exam"] {
+                assert!(!sys.contains(word), "{:?} {:?} mentions {}", rec, k, word);
+            }
+            assert!(!sys.contains("{{") && !sys.contains("}}}"), "format braces resolved: {}", sys);
+        }
+        assert!(!condense_system(rec).contains("lecture"));
+        assert!(condense_system(rec).starts_with("You condense"));
+    }
+    // The parts and their JSON shapes don't change with the type
+    for k in StudyKind::ALL {
+        let shape = |rec| {
+            let s = system_for(k, rec);
+            s[s.find("Shape:").unwrap()..].replace("short lecture title", "T").replace("short meeting title", "T").replace("short title", "T").replace("\"explanation\"}]}", "\"definition\"}]}")
+        };
+        assert_eq!(shape(RecordingKind::Class), shape(RecordingKind::Meeting), "{:?}", k);
+        assert_eq!(shape(RecordingKind::Meeting), shape(RecordingKind::Personal), "{:?}", k);
+    }
+    // Header and marks follow the type
+    let mut i = input_with(&[(0, "Kickoff.")], &[(0, "test", Some("send deck"))]);
+    i.kind = RecordingKind::Meeting;
+    i.title = "Acme sync".into();
+    i.notebook = Some("Acme project".into());
+    let m = user_message(&i, true, "[0:00] Kickoff.");
+    assert!(m.starts_with("Meeting: Acme sync\nNotebook: Acme project\n"), "{}", m);
+    assert!(m.contains("MARKS:\n[0:00] ✎ Follow up: send deck"), "{}", m);
+    assert!(!m.contains("STUDENT") && !m.contains("LECTURE NOTES") && m.contains("NOTES (condensed"));
+    i.kind = RecordingKind::Personal;
+    let m = condense_message(&i, "[0:00] Kickoff.", 1, 2);
+    assert!(m.starts_with("Recording: Acme sync\nNotebook: Acme project\n"), "{}", m);
+    assert!(m.contains("✎ Remember: send deck"), "{}", m);
 }
 
 #[test]
@@ -239,7 +291,7 @@ fn text_of(m: &Msg) -> String {
 fn kind_of(system: &str) -> &'static str {
     if system.starts_with("You condense") {
         "condense"
-    } else if system.contains("Write lecture notes") {
+    } else if system.contains("Write lecture notes") || system.contains("Write review notes") {
         "summary"
     } else if system.contains("key terms") {
         "terms"
@@ -405,6 +457,7 @@ fn markdown_guide_escapes_model_text_and_lists_marks() {
         quiz: Some(&quiz),
         questions: Some(&questions),
         marks: &marks,
+        kind: RecordingKind::Class,
         ..Default::default()
     });
     assert!(md.starts_with("# Study guide: Bio \\#1\n"));
@@ -417,7 +470,20 @@ fn markdown_guide_escapes_model_text_and_lists_marks() {
     assert!(md.contains("1. Q1?\n   - A) a\n   - B) b"));
     assert!(md.contains("### Answer key\n\n1. B: because (12:34)"));
     assert_eq!(file_stem("Bio: Cells/Part 2"), "Bio Cells Part 2");
-    assert_eq!(file_stem("///"), "Lecture");
+    assert_eq!(file_stem("///"), "Recording");
+    assert!(md.contains("check against the lecture"));
+
+    // A meeting's guide: Review guide, Follow up, "with a question"
+    let md = guide_markdown(&GuideParts { title: "Sync", questions: Some(&questions), marks: &marks, ..Default::default() });
+    assert!(md.starts_with("# Review guide: Sync\n"), "{}", md);
+    assert!(md.contains("- 1:30 ✎ Follow up: phases"));
+    assert!(md.contains("- You marked 2:00 with a question"));
+    assert!(!md.contains("lecture"), "{}", md);
+    let md = guide_markdown(&GuideParts { title: "Dentist", marks: &marks, kind: RecordingKind::Personal, ..Default::default() });
+    assert!(md.starts_with("# Review guide: Dentist\n") && md.contains("✎ Remember: phases"), "{}", md);
+    assert_eq!(guide_file_name("Bio: Cells", RecordingKind::Class), "Bio Cells study guide.md");
+    assert_eq!(guide_file_name("Weekly sync", RecordingKind::Meeting), "Weekly sync review guide.md");
+    assert_eq!(guide_file_name("///", RecordingKind::Personal), "Recording review guide.md");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -588,7 +654,7 @@ async fn word_line_and_time_range_edits_delete_the_guide() {
     line_at(&f, 60, "diffusion is passive").await;
     make_guide(&f).await;
     let preview = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[MsRange { start_ms: 55_000, end_ms: 70_000 }]).await.unwrap();
-    assert!(preview.items.iter().any(|i| i.contains("study guide")), "{:?}", preview.items);
+    assert!(preview.items.iter().any(|i| i.contains("guide in REVIEW")), "{:?}", preview.items);
     let p = time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &[MsRange { start_ms: 55_000, end_ms: 70_000 }], Some(preview.counts))
         .await
         .unwrap();
@@ -632,7 +698,7 @@ async fn screen_only_edits_keep_the_guide() {
         .unwrap();
     let preview = time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &[MsRange { start_ms: 95_000, end_ms: 105_000 }]).await.unwrap();
     assert_eq!(preview.counts.screens, 1);
-    assert!(!preview.items.iter().any(|i| i.contains("study guide")));
+    assert!(!preview.items.iter().any(|i| i.contains("guide in REVIEW")));
     let p = time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &[MsRange { start_ms: 95_000, end_ms: 105_000 }], Some(preview.counts))
         .await
         .unwrap();
@@ -739,10 +805,17 @@ async fn markdown_export_of_a_saved_guide() {
     crate::markers::add_at_offset(f.db.pool(), "m1", 20_000, Some("test"), Some("ATP")).await.unwrap();
     make_guide(&f).await;
     let g = load_guide(f.db.pool(), "m1").await.unwrap();
+    assert_eq!(g.recording_kind, "meeting", "an untyped recording is a meeting");
     let md = commands::guide_markdown_of(&g);
-    for part in ["## Summary", "## Key terms", "## Marked moments", "0:20 ✎ On the test: ATP", "## Questions to ask", "## Flashcards", "## Practice quiz", "### Answer key"] {
+    for part in ["# Review guide: Biology 101", "## Summary", "## Key terms", "## Marked moments", "0:20 ✎ Follow up: ATP", "## Questions to ask", "## Flashcards", "## Practice quiz", "### Answer key"] {
         assert!(md.contains(part), "missing {}: {}", part, md);
     }
+    // The same guide for a class is a study guide, and its mark is "On the test"
+    f.db.set_meeting_kind("m1", RecordingKind::Class).await.unwrap();
+    let g = load_guide(f.db.pool(), "m1").await.unwrap();
+    assert_eq!(g.recording_kind, "class");
+    let md = commands::guide_markdown_of(&g);
+    assert!(md.starts_with("# Study guide: Biology 101") && md.contains("0:20 ✎ On the test: ATP"), "{}", md);
     let csv = flashcards_csv(&cards_of(&g.materials["flashcards"].data));
     assert_eq!(csv, "\"What makes ATP?\",\"Mitochondria\"\r\n");
 }

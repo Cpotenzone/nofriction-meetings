@@ -1,7 +1,9 @@
-// Recordings → Study: a study guide made from the lecture transcript with
-// the user's AI (Apple on-device or their endpoint): lecture-notes summary,
-// key terms, flashcards, a practice quiz and questions to ask, steered by
-// the moment markers. Exports flashcards as CSV and the guide as Markdown.
+// Recordings → Review: a guide made from the recording's transcript with
+// the user's AI (Apple on-device or their endpoint): a notes summary, key
+// terms, flashcards, a practice quiz and questions to ask, steered by the
+// moment markers. It is the "Study guide" for a class and the "Review
+// guide" for a meeting or a personal recording; the parts are the same for
+// every type. Exports flashcards as CSV and the guide as Markdown.
 // docs/STUDY_TOOLS.md
 //
 // Everything shown here came from a model: it is rendered as React text
@@ -17,25 +19,27 @@ import { QuizRunner } from "./QuizRunner";
 import { MarkerGlyph } from "./MarkerBits";
 import { MARKERS_CHANGED_EVENT, STUDY_PROGRESS_EVENT, studyApi, type StudyGuide, type StudyProgress } from "../../lib/study";
 import {
-    MARKER_META,
     STUDY_PARTS,
     cardsOf,
     clock,
     filterMarkers,
+    markerLabel,
     quizOf,
     type StudyPart,
 } from "../../lib/studyLogic";
+import { guideTitle, parseKind, thirdMarkLabel, type RecordingKind } from "../../lib/recordingKind";
+import { useRecordingKind } from "../../hooks/useRecordingKind";
 import "../MeetingNotesPanel.css";
 import "./Study.css";
 
 type Tab = StudyPart | "marks";
 
-function failureText(e: unknown): string {
+function failureText(e: unknown, title: string): string {
     switch (aiErrorClass(e)) {
         case "pro_required":
-            return "Study guides are part of noFriction Pro.";
+            return `${title}s are part of noFriction Pro.`;
         case "consent_required":
-            return "Study guides need your permission to send this lecture's transcript to your AI endpoint. Try again and choose Allow.";
+            return `${title}s need your permission to send this recording's transcript to your AI endpoint. Try again and choose Allow.`;
         default:
             return friendlyAiError(e);
     }
@@ -58,6 +62,10 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
     const [tab, setTab] = useState<Tab>("summary");
     const { configured } = useAiStatus();
     const caps = useCapabilities();
+    // The type names the guide; the loaded guide's own type wins
+    const liveKind = useRecordingKind(meetingId);
+    const kind: RecordingKind = guide ? parseKind(guide.recording_kind) : liveKind;
+    const title = guideTitle(kind);
 
     const load = useCallback(() => {
         setLoadError(null);
@@ -75,6 +83,11 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
         setProgress(null);
         load();
     }, [load]);
+
+    // The type was changed on the recording: the guide's name and labels follow
+    useEffect(() => {
+        setGuide((g) => (g && g.recording_kind !== liveKind ? { ...g, recording_kind: liveKind } : g));
+    }, [liveKind]);
 
     // Markers changed elsewhere (Recordings view, capture bar)
     useEffect(() => {
@@ -115,7 +128,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
             if (r.saved.length > 0 && !kinds) setTab((t) => (r.saved.includes(t as StudyPart) ? t : r.saved[0]));
         } catch (e) {
             if (isNoProviderError(e)) setNeedsAi(true);
-            else setError(failureText(e));
+            else setError(failureText(e, title));
         } finally {
             setBusy(false);
             setProgress(null);
@@ -137,7 +150,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
         return (
             <div className="mn-panel">
                 <p className="mn-error" role="alert">
-                    Couldn't load the study guide: {loadError}
+                    Couldn't load the {title.toLowerCase()}: {loadError}
                 </p>
                 <button className="mn-btn" onClick={load}>
                     Try again
@@ -160,10 +173,11 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
     const showSetup = configured === false || needsAi;
     const marks = filterMarkers(guide.markers, "all");
     const testMarks = guide.markers.filter((m) => m.kind === "test").length;
+    const third = thirdMarkLabel(kind);
 
     return (
         <div className="mn-panel study-panel">
-            {showSetup && <AiSetupNotice feature="Study guides" />}
+            {showSetup && <AiSetupNotice feature={`${title}s`} />}
             {error && (
                 <p className="mn-error" role="alert">
                     {error}
@@ -185,23 +199,24 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                                 <div style={{ width: `${Math.min(100, (progress.done / progress.total) * 100)}%` }} />
                             </div>
                         )}
-                        <span className="study-muted">On-device models take a minute or two for a long lecture.</span>
+                        <span className="study-muted">On-device models take a minute or two for a long recording.</span>
                     </div>
                 </div>
             )}
 
             {!any && !busy ? (
                 <div className="mn-empty">
-                    <h3>No study guide yet</h3>
+                    <h3>No {title.toLowerCase()} yet</h3>
                     <p>
-                        Turn this lecture into notes, key terms, flashcards, a practice quiz and questions to ask
-                        {testMarks > 0 ? `, with extra weight on the ${testMarks} moment${testMarks === 1 ? "" : "s"} you marked ✎ On the test` : ""}
-                        {proNote}. It's made from the transcript by the AI you set up; deleted or stricken text is never
-                        sent.
+                        Turn this {kind === "class" ? "lecture" : "recording"} into notes, key terms, flashcards, a
+                        practice quiz and questions to ask
+                        {testMarks > 0 ? `, with extra weight on the ${testMarks} moment${testMarks === 1 ? "" : "s"} you marked ✎ ${third}` : ""}
+                        {proNote}. {kind === "class" ? "It's for studying" : kind === "meeting" ? "It's for remembering and following up" : "It's for remembering"};
+                        it's made from the transcript by the AI you set up, and deleted or stricken text is never sent.
                     </p>
                     <div className="mn-actions">
                         <button className="mn-btn primary" onClick={() => generate()} disabled={busy || showSetup || !guide.has_transcript}>
-                            Make study guide
+                            Make {title.toLowerCase()}
                         </button>
                     </div>
                     {!guide.has_transcript && <p className="study-muted">This recording has no transcript yet.</p>}
@@ -216,7 +231,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                             </button>
                         </div>
                     )}
-                    <div className="deck-tabs study-tabs" role="tablist" aria-label="Study guide">
+                    <div className="deck-tabs study-tabs" role="tablist" aria-label={title}>
                         {STUDY_PARTS.map((p) => (
                             <button
                                 key={p.kind}
@@ -235,9 +250,9 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
 
                     <div className="study-body">
                         {tab === "marks" ? (
-                            <MarkedMoments guide={guide} onJump={onJump} />
+                            <MarkedMoments guide={guide} kind={kind} onJump={onJump} />
                         ) : has(tab) ? (
-                            <Part kind={tab} guide={guide} onJump={onJump} />
+                            <Part kind={tab} rec={kind} guide={guide} onJump={onJump} />
                         ) : (
                             <div className="mn-empty">
                                 <p>{failed.find((f) => f.kind === tab)?.error ?? "Not made yet."}</p>
@@ -261,19 +276,19 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                     )}
 
                     <div className="mn-actions study-exports">
-                        <button className="mn-btn" onClick={() => doExport("csv")} disabled={!has("flashcards")} title="front,back rows: import into Anki or Quizlet">
+                        <button className="mn-btn" onClick={() => doExport("csv")} disabled={!has("flashcards")} title="front,back rows that flashcard apps can import">
                             Export flashcards (CSV)
                         </button>
                         <button className="mn-btn" onClick={() => doExport("md")} title="Summary, key terms, marked moments, questions and the quiz">
-                            Export study guide (Markdown)
+                            Export {title.toLowerCase()} (Markdown)
                         </button>
                         <button className="mn-btn" onClick={() => generate()} disabled={busy || showSetup}>
                             Remake all
                         </button>
                     </div>
                     <p className="mn-meta">
-                        Made by your AI from the transcript. It can be wrong: check it against the lecture. Deleting or
-                        striking transcript text deletes this guide.
+                        Made by your AI from the transcript. It can be wrong: check it against the recording. Deleting
+                        or striking transcript text deletes this guide.
                     </p>
                 </>
             )}
@@ -281,7 +296,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
     );
 }
 
-function Part({ kind, guide, onJump }: { kind: StudyPart; guide: StudyGuide; onJump: (ms: number) => void }) {
+function Part({ kind, rec, guide, onJump }: { kind: StudyPart; rec: RecordingKind; guide: StudyGuide; onJump: (ms: number) => void }) {
     const data = guide.materials[kind]?.data as Record<string, unknown> | undefined;
     if (!data) return null;
     switch (kind) {
@@ -339,7 +354,7 @@ function Part({ kind, guide, onJump }: { kind: StudyPart; guide: StudyGuide; onJ
                     </ul>
                     {confused.length > 0 && (
                         <section className="mn-section">
-                            <h4>You marked as confusing</h4>
+                            <h4>{rec === "class" ? "You marked as confusing" : "You marked with a question"}</h4>
                             <ul className="study-asks">
                                 {confused.map((m) => (
                                     <li key={m.id}>
@@ -358,14 +373,14 @@ function Part({ kind, guide, onJump }: { kind: StudyPart; guide: StudyGuide; onJ
     }
 }
 
-function MarkedMoments({ guide, onJump }: { guide: StudyGuide; onJump: (ms: number) => void }) {
+function MarkedMoments({ guide, kind, onJump }: { guide: StudyGuide; kind: RecordingKind; onJump: (ms: number) => void }) {
     const marks = filterMarkers(guide.markers, "all");
     if (marks.length === 0) {
         return (
             <div className="mn-empty">
                 <p>
                     No marked moments. While recording, press Mark (or ⌃⌥⌘M from any app) to mark ★ Important, ? Question
-                    or ✎ On the test.
+                    or ✎ {thirdMarkLabel(kind)}.
                 </p>
             </div>
         );
@@ -378,7 +393,7 @@ function MarkedMoments({ guide, onJump }: { guide: StudyGuide; onJump: (ms: numb
                         <MarkerGlyph kind={m.kind} /> {clock(m.offset_ms)}
                     </button>
                     <span className="study-note is-static">
-                        {MARKER_META[m.kind].label}
+                        {markerLabel(m.kind, kind)}
                         {m.note ? `: ${m.note}` : ""}
                     </span>
                 </li>

@@ -1,4 +1,4 @@
-// Moment markers + study guides: typed wrappers over the Tauri commands in
+// Moment markers + review/study guides: typed wrappers over the Tauri commands in
 // src-tauri/src/markers.rs and src-tauri/src/study.rs (docs/STUDY_TOOLS.md).
 // Pure logic lives in studyLogic.ts.
 
@@ -17,6 +17,8 @@ export interface StoredMaterial {
 export interface StudyGuide {
     meeting_id: string;
     title: string;
+    /** "meeting" | "class" | "personal": "Study guide" for a class, "Review guide" otherwise */
+    recording_kind: string;
     started_at: string;
     duration_ms: number;
     has_transcript: boolean;

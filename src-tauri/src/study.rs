@@ -1,15 +1,18 @@
-//! Study tools (docs/STUDY_TOOLS.md): a study guide made from a lecture's
-//! transcript with the user's configured AI — lecture-notes summary, key
-//! terms, flashcards, a practice quiz (answers point back to the transcript
-//! time) and questions to ask the instructor. Moment markers (✎ On the test,
-//! ★ Important, ? Question) steer it.
+//! Review tools (docs/STUDY_TOOLS.md): a guide made from a recording's
+//! transcript with the user's configured AI — a notes summary, key terms,
+//! flashcards, a practice quiz (answers point back to the transcript time)
+//! and questions to ask. It is the "Study guide" for a Class-type recording
+//! and the "Review guide" for a meeting or a personal recording; the parts
+//! are the same, only the prompts' framing follows the type
+//! (recording_kind.rs). Moment markers (★ Important, ? Question, ✎ On the
+//! test / Follow up / Remember) steer it.
 //!
 //! - AI: every request goes through `ai::complete_text` (Apple on-device or
 //!   the one user-entered endpoint). Consent and, in the Mac App Store
 //!   build, the Pro check happen there; nothing here adds or skips a gate.
 //! - Input: the stored transcript (Whisper-filtered at transcription time,
 //!   so filtered text is never fed back), stricken spans as
-//!   `[stricken from the record]`, deleted words gone. Long lectures are
+//!   `[stricken from the record]`, deleted words gone. Long recordings are
 //!   condensed chunk by chunk to fit small context windows.
 //! - Output: strict JSON, validated and cleaned (`parse`); one retry; a
 //!   clear error otherwise. Only the cleaned material is stored.
@@ -26,6 +29,7 @@ pub mod prompt;
 mod tests;
 
 use crate::ai::{AiError, Msg, Opts};
+use crate::recording_kind::RecordingKind;
 use chrono::{DateTime, Utc};
 pub use parse::StudyKind;
 use prompt::{StudyInput, StudyLine, StudyMark};
@@ -36,10 +40,10 @@ use sqlx::{Pool, Row, Sqlite};
 use std::collections::BTreeMap;
 
 pub const TRANSCRIPT_CHANGED: &str =
-    "The transcript changed while the study guide was being made (it was edited), so it wasn't saved. Generate it again.";
+    "The transcript changed while the guide was being made (it was edited), so it wasn't saved. Generate it again.";
 pub const PENDING_EDIT: &str =
     "An edit to this transcript is still in its 5-second undo window. Try again in a moment.";
-pub const NO_TRANSCRIPT: &str = "This recording has no transcript to make a study guide from.";
+pub const NO_TRANSCRIPT: &str = "This recording has no transcript to make a guide from.";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Schema (runs inside DatabaseManager::run_migrations on its one connection)
@@ -65,7 +69,7 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
 /// any old Dork Mode rows). Called for every Delete/Strike of transcript
 /// text, in the action's transaction, on the live database and on each app
 /// backup (`redaction::redact_ai_outputs`). Schema-tolerant: an old backup
-/// may not have the table. A guide paraphrases the lecture, so matching the
+/// may not have the table. A guide paraphrases the recording, so matching the
 /// removed words can't clean it; it is deleted and can be made again.
 pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> Result<u64, sqlx::Error> {
     let exists: Option<i64> =
@@ -105,13 +109,16 @@ fn err<E: std::fmt::Display>(ctx: &'static str) -> impl Fn(E) -> String {
 
 struct MeetingInfo {
     title: String,
-    class_name: Option<String>,
+    kind: RecordingKind,
+    notebook: Option<String>,
     started_at: DateTime<Utc>,
     duration_seconds: Option<i64>,
 }
 
 async fn meeting_info(conn: &mut SqliteConnection, meeting_id: &str) -> Result<MeetingInfo, String> {
-    let row = sqlx::query("SELECT title, started_at, duration_seconds, class_name FROM meetings WHERE id = ?")
+    let row = sqlx::query(
+        "SELECT title, started_at, duration_seconds, class_name, recording_kind FROM meetings WHERE id = ?",
+    )
         .bind(meeting_id)
         .fetch_optional(&mut *conn)
         .await
@@ -119,7 +126,8 @@ async fn meeting_info(conn: &mut SqliteConnection, meeting_id: &str) -> Result<M
         .ok_or("That recording no longer exists")?;
     Ok(MeetingInfo {
         title: row.get("title"),
-        class_name: row.get("class_name"),
+        kind: RecordingKind::from_stored(row.get::<Option<String>, _>("recording_kind").as_deref()),
+        notebook: row.get("class_name"),
         started_at: parse_ts(&row.get::<String, _>("started_at")).ok_or("That recording has no start time")?,
         duration_seconds: row.get("duration_seconds"),
     })
@@ -158,7 +166,7 @@ pub async fn load_input_conn(conn: &mut SqliteConnection, meeting_id: &str) -> R
         .collect();
     let last = lines.iter().map(|l| l.ms).chain(marks.iter().map(|k| k.ms)).max().unwrap_or(0);
     let duration_ms = m.duration_seconds.map(|s| s * 1000).filter(|d| *d > 0).unwrap_or(0).max(last);
-    Ok(StudyInput { title: m.title, class_name: m.class_name, duration_ms, lines, marks })
+    Ok(StudyInput { title: m.title, kind: m.kind, notebook: m.notebook, duration_ms, lines, marks })
 }
 
 pub async fn load_input(pool: &Pool<Sqlite>, meeting_id: &str) -> Result<StudyInput, String> {
@@ -207,7 +215,7 @@ pub async fn save_materials(
         Err(e) => {
             // Never hand a connection with an open transaction back to the pool
             let _ = conn.close().await;
-            result.and(Err(format!("Couldn't save the study guide: {}", e)))
+            result.and(Err(format!("Couldn't save the guide: {}", e)))
         }
     }
 }
@@ -232,7 +240,7 @@ async fn save_locked(
             .bind(kind.as_str())
             .execute(&mut *conn)
             .await
-            .map_err(err("Couldn't save the study guide"))?;
+            .map_err(err("Couldn't save the guide"))?;
         sqlx::query(
             "INSERT INTO study_materials (id, meeting_id, kind, json, transcript_fingerprint, created_at, generated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -246,7 +254,7 @@ async fn save_locked(
         .bind(&now)
         .execute(&mut *conn)
         .await
-        .map_err(err("Couldn't save the study guide"))?;
+        .map_err(err("Couldn't save the guide"))?;
     }
     Ok(())
 }
@@ -264,6 +272,9 @@ pub struct StoredMaterial {
 pub struct StudyGuide {
     pub meeting_id: String,
     pub title: String,
+    /// "meeting" | "class" | "personal": names the guide (Study guide for a
+    /// class, Review guide otherwise) and labels the marks
+    pub recording_kind: String,
     pub started_at: String,
     pub duration_ms: i64,
     pub has_transcript: bool,
@@ -272,8 +283,8 @@ pub struct StudyGuide {
     pub markers: Vec<crate::markers::Marker>,
 }
 
-/// A meeting's study guide: stored parts (re-validated on the way out) and
-/// its markers.
+/// A recording's guide: stored parts (re-validated on the way out) and its
+/// markers.
 pub async fn load_guide(pool: &Pool<Sqlite>, meeting_id: &str) -> Result<StudyGuide, String> {
     let mut conn = pool.acquire().await.map_err(err("Database busy"))?;
     let info = meeting_info(&mut conn, meeting_id).await?;
@@ -286,7 +297,7 @@ pub async fn load_guide(pool: &Pool<Sqlite>, meeting_id: &str) -> Result<StudyGu
     .bind(meeting_id)
     .fetch_all(&mut *conn)
     .await
-    .map_err(err("Couldn't read the study guide"))?;
+    .map_err(err("Couldn't read the guide"))?;
     drop(conn);
     let mut materials = BTreeMap::new();
     for r in rows {
@@ -306,6 +317,7 @@ pub async fn load_guide(pool: &Pool<Sqlite>, meeting_id: &str) -> Result<StudyGu
     Ok(StudyGuide {
         meeting_id: meeting_id.to_string(),
         title: info.title,
+        recording_kind: info.kind.as_str().to_string(),
         started_at: info.started_at.to_rfc3339(),
         duration_ms: input.duration_ms,
         has_transcript: input.has_transcript(),
@@ -391,11 +403,12 @@ fn short(e: &AiError) -> String {
 async fn ask_json(
     c: &dyn Completer,
     kind: StudyKind,
+    rec: RecordingKind,
     user: &str,
     max_tokens: u32,
     duration_ms: i64,
 ) -> Result<Result<Value, String>, GenError> {
-    let system = prompt::system_for(kind);
+    let system = prompt::system_for(kind, rec);
     let mut why = String::new();
     for attempt in 0..2 {
         let text = if attempt == 0 { user.to_string() } else { format!("{}\n\n{}", user, prompt::retry_note(kind, &why)) };
@@ -409,7 +422,7 @@ async fn ask_json(
             Err(e) => return Err(GenError::Ai(e)),
         }
     }
-    log::warn!("Study guide: the {} answer was unusable twice", kind.as_str());
+    log::warn!("Guide: the {} answer was unusable twice", kind.as_str());
     Ok(Err(format!(
         "Couldn't make the {}: {} (asked twice). Try again, or choose a larger model in Settings → AI Engine.",
         kind.label(),
@@ -431,7 +444,7 @@ async fn fit_material(
     let fixed = prompt::user_message(input, true, "");
     let final_budget = kinds
         .iter()
-        .map(|k| prompt::body_budget(ctx, prompt::max_tokens(*k, ctx), &prompt::system_for(*k), &fixed))
+        .map(|k| prompt::body_budget(ctx, prompt::max_tokens(*k, ctx), &prompt::system_for(*k, input.kind), &fixed))
         .min()
         .unwrap_or(600);
     let mut lines = input.transcript_lines();
@@ -442,7 +455,8 @@ async fn fit_material(
         }
         let cmax = prompt::condense_max_tokens(ctx);
         let fixed_c = prompt::condense_message(input, "", 99, 99) + &input.marks_block(i64::MIN, i64::MAX);
-        let chunk_budget = prompt::body_budget(ctx, cmax, prompt::CONDENSE_SYSTEM, &fixed_c);
+        let condense_system = prompt::condense_system(input.kind);
+        let chunk_budget = prompt::body_budget(ctx, cmax, &condense_system, &fixed_c);
         let chunks = prompt::chunk_lines(&lines, chunk_budget);
         if round > 0 && chunks.len() <= 1 && condensed {
             break; // condensing again wouldn't shrink it; the client trims the rest
@@ -453,13 +467,13 @@ async fn fit_material(
             progress(Progress {
                 done: *done,
                 total: *total,
-                label: format!("Reading the lecture ({} of {})…", i + 1, chunks.len()),
+                label: format!("Reading the recording ({} of {})…", i + 1, chunks.len()),
             });
             let msg = prompt::condense_message(input, chunk, i + 1, chunks.len());
             let mut got = None;
             for attempt in 0..2 {
                 let opts = Opts { max_tokens: cmax, temperature: Some(if attempt == 0 { 0.2 } else { 0.3 }) };
-                match c.complete(vec![Msg::system(prompt::CONDENSE_SYSTEM), Msg::user(msg.clone())], opts).await {
+                match c.complete(vec![Msg::system(condense_system.clone()), Msg::user(msg.clone())], opts).await {
                     Ok(raw) => {
                         if let Ok(ls) = parse::condensed_lines(&raw, 20) {
                             got = Some(ls);
@@ -472,7 +486,7 @@ async fn fit_material(
             }
             let Some(ls) = got else {
                 return Err(GenError::Failed(format!(
-                    "Couldn't condense part {} of {} of the lecture (asked twice). Try again, or choose a model with a larger context window.",
+                    "Couldn't condense part {} of {} of the recording (asked twice). Try again, or choose a model with a larger context window.",
                     i + 1,
                     chunks.len()
                 )));
@@ -505,7 +519,7 @@ pub async fn generate(
     let mut out = Vec::new();
     for k in kinds {
         progress(Progress { done, total, label: format!("Writing the {}…", k.label()) });
-        let r = ask_json(c, *k, &user, prompt::max_tokens(*k, ctx), input.duration_ms).await?;
+        let r = ask_json(c, *k, input.kind, &user, prompt::max_tokens(*k, ctx), input.duration_ms).await?;
         out.push((*k, r));
         done += 1;
     }
@@ -562,7 +576,7 @@ pub mod commands {
         load_guide(state.database.pool(), &meeting_id).await
     }
 
-    /// Make (or remake) the study guide, or some parts of it (`kinds`).
+    /// Make (or remake) the guide, or some parts of it (`kinds`).
     /// Progress arrives as `study_progress` events.
     #[tauri::command(rename_all = "camelCase")]
     pub async fn generate_study_guide(
@@ -573,15 +587,15 @@ pub mod commands {
     ) -> Result<GenerateResult, String> {
         let kinds: Vec<StudyKind> = match kinds {
             Some(list) if !list.is_empty() => {
-                list.iter().map(|k| StudyKind::parse(k).ok_or("Unknown study guide part")).collect::<Result<_, _>>()?
+                list.iter().map(|k| StudyKind::parse(k).ok_or("Unknown guide part")).collect::<Result<_, _>>()?
             }
             _ => StudyKind::ALL.to_vec(),
         };
         if recording_meeting(&state).as_deref() == Some(meeting_id.as_str()) {
-            return Err("Stop the recording first: the study guide is made from the whole lecture.".into());
+            return Err("Stop the recording first: the guide is made from the whole recording.".into());
         }
         if !RUNNING.lock().insert(meeting_id.clone()) {
-            return Err("A study guide for this recording is already being made.".into());
+            return Err("A guide for this recording is already being made.".into());
         }
         let _guard = RunGuard(meeting_id.clone());
         let pool = state.database.pool().clone();
@@ -594,7 +608,7 @@ pub mod commands {
         let input = load_input(&pool, &meeting_id).await?;
         let fingerprint = input.fingerprint();
         log::info!(
-            "Study guide: {} part(s) for a {}-line transcript",
+            "Guide: {} part(s) for a {}-line transcript",
             kinds.len(),
             input.lines.len()
         );
@@ -647,7 +661,7 @@ pub mod commands {
         Ok(Some(path.display().to_string()))
     }
 
-    /// Flashcards as CSV (front,back) for Anki or Quizlet.
+    /// Flashcards as CSV (front,back) that flashcard apps import.
     #[tauri::command(rename_all = "camelCase")]
     pub async fn export_study_flashcards(
         app: AppHandle,
@@ -663,7 +677,8 @@ pub mod commands {
         save_with_dialog(&app, &name, ("CSV", &["csv"]), export::flashcards_csv(&cards)).await
     }
 
-    /// The study guide as Markdown.
+    /// The guide as Markdown: "<title> study guide.md" for a class,
+    /// "<title> review guide.md" otherwise.
     #[tauri::command(rename_all = "camelCase")]
     pub async fn export_study_guide(
         app: AppHandle,
@@ -672,7 +687,8 @@ pub mod commands {
     ) -> Result<Option<String>, String> {
         let guide = load_guide(state.database.pool(), &meeting_id).await?;
         let md = guide_markdown_of(&guide);
-        let name = format!("{} study guide.md", export::file_stem(&guide.title));
+        let rec = RecordingKind::from_stored(Some(&guide.recording_kind));
+        let name = export::guide_file_name(&guide.title, rec);
         save_with_dialog(&app, &name, ("Markdown", &["md"]), md).await
     }
 
@@ -688,6 +704,7 @@ pub mod commands {
         let get = |k: &str| guide.materials.get(k).map(|m| &m.data);
         export::guide_markdown(&export::GuideParts {
             title: &guide.title,
+            kind: RecordingKind::from_stored(Some(&guide.recording_kind)),
             when: &when,
             summary: get("summary"),
             terms: get("terms"),

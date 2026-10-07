@@ -39,8 +39,10 @@ export interface Meeting {
     calendar_event_id: string | null;
     /** Timed recording: planned length in minutes; null = no limit */
     planned_minutes?: number | null;
-    /** The class this recording belongs to, if any */
+    /** The recording's notebook, if any (the column keeps its old name) */
     class_name?: string | null;
+    /** "meeting" | "class" | "personal" (a recording from before types is "meeting") */
+    recording_kind?: string;
 }
 
 export interface Transcript {
@@ -93,8 +95,9 @@ export interface AppSettings {
 
 // Recording commands
 /**
- * No plan (menu shortcut, tray, command palette): the remembered length.
- * The Record sheet passes its choice and class (lib/recordPlan.ts).
+ * No plan (menu shortcut, tray, command palette): the remembered type and
+ * length. The Record sheet passes its type, length and notebook
+ * (lib/recordPlan.ts).
  */
 export async function startRecording(plan?: StartPlan): Promise<string> {
     return invoke<string>("start_recording", { plan: plan ?? null });
@@ -159,8 +162,9 @@ export async function setFrameCaptureInterval(intervalMs: number): Promise<void>
 }
 
 // Meeting commands
-export async function getMeetings(limit?: number, className?: string | null): Promise<Meeting[]> {
-    return invoke<Meeting[]>("get_meetings", { limit, className: className ?? null });
+/** Newest first; with `notebook`, only that notebook's recordings (ignoring case). */
+export async function getMeetings(limit?: number, notebook?: string | null): Promise<Meeting[]> {
+    return invoke<Meeting[]>("get_meetings", { limit, notebook: notebook ?? null });
 }
 
 export async function getMeeting(meetingId: string): Promise<Meeting | null> {

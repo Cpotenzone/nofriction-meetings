@@ -823,7 +823,7 @@ async fn resolve_screens(
             }
         }
         if !lenient {
-            return Err(format!("Screen {} isn't in this meeting (already removed?)", id));
+            return Err(format!("Screen {} isn't in this recording (already removed?)", id));
         }
     }
     Ok(out)
@@ -1710,7 +1710,7 @@ async fn apply_screens_locked(
     if !file_errors.is_empty() {
         // Loud: the rows are gone but an image file is still on disk
         return Err(format!(
-            "The screens were removed from the meeting, but these files could not be deleted: {}",
+            "The screens were removed from the recording, but these files could not be deleted: {}",
             file_errors.join("; ")
         ));
     }
@@ -2247,7 +2247,7 @@ pub async fn preview_screens(
         ));
     }
     items.push("AI (VLM) analysis of these screens and timeline entries built from them".into());
-    items.push("Cached video frames and thumbnails for this meeting".into());
+    items.push("Cached video frames and thumbnails for this recording".into());
     let ranges: Vec<_> = screens.iter().filter_map(screen_range).collect();
     items.extend(video_preview(env, meeting_id, &ranges));
     items.extend(common_preview(env, meeting_id));
@@ -2277,11 +2277,11 @@ async fn ai_preview(conn: &mut SqliteConnection, meeting_id: &str) -> Vec<String
     }
     if study > 0 {
         items.push(
-            "This meeting's study guide (summary, key terms, flashcards, quiz, questions): deleted; make it again after the edit"
+            "The guide in REVIEW (summary, key terms, flashcards, quiz, questions): deleted; make it again after the edit"
                 .into(),
         );
     }
-    items.push("Mentions in timeline entries for this meeting (comments you wrote are left as they are)".into());
+    items.push("Mentions in timeline entries for this recording (comments you wrote are left as they are)".into());
     items
 }
 

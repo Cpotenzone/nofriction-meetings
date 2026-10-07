@@ -42,6 +42,8 @@ import {
     useWordSelection,
 } from "./redaction/Redaction";
 import { MarkerInline, MarkerList, MarkerPins, useMarkers } from "./study/MarkerList";
+import { MarkKindContext } from "./study/MarkerBits";
+import { useRecordingKind } from "../hooks/useRecordingKind";
 import { markersInSpans, placeMarkers } from "../lib/studyLogic";
 import './RewindTab.css';
 
@@ -125,6 +127,8 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     const redaction = useRedaction(meetingId, reload);
     // Moment markers (docs/STUDY_TOOLS.md)
     const { markers, setMarkers, reload: reloadMarkers } = useMarkers(meetingId, reloadKey);
+    // The recording's type labels the third mark (On the test / Follow up / Remember)
+    const recKind = useRecordingKind(meetingId);
 
     // Load timeline data
     useEffect(() => {
@@ -783,7 +787,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
             <div className="rewind-empty">
                 <div className="empty-state">
                     <div className="empty-state-icon">🎬</div>
-                    <p className="empty-state-text">Select a past meeting to review</p>
+                    <p className="empty-state-text">Select a recording to review</p>
                 </div>
             </div>
         );
@@ -793,12 +797,13 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         return (
             <div className="rewind-loading">
                 <div className="loading-spinner"></div>
-                <p>Loading meeting timeline...</p>
+                <p>Loading the timeline...</p>
             </div>
         );
     }
 
     return (
+        <MarkKindContext.Provider value={recKind}>
         <div className="rewind-gallery">
             {/* Top section: Frame preview + Transcripts */}
             <div className="rewind-main">
@@ -865,7 +870,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                                         disabled={!lineHere}
                                         title={
                                             lineHere
-                                                ? `From the line at ${startedAt ? clockAt(startedAt, lineHere.timestamp_ms) : formatTime(lineHere.timestamp_ms)} to the end of the meeting`
+                                                ? `From the line at ${startedAt ? clockAt(startedAt, lineHere.timestamp_ms) : formatTime(lineHere.timestamp_ms)} to the end of the recording`
                                                 : "Click a line first"
                                         }
                                     >
@@ -1168,7 +1173,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                             style={{ padding: "0 6px" }}
                             onClick={() => selectToEndIn("screens")}
                             disabled={!selectedFrame && !screenSel.anchor}
-                            title="From the screen you're viewing to the end of the meeting"
+                            title="From the screen you're viewing to the end of the recording"
                         >
                             From here to the end
                         </button>
@@ -1202,5 +1207,6 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
 
             {redaction.ui}
         </div>
+        </MarkKindContext.Provider>
     );
 }

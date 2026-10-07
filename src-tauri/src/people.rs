@@ -117,10 +117,11 @@ fn display_name(p: &CalendarParticipant) -> String {
         .unwrap_or_else(|| crate::attendee_intel::extract_name_from_email(&p.email))
 }
 
-/// Default titles look like "Meeting 2026-09-24 09:01"; anything else was
-/// set by the user (or a previous calendar link) and is left alone.
+/// Default titles look like "Class — Oct 7" / "BIO 101 — Oct 7" (or
+/// "Meeting 2026-09-24 09:01" from earlier builds); anything else was set by
+/// the user (or a previous calendar link) and is left alone.
 fn is_default_title(title: &str) -> bool {
-    title.starts_with("Meeting 20") && title.len() <= "Meeting 2026-09-24 09:01".len()
+    crate::recording_kind::is_untitled_title(title)
 }
 
 /// Attach a calendar event to a meeting: details, people, and (if the
@@ -535,6 +536,8 @@ mod tests {
     #[test]
     fn default_titles_detected() {
         assert!(is_default_title("Meeting 2026-09-24 09:01"));
+        assert!(is_default_title("Meeting — Oct 7"));
+        assert!(is_default_title("Personal — Dec 25"));
         assert!(!is_default_title("Weekly sync"));
     }
 }

@@ -1,5 +1,8 @@
-// Timed recording + classes: the Record sheet's pure logic (no Tauri, no
-// React), tested with `npm test`. See docs/TIMED_RECORDING_AND_CLASSES.md.
+// The Record sheet's pure logic: "What is it?" (type), "How long?" (timed
+// recording) and the optional notebook. No Tauri, no React; tested with
+// `npm test`. See docs/TIMED_RECORDING_AND_NOTEBOOKS.md.
+
+import { kindForKey, parseKind, type RecordingKind } from "./recordingKind.ts";
 
 /** A picker choice, in the backend's wire format (timed_recording.rs). */
 export type DurationChoice = "15" | "30" | "60" | "90" | "none";
@@ -26,8 +29,11 @@ export const DURATION_CHOICES: readonly ChoiceInfo[] = [
 export interface StartPlan {
     /** "15" | "30" | "60" | "90" | "none", or whole minutes (a carried-over segment) */
     duration?: string;
-    className?: string | null;
-    /** Save `duration` as the remembered choice */
+    /** Missing: the remembered type */
+    recordingKind?: RecordingKind;
+    /** The optional notebook */
+    notebook?: string | null;
+    /** Save `duration` (and `recordingKind`) as the remembered choice */
     remember?: boolean;
 }
 
@@ -43,6 +49,7 @@ export function choiceForKey(key: string): DurationChoice | null {
 
 export type PickerAction =
     | { type: "select"; choice: DurationChoice }
+    | { type: "kind"; kind: RecordingKind }
     | { type: "start" }
     | { type: "cancel" }
     | { type: "none" };
@@ -54,13 +61,14 @@ export interface PickerKey {
     altKey?: boolean;
     /** IME composition in progress (Enter confirms the text, not the sheet) */
     isComposing?: boolean;
-    /** Focus is in the Class field: digits type there instead of picking */
+    /** Focus is in the Notebook field: digits and M/C/P type there instead of picking */
     inTextField?: boolean;
 }
 
 /**
- * Keyboard in the Record sheet: 1–5 picks a length (not while typing a
- * class name), Enter starts, Esc cancels. Modified keys are left alone.
+ * Keyboard in the Record sheet: M / C / P pick the type and 1–5 the length
+ * (not while typing in the Notebook field), Enter starts, Esc cancels.
+ * Modified keys are left alone.
  */
 export function pickerKeyAction(e: PickerKey): PickerAction {
     if (e.isComposing) return { type: "none" };
@@ -70,41 +78,48 @@ export function pickerKeyAction(e: PickerKey): PickerAction {
     if (!e.inTextField) {
         const choice = choiceForKey(e.key);
         if (choice) return { type: "select", choice };
+        const kind = kindForKey(e.key);
+        if (kind) return { type: "kind", kind };
     }
     return { type: "none" };
 }
 
-export const CLASS_MAX_LEN = 80;
+export const NOTEBOOK_MAX_LEN = 80;
 
-/** Same rule as the backend (classes.rs normalize): trimmed, one space, ≤ 80 chars. */
-export function normalizeClassName(input: string | null | undefined): string | null {
+/** Same rule as the backend (notebooks.rs normalize): trimmed, one space, ≤ 80 chars. */
+export function normalizeNotebook(input: string | null | undefined): string | null {
     // eslint-disable-next-line no-control-regex
     const cleaned = (input ?? "").replace(/\s+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "").trim();
-    const capped = Array.from(cleaned).slice(0, CLASS_MAX_LEN).join("").trimEnd();
+    const capped = Array.from(cleaned).slice(0, NOTEBOOK_MAX_LEN).join("").trimEnd();
     return capped ? capped : null;
 }
 
-/** An existing class spelled the same ignoring case, so "bio 101" joins "BIO 101". */
-export function canonicalClassName(input: string, recents: readonly string[]): string | null {
-    const name = normalizeClassName(input);
+/** An existing notebook spelled the same ignoring case, so "bio 101" joins "BIO 101". */
+export function canonicalNotebook(input: string, recents: readonly string[]): string | null {
+    const name = normalizeNotebook(input);
     if (!name) return null;
     const lower = name.toLowerCase();
     return recents.find((r) => r.toLowerCase() === lower) ?? name;
 }
 
-/** Recent classes to offer as chips while typing: prefix matches first, then contains. */
-export function classSuggestions(input: string, recents: readonly string[], max = 6): string[] {
-    const q = (normalizeClassName(input) ?? "").toLowerCase();
+/** Recent notebooks to offer as chips while typing: prefix matches first, then contains. */
+export function notebookSuggestions(input: string, recents: readonly string[], max = 6): string[] {
+    const q = (normalizeNotebook(input) ?? "").toLowerCase();
     if (!q) return recents.slice(0, max);
     const starts = recents.filter((r) => r.toLowerCase().startsWith(q));
     const contains = recents.filter((r) => !r.toLowerCase().startsWith(q) && r.toLowerCase().includes(q));
     return [...starts, ...contains].slice(0, max);
 }
 
-/** The plan the sheet sends: remembered, with the class only when one is set. */
-export function buildStartPlan(choice: DurationChoice, classInput: string, recents: readonly string[]): StartPlan {
-    const className = canonicalClassName(classInput, recents);
-    return { duration: choice, className, remember: true };
+/** The plan the sheet sends: type and length remembered, the notebook only when one is set. */
+export function buildStartPlan(
+    kind: RecordingKind,
+    choice: DurationChoice,
+    notebookInput: string,
+    recents: readonly string[],
+): StartPlan {
+    const notebook = canonicalNotebook(notebookInput, recents);
+    return { recordingKind: kind, duration: choice, notebook, remember: true };
 }
 
 /** 754 → "12:34", 3725 → "1:02:05" */
@@ -135,12 +150,14 @@ export function timerLabel(opts: { deadline: string | null; startedAt: string | 
 }
 
 /**
- * "Start New Segment" (75-minute prompt): the new recording keeps the class
- * and the time that was left (rounded up), or no limit.
+ * "Start New Segment" (75-minute prompt): the new recording keeps the type,
+ * the notebook and the time that was left (rounded up), or no limit.
+ * Nothing is remembered. Without the old recording's details the type is
+ * left out, so the remembered one is used.
  */
 export function segmentCarryOver(
     status: { deadline: string | null } | null,
-    className: string | null | undefined,
+    meeting: { recording_kind?: string | null; class_name?: string | null } | null,
     nowMs: number,
 ): StartPlan {
     let duration = "none";
@@ -148,6 +165,8 @@ export function segmentCarryOver(
         const minutes = Math.ceil(secondsUntil(status.deadline, nowMs) / 60);
         duration = minutes > 0 ? String(minutes) : "none";
     }
-    return { duration, className: normalizeClassName(className ?? null), remember: false };
+    const plan: StartPlan = { duration, notebook: normalizeNotebook(meeting?.class_name ?? null), remember: false };
+    if (meeting?.recording_kind) plan.recordingKind = parseKind(meeting.recording_kind);
+    return plan;
 }
 

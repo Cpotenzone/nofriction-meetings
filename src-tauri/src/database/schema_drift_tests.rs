@@ -255,16 +255,91 @@ async fn old_meetings_gain_planned_minutes_and_class_name() {
     assert_eq!(db.list_meetings(10).await.unwrap().len(), 1);
 
     db.set_meeting_planned_minutes("m1", Some(60)).await.unwrap();
-    db.set_meeting_class("m1", Some("BIO 101")).await.unwrap();
+    db.set_meeting_notebook("m1", Some("BIO 101")).await.unwrap();
     let m1 = db.get_meeting("m1").await.unwrap().unwrap();
     assert_eq!((m1.planned_minutes, m1.class_name.as_deref()), (Some(60), Some("BIO 101")));
-    assert_eq!(db.recent_classes(12).await.unwrap(), vec!["BIO 101".to_string()]);
-    assert_eq!(db.list_meetings_in_class("bio 101", 10).await.unwrap().len(), 1);
-    assert!(db.list_meetings_in_class("CHEM 1", 10).await.unwrap().is_empty());
+    assert_eq!(m1.recording_kind, "meeting", "an old row with no type reads as a meeting");
+    assert_eq!(db.recent_notebooks(12).await.unwrap(), vec!["BIO 101".to_string()]);
+    assert_eq!(db.list_meetings_in_notebook("bio 101", 10).await.unwrap().len(), 1);
+    assert!(db.list_meetings_in_notebook("CHEM 1", 10).await.unwrap().is_empty());
 
     // Migrating again is a no-op
     migrate_all(&db).await;
-    assert_eq!(db.get_meeting_class("m1").await.unwrap().as_deref(), Some("BIO 101"));
+    assert_eq!(db.get_meeting_notebook("m1").await.unwrap().as_deref(), Some("BIO 101"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Recording type: a database from the classes build (class_name, no
+/// recording_kind) gains `recording_kind`. The backfill runs once: rows that
+/// had a class become 'class', the others stay NULL (a meeting). A notebook
+/// set after the migration never turns a recording into a class, even when
+/// the migrations run again at the next launch.
+#[tokio::test]
+async fn old_meetings_gain_recording_kind_and_classes_are_backfilled_once() {
+    use crate::recording_kind::RecordingKind;
+    let dir = tmp_dir("kind");
+    let path = old_database(&dir).await;
+    {
+        // What the classes build (PR #9) left behind: class_name, no recording_kind
+        let mut conn = SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().filename(&path))
+            .await
+            .unwrap();
+        crate::notebooks::ensure_schema(&mut conn).await.unwrap();
+        let t = Utc::now().to_rfc3339();
+        conn.execute(
+            format!(
+                "INSERT INTO meetings (id, title, started_at, class_name) VALUES
+                     ('c1', 'BIO 101 2026-10-01 09:00', '{t}', 'BIO 101'),
+                     ('c2', 'Blank class', '{t}', '   ');
+                 UPDATE meetings SET class_name = NULL WHERE id = 'm1';",
+                t = t
+            )
+            .as_str(),
+        )
+        .await
+        .unwrap();
+        let cols: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('meetings')")
+            .fetch_all(&mut conn)
+            .await
+            .unwrap();
+        assert!(cols.contains(&"class_name".to_string()) && !cols.contains(&"recording_kind".to_string()));
+        conn.close().await.unwrap();
+    }
+    let db = DatabaseManager::new(&path).await.unwrap();
+    migrate_all(&db).await;
+
+    let stored = |id: &'static str| {
+        let pool = db.pool().clone();
+        async move {
+            sqlx::query_scalar::<_, Option<String>>("SELECT recording_kind FROM meetings WHERE id = ?")
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(stored("c1").await.as_deref(), Some("class"), "had a class → Class");
+    assert_eq!(stored("m1").await, None, "no class → NULL (a meeting)");
+    assert_eq!(stored("c2").await, None, "a blank class name isn't a class");
+    let c1 = db.get_meeting("c1").await.unwrap().unwrap();
+    assert_eq!((c1.recording_kind.as_str(), c1.class_name.as_deref()), ("class", Some("BIO 101")), "notebook kept");
+    assert_eq!(db.get_kind_and_notebook("m1").await.unwrap().0, RecordingKind::Meeting);
+
+    // After the migration a notebook is just a notebook: launching again
+    // (migrations rerun) must not backfill it into a class
+    db.set_meeting_notebook("m1", Some("Acme project")).await.unwrap();
+    db.set_meeting_kind("c1", RecordingKind::Personal).await.unwrap();
+    migrate_all(&db).await;
+    assert_eq!(stored("m1").await, None, "backfill ran once");
+    assert_eq!(stored("c1").await.as_deref(), Some("personal"), "a type the user changed is kept");
+    assert_eq!(db.get_meeting("m1").await.unwrap().unwrap().recording_kind, "meeting");
+
+    // A fresh database gets the column too, empty
+    let fresh_dir = tmp_dir("kind-fresh");
+    let fresh = DatabaseManager::new(&fresh_dir.join("t.db")).await.unwrap();
+    migrate_all(&fresh).await;
+    assert!(columns(fresh.pool()).await["meetings"].contains("recording_kind"));
+    let _ = std::fs::remove_dir_all(fresh_dir);
     let _ = std::fs::remove_dir_all(dir);
 }
 

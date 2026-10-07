@@ -71,8 +71,10 @@ pub mod continue_prompt;
 pub mod interaction_loop;
 pub mod meeting_end;
 pub mod notifications;
-// Timed recording ("how long?") and classes (course tagging)
-pub mod classes;
+// Record sheet: "What is it?" (recording type), "How long?" (timed
+// recording) and the optional notebook
+pub mod notebooks;
+pub mod recording_kind;
 pub mod timed_recording;
 pub mod power_manager;
 pub mod privacy_filter;
@@ -894,14 +896,14 @@ pub fn run() {
             meeting_end::get_meeting_end_status,
             meeting_end::get_auto_stop_settings,
             meeting_end::set_auto_stop_settings,
-            // Timed recording + classes
+            // Record sheet: type, timed recording, notebook
             timed_recording::get_record_prefs,
             timed_recording::get_timed_recording_status,
             timed_recording::extend_timed_recording,
             timed_recording::remove_timed_recording_limit,
-            classes::set_meeting_class,
-            classes::list_recent_classes,
-            classes::take_class_recording_notice,
+            notebooks::set_meeting_notebook,
+            notebooks::list_recent_notebooks,
+            recording_kind::set_meeting_recording_kind,
         ])
         .on_window_event(|window, event| {
             match event {
