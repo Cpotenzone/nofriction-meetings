@@ -61,8 +61,11 @@ impl MeetingNotesGenerator {
         // Combine transcripts into a single text block
         let full_transcript = transcript_for_prompt(&transcripts);
 
-        // Generate notes using AI
-        let notes = self.analyze_transcript(&full_transcript, None).await?;
+        // Generate notes using AI (lecture notes when the meeting has a class)
+        let class = database.get_meeting_class(meeting_id).await.ok().flatten();
+        let (prompt, label) =
+            crate::classes::report_prompt(class.as_deref(), crate::settings::DEFAULT_REPORT_PROMPT, "default");
+        let notes = self.analyze_transcript(&full_transcript, Some(&prompt)).await?;
 
         // Save to database
         let notes_id = Uuid::new_v4().to_string();
@@ -80,7 +83,7 @@ impl MeetingNotesGenerator {
                 Some(&decisions_json),
                 Some(&action_items_json),
                 Some(&participants_json),
-                Some("default"),
+                Some(label),
             )
             .await
             .map_err(|e| format!("Failed to save notes: {}", e))?;
@@ -174,9 +177,10 @@ JSON ARRAY:"#,
 
         let full_transcript = transcript_for_prompt(&transcripts);
 
-        let notes = self
-            .analyze_transcript(&full_transcript, Some(custom_prompt))
-            .await?;
+        // A class gets lecture notes instead of the meeting report prompt
+        let class = database.get_meeting_class(meeting_id).await.ok().flatten();
+        let (prompt, label) = crate::classes::report_prompt(class.as_deref(), custom_prompt, "auto-report");
+        let notes = self.analyze_transcript(&full_transcript, Some(&prompt)).await?;
 
         let notes_id = uuid::Uuid::new_v4().to_string();
         let key_topics_json = serde_json::to_string(&notes.key_topics).unwrap_or_default();
@@ -193,7 +197,7 @@ JSON ARRAY:"#,
                 Some(&decisions_json),
                 Some(&action_items_json),
                 Some(&participants_json),
-                Some("auto-report"),
+                Some(label),
             )
             .await
             .map_err(|e| format!("Failed to save notes: {}", e))?;

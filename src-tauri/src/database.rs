@@ -16,6 +16,35 @@ pub struct Meeting {
     pub ended_at: Option<DateTime<Utc>>,
     pub duration_seconds: Option<i64>,
     pub calendar_event_id: Option<String>,
+    /// Planned length in minutes (timed recording); None = no limit
+    #[serde(default)]
+    pub planned_minutes: Option<i64>,
+    /// Class this recording belongs to (classes.rs); None = not a class
+    #[serde(default)]
+    pub class_name: Option<String>,
+}
+
+/// Columns read into [`Meeting`] by [`meeting_from_row`].
+pub(crate) const MEETING_COLUMNS: &str =
+    "id, title, started_at, ended_at, duration_seconds, planned_minutes, class_name";
+
+/// A `meetings` row selected with [`MEETING_COLUMNS`].
+pub(crate) fn meeting_from_row(r: &sqlx::sqlite::SqliteRow) -> Meeting {
+    Meeting {
+        id: r.get("id"),
+        title: r.get("title"),
+        started_at: DateTime::parse_from_rfc3339(&r.get::<String, _>("started_at"))
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        ended_at: r
+            .get::<Option<String>, _>("ended_at")
+            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+            .map(|dt| dt.with_timezone(&Utc)),
+        duration_seconds: r.get("duration_seconds"),
+        calendar_event_id: None,
+        planned_minutes: r.get("planned_minutes"),
+        class_name: r.get("class_name"),
+    }
 }
 
 /// Meeting attendee record
@@ -1015,6 +1044,9 @@ impl DatabaseManager {
         // People + calendar meeting details (owned by people.rs)
         crate::people::ensure_schema(&mut conn).await?;
 
+        // Timed recording + classes: meetings.planned_minutes / class_name (classes.rs)
+        crate::classes::ensure_schema(&mut conn).await?;
+
         // Editing + "Strike from the record" (docs/REDACTION.md)
         crate::redaction::ensure_schema(&mut conn).await?;
 
@@ -1041,6 +1073,8 @@ impl DatabaseManager {
             ended_at: None,
             duration_seconds: None,
             calendar_event_id: None,
+            planned_minutes: None,
+            class_name: None,
         })
     }
 
@@ -1229,54 +1263,39 @@ impl DatabaseManager {
 
     /// Get a meeting by ID
     pub async fn get_meeting(&self, id: &str) -> Result<Option<Meeting>, sqlx::Error> {
-        let row = sqlx::query(
-            "SELECT id, title, started_at, ended_at, duration_seconds FROM meetings WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query(&format!("SELECT {} FROM meetings WHERE id = ?", MEETING_COLUMNS))
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
-        Ok(row.map(|r| Meeting {
-            id: r.get("id"),
-            title: r.get("title"),
-            started_at: DateTime::parse_from_rfc3339(&r.get::<String, _>("started_at"))
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now()),
-            ended_at: r
-                .get::<Option<String>, _>("ended_at")
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc)),
-            duration_seconds: r.get("duration_seconds"),
-            calendar_event_id: None,
-        }))
+        Ok(row.as_ref().map(meeting_from_row))
     }
 
     /// List all meetings
     pub async fn list_meetings(&self, limit: i32) -> Result<Vec<Meeting>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT id, title, started_at, ended_at, duration_seconds 
-             FROM meetings ORDER BY started_at DESC LIMIT ?",
-        )
+        let rows = sqlx::query(&format!(
+            "SELECT {} FROM meetings ORDER BY started_at DESC LIMIT ?",
+            MEETING_COLUMNS
+        ))
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|r| Meeting {
-                id: r.get("id"),
-                title: r.get("title"),
-                started_at: DateTime::parse_from_rfc3339(&r.get::<String, _>("started_at"))
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now()),
-                ended_at: r
-                    .get::<Option<String>, _>("ended_at")
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&Utc)),
-                duration_seconds: r.get("duration_seconds"),
-                calendar_event_id: None,
-            })
-            .collect())
+        Ok(rows.iter().map(meeting_from_row).collect())
+    }
+
+    /// Meetings of one class (matched ignoring case), newest first
+    pub async fn list_meetings_in_class(&self, class_name: &str, limit: i32) -> Result<Vec<Meeting>, sqlx::Error> {
+        let rows = sqlx::query(&format!(
+            "SELECT {} FROM meetings WHERE class_name = ? COLLATE NOCASE ORDER BY started_at DESC LIMIT ?",
+            MEETING_COLUMNS
+        ))
+        .bind(class_name.trim())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(meeting_from_row).collect())
     }
 
     /// Delete a meeting and its transcripts

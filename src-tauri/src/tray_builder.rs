@@ -3,10 +3,49 @@
 
 use once_cell::sync::OnceCell;
 use tauri::{
-    menu::{CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem},
+    menu::{CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime, Wry,
 };
+
+/// Timed recording items (timed_recording.rs): the start label shows the
+/// remembered length; status / +15 / No limit follow the running plan.
+struct TimedItems {
+    start: MenuItem<Wry>,
+    status: MenuItem<Wry>,
+    extend: MenuItem<Wry>,
+    no_limit: MenuItem<Wry>,
+}
+
+static TIMED_ITEMS: OnceCell<TimedItems> = OnceCell::new();
+
+/// "Start Recording (60 min)": the length a tray / shortcut start uses.
+pub fn set_start_recording_label<R: Runtime>(_app: &AppHandle<R>, length: &str) {
+    if let Some(items) = TIMED_ITEMS.get() {
+        let _ = items.start.set_text(format!("Start Recording ({})", length));
+    }
+}
+
+/// Time-limit line, and whether +15 / No limit are actionable.
+pub fn set_time_limit_status<R: Runtime>(_app: &AppHandle<R>, text: &str, has_limit: bool) {
+    if let Some(items) = TIMED_ITEMS.get() {
+        let _ = items.status.set_text(text);
+        let _ = items.extend.set_enabled(has_limit);
+        let _ = items.no_limit.set_enabled(has_limit);
+    }
+}
+
+/// Tray submenu id → duration sent with `tray:start_recording`.
+pub fn start_duration_for(id: &str) -> Option<&'static str> {
+    match id {
+        tray_ids::START_15 => Some("15"),
+        tray_ids::START_30 => Some("30"),
+        tray_ids::START_60 => Some("60"),
+        tray_ids::START_90 => Some("90"),
+        tray_ids::START_NO_LIMIT => Some("none"),
+        _ => None,
+    }
+}
 
 /// Auto-stop (meeting-end detection) items, updated as state changes.
 struct AutoStopItems {
@@ -49,6 +88,15 @@ pub mod tray_ids {
     pub const AUTO_STOP_TOGGLE: &str = "tray_auto_stop_toggle";
     pub const AUTO_STOP_STATUS: &str = "tray_auto_stop_status";
     pub const AUTO_STOP_KEEP: &str = "tray_auto_stop_keep";
+    // Timed recording: "Start Recording For" submenu, and the running plan
+    pub const START_15: &str = "tray_start_15";
+    pub const START_30: &str = "tray_start_30";
+    pub const START_60: &str = "tray_start_60";
+    pub const START_90: &str = "tray_start_90";
+    pub const START_NO_LIMIT: &str = "tray_start_no_limit";
+    pub const TIME_LIMIT_STATUS: &str = "tray_time_limit_status";
+    pub const TIME_LIMIT_EXTEND: &str = "tray_time_limit_extend";
+    pub const TIME_LIMIT_REMOVE: &str = "tray_time_limit_remove";
 
     // Capture Modes
     pub const MODE_AMBIENT: &str = "tray_mode_ambient";
@@ -86,16 +134,34 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .enabled(false)
         .build(app)?;
 
+    // Timed recording: the plain item uses the remembered length (label set
+    // once settings load); the submenu picks one (and remembers it)
+    let start_item = MenuItemBuilder::with_id(tray_ids::START_RECORDING, "Start Recording").build(app)?;
+    let start_for = SubmenuBuilder::new(app, "Start Recording For")
+        .item(&MenuItemBuilder::with_id(tray_ids::START_15, "15 Minutes").build(app)?)
+        .item(&MenuItemBuilder::with_id(tray_ids::START_30, "30 Minutes").build(app)?)
+        .item(&MenuItemBuilder::with_id(tray_ids::START_60, "60 Minutes").build(app)?)
+        .item(&MenuItemBuilder::with_id(tray_ids::START_90, "90 Minutes").build(app)?)
+        .item(&MenuItemBuilder::with_id(tray_ids::START_NO_LIMIT, "No Limit").build(app)?)
+        .build()?;
+    let time_status = MenuItemBuilder::with_id(tray_ids::TIME_LIMIT_STATUS, "Time limit: not recording")
+        .enabled(false)
+        .build(app)?;
+    let time_extend = MenuItemBuilder::with_id(tray_ids::TIME_LIMIT_EXTEND, "Add 15 Minutes")
+        .enabled(false)
+        .build(app)?;
+    let time_remove = MenuItemBuilder::with_id(tray_ids::TIME_LIMIT_REMOVE, "Remove Time Limit")
+        .enabled(false)
+        .build(app)?;
+
     // Build the context menu
     let menu = MenuBuilder::new(app)
         // Header
         .text("nofriction_header", "noFriction Meetings")
         .separator()
         // Recording Controls
-        .item(
-            &MenuItemBuilder::with_id(tray_ids::START_RECORDING, "Start Recording")
-                .build(app)?,
-        )
+        .item(&start_item)
+        .item(&start_for)
         .item(&MenuItemBuilder::with_id(tray_ids::STOP_RECORDING, "Stop Recording").build(app)?)
         .item(
             &MenuItemBuilder::with_id(tray_ids::PAUSE_RECORDING, "Pause Recording")
@@ -105,6 +171,9 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
             &MenuItemBuilder::with_id(tray_ids::RESUME_RECORDING, "Resume Recording")
                 .build(app)?,
         )
+        .item(&time_status)
+        .item(&time_extend)
+        .item(&time_remove)
         .item(&auto_toggle)
         .item(&auto_status)
         .item(&auto_keep)
@@ -168,6 +237,12 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         status: auto_status,
         keep: auto_keep,
     });
+    let _ = TIMED_ITEMS.set(TimedItems {
+        start: start_item,
+        status: time_status,
+        extend: time_extend,
+        no_limit: time_remove,
+    });
 
     log::info!("✅ System tray created with context menu (ID: {})", TRAY_ID);
     Ok(())
@@ -206,6 +281,23 @@ fn handle_tray_event(app: &AppHandle, id: &str) {
         }
         tray_ids::AUTO_STOP_KEEP => {
             crate::meeting_end::keep_recording(app);
+        }
+        // Timed recording
+        id if start_duration_for(id).is_some() => {
+            let duration = start_duration_for(id).unwrap_or("none");
+            if let Err(e) = app.emit("tray:start_recording", serde_json::json!({ "duration": duration })) {
+                log::error!("Failed to emit tray:start_recording: {}", e);
+            }
+        }
+        tray_ids::TIME_LIMIT_EXTEND => {
+            if let Err(e) = crate::timed_recording::extend(app, None) {
+                log::info!("Tray +15 min: {}", e);
+            }
+        }
+        tray_ids::TIME_LIMIT_REMOVE => {
+            if let Err(e) = crate::timed_recording::remove_limit(app, None) {
+                log::info!("Tray remove limit: {}", e);
+            }
         }
 
         // Capture Modes
