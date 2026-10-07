@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/trinacria.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>noFriction Meetings</title>
+  <style>
+    html, body { background: #050505; }
+    /* Film capture: no cursor anywhere, no scrollbars flashing in */
+    html.harness-no-cursor, html.harness-no-cursor * { cursor: none !important; }
+    html.harness-no-cursor ::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/harness.ts"></script>
+</body>
+</html>

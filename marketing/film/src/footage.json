@@ -1,0 +1,338 @@
+{
+  "ios/ios-01-record-sheet-full.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 12.266667
+  },
+  "ios/ios-01-record-sheet-full.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-01-record-sheet.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 7.6
+  },
+  "ios/ios-01-record-sheet.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-01b-record-start.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 4.766667
+  },
+  "ios/ios-01b-record-start.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-02-live.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 10.333333
+  },
+  "ios/ios-02-live.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-02b-live-class.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 9.7
+  },
+  "ios/ios-02b-live-class.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-03-mark.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 7.766667
+  },
+  "ios/ios-03-mark.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-04-library.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 5.166667
+  },
+  "ios/ios-04-library.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-05-lecture.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 10.433333
+  },
+  "ios/ios-05-lecture.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-06-review.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 10.3
+  },
+  "ios/ios-06-review.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-07-personal.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 11.1
+  },
+  "ios/ios-07-personal.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-08-meeting.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 5.733333
+  },
+  "ios/ios-08-meeting.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-01-rewind.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 10.066667
+  },
+  "mac/mac-01-rewind.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-02-live.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 9.3
+  },
+  "mac/mac-02-live.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-03-home.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 5
+  },
+  "mac/mac-03-home.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-04-record-picker.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 7.966667
+  },
+  "mac/mac-04-record-picker.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-05-mark.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 7.4
+  },
+  "mac/mac-05-mark.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-06-review.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 8.1
+  },
+  "mac/mac-06-review.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-07-notes.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 5.5
+  },
+  "mac/mac-07-notes.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-08-library.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 4.266667
+  },
+  "mac/mac-08-library.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "mac/mac-09-links.mp4": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 30,
+    "dur": 4.4
+  },
+  "mac/mac-09-links.png": {
+    "w": 3840,
+    "h": 2160,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-01-start.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 12.5
+  },
+  "watch/watch-01-start.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-01b-start-sheet.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 6
+  },
+  "watch/watch-01b-start-sheet.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-01c-length.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 6
+  },
+  "watch/watch-01c-length.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-01d-notebook.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 6
+  },
+  "watch/watch-01d-notebook.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-02-class.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 9
+  },
+  "watch/watch-02-class.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-03-discreet.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 10
+  },
+  "watch/watch-03-discreet.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-04-list.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 8
+  },
+  "watch/watch-04-list.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  },
+  "watch/watch-05-warning.mp4": {
+    "w": 416,
+    "h": 496,
+    "fps": 30,
+    "dur": 8
+  },
+  "watch/watch-05-warning.png": {
+    "w": 416,
+    "h": 496,
+    "fps": 25,
+    "dur": 0
+  }
+}

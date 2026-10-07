@@ -167,8 +167,17 @@ stop_recording() {
 # waits between actions), keeping the last one up to END_HOLD.
 cut_clip() {
   local raw="$1" ss="$2" dur="$3" out="$4" max_hold="${5:-0.9}" end_hold="${6:-1.2}"
+  shift 6 2>/dev/null || shift $#
+  # remaining arguments: --keep A:B (raw seconds never shortened)
   python3 -I "$HERE/cut.py" "$raw" "$out" --start "$ss" --duration "$dur" \
-    --max-hold "$max_hold" --end-hold "$end_hold" --crf "$CRF" | sed 's/^/   /'
+    --max-hold "$max_hold" --end-hold "$end_hold" --crf "$CRF" "$@" | sed 's/^/   /'
+}
+
+# The test's "keep+" / "keep-" mark pairs (a state shown in full, e.g. a
+# flipped flashcard) → --keep A:B in raw seconds.
+keep_args() {
+  local times="$1" t0="$2"
+  awk -v t0="$t0" '$1=="keep+" {a=$2} $1=="keep-" && a!="" {printf "--keep %.3f:%.3f\n", a-t0, $2-t0; a=""}' "$times"
 }
 
 # "name time" lines → the time of `name` (first match)
@@ -266,7 +275,9 @@ cut_iphone_clip() {
   ss="$(python3 -c "print(f'{max(0.0, $a - $t0):.3f}')")"
   dur="$(python3 -c "print(f'{$b - $a:.3f}')")"
   log "$clip ($run, $from → $to)"
-  cut_clip "$raw" "$ss" "$dur" "$OUT/ios/$clip.mp4" "$max_hold" "$end_hold"
+  local keeps=() k v
+  while read -r k v; do keeps+=("$k" "$v"); done < <(keep_args "$times" "$t0")
+  cut_clip "$raw" "$ss" "$dur" "$OUT/ios/$clip.mp4" "$max_hold" "$end_hold" ${keeps[@]+"${keeps[@]}"}
   if [[ -f "$OUT/ios/raw/$clip.png" ]]; then
     flatten_png "$OUT/ios/raw/$clip.png" "$OUT/ios/$clip.png"
   else

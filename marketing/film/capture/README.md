@@ -43,7 +43,9 @@ e.g. `ios-01-record-sheet` and `ios-01b-record-start`). The Simulator writes
 a frame only when the screen changes, so a gap between frames is a still
 screen; gaps longer than the clip's "max still" (XCUITest's own waits, which
 grow when the machine is busy) are shortened to it, invisibly, and the result
-is placed on a constant 30 fps grid. Frame times come from the packets'
+is placed on a constant 30 fps grid. A test can protect a state the viewer
+must read in full with a `keep+` / `keep-` mark pair (the flipped flashcard
+in `ios-06-review`); that range is never shortened. Frame times come from the packets'
 presentation times: the Simulator repeats timestamps, and ffmpeg's own
 fps/trim filters then fall back to decode times that run seconds early (it
 put the wrong screen in clips). `NF_FILM_RECUT=1` re-cuts the last

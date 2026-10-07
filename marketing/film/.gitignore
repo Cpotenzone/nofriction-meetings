@@ -1,0 +1,4 @@
+node_modules/
+# symlinks into ../out (raw footage and the synthesized score; never committed)
+public/footage
+public/audio

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cut a clip out of a raw Simulator recording.
 
-    cut.py RAW OUT --start S --duration D [--max-hold H] [--end-hold E] [--crf 15]
+    cut.py RAW OUT --start S --duration D [--max-hold H] [--end-hold E] [--keep A:B ...] [--crf 15]
 
 The Simulator (simctl io recordVideo) writes a frame only when the screen
 changes, so a stretch with no frames is a still screen. While a UI test runs,
@@ -9,7 +9,8 @@ those stretches include XCUITest's own waits (it lets the app settle before
 and after every action, longer when the machine is busy). Any still stretch
 inside [S, S+D] longer than H seconds is shortened to H; nothing changes on
 screen during it, so the cut can't be seen. The last still stretch is kept up
-to E seconds. The clip is constant 30 fps, H.264 High, yuv420p, CRF, no
+to E seconds. Ranges given with --keep (a state the viewer needs time to
+read, e.g. a flipped flashcard) are never shortened. The clip is constant 30 fps, H.264 High, yuv420p, CRF, no
 audio, +faststart, at the recording's size.
 
 Timing comes from the packets' presentation times, not from ffmpeg's
@@ -37,16 +38,34 @@ def probe(raw):
     return int(s["width"]), int(s["height"]), times
 
 
-def keep_ranges(times, start, end, max_hold, end_hold):
-    """[start, end] minus the excess of every still stretch."""
+def subtract(cut, keeps):
+    """The parts of `cut` outside every protected range."""
+    parts = [cut]
+    for ka, kb in keeps:
+        nxt = []
+        for a, b in parts:
+            if kb <= a or ka >= b:
+                nxt.append((a, b))
+                continue
+            if a < ka:
+                nxt.append((a, ka))
+            if kb < b:
+                nxt.append((kb, b))
+        parts = nxt
+    return parts
+
+
+def keep_ranges(times, start, end, max_hold, end_hold, keeps=()):
+    """[start, end] minus the excess of every still stretch, never cutting
+    inside a protected range (a moment the viewer must be given time to read)."""
     changes = [t for t in times if start < t < end]
     cuts, prev = [], start
     for t in changes:
         if t - prev > max_hold:
-            cuts.append((prev + max_hold, t))
+            cuts += subtract((prev + max_hold, t), keeps)
         prev = t
     if end - prev > end_hold:
-        cuts.append((prev + end_hold, end))
+        cuts += subtract((prev + end_hold, end), keeps)
     ranges, cursor = [], start
     for a, b in cuts:
         if a > cursor:
@@ -109,11 +128,14 @@ def main():
     ap.add_argument("--max-hold", type=float, default=1.1)
     ap.add_argument("--end-hold", type=float, default=1.4)
     ap.add_argument("--crf", type=int, default=15)
+    ap.add_argument("--keep", action="append", default=[], metavar="A:B",
+                    help="raw seconds never shortened (repeatable)")
     a = ap.parse_args()
 
     w, h, times = probe(a.raw)
     start, end = max(0.0, a.start), a.start + a.duration
-    ranges = keep_ranges(times, start, end, a.max_hold, a.end_hold)
+    keeps = [tuple(float(x) for x in k.split(":")) for k in a.keep]
+    ranges = keep_ranges(times, start, end, a.max_hold, a.end_hold, keeps)
     wanted = source_times(ranges)
     size = w * h * 3 // 2   # yuv420p
 
