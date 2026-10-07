@@ -138,6 +138,16 @@ exist on the platform:
      and the user can edit them)
    - the AI "regenerate" uses the edited transcript, where stricken spans
      appear as `[stricken from the record]`
+   - **study guides are deleted, not rewritten** (Mac `study_materials`, iOS
+     `StudyMaterial`): summary, key terms, flashcards, quiz and questions
+     paraphrase the lecture, so matching the removed words can't clean them.
+     Any Delete or Strike of transcript text (words, lines, time ranges)
+     deletes every part of the meeting's study guide, in the live store and
+     in app backups; the preview/confirmation says so. Screen-only edits
+     keep it (it is made from the transcript only). A guide still being
+     generated is not saved if the transcript changed meanwhile (the
+     transcript fingerprint is re-checked when saving). See
+     [STUDY_TOOLS.md](STUDY_TOOLS.md#purge).
 6. **Exports.** Share/export/Markdown/Obsidian output from now on renders the
    marker. Files already exported outside the app can't be recalled; the Strike
    confirmation says so in one line.
@@ -236,6 +246,13 @@ with every step of the purge checklist:
   is estimated from its word count, 0.4 s a word, 1–30 s, bounded by the next
   line), and the preview says how many lines that rule included or kept.
 - **Screen video** for the whole span (DMG), via the background job.
+- **Moment markers** (★ / ? / ✎, `meeting_markers`) placed in the span, with
+  their notes. The preview counts them ("2 moment markers you placed in that
+  span"), and a linked Delete that would remove markers shows that preview
+  instead of deleting straight away. Like loose screen text they are found
+  and removed when the Delete commits, so its 5-second undo keeps them; app
+  backups lose them too. Word and line edits leave markers alone (a marker's
+  note is the user's own words, like a comment).
 
 The preview shows exact counts first, and the action is refused if the range
 now resolves to different counts. The plan (ids, offsets, line hashes; never
@@ -286,13 +303,21 @@ Code: `src-tauri/src/redaction.rs` (tests in `src-tauri/src/redaction/tests.rs`)
 UI in `src/components/redaction/Redaction.tsx`.
 
 - **Distinctive removals only propagate.** `is_distinctive()` gates the
-  rewrite of AI outputs (`meeting_notes`, `study_materials`, assistant chats
-  that used the meeting, timeline entries, topic clusters), the app log
+  rewrite of AI outputs (`meeting_notes`, assistant chats that used the
+  meeting, timeline entries, topic clusters), the app log
   rewrite, and the meeting-wide "other copies" check on app backups. A common
   word only sets `stale_after_edit`. The edited line itself is always purged
   from backups; a backup holding a different version of that line that still
   has the words is deleted.
 - **Comments.** `meeting_comments` are never rewritten, for Delete or Strike.
+- **Study guides.** `redact_ai_outputs` calls `study::purge_for_meeting`
+  for every line edit (any removal, distinctive or not), in the action's
+  transaction and in each backup's purge. `study::save_materials` re-checks
+  the transcript fingerprint and pending deletes inside `BEGIN IMMEDIATE`, so
+  a guide made from text that was removed during generation is never saved.
+- **Moment markers.** `RangeExtras.marker_ids` (`find_range_extras` /
+  `purge_range_extras`); `TimeRangePreview.moment_markers`. A meeting delete
+  removes them by `ON DELETE CASCADE`.
 - **Pending deletes.** A transient commit failure keeps the `redactions` row
   (`pending_payload` set) and records `failed_at` / `failure`. It is retried by
   `commit_all_pending` at launch, after any later commit in the same meeting,
@@ -373,6 +398,14 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   words. Only distinctive phrases are rewritten (`RedactionText.isDistinctive`,
   same rule as the Mac); a common word leaves the notes as they are. Either
   action sets `Meeting.aiNotesStale`.
+- **Study guides.** A Strike that removes text, a Delete when it commits (and
+  a recovered Delete) delete the meeting's `StudyMaterial` rows
+  (`StudyStore.purge`). During a Delete's undo window the guide is kept, like
+  the AI notes. `StudyStore.save` refuses a guide whose transcript
+  fingerprint no longer matches. The Strike confirmation lists the guide.
+- **Moment markers** (`MomentMarker`) cascade with their meeting. iOS has no
+  time-range action, so markers are otherwise left alone, like the Mac's
+  word and line edits.
 - **SQLite.** SwiftData doesn't expose store options, so the app can't set
   `secure_delete` on SwiftData's own connections. The system SQLite on iOS defaults
   `secure_delete` to FAST (2), which zeroes freed cells on pages it already

@@ -11,6 +11,7 @@ account to create.
 - [Find and review meetings](#find-and-review-meetings)
 - [Connect your AI](#connect-your-ai)
 - [Use the AI features](#use-the-ai-features)
+- [Mark moments and study a lecture](#mark-moments-and-study-a-lecture)
 - [Delete or strike something](#delete-or-strike-something)
 - [Export your meetings](#export-your-meetings)
 - [Subscription](#subscription)
@@ -228,6 +229,50 @@ Apple on-device or your own endpoint (see [Connect your AI](#connect-your-ai)).
   prep brief on the attendees (uses notes in your Obsidian vault).
 
 AI can be wrong. Check names, numbers and dates before you send anything.
+
+---
+
+## Mark moments and study a lecture
+
+**Mark a moment while you record.** Press **Mark** (Mac: in the bar at the
+top of LIVE; iPhone/iPad: **Mark this moment** above the record button). One
+press marks it **★ Important**. Right after, pick **? Question** (you were
+confused) or **✎ On the test**, and add a short note if you like. On the Mac,
+**⌃⌥⌘M** marks the moment even while your slides, browser or video call are in
+front, and **File → Mark Moment** does the same.
+
+**Find your marks later.** Mac: in **REWIND**, marks sit on the timeline and
+in the transcript at their time, and the **Markers** list jumps to each one.
+Filter it to show only **✎ On the test** before an exam. You can change a
+mark's type or note, delete it, or add one at the scrubber's time. iPhone/iPad:
+**Marked moments** in the meeting.
+
+**Make a study guide** (noFriction Pro, with Apple on-device or your own AI
+endpoint). Mac: open the recording → **STUDY** → **Make study guide**.
+iPhone/iPad: open the meeting → **Make study guide**. You get:
+- **Summary** in lecture-notes style
+- **Key terms** with definitions
+- **Flashcards**: click or tap to flip, then **Known** or **Again** (Mac:
+  Space flips, K and A answer, S shuffles). "Again" cards come back until you
+  know them all.
+- **Practice quiz**: see right or wrong with a one-line explanation, and
+  jump to the moment in the lecture where the answer is. Your score is shown
+  at the end.
+- **Questions to ask** your instructor, including the moments you marked
+  **? Question**.
+
+Moments you marked **✎ On the test** and **★ Important** get extra weight. On
+an iPhone or an older Mac, Apple's on-device model reads a long lecture in
+parts, so it can take a minute or two.
+
+**Export:** flashcards as a CSV file for **Anki** or **Quizlet**, and the whole
+guide as Markdown (Mac: buttons under the guide; iPhone/iPad: the share
+button in the study guide).
+
+The guide is made from the transcript only. Deleted or stricken words are
+never sent, and deleting or striking any transcript text deletes the guide
+(make it again afterwards). Deleting a time range on the Mac removes the
+marks inside it too.
 
 ---
 
