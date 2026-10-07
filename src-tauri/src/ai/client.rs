@@ -319,7 +319,7 @@ pub fn request_headers(protocol: Protocol, provider: &str, key: Option<&str>) ->
                 h.push(("authorization", format!("Bearer {}", k)));
             }
             if provider == "openrouter" {
-                h.push(("x-title", "noFriction Meetings".to_string()));
+                h.push(("x-title", "noFriction".to_string()));
             }
         }
         Protocol::Anthropic => {

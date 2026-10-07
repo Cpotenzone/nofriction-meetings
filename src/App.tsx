@@ -319,7 +319,7 @@ function App() {
           <>
             <div className="loading-spinner" style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary, #6366f1)' }} />
             <div>
-              <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 500 }}>Initializing noFriction Meetings...</p>
+              <p style={{ color: '#e5e7eb', fontSize: 14, fontWeight: 500 }}>Starting noFriction…</p>
               {isLongLoading && (
                 <p style={{ color: '#9ca3af', fontSize: 12, marginTop: '8px' }}>
                   Taking longer than expected. Please wait...

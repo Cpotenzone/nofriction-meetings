@@ -4,10 +4,10 @@
 <dict>
     <!-- Bundle Identification -->
     <key>CFBundleName</key>
-    <string>noFriction Meetings</string>
+    <string>noFriction</string>
     
     <key>CFBundleDisplayName</key>
-    <string>noFriction Meetings</string>
+    <string>noFriction</string>
     
     <key>CFBundleIdentifier</key>
     <string>com.nofriction.meetings</string>
@@ -44,19 +44,19 @@
     
     <!-- Microphone - for transcription -->
     <key>NSMicrophoneUsageDescription</key>
-    <string>noFriction Meetings needs microphone access to transcribe your voice during meetings.</string>
+    <string>noFriction needs microphone access to transcribe what is said while you record.</string>
     
     <!-- Screen Recording - for system audio and screen capture -->
     <key>NSScreenCaptureUsageDescription</key>
-    <string>noFriction Meetings needs screen recording access to capture meeting content and system audio from apps like Zoom and Teams.</string>
+    <string>noFriction needs screen recording access to capture the screens you choose and the audio of other people on a call.</string>
     
     <!-- Calendar - for meeting detection -->
     <key>NSCalendarsUsageDescription</key>
-    <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
+    <string>noFriction needs calendar access to name meetings and list who attended.</string>
     
     <!-- Calendar Full Access (macOS 14+) -->
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>noFriction Meetings needs calendar access to detect upcoming meetings and join links.</string>
+    <string>noFriction needs calendar access to name meetings and list who attended.</string>
     
     <!-- App Store (m10): no non-exempt encryption (only HTTPS/TLS from the
          OS), so export compliance is answered automatically. -->

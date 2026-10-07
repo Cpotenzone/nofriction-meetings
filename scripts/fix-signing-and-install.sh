@@ -28,7 +28,7 @@ die()  { echo -e "${RED}✗ $1${NC}"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-APP_NAME="noFriction Meetings"
+APP_NAME="noFriction"
 BUILT_APP="$PROJECT_ROOT/src-tauri/target/release/bundle/macos/$APP_NAME.app"
 INSTALLED_APP="/Applications/$APP_NAME.app"
 BUNDLE_ID="com.nofriction.meetings"   # from src-tauri/Info.plist

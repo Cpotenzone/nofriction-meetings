@@ -32,10 +32,10 @@ pub const SUPPORT_URL: &str = "https://nofriction.io/contact";
 
 /// Build the application menu bar
 pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let app_menu = SubmenuBuilder::new(app, "noFriction Meetings")
+    let app_menu = SubmenuBuilder::new(app, "noFriction")
         .item(&PredefinedMenuItem::about(
             app,
-            Some("About noFriction Meetings"),
+            Some("About noFriction"),
             None,
         )?)
         .separator()
@@ -129,7 +129,7 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     // Help menu
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .item(&MenuItemBuilder::with_id(menu_ids::HELP, "noFriction Meetings Help").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::HELP, "noFriction Help").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id(menu_ids::CONTACT_SUPPORT, "Contact Support...").build(app)?)
         .build()?;

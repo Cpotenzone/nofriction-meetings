@@ -102,7 +102,7 @@ with conflicting shapes, the loser silently corrupts the consumer that ran secon
 Centralizing ownership prevents this. The `findings.provenance JSONB` column for
 the WC audit→twin loop landed via this pattern in PR #13.
 
-## noFriction Meetings: project rules and hard-won lessons
+## noFriction (the app): project rules and hard-won lessons
 
 The two sections above ("Secrets, deploys…" and "Cross-subsystem schema
 ownership") describe the CriticalAsset web platform, not this repo. For
@@ -187,7 +187,7 @@ these rules apply.
   use a normal connection that only SELECTs:
   `sqlite3 -cmd ".timeout 10000" "$DB" "select max(timestamp) from transcripts"`
   (never select transcript text).
-- The bundle ID is `com.nofriction.meetings` everywhere. The Mac data folder
+- The bundle ID is `com.nofriction.meetings` everywhere (it can't change; the user-facing name is just "noFriction", product name set in `tauri.conf.json`). The Mac data folder
   migrated from `ai.nofriction.meetings`. `paths.rs` never deletes old data.
 - **Shell gotchas:** `wc -l` pads with spaces, so compare with `-gt`/`-eq` or
   `tr -d ' '`. macOS `sed` doesn't support `0,/re/`. Don't run `npm run build`

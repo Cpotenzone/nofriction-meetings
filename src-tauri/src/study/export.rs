@@ -212,13 +212,13 @@ pub fn guide_markdown(g: &GuideParts) -> String {
 
     out.push_str(match g.kind {
         RecordingKind::Class => {
-            "_Made with noFriction Meetings from the lecture transcript. AI can make mistakes; check against the lecture._\n"
+            "_Made with noFriction from the lecture transcript. AI can make mistakes; check against the lecture._\n"
         }
         RecordingKind::Meeting => {
-            "_Made with noFriction Meetings from the meeting transcript. AI can make mistakes; check against the recording._\n"
+            "_Made with noFriction from the meeting transcript. AI can make mistakes; check against the recording._\n"
         }
         RecordingKind::Personal => {
-            "_Made with noFriction Meetings from the transcript. AI can make mistakes; check against the recording._\n"
+            "_Made with noFriction from the transcript. AI can make mistakes; check against the recording._\n"
         }
     });
     out

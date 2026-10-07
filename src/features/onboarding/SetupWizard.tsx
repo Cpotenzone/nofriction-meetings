@@ -49,7 +49,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     return (
         <div className="setup-wizard">
             <div className="setup-header">
-                <h1>Welcome to noFriction Meetings</h1>
+                <h1>Welcome to noFriction</h1>
                 <p className="setup-subtitle">A few quick steps. Skip anything and change it later in Settings.</p>
                 <div className="setup-progress" aria-label={`Step ${index + 1} of ${steps.length}`}>
                     {steps.map((s, i) => (
@@ -81,7 +81,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 )}
                 {step === "done" ? (
                     <button className="setup-btn primary" onClick={finish}>
-                        Start Using noFriction Meetings
+                        Start using noFriction
                     </button>
                 ) : (
                     <button className="setup-btn primary" onClick={next}>
@@ -242,7 +242,7 @@ function PermissionsStep() {
                         perms?.screen_recording
                             ? "Allowed — call audio and screenshots are captured"
                             : askedScreen
-                              ? "Turn on noFriction Meetings in System Settings. macOS may ask you to quit and reopen the app."
+                              ? "Turn on noFriction in System Settings. macOS may ask you to quit and reopen the app."
                               : "Needed for the other side of Zoom/Meet/Teams calls and for screenshots"
                     }
                 >

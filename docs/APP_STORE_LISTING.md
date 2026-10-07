@@ -98,7 +98,7 @@ noFriction: Record your Life
 ```
 
 Names are unique across the store. The home-screen name stays "noFriction" on
-iOS (`CFBundleDisplayName`) and "noFriction Meetings" on the Mac
+iOS (`CFBundleDisplayName`) and "noFriction" on the Mac
 (`productName`), whatever the store name is.
 
 ### Subtitle (limit 30)

@@ -159,7 +159,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     // Build the context menu
     let menu = MenuBuilder::new(app)
         // Header
-        .text("nofriction_header", "noFriction Meetings")
+        .text("nofriction_header", "noFriction")
         .separator()
         // Recording Controls
         .item(&start_item)

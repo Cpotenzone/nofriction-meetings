@@ -78,7 +78,7 @@ const IGNORED_WINDOW_APPS: &[&str] = &[
     "Spotlight",
     "TextInputMenuAgent",
     "loginwindow",
-    "noFriction Meetings",
+    "noFriction",
     "nofriction-meetings",
 ];
 
@@ -152,7 +152,7 @@ static CAPTURE_PAUSED: AtomicBool = AtomicBool::new(false);
 /// Why system audio (other participants' voices) isn't being captured, if it
 /// isn't — surfaced in the UI instead of only in the log.
 static SYSTEM_AUDIO_ERROR: RwLock<Option<String>> = RwLock::new(None);
-const SYSTEM_AUDIO_PERMISSION_HINT: &str = "Other participants' audio isn't being captured — allow noFriction Meetings under System Settings → Privacy & Security → Screen & System Audio Recording, then restart the recording.";
+const SYSTEM_AUDIO_PERMISSION_HINT: &str = "Other participants' audio isn't being captured — allow noFriction under System Settings → Privacy & Security → Screen & System Audio Recording, then restart the recording.";
 const SCREEN_PERMISSION_ERROR: &str = "Screen Recording permission not granted";
 
 /// PERMISSION SAFEGUARD: without Screen Recording access, every xcap

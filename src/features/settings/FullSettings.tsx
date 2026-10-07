@@ -490,7 +490,7 @@ export function FullSettings({ onSave: _onSave, initialCategory = "general" }: F
                 return (
                     <div className="settings-content-panel fade-in">
                         <section className="settings-section">
-                            <h3>noFriction Meetings</h3>
+                            <h3>noFriction</h3>
                             <div className="settings-row">
                                 <div className="settings-label">
                                     <span className="label-main">Version</span>
@@ -531,7 +531,7 @@ export function FullSettings({ onSave: _onSave, initialCategory = "general" }: F
                                 </div>
                                 <div style={{ display: "flex", gap: 8 }}>
                                     <button className="btn-secondary" onClick={() => openLink(SUPPORT_URL)}>Support Site</button>
-                                    <button className="btn-secondary" onClick={() => openLink(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`noFriction Meetings ${version}${caps?.build ? ` (${caps.build})` : ""}`)}`)}>Email Support</button>
+                                    <button className="btn-secondary" onClick={() => openLink(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`noFriction ${version}${caps?.build ? ` (${caps.build})` : ""}`)}`)}>Email Support</button>
                                 </div>
                             </div>
                         </section>

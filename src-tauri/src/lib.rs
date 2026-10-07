@@ -436,7 +436,7 @@ pub fn run() {
         })))
         .init();
     log::info!(
-        "──── noFriction Meetings starting (v{}) ────",
+        "──── noFriction starting (v{}) ────",
         env!("CARGO_PKG_VERSION")
     );
     log::info!("Build flavor: {}", build_info::FLAVOR);
@@ -536,7 +536,7 @@ pub fn run() {
                                         });
                                     }
                                     log::info!(
-                                        "noFriction Meetings v{} initialized successfully",
+                                        "noFriction v{} initialized successfully",
                                         env!("CARGO_PKG_VERSION")
                                     );
                                 }

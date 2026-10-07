@@ -39,7 +39,7 @@ function AboutPanel() {
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚀</div>
                 <h2 style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>
-                    noFriction Meetings
+                    noFriction
                 </h2>
                 <p style={{ color: 'var(--accent-primary-hover, #818cf8)', fontSize: '16px', fontWeight: 600, marginBottom: '24px' }}>
                     Version 1.0.0 RC 1

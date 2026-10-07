@@ -1,4 +1,4 @@
-# noFriction Meetings - macOS Release Runbook (Developer ID DMG)
+# noFriction - macOS Release Runbook (Developer ID DMG)
 
 ## Overview
 
@@ -91,7 +91,7 @@ dist/
 ```bash
 # Verify .app bundle
 codesign --verify --deep --strict --verbose=2 \
-  "src-tauri/target/release/bundle/macos/noFriction Meetings.app"
+  "src-tauri/target/release/bundle/macos/noFriction.app"
 
 # Expected output: "valid on disk" and "satisfies its Designated Requirement"
 ```
@@ -107,7 +107,7 @@ codesign --verify --verbose=2 dist/noFriction-Meetings-<version>.dmg
 ```bash
 # Check if Gatekeeper will allow the app
 spctl --assess --type execute --verbose=2 \
-  "src-tauri/target/release/bundle/macos/noFriction Meetings.app"
+  "src-tauri/target/release/bundle/macos/noFriction.app"
 
 # Check DMG
 spctl --assess --type open --context context:primary-signature --verbose=2 \

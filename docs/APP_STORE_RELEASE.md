@@ -256,7 +256,7 @@ shipping code is the Castle tailnet hostname (§2).
 21. In the same app record: **+ Add Platform → macOS** (Universal Purchase with the same bundle ID and products).
 22. Build the sandboxed app, sign with *Apple Distribution* + embedded profile, then package:
     ```bash
-    productbuild --component "noFriction Meetings.app" /Applications \
+    productbuild --component "noFriction.app" /Applications \
       --sign "3rd Party Mac Developer Installer: casey potenzone (C7GCEESE2V)" noFriction.pkg
     xcrun altool --upload-package noFriction.pkg --type macos --apple-id … --password @keychain:AC_PASSWORD
     ```
