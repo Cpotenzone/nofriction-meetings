@@ -163,4 +163,4 @@ The type and the notebook are user-entered metadata on the recording row, like t
 | UI | `src/components/RecordPicker.tsx`, `TimedRecording.tsx`, `Notebook.tsx`; logic in `src/lib/recordPlan.ts`, `src/lib/recordingKind.ts`; `src/hooks/useRecordingKind.ts` | `Views/TimedRecordingViews.swift`, `LiveView.swift`, `MeetingsView.swift`, `MeetingDetailView.swift` |
 | Tests | `recording_kind::tests`, `timed_recording::tests`, `notebooks::tests`, `schema_drift_tests.rs`, `src/lib/recordPlan.test.ts`, `src/lib/recordingKind.test.ts` | `NoFrictionTests/TimedRecordingTests.swift` |
 
-The Apple Watch app is unchanged. A watch recording has no notebook until you set one on the iPhone.
+On Apple Watch, a recording starts with the same choices: What is it?, How long? and a notebook from the iPhone's recent notebooks. The watch keeps the time limit itself and can mark moments; see [docs/WATCH_APP.md](WATCH_APP.md).
