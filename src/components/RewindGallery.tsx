@@ -43,9 +43,18 @@ import {
 } from "./redaction/Redaction";
 import './RewindTab.css';
 
+/** A moment to show, asked for from outside (Links → "first said at 12:03").
+ *  `n` makes each request new, so the same time can be asked for again. */
+export interface RewindSeek {
+    meetingId: string;
+    ms: number;
+    n: number;
+}
+
 interface RewindGalleryProps {
     meetingId: string | null;
     isRecording: boolean;
+    seek?: RewindSeek | null;
 }
 
 type StripItem =
@@ -79,7 +88,7 @@ function writeLinked(on: boolean) {
     }
 }
 
-export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
+export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGalleryProps) {
     const [timeline, setTimeline] = useState<tauri.SyncedTimeline | null>(null);
     const [currentTime, setCurrentTime] = useState(0);
     const [selectedFrame, setSelectedFrame] = useState<tauri.TimelineFrame | null>(null);
@@ -231,6 +240,17 @@ export function RewindGallery({ meetingId, isRecording }: RewindGalleryProps) {
                 : null,
         [timeline],
     );
+
+    // Jump to a moment asked for from outside (Links), once the timeline is
+    // loaded: the same as scrubbing there (the transcript scrolls to it)
+    const appliedSeek = useRef<number | null>(null);
+    useEffect(() => {
+        if (!seek || seek.meetingId !== meetingId || !timeline || appliedSeek.current === seek.n) return;
+        appliedSeek.current = seek.n;
+        setCurrentTime(seek.ms);
+        const f = nearestFrame(seek.ms);
+        if (f) setSelectedFrame(f);
+    }, [seek, meetingId, timeline, nearestFrame]);
 
     // Handle timeline scrubbing
     const handleScrub = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

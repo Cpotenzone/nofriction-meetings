@@ -4,8 +4,10 @@ import { KBSearch } from '../../KBSearch';
 import { InsightsView } from '../../InsightsView';
 import { RewindGallery } from '../../RewindGallery';
 import { MeetingNotesPanel } from '../../MeetingNotesPanel';
+import { MeetingLinksPanel } from '../../MeetingLinksPanel';
 import { MeetingPeople, PeopleDirectory } from '../../People';
 import { MeetingClassField } from '../../MeetingClass';
+import type { RewindSeek } from '../../RewindGallery';
 
 type DeckTab = 'history' | 'people' | 'insights' | 'search';
 
@@ -17,10 +19,16 @@ interface InsightDeckViewProps {
 
 export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeeting, selectedMeetingId, refreshKey }) => {
     const [activeTab, setActiveTab] = useState<DeckTab>('history');
-    // Selected recording: screenshots + transcript, or its AI notes
-    const [meetingView, setMeetingView] = useState<'rewind' | 'notes'>('rewind');
+    // Selected recording: screenshots + transcript, its AI notes, or its links
+    const [meetingView, setMeetingView] = useState<'rewind' | 'notes' | 'links'>('rewind');
     // Bumped when a recording's class is edited, so the list and its filter refresh
     const [classEdits, setClassEdits] = useState(0);
+    // Links → "first said at 12:03" jumps there in Rewind
+    const [seek, setSeek] = useState<RewindSeek | null>(null);
+    const jumpTo = (meetingId: string, ms: number) => {
+        setSeek({ meetingId, ms, n: Date.now() });
+        setMeetingView('rewind');
+    };
 
     return (
         <div className="agency-view insight-deck">
@@ -83,12 +91,25 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                                     >
                                         NOTES
                                     </button>
+                                    <button
+                                        role="tab"
+                                        aria-selected={meetingView === 'links'}
+                                        className={`deck-tab ${meetingView === 'links' ? 'active' : ''}`}
+                                        onClick={() => setMeetingView('links')}
+                                    >
+                                        LINKS
+                                    </button>
                                 </div>
                                 <div style={{ flex: 1, minHeight: 0 }}>
                                     {meetingView === 'rewind' ? (
-                                        <RewindGallery meetingId={selectedMeetingId} isRecording={false} />
-                                    ) : (
+                                        <RewindGallery meetingId={selectedMeetingId} isRecording={false} seek={seek} />
+                                    ) : meetingView === 'notes' ? (
                                         <MeetingNotesPanel meetingId={selectedMeetingId} />
+                                    ) : (
+                                        <MeetingLinksPanel
+                                            meetingId={selectedMeetingId}
+                                            onJump={(ms) => jumpTo(selectedMeetingId, ms)}
+                                        />
                                     )}
                                 </div>
                             </div>

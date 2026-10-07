@@ -38,6 +38,7 @@ struct MeetingDetailView: View {
                 if !meeting.segments.isEmpty { notes }
                 if !meeting.people.isEmpty { people }
                 if !meeting.snapshots.isEmpty || !meeting.screenStrikes.isEmpty { photos }
+                MeetingLinksSection(meeting: meeting)
                 transcript
             }
             .padding(20)

@@ -83,6 +83,8 @@ pub mod obsidian_vault;
 pub mod people;
 // Transcript/screen editing + "Strike from the record" (docs/REDACTION.md)
 pub mod redaction;
+// Links & References on every meeting (docs/LINKS.md)
+pub mod meeting_links;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -852,6 +854,15 @@ pub fn run() {
             redaction::commands::list_video_blank_jobs,
             redaction::commands::retry_video_blank_jobs,
             redaction::commands::get_meeting_ai_status,
+            // Links & References (docs/LINKS.md)
+            meeting_links::commands::list_meeting_links,
+            meeting_links::commands::add_meeting_reference,
+            meeting_links::commands::update_meeting_reference,
+            meeting_links::commands::delete_meeting_reference,
+            meeting_links::commands::hide_meeting_link,
+            meeting_links::commands::open_meeting_link,
+            meeting_links::commands::get_browser_url_capture,
+            meeting_links::commands::set_browser_url_capture,
             // Build flavor / capabilities (UI hides features the build lacks)
             build_info::get_build_capabilities,
             // StoreKit (Mac App Store build; DMG returns "not available")

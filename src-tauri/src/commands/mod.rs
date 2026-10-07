@@ -895,6 +895,11 @@ pub async fn start_recording(
     // Time limit ("how long?"): stops at the deadline through the Stop path
     crate::timed_recording::arm(&app_for_end_monitor, &meeting_id, limit);
 
+    // Links: the frontmost browser's address while recording (DMG only;
+    // Accessibility must already be granted, never prompts). meeting_links.rs
+    #[cfg(not(feature = "mas"))]
+    crate::meeting_links::browser_url::start(app_for_end_monitor.clone(), meeting_id.clone());
+
     // Watch for the meeting ending (call app releases the mic, window closes,
     // calendar end, sustained silence) — see meeting_end.rs
     crate::meeting_end::start_monitor(app_for_end_monitor, meeting_id.clone(), calendar_window);

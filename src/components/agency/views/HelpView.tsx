@@ -218,6 +218,30 @@ const HelpGuide: React.FC<Caps> = ({ caps }) => (
         </div>
 
         <div className="help-section">
+            <h3>Links and References</h3>
+            <p>
+                Each recording has a <strong>Links</strong> view (next to Rewind and Notes) with every site that came
+                up in the meeting:
+            </p>
+            <ul>
+                <li><strong>Said</strong>: addresses in the transcript, including spoken ones like "khan academy dot org slash math".</li>
+                <li><strong>On screen</strong>: addresses in the screen text, and (Developer ID build) the address of the
+                    Safari, Chrome, Arc, Edge or Brave page you had in front while recording. That needs Accessibility to
+                    be allowed already; noFriction never asks for it just for this, and you can turn it off at the bottom
+                    of the Links view.</li>
+                <li><strong>Added</strong>: references you add yourself, like the syllabus, a reading or the slides, with an
+                    optional title and note.</li>
+            </ul>
+            <p>
+                Click the time next to a link to see that moment in Rewind. <strong>Open</strong> opens web (http and https)
+                links in your browser; <strong>Hide</strong> takes a detected link off the list;{" "}
+                <strong>Copy all as Markdown</strong> copies the list. Links are found on this Mac: noFriction never
+                visits the pages, not even for titles or icons. Deleting or striking the words or screens a link came
+                from removes the link too, and deleting the meeting removes its references.
+            </p>
+        </div>
+
+        <div className="help-section">
             <h3>Chat — Asking AI About Your Meetings</h3>
             <p>
                 <strong>CHAT</strong> answers natural-language questions from your own meetings, for example:
