@@ -637,12 +637,9 @@ const AI_TABLES: &[AiTable] = &[
         cols: &["summary", "key_topics", "decisions", "action_items", "participants"],
         flag: true,
     },
-    AiTable {
-        table: "study_materials",
-        key: "id",
-        cols: &["summary", "key_concepts", "quiz_questions", "flashcards"],
-        flag: true,
-    },
+    // study_materials are deleted outright (study::purge_for_meeting, in
+    // redact_ai_outputs): a study guide paraphrases the lecture, so
+    // matching the removed words can't clean it.
     // meeting_comments are deliberately absent: they're user-authored, so
     // an edit never rewrites them (the user can edit their own comment).
     AiTable {
@@ -658,17 +655,18 @@ const AI_TABLES: &[AiTable] = &[
 /// case-insensitive) in this meeting's saved AI outputs and the assistant
 /// chats that used it, and set the "made before an edit" flag on them.
 /// Only distinctive removals are rewritten ([`is_distinctive`]); for a
-/// common word the outputs are only flagged. User comments are never
-/// rewritten. Returns how many stored values changed.
+/// common word the outputs are only flagged. The meeting's study materials
+/// are deleted (any removal). User comments are never rewritten. Returns
+/// how many stored values changed.
 pub async fn redact_ai_outputs(
     conn: &mut SqliteConnection,
     meeting_id: &str,
     removed: &str,
     replacement: &str,
 ) -> Result<u64, sqlx::Error> {
+    let mut changed = crate::study::purge_for_meeting(conn, meeting_id).await?;
     let tables = table_names(conn).await?;
     let re = distinctive_phrase_regex(removed);
-    let mut changed = 0u64;
 
     let mut targets: Vec<(&str, &str, Vec<&str>, String, bool)> = Vec::new();
     for t in AI_TABLES {
@@ -2263,23 +2261,25 @@ async fn ai_preview(conn: &mut SqliteConnection, meeting_id: &str) -> Vec<String
         .fetch_one(&mut *conn)
         .await
         .unwrap_or(0);
-    let study: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM study_materials WHERE meeting_id = ?")
-        .bind(meeting_id)
-        .fetch_one(&mut *conn)
-        .await
-        .unwrap_or(0);
+    let study = crate::study::count_for_meeting(conn, meeting_id).await;
     let chats: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assistant_conversations WHERE context_refs LIKE ?")
         .bind(format!("%transcript-{}-%", meeting_id))
         .fetch_one(&mut *conn)
         .await
         .unwrap_or(0);
-    let total = notes + study + chats;
+    let total = notes + chats;
     if total > 0 {
         items.push(format!(
-            "Mentions in {} saved AI output{} (notes, study materials, assistant chats); they'll be marked \"made before an edit\"",
+            "Mentions in {} saved AI output{} (notes, assistant chats); they'll be marked \"made before an edit\"",
             total,
             if total == 1 { "" } else { "s" }
         ));
+    }
+    if study > 0 {
+        items.push(
+            "This meeting's study guide (summary, key terms, flashcards, quiz, questions): deleted; make it again after the edit"
+                .into(),
+        );
     }
     items.push("Mentions in timeline entries for this meeting (comments you wrote are left as they are)".into());
     items

@@ -85,6 +85,9 @@ pub mod people;
 pub mod redaction;
 // Links & References on every meeting (docs/LINKS.md)
 pub mod meeting_links;
+// Students: moment markers and study guides (docs/STUDY_TOOLS.md)
+pub mod markers;
+pub mod study;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -444,9 +447,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        // Shortcuts are registered at runtime (markers::register_hotkey), so a
+        // key another app owns can't fail the app's setup
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
             ai::set_app_handle(handle.clone());
+            // ⌃⌥⌘M: mark the moment while another app is in front
+            markers::register_hotkey(&handle);
             // Notification clicks (app activation) bring the window back
             notifications::init(&handle);
             // StoreKit: start the Transaction.updates listener and load the
@@ -863,6 +871,16 @@ pub fn run() {
             meeting_links::commands::open_meeting_link,
             meeting_links::commands::get_browser_url_capture,
             meeting_links::commands::set_browser_url_capture,
+            // Moment markers + study guides (docs/STUDY_TOOLS.md)
+            markers::commands::mark_moment,
+            markers::commands::add_marker,
+            markers::commands::update_marker,
+            markers::commands::delete_marker,
+            markers::commands::list_markers,
+            study::commands::get_study_guide,
+            study::commands::generate_study_guide,
+            study::commands::export_study_flashcards,
+            study::commands::export_study_guide,
             // Build flavor / capabilities (UI hides features the build lacks)
             build_info::get_build_capabilities,
             // StoreKit (Mac App Store build; DMG returns "not available")

@@ -78,6 +78,8 @@ export interface TimeRangePreview {
     screen_text_snapshots: number;
     activity_summaries: number;
     timeline_entries: number;
+    /** Moment markers in the ranges (removed with them when the delete commits) */
+    moment_markers?: number;
     nothing: boolean;
     items: string[];
 }

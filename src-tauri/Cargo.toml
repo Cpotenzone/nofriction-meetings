@@ -72,6 +72,11 @@ jsonwebtoken = "9"
 # Meeting-end countdown notification (sandbox-safe, no entitlement).
 # ~2.3: 2.4+ requires tauri 2.10.
 tauri-plugin-notification = "~2.3"
+# "Mark moment" hotkey that works while another app (slides, a video call)
+# is in front. Carbon RegisterEventHotKey: no Accessibility permission, and
+# allowed in the App Sandbox. Pinned: 2.3.2+ requires tauri 2.10 and would
+# pull the whole app (and its JS API pairing) up to it.
+tauri-plugin-global-shortcut = "=2.3.1"
 
 # macOS native frameworks
 [target.'cfg(target_os = "macos")'.dependencies]

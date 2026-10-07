@@ -555,13 +555,12 @@ async fn ai_outputs_are_redacted_and_flagged() {
     assert_eq!(notes.key_topics.as_deref(), Some(r#"["[stricken from the record] acquisition","Hiring"]"#));
     assert!(notes.decisions.unwrap().contains("Buy [stricken from the record]"));
     assert!(notes.stale_after_edit);
-    let (sum, stale): (String, i64) =
-        sqlx::query_as("SELECT summary, stale_after_edit FROM study_materials WHERE id = 's1'")
-            .fetch_one(f.db.pool())
-            .await
-            .unwrap();
-    assert_eq!(sum, "About [stricken from the record]");
-    assert_eq!(stale, 1);
+    // Study materials paraphrase the lecture: deleted, not rewritten
+    let study: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM study_materials WHERE meeting_id = 'm1'")
+        .fetch_one(f.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(study, 0);
     let convs = f.db.list_assistant_conversations(10).await.unwrap();
     let c1 = convs.iter().find(|c| c.0 == "c1").unwrap();
     assert_eq!(c1.2, "what about [stricken from the record]?");

@@ -8,6 +8,7 @@ import { MeetingLinksPanel } from '../../MeetingLinksPanel';
 import { MeetingPeople, PeopleDirectory } from '../../People';
 import { MeetingClassField } from '../../MeetingClass';
 import type { RewindSeek } from '../../RewindGallery';
+import { StudyPanel } from '../../study/StudyPanel';
 
 type DeckTab = 'history' | 'people' | 'insights' | 'search';
 
@@ -19,11 +20,11 @@ interface InsightDeckViewProps {
 
 export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeeting, selectedMeetingId, refreshKey }) => {
     const [activeTab, setActiveTab] = useState<DeckTab>('history');
-    // Selected recording: screenshots + transcript, its AI notes, or its links
-    const [meetingView, setMeetingView] = useState<'rewind' | 'notes' | 'links'>('rewind');
+    // Selected recording: screenshots + transcript, its AI notes, its links or its study guide
+    const [meetingView, setMeetingView] = useState<'rewind' | 'notes' | 'links' | 'study'>('rewind');
     // Bumped when a recording's class is edited, so the list and its filter refresh
     const [classEdits, setClassEdits] = useState(0);
-    // Links → "first said at 12:03" jumps there in Rewind
+    // Links → "first said at 12:03" and Study → "Jump to this moment" show it in Rewind
     const [seek, setSeek] = useState<RewindSeek | null>(null);
     const jumpTo = (meetingId: string, ms: number) => {
         setSeek({ meetingId, ms, n: Date.now() });
@@ -99,17 +100,27 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
                                     >
                                         LINKS
                                     </button>
+                                    <button
+                                        role="tab"
+                                        aria-selected={meetingView === 'study'}
+                                        className={`deck-tab ${meetingView === 'study' ? 'active' : ''}`}
+                                        onClick={() => setMeetingView('study')}
+                                    >
+                                        STUDY
+                                    </button>
                                 </div>
                                 <div style={{ flex: 1, minHeight: 0 }}>
                                     {meetingView === 'rewind' ? (
                                         <RewindGallery meetingId={selectedMeetingId} isRecording={false} seek={seek} />
                                     ) : meetingView === 'notes' ? (
                                         <MeetingNotesPanel meetingId={selectedMeetingId} />
-                                    ) : (
+                                    ) : meetingView === 'links' ? (
                                         <MeetingLinksPanel
                                             meetingId={selectedMeetingId}
                                             onJump={(ms) => jumpTo(selectedMeetingId, ms)}
                                         />
+                                    ) : (
+                                        <StudyPanel meetingId={selectedMeetingId} onJump={(ms) => jumpTo(selectedMeetingId, ms)} />
                                     )}
                                 </div>
                             </div>

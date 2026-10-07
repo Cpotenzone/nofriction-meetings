@@ -235,3 +235,25 @@ export const CameraIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, cl
         <circle cx="12" cy="13" r="3.5" />
     </svg>
 );
+
+/** Star — a moment marked Important (study markers) */
+export const StarIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z" />
+    </svg>
+);
+
+/** Pencil — a moment marked On the test (study markers) */
+export const PencilIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M15.5 4.5l4 4L8 20H4v-4z" />
+        <path d="M13 7l4 4" />
+    </svg>
+);
+
+/** Bookmark flag — "mark this moment" */
+export const MarkIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M6 3.5h12v17l-6-4-6 4z" />
+    </svg>
+);

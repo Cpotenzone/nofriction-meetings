@@ -20,6 +20,7 @@ import {
 } from "../lib/tauri";
 import { CameraIcon, CheckIcon, DisplayIcon, WindowIcon } from "./icons";
 import { RecordingTimer } from "./TimedRecording";
+import { MarkButton } from "./study/MarkButton";
 import "./CaptureBar.css";
 
 interface TranscriptionStatus {
@@ -133,6 +134,9 @@ export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarP
                     {chips.length > 3 && <span className="cbar__chip">+{chips.length - 3}</span>}
                     <span className="cbar__edit">Change</span>
                 </button>
+
+                {/* Moment markers: ★ / ? / ✎ (docs/STUDY_TOOLS.md) */}
+                <MarkButton isRecording={isRecording} />
 
                 <button className="cbar__snap" onClick={snap} type="button" title="Snap now (⌘⇧S)">
                     <CameraIcon size={15} />
