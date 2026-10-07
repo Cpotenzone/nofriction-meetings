@@ -1050,6 +1050,9 @@ impl DatabaseManager {
         // Editing + "Strike from the record" (docs/REDACTION.md)
         crate::redaction::ensure_schema(&mut conn).await?;
 
+        // Links & References: added references, hidden-link hashes (docs/LINKS.md)
+        crate::meeting_links::ensure_schema(&mut conn).await?;
+
         log::info!("Database migrations completed (v3.0 - Calendar Integration)");
         Ok(())
     }
@@ -1304,6 +1307,9 @@ impl DatabaseManager {
             .bind(id)
             .execute(&self.pool)
             .await?;
+
+        // Added references and hidden-link hashes (docs/REDACTION.md checklist)
+        crate::meeting_links::purge_meeting(&self.pool, id).await?;
 
         sqlx::query("DELETE FROM meetings WHERE id = ?")
             .bind(id)

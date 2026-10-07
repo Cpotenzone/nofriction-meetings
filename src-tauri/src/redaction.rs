@@ -1512,6 +1512,11 @@ async fn post_commit_purge(
     out.backups_purged = report.purged;
     out.backups_deleted = report.deleted;
     out.warnings.extend(report.errors);
+    // Links (meeting_links.rs) are derived from the text just removed; a
+    // hidden link's hash goes once the link no longer appears anywhere
+    if let Err(e) = crate::meeting_links::prune_hidden(pool, meeting_id).await {
+        out.warnings.push(e);
+    }
     if let Err(e) = wal_checkpoint_truncate(pool).await {
         out.warnings.push(e);
     }
