@@ -170,8 +170,9 @@ enum RedactionEngine {
             context.delete(snap)
         }
 
-        // 4. AI outputs
+        // 4. AI outputs (the study guide is deleted: it paraphrases the transcript)
         redactAIOutputs(meeting, phrases: plan.phrases, replacement: RedactionText.placeholder)
+        if !plan.changes.isEmpty { StudyStore.purge(meeting, context: context) }
 
         try context.save()
 
@@ -273,6 +274,7 @@ enum RedactionEngine {
         try await silenceAudio(p.audioRanges, meeting: p.meeting)
         for snap in p.snapshots { try removeFile(Storage.snapshots.appending(path: snap.fileName)) }
         redactAIOutputs(p.meeting, phrases: p.phrases, replacement: "")
+        if !p.segments.isEmpty { StudyStore.purge(p.meeting, context: context) }
         if let record = p.meeting.redaction(id: p.recordID) { context.delete(record) }
         try context.save()
         _ = StoreHygiene.scrub(context)
@@ -295,6 +297,10 @@ enum RedactionEngine {
                     try removeFile(Storage.snapshots.appending(path: name))
                 }
                 if meeting.aiNotes != nil { meeting.aiNotesStale = true }
+                // Text was removed (it had audio to silence) or we can't tell: no study guide survives it
+                if !ranges.isEmpty || (decode([String].self, record.pendingFilesJSON) ?? []).isEmpty {
+                    StudyStore.purge(meeting, context: context)
+                }
                 context.delete(record)
             } catch {
                 continue   // try again next launch

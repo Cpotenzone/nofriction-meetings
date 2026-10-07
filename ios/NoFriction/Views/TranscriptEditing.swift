@@ -471,6 +471,9 @@ struct StrikeSummary {
         if meeting.aiNotes != nil, !plan.changes.isEmpty {
             destroyed.append("Matching text in the AI notes (they're marked as made before an edit)")
         }
+        if !meeting.studyMaterials.isEmpty, !plan.changes.isEmpty {
+            destroyed.append("This meeting's study guide (make it again after the strike)")
+        }
         if !plan.changes.isEmpty {
             destroyed.append("Its text in search and in future exports and AI prompts")
         }

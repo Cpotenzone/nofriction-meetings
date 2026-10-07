@@ -62,6 +62,9 @@ final class Meeting {
     @Relationship(deleteRule: .cascade, inverse: \Redaction.meeting) var redactions: [Redaction] = []
     /// Links the user added (syllabus, readings, slides); docs/LINKS.md
     @Relationship(deleteRule: .cascade, inverse: \MeetingReference.meeting) var references: [MeetingReference] = []
+    /// Moments marked while recording (★ / ? / ✎) and the study guide (docs/STUDY_TOOLS.md)
+    @Relationship(deleteRule: .cascade, inverse: \MomentMarker.meeting) var markers: [MomentMarker] = []
+    @Relationship(deleteRule: .cascade, inverse: \StudyMaterial.meeting) var studyMaterials: [StudyMaterial] = []
 
     init(title: String, startedAt: Date = .now) {
         self.id = UUID()
@@ -267,7 +270,7 @@ enum Storage {
 
     static let modelTypes: [any PersistentModel.Type] = [
         Meeting.self, Segment.self, Snapshot.self, Person.self, Attendance.self, Redaction.self,
-        MeetingReference.self,
+        MeetingReference.self, MomentMarker.self, StudyMaterial.self,
     ]
 
     /// The app's store. Opened in App.init, before any view, because Apple

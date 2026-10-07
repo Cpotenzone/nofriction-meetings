@@ -27,24 +27,42 @@ struct MeetingDetailView: View {
     @State private var selectingPhotos = false
     @State private var selectedPhotos: Set<PersistentIdentifier> = []
     @State private var strikeRequest: StrikeRequest?
+    // Study tools (docs/STUDY_TOOLS.md)
+    @State private var studyProgress: MeetingAI.StudyProgress?
+    @State private var studyFailures: [String] = []
+    @State private var showStudy = false
+    @State private var jumpTarget: PersistentIdentifier?
 
-    enum AIAction { case notes, email }
+    enum AIAction { case notes, email, study }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
-                if meeting.audioFileName != nil { playback }
-                if !meeting.segments.isEmpty { notes }
-                if !meeting.people.isEmpty { people }
-                if !meeting.snapshots.isEmpty || !meeting.screenStrikes.isEmpty { photos }
-                MeetingLinksSection(meeting: meeting)
-                transcript
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    header
+                    if meeting.audioFileName != nil { playback }
+                    if !meeting.segments.isEmpty { notes }
+                    if !meeting.segments.isEmpty {
+                        StudySection(meeting: meeting, working: aiWorking, progress: studyProgress, failures: studyFailures,
+                                     onMake: { requestAI(.study) }, onOpen: { showStudy = true })
+                    }
+                    if !meeting.markers.isEmpty { MarkersSection(meeting: meeting, onJump: jump) }
+                    if !meeting.people.isEmpty { people }
+                    if !meeting.snapshots.isEmpty || !meeting.screenStrikes.isEmpty { photos }
+                    MeetingLinksSection(meeting: meeting)
+                    transcript
+                }
+                .padding(20)
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .padding(20)
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .onChange(of: jumpTarget) { _, target in
+                guard let target else { return }
+                withAnimation { proxy.scrollTo(target, anchor: .center) }
+                jumpTarget = nil
+            }
         }
+        .sheet(isPresented: $showStudy) { StudyGuideView(meeting: meeting, onJump: jump) }
         .background(Theme.background)
         .safeAreaInset(edge: .bottom) { selectionBar }
         .navigationBarTitleDisplayMode(.inline)
@@ -254,7 +272,48 @@ struct MeetingDetailView: View {
             runAI("Drafting email with \(endpoint.provider.name)…") {
                 email = try await MeetingAI.followUpEmail(context: MeetingAI.context(meeting), endpoint: endpoint)
             }
+        case .study:
+            runStudy(endpoint)
         }
+    }
+
+    /// Study guide: every part, saved only if the transcript wasn't edited meanwhile.
+    private func runStudy(_ endpoint: AIEndpoint) {
+        let input = StudyInput(meeting: meeting)
+        let fingerprint = input.fingerprint
+        studyFailures = []
+        studyProgress = nil
+        runAI("Making the study guide with \(endpoint.provider.name)…") {
+            defer { studyProgress = nil }
+            let results = try await MeetingAI.studyGuide(input, contextTokens: endpoint.contextTokens,
+                                                         complete: MeetingAI.liveComplete(endpoint)) { p in
+                await MainActor.run { studyProgress = p }
+            }
+            let ok = results.compactMap { kind, r in (try? r.get()).map { (kind, $0) } }
+            studyFailures = results.compactMap { _, r in
+                if case .failure(let f) = r { return f.errorDescription } else { return nil }
+            }
+            try StudyStore.save(ok, fingerprint: fingerprint, meeting: meeting, context: context)
+            if !ok.isEmpty { showStudy = true }
+        }
+    }
+
+    /// Scroll the transcript to the line being spoken at `time`.
+    private func jump(_ time: Date) {
+        let rows = transcriptRows
+        jumpTarget = (rows.last { $0.start <= time } ?? rows.first)?.persistentModelID
+    }
+
+    /// Markers by the transcript row they follow (the line being spoken when marked).
+    private var markersByRow: [PersistentIdentifier: [MomentMarker]] {
+        let rows = transcriptRows
+        guard !rows.isEmpty else { return [:] }
+        var out: [PersistentIdentifier: [MomentMarker]] = [:]
+        for m in meeting.orderedMarkers {
+            let host = rows.last { $0.start <= m.at } ?? rows[0]
+            out[host.persistentModelID, default: []].append(m)
+        }
+        return out
     }
 
     /// Continue only if the step that interrupted is now satisfied (no loops on "Not now" / Close).
@@ -376,6 +435,7 @@ struct MeetingDetailView: View {
                     Text("Nothing was transcribed.").foregroundStyle(.secondary)
                 }
             } else {
+                let inlineMarkers = markersByRow
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(transcriptRows) { segment in
                         let hasWords = RedactionText.tokens(segment.text).contains(where: \.isWord)
@@ -403,6 +463,11 @@ struct MeetingDetailView: View {
                                     }
                                 }
                             }
+                            .id(segment.persistentModelID)
+                        // Moments marked while this line was spoken
+                        ForEach(inlineMarkers[segment.persistentModelID] ?? []) { m in
+                            MarkerInlineRow(marker: m, meeting: meeting)
+                        }
                     }
                 }
             }

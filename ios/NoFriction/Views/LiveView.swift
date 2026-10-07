@@ -40,6 +40,8 @@ struct LiveView: View {
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)
                     .accessibilityIdentifier("recording-reminder")
+                // ★ / ? / ✎ moment markers (docs/STUDY_TOOLS.md)
+                if session.isActive { MarkControl() }
                 controls
             }
             .background(Theme.background.ignoresSafeArea())
