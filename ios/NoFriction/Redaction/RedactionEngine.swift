@@ -172,7 +172,7 @@ enum RedactionEngine {
 
         // 4. AI outputs (the study guide is deleted: it paraphrases the transcript)
         redactAIOutputs(meeting, phrases: plan.phrases, replacement: RedactionText.placeholder)
-        if !plan.changes.isEmpty { StudyStore.purge(meeting, context: context) }
+        if !plan.changes.isEmpty { purgeDerived(meeting, context: context) }
 
         try context.save()
 
@@ -274,7 +274,7 @@ enum RedactionEngine {
         try await silenceAudio(p.audioRanges, meeting: p.meeting)
         for snap in p.snapshots { try removeFile(Storage.snapshots.appending(path: snap.fileName)) }
         redactAIOutputs(p.meeting, phrases: p.phrases, replacement: "")
-        if !p.segments.isEmpty { StudyStore.purge(p.meeting, context: context) }
+        if !p.segments.isEmpty { purgeDerived(p.meeting, context: context) }
         if let record = p.meeting.redaction(id: p.recordID) { context.delete(record) }
         try context.save()
         _ = StoreHygiene.scrub(context)
@@ -299,7 +299,7 @@ enum RedactionEngine {
                 if meeting.aiNotes != nil { meeting.aiNotesStale = true }
                 // Text was removed (it had audio to silence) or we can't tell: no study guide survives it
                 if !ranges.isEmpty || (decode([String].self, record.pendingFilesJSON) ?? []).isEmpty {
-                    StudyStore.purge(meeting, context: context)
+                    purgeDerived(meeting, context: context)
                 }
                 context.delete(record)
             } catch {
@@ -324,6 +324,16 @@ enum RedactionEngine {
     static func removeFile(_ url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return }
         try FileManager.default.removeItem(at: url)
+    }
+
+    /// Transcript text was removed: AI outputs that paraphrase or quote it go
+    /// whole. The study guide (StudyStore), the AI topics (user topics stay)
+    /// and every chat answer citing this recording, flagging its thread
+    /// (docs/REDACTION.md step 5; docs/TOPICS_AND_CHAT.md).
+    static func purgeDerived(_ meeting: Meeting, context: ModelContext) {
+        StudyStore.purge(meeting, context: context)
+        TopicStore.purgeAI(meeting, context: context)
+        ChatStore.purge(meetingID: meeting.id, title: meeting.title, deleted: false, context: context)
     }
 
     /// Saved AI notes: redact the removed text and flag them as made before an edit.

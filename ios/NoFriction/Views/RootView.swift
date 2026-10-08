@@ -12,7 +12,7 @@ struct RootView: View {
     @State private var tab: AppTab = .now
     @AppStorage(Onboarding.completedKey) private var onboardingCompleted = false
 
-    enum AppTab: Hashable { case now, meetings, people, settings }
+    enum AppTab: Hashable { case now, meetings, chat, people, settings }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -21,6 +21,10 @@ struct RootView: View {
             }
             Tab("Recordings", systemImage: "rectangle.stack", value: AppTab.meetings) {
                 MeetingsView()
+            }
+            // Chat with your recordings (docs/TOPICS_AND_CHAT.md)
+            Tab("Chat", systemImage: "bubble.left.and.text.bubble.right", value: AppTab.chat) {
+                ChatView()
             }
             Tab("People", systemImage: "person.2", value: AppTab.people) {
                 PeopleView()

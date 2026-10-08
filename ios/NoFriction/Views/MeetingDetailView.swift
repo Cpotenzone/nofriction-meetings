@@ -4,6 +4,8 @@ import SwiftUI
 
 struct MeetingDetailView: View {
     @Bindable var meeting: Meeting
+    /// Open scrolled to the transcript line spoken at this moment (a Chat citation)
+    var jumpTo: Date? = nil
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
@@ -33,8 +35,10 @@ struct MeetingDetailView: View {
     @State private var showStudy = false
     @State private var studyRunning = false
     @State private var jumpTarget: PersistentIdentifier?
+    /// Topics (docs/TOPICS_AND_CHAT.md): why the last Find topics failed
+    @State private var topicsError: String?
 
-    enum AIAction { case notes, email, study }
+    enum AIAction { case notes, email, study, topics }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -62,6 +66,12 @@ struct MeetingDetailView: View {
                 guard let target else { return }
                 withAnimation { proxy.scrollTo(target, anchor: .center) }
                 jumpTarget = nil
+            }
+            .task {
+                // Opened from a citation: let the transcript lay out, then scroll to the moment
+                guard let jumpTo else { return }
+                try? await Task.sleep(for: .milliseconds(400))
+                jump(jumpTo)
             }
         }
         .sheet(isPresented: $showStudy) { StudyGuideView(meeting: meeting, onJump: jump) }
@@ -198,7 +208,7 @@ struct MeetingDetailView: View {
                     .accessibilityIdentifier("ai-notes-stale")
                 }
                 if let md = meeting.aiNotes {
-                    Text(Self.markdown(md))
+                    Text(MarkdownText.attributed(md))
                         .font(.callout)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -236,6 +246,8 @@ struct MeetingDetailView: View {
                 .tint(Theme.ai)
                 .disabled(aiWorking != nil)
                 .font(.subheadline)
+                Divider().overlay(Theme.hairline)
+                TopicsEditor(meeting: meeting, busy: aiWorking != nil, error: topicsError) { requestAI(.topics) }
             }
             .padding(14)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -279,7 +291,11 @@ struct MeetingDetailView: View {
                 meeting.aiNotesAt = .now
                 meeting.aiNotesStale = false
                 try? context.save()
+                // Same hook as the Mac: topics are named with the notes
+                await findTopics(endpoint)
             }
+        case .topics:
+            runAI("Finding topics with \(endpoint.provider.name)…") { await findTopics(endpoint) }
         case .email:
             runAI("Drafting email with \(endpoint.provider.name)…") {
                 email = try await MeetingAI.followUpEmail(context: MeetingAI.context(meeting), endpoint: endpoint)
@@ -316,6 +332,21 @@ struct MeetingDetailView: View {
         }
     }
 
+    /// Name the recording's topics (docs/TOPICS_AND_CHAT.md). User topics
+    /// and removed ones are respected by `TopicStore.applyAI`. A failure is
+    /// shown under the topics, never under the notes.
+    private func findTopics(_ endpoint: AIEndpoint) async {
+        topicsError = nil
+        let input = StudyInput(meeting: meeting)
+        do {
+            let found = try await MeetingAI.findTopics(input, contextTokens: endpoint.contextTokens,
+                                                       complete: MeetingAI.liveComplete(endpoint))
+            try TopicStore.applyAI(found, to: meeting, context: context)
+        } catch {
+            topicsError = error.localizedDescription
+        }
+    }
+
     /// Scroll the transcript to the line being spoken at `time`.
     private func jump(_ time: Date) {
         let rows = transcriptRows
@@ -348,11 +379,6 @@ struct MeetingDetailView: View {
             defer { aiWorking = nil }
             do { try await work() } catch { aiError = error.localizedDescription }
         }
-    }
-
-    private static func markdown(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(s)
     }
 
     private var people: some View {
@@ -570,6 +596,8 @@ struct MeetingDetailView: View {
         // too, and the import log keeps a re-delivery from bringing it back
         if let id = meeting.sourceRecordingID.flatMap(UUID.init(uuidString:)) { WatchInbox.shared.remove(id) }
         for s in meeting.snapshots { try? FileManager.default.removeItem(at: s.fileURL) }
+        // Chat answers that cited this recording go with it (docs/TOPICS_AND_CHAT.md)
+        ChatStore.purge(meetingID: meeting.id, title: meeting.title, deleted: true, context: context)
         context.delete(meeting)
         try? context.save()
         dismiss()

@@ -150,6 +150,17 @@ exist on the platform:
      generated is not saved if the transcript changed meanwhile (the
      transcript fingerprint is re-checked when saving). See
      [STUDY_TOOLS.md](STUDY_TOOLS.md#purge).
+   - **AI topics are deleted, not rewritten** (iOS `MeetingTopic` with
+     `source = ai`; [TOPICS_AND_CHAT.md](TOPICS_AND_CHAT.md)): a topic is a
+     paraphrase of the transcript. Any Delete or Strike of transcript text
+     deletes the recording's AI topics; the user's own topics (added or
+     renamed by hand) stay, like comments. Screen-only edits keep them.
+   - **Chat answers that cite the recording are deleted** (iOS
+     `ChatThreadMessage` with a `ChatCitation` for that meeting): an answer
+     quotes the transcript and notes it cited, and its stored citations hold
+     an excerpt. The thread is flagged ("was edited; answers that cited it
+     were removed") so the user knows to ask again; the user's questions are
+     the user's own words and stay.
 6. **Exports.** Share/export/Markdown/Obsidian output from now on renders the
    marker. Files already exported outside the app can't be recalled; the Strike
    confirmation says so in one line.
@@ -182,7 +193,9 @@ exist on the platform:
 outputs: its browser-address rows (`text_snapshots.meeting_id` cascade), its
 added references and its hidden-link hashes (Mac: deleted explicitly in
 `DatabaseManager::delete_meeting` and by `ON DELETE CASCADE`; iOS: cascade
-from `Meeting`).
+from `Meeting`). On iOS it also removes its topics (cascade) and, before the
+row goes, every chat answer that cited it (`ChatStore.purge`, the thread
+flagged "was deleted"); a chat scoped to that recording is flagged too.
 
 Device backups (Time Machine, iCloud backup) are outside the app's control.
 The Strike confirmation mentions it in one line.
@@ -451,6 +464,18 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
 - **Links.** "Said" links are derived from `Segment.text` each time the
   meeting is shown (`MeetingLinks.items`), so Delete and Strike remove them
   with the words. `MeetingReference` rows cascade with their `Meeting`.
+- **Topics and chat** ([TOPICS_AND_CHAT.md](TOPICS_AND_CHAT.md)).
+  `RedactionEngine.purgeDerived` runs wherever the study guide is purged (a
+  Strike that removes text, a Delete when it commits, a recovered Delete):
+  it deletes the meeting's AI topics (`TopicStore.purgeAI`; user topics
+  stay) and every chat answer citing the meeting (`ChatStore.purge`), and
+  flags those threads. During a Delete's undo window both are kept, like the
+  notes. `MeetingTopic` and `ChatThread → ChatThreadMessage` cascade; a
+  citation holds the meeting id, the time and a ≤ 140-character excerpt, so
+  the purge finds every answer by id and never by text. Delete Recording
+  calls `ChatStore.purge` before `context.delete(meeting)`. Chat retrieval
+  reads `Segment.text` through `RedactionText.plain` each time a question is
+  asked and keeps no index, so an edit is reflected in the next answer.
 - **Not applicable on iOS:** FTS (in-app search scans `transcriptText`, which
   renders markers as placeholders), app DB backups, screen video chunks, and
   OCR/VLM rows. Photos imported from the Photos library stay there; the
