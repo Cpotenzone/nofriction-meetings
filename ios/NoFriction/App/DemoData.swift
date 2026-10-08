@@ -38,6 +38,7 @@ enum DemoData {
         if ProcessInfo.processInfo.arguments.contains("-NFResetDemo") {
             for m in (try? context.fetch(FetchDescriptor<Meeting>())) ?? [] { context.delete(m) }
             for p in (try? context.fetch(FetchDescriptor<Person>())) ?? [] { context.delete(p) }
+            for t in (try? context.fetch(FetchDescriptor<ChatThread>())) ?? [] { context.delete(t) }
             try? context.save()
         }
         guard ProcessInfo.processInfo.arguments.contains("-NFSeedDemo"),

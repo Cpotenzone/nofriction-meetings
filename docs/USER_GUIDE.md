@@ -142,11 +142,22 @@ or **Choose from Photos** to add screenshots. They appear in the recording.
 
 ## Find and review recordings
 
-**iPhone/iPad:** the **Meetings** tab lists every recording, named from your
-calendar when it matches an event. Search by title, person or anything said.
-Open a recording to read the transcript, play the audio and see photos. The **People** tab lists
-everyone you've met with; tap **LinkedIn** to search for someone and paste
-their profile link.
+**iPhone/iPad:** the **Recordings** tab lists every recording, named from your
+calendar when it matches an event. Search by title, person, topic or anything
+said. Filter with the **Notebooks** and **Topics** chips, and use **Group by**
+(the menu in the top corner) to list by **Date**, **Notebook** or **Topic**;
+a recording listed by topic appears under each of its topics. Each row shows
+up to two topic chips. Open a recording to read the transcript, play the
+audio and see photos. The **People** tab lists everyone you've met with; tap
+**LinkedIn** to search for someone and paste their profile link.
+
+**Topics** are 1–4 short phrases naming what a recording was about ("Q4
+roadmap", "Mitosis"). On iPhone/iPad they're named by your AI when notes are
+made, or with **Find topics** in the recording's Notes section. Tap a topic
+there to **Rename** or **Remove** it, or **Add** your own; your own topics
+are kept when topics are found again, and a topic you removed doesn't come
+back. Spellings that mean the same thing ("Q4 roadmap", "the q4 roadmaps")
+count as one topic in the chips, the grouping and Chat.
 
 **Mac:** **REWIND** has:
 - **Recordings**: each recording with its type, notebook and attendees, and
@@ -242,9 +253,24 @@ Apple on-device or your own endpoint (see [Connect your AI](#connect-your-ai)).
 **iPhone/iPad**, in a recording:
 - **Summarize**: notes in the recording type's style (see
   [Notes by type](#notes-by-type)). Owners and due dates appear only if
-  someone said them.
+  someone said them. The recording's **Topics** are named at the same time
+  (see [Find and review recordings](#find-and-review-recordings)).
+- **Find topics**: name the topics without redoing the notes.
 - **Follow-up email** (meetings): a draft to the attendees, recapping
   decisions and next steps.
+
+**iPhone/iPad**, the **Chat** tab: ask about your recordings ("What did we
+decide about the launch date?", "What did the professor say about the
+midterm?"). Pick the scope at the top first: **All recordings**, **this
+Notebook**, **this Topic** or **this recording**; every answer says which
+scope it used. Answers come only from your transcripts, notes and marked
+moments, and cite them as [1], [2]…; tap a citation chip to open that
+recording at that moment. An empty chat suggests questions from the scope's
+titles and topics. Chats are kept on the device; **New chat** starts another,
+and the list button shows past chats (swipe to delete). If you delete or
+edit a recording, answers that cited it are removed and the chat says so.
+The same Pro subscription and AI connection as the other features apply, and
+the same consent dialog when the endpoint is a public one.
 
 **Mac:**
 - **CHAT**: ask a question about your recordings ("What did we decide about
