@@ -90,6 +90,9 @@ pub mod meeting_links;
 // Students: moment markers and study guides (docs/STUDY_TOOLS.md)
 pub mod markers;
 pub mod study;
+// Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
+pub mod chat;
+pub mod topics;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -829,8 +832,6 @@ pub fn run() {
             commands::update_meeting_title,
             commands::lookup_attendees,
             commands::match_recording_to_calendar,
-            // v3.3.0: Data Chatbot (RAG)
-            commands::chat_with_data,
             // v3.4.0: Meeting Report Prompt Management
             commands::get_meeting_report_prompt,
             commands::set_meeting_report_prompt,
@@ -883,6 +884,16 @@ pub fn run() {
             study::commands::generate_study_guide,
             study::commands::export_study_flashcards,
             study::commands::export_study_guide,
+            // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
+            topics::commands::list_topics,
+            topics::commands::get_meeting_topics,
+            topics::commands::set_meeting_topics,
+            topics::commands::find_topics,
+            chat::commands::chat_ask,
+            chat::commands::list_chat_threads,
+            chat::commands::get_chat_thread,
+            chat::commands::delete_chat_thread,
+            chat::commands::chat_scope_summary,
             // Build flavor / capabilities (UI hides features the build lacks)
             build_info::get_build_capabilities,
             // StoreKit (Mac App Store build; DMG returns "not available")

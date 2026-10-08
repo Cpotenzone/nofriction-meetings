@@ -93,6 +93,8 @@ impl MeetingNotesGenerator {
             .await
             .map_err(|e| format!("Failed to save notes: {}", e))?;
 
+        // Topics follow the notes (docs/TOPICS_AND_CHAT.md), in the background
+        crate::topics::find_after_notes(database.clone(), meeting_id.to_string());
         Ok(notes)
     }
 
@@ -209,6 +211,7 @@ JSON ARRAY:"#,
             .await
             .map_err(|e| format!("Failed to save notes: {}", e))?;
 
+        crate::topics::find_after_notes(database.clone(), meeting_id.to_string());
         Ok(notes)
     }
 }

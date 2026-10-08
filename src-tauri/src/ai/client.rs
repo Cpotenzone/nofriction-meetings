@@ -78,7 +78,8 @@ impl Msg {
             parts: vec![Part::Image { mime: mime.to_string(), b64 }, Part::Text(text.into())],
         }
     }
-    fn text(&self) -> String {
+    /// The message's text parts joined (images left out).
+    pub fn text(&self) -> String {
         self.parts
             .iter()
             .filter_map(|p| match p {

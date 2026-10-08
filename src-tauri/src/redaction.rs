@@ -665,6 +665,10 @@ pub async fn redact_ai_outputs(
     replacement: &str,
 ) -> Result<u64, sqlx::Error> {
     let mut changed = crate::study::purge_for_meeting(conn, meeting_id).await?;
+    // Topics name what the transcript was about, and chat answers quote
+    // it: both are deleted outright (docs/TOPICS_AND_CHAT.md)
+    changed += crate::topics::purge_for_meeting(conn, meeting_id).await?;
+    changed += crate::chat::purge_for_meeting(conn, meeting_id).await?;
     let tables = table_names(conn).await?;
     let re = distinctive_phrase_regex(removed);
 
@@ -2280,6 +2284,22 @@ async fn ai_preview(conn: &mut SqliteConnection, meeting_id: &str) -> Vec<String
             "The guide in REVIEW (summary, key terms, flashcards, quiz, questions): deleted; make it again after the edit"
                 .into(),
         );
+    }
+    let topics = crate::topics::count_for_meeting(conn, meeting_id).await;
+    if topics > 0 {
+        items.push(format!(
+            "{} topic{} on this recording: deleted; find them again after the edit",
+            topics,
+            if topics == 1 { "" } else { "s" }
+        ));
+    }
+    let answers = crate::chat::count_for_meeting(conn, meeting_id).await;
+    if answers > 0 {
+        items.push(format!(
+            "{} CHAT answer{} that drew on this recording: deleted (the chat is marked)",
+            answers,
+            if answers == 1 { "" } else { "s" }
+        ));
     }
     items.push("Mentions in timeline entries for this recording (comments you wrote are left as they are)".into());
     items
