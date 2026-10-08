@@ -32,7 +32,7 @@ fn answers_are_cleaned_and_titles_clipped() {
     assert_eq!(clean_answer("```\nnot closed"), "```\nnot closed");
     assert_eq!(title_of("  What did we   decide? "), "What did we decide?");
     let t = title_of(&"word ".repeat(30));
-    assert!(t.chars().count() <= 60 && t.ends_with('…'));
+    assert!(t.chars().count() <= 48 && t.ends_with('…'));
 }
 
 #[test]

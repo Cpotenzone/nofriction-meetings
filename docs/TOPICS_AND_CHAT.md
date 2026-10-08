@@ -20,8 +20,191 @@ local: no network, no embedding service, no index outside the app's store.
 Nothing here stores transcript or screen text anywhere the purge
 ([REDACTION.md](REDACTION.md)) doesn't reach.
 
-The Mac section is written by the Mac implementation; this file was
-started by the iOS side.
+The Mac section is written by the Mac implementation, the iOS section by
+the iOS side. Rules both follow: 1–4 topics per recording, labels of at
+most 40 characters and 6 words, generic words ("meeting") refused,
+near-duplicate keys merged (equal, equal without spaces, one typo apart);
+AI topics the user removed stay removed on a re-run; scope labels **All
+recordings**, **Notebook · X**, **Topic · X**, **Recording · X**; chat
+answers that drew on an edited or deleted recording are deleted and the
+thread flagged, the user's questions kept.
+
+## Mac
+
+Code: `src-tauri/src/topics.rs` (schema, label and key rules, prompt,
+validation, storage, commands; tests in `topics/tests.rs`),
+`src-tauri/src/chat.rs` (threads, messages, the ask flow, purge, commands),
+`chat/retrieval.rs` (scope → SQL filter, passages, budget packing),
+`chat/prompt.rs` (system prompt, history, user message; tests in
+`chat/tests.rs`). Front end: `src/lib/topicsLogic.ts` + `topics.ts`,
+`src/lib/chatLogic.ts` + `chat.ts` (tests `*.test.ts`, `npm test`),
+`src/components/TopicChips.tsx` (filter chips, Group by, row chips, the
+Notes-tab editor), `src/components/chat/` (`RecordingsChat.tsx`,
+`ScopePicker.tsx`, `ChatMarkdown.tsx`).
+
+### Topics
+
+- **Model.** Table `meeting_topics (id, meeting_id → meetings ON DELETE
+  CASCADE, topic, topic_key, confidence, source 'ai'|'user', created_at,
+  UNIQUE (meeting_id, topic_key))` and `meeting_topics_removed (meeting_id,
+  topic_key)` for AI topics the user removed. Created in
+  `topics::ensure_schema`, called from `DatabaseManager::run_migrations`
+  on its one connection. `topic_key(label)`: lowercase, anything but
+  letters and digits becomes a space (apostrophes dropped), simple plurals
+  folded ("Cell Membranes" → `cell membrane`). `display_label`: cleaned
+  with the study parser (`clean_text`: one line, no control characters, no
+  list markers), quotes and trailing punctuation trimmed, ≤ 40 characters,
+  ≤ 6 words, generic words refused, an all-lowercase label capitalized
+  ("q4 roadmap" → "Q4 roadmap"; "BIO 101" stays).
+- **Near-duplicates.** `near(a, b)`: equal keys, equal without spaces, or
+  one edit apart for keys of 6+ characters that hold no digit ("q4
+  roadmap" ≠ "q3 roadmap"). On save, `canonical` looks the key up among
+  every key already stored (most used label first): a near key adopts
+  that key *and* its label, so the chip row and the Chat scope see one
+  topic. `index()` (`list_topics`) returns each key with its most used
+  label and recording count, and each recording's topics, user topics
+  first.
+- **When.** `meeting_notes.rs` calls `topics::find_after_notes` after
+  notes are saved (automatic notes after a recording and **Generate
+  notes**/**Regenerate**): a background task with the same AI gates as
+  the notes, failures logged, never surfaced. **Find topics** / **Find
+  again** on the Notes tab calls `find_topics` directly; a recording
+  being recorded is refused, one run per recording at a time (`RUNNING`).
+- **Prompt and validation.** `system_prompt()` asks for
+  `{"topics":[{"label","confidence"}]}`, 1–4 noun phrases of 1–4 words,
+  nothing generic, nothing invented, stricken text never guessed. The
+  input is `study::load_input` (the Review guide's: `[m:ss]` lines,
+  stricken spans as `[stricken from the record]`, deleted words gone), a
+  long transcript chunked with `study::prompt::chunk_lines` to the
+  model's window ("Part i of n", at most 8 parts sampled across the
+  recording) and the parts merged by `merge_parts` (near keys join, a
+  topic named in several parts scores higher). One retry per request on
+  an unusable answer; AI access errors (consent, Pro, no provider) stop
+  the run and reach the UI as their machine-readable strings. `validate`
+  extracts the first JSON value (fences, prose and think blocks
+  stripped, trailing commas tolerated), accepts a bare array or an array
+  of strings, cleans labels, clamps confidence (missing → 0.5), merges
+  near-duplicates, keeps the best four. Candidates under 0.3 are not
+  stored. Nothing from the answer is logged.
+- **Saving (`save_ai_topics`).** `BEGIN IMMEDIATE`; the transcript
+  fingerprint (`StudyInput::fingerprint`) and the pending-Delete check are
+  re-run inside the lock, exactly as the Review guide does, so labels made
+  from text deleted or stricken meanwhile are never written. Then the
+  recording's AI rows are replaced; user rows stay; a candidate near a
+  user topic or a removed key is skipped; AI rows fill up to 4 in all.
+- **Editing (`set_meeting_topics`).** The Notes tab's editor sends the
+  whole list; every label is stored as the user's (≤ 8, cleaned like the
+  AI's, generic ones dropped, keys canonicalized so a spelling the store
+  already has merges). Any topic missing from the list is remembered in
+  `meeting_topics_removed`; a label added back clears that.
+- **Recordings list** (`MeetingHistory.tsx`). **Topics** chips (All ·
+  label · count) under the Notebooks chips; a chip filters the list
+  (client-side, from the index). **Group by: Date · Notebook · Topic**
+  (remembered in `localStorage` `nf.recordings.groupBy`): Date groups by
+  day ("Today", "Yesterday", the date), Notebook by name (case folded,
+  then "No notebook"), Topic lists a recording under each of its topics,
+  biggest topic first, then "No topics" (`groupRecordings`). Each row
+  shows up to two topic chips and "+n"; clicking one filters by it. The
+  Notes tab shows the recording's topics with **edit** (rename, remove,
+  add) and **Find topics**; user topics have a dashed outline.
+- **Purge.** A Delete (when it commits) or Strike of transcript text
+  deletes the recording's AI topics (`topics::purge_ai_for_meeting`, in
+  `redaction::redact_ai_outputs`, live database and app backups; the
+  preview says "n AI topics on this recording: deleted"); user topics
+  stay. Screen-only edits keep them. Deleting the recording deletes every
+  topic and its removed-key memory (`DatabaseManager::delete_meeting`,
+  explicit, besides the cascade). See [REDACTION.md](REDACTION.md).
+
+### Chat
+
+- **Scope.** `Scope { kind: all|notebook|topic|meeting, value }`
+  (`chat/retrieval.rs`), resolved to a `Filter` that becomes one SQL
+  fragment (`… IN (SELECT id FROM meetings WHERE class_name = ? COLLATE
+  NOCASE)`, `… IN (SELECT meeting_id FROM meeting_topics WHERE topic_key
+  = ?)`, `= ?`) and a label. `ScopePicker` offers All recordings, This
+  Notebook (recent notebooks), This Topic (the index), This recording
+  (every recording, the one open in REWIND first); a new chat opens with
+  the recording open in REWIND, else All. `chat_scope_summary` returns
+  the label, count, recent titles, topics, notebooks and types of the
+  scope for the header and the suggestions. Every answer stores and shows
+  the scope it was made in.
+- **Threads.** `chat_threads (id, title, scope_kind, scope_value, flag,
+  created_at, updated_at)`, `chat_messages (id, thread_id → threads ON
+  DELETE CASCADE, role, content, citations JSON, scope_label,
+  created_at)`, `chat_message_sources (message_id, meeting_id)`: every
+  recording whose passages went into the prompt for that answer, cited
+  or not. The title is the first question (≤ 48 characters). **Chats**
+  lists past threads (delete with the bin); **New chat** starts one on
+  the next question. The last 8 messages of the thread go back as prior
+  turns (4 in a window under 8K tokens, each clipped), without the
+  passages; the system prompt limits citations to the numbers given now.
+- **Retrieval (`retrieval::retrieve`, local only).** Transcript lines by
+  FTS5 (`transcripts_fts MATCH` with the OR-ed terms of
+  `database::fts_or_query`, bm25-ranked, scoped by the filter on
+  `t.meeting_id`, rendered through `redaction::render_plain` so stricken
+  spans read `[stricken from the record]` and placeholder-only lines are
+  skipped), the newest saved notes per recording (summary, decisions,
+  action items, key points, scored by the share of the question's terms
+  they contain) and marker notes (same, with the marker's time). Every
+  passage carries the recording's title, date, type, Notebook and time.
+  `pack` ranks them, caps a recording at 4 passages when the scope spans
+  several, drops duplicates, fits a character budget left beside the
+  system prompt, scope, question, memory and answer
+  (`study::prompt::body_budget`), 12 at most, and numbers them 1…n. Fewer
+  than three hits ("Summarize my week") fall back to the newest scoped
+  recordings' notes summary or lines sampled across their transcript (12
+  for one recording, 3 each for several). No embeddings, no index outside
+  SQLite, no network.
+- **Prompt and answer.** `prompt::system_prompt` (answer only from the
+  sources, cite as `[n]` right after the fact, say what's missing, Markdown
+  without HTML or tables, stricken text never guessed) + memory + `SCOPE:
+  … SOURCES: [n] Title — date, Type, Notebook X — said at m:ss / marked
+  at m:ss / from the saved notes … QUESTION: …`. `max_tokens` ≤ 900,
+  scaled down for small windows. One request through `study::Completer`
+  (`LiveCompleter` → `ai::complete_text`: consent, endpoint policy, Pro in
+  the Mac App Store build); no streaming in the client, so the UI shows a
+  thinking state. The answer is `clean_answer`ed (think blocks, a wrapping
+  fence) and stored with `citations` = every passage sent (`Citation { n,
+  meeting_id, title, timestamp_ms, excerpt, source }`). `ChatMarkdown`
+  renders a Markdown subset (paragraphs, headings capped at h3, bullet and
+  numbered lists, bold, code, fenced code) as React text nodes, never
+  HTML; each `[n]` becomes a chip, and **Sources** under the answer lists
+  them all. A chip calls `requestRecordingSeek(meeting_id, ms)`
+  (`lib/navigation.ts`) and selects the recording; `InsightDeckView` takes
+  the request when the recording is selected (or at once) and shows the
+  moment through `RewindGallery`'s `seek` prop, like the quiz and Links.
+- **Suggested questions.** `suggestedQuestions(scope, summary)`: up to
+  four from the scope's titles, types, notebooks and topics ("What did we
+  decide about Q4 roadmap?", "What's on the test for BIO 101?", "Summarize
+  my week"); no AI call.
+- **Purge (`chat::purge_for_meeting`).** Every assistant message with a
+  `chat_message_sources` row for the recording is deleted and its thread
+  flagged (`FLAG_REMOVED`, shown above the chat and in the list); a thread
+  scoped to the recording is flagged too; user questions stay. Called in
+  `redaction::redact_ai_outputs` (so a Delete that commits and any Strike
+  of transcript text, live and in app backups; the preview says "n CHAT
+  answers that drew on this recording: deleted") and in
+  `DatabaseManager::delete_meeting`. Questions and answers are never
+  logged.
+
+### Tests (`topics/tests.rs`, `chat/tests.rs`, `*.test.ts`)
+
+Rust (20): topic JSON shapes and the cap of four, malformed input never
+panics, key folding and `near`, display labels, part merging, one request
+for a short recording, chunked reading of a long one within a 4K window,
+retry once and AI errors stop, cross-recording merge with user edits and
+removed keys kept, no save after an edit (fingerprint) and no stricken
+words in the prompt, purge on Strike (user topics kept) and meeting
+delete with backups and old schemas tolerated; chat citation numbers,
+answer cleaning and titles, scope parsing and filters, packing (rank,
+per-recording cap, budget), history clipping, retrieval within scope and
+budget (notes, markers, fallback, summary), an answer's scope and
+citations with thread memory, stricken words never in the prompt, purge
+on Strike and recording delete (questions kept, threads flagged, backups,
+old schemas). TypeScript (12 of 67): topic filter, row chips, grouping by
+date, notebook and topic, Group by parsing; default scope and labels,
+suggested questions per scope, inline and block Markdown parsing,
+citation numbers, clock. No test calls a real endpoint.
 
 ## iOS
 

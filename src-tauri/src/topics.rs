@@ -42,6 +42,8 @@ use std::collections::BTreeMap;
 pub const MAX_TOPICS: usize = 4;
 /// Topics a user may keep on one recording.
 pub const MAX_USER_TOPICS: usize = 8;
+/// AI candidates below this confidence aren't stored (shared with iOS).
+pub const MIN_CONFIDENCE: f64 = 0.3;
 /// Shared with iOS: at most 40 characters and 6 words.
 pub const MAX_LABEL_CHARS: usize = 40;
 pub const MAX_LABEL_WORDS: usize = 6;
@@ -127,25 +129,41 @@ async fn table_exists(conn: &mut SqliteConnection) -> Result<bool, sqlx::Error> 
     Ok(exists.is_some())
 }
 
-/// Purge: delete every topic of a meeting, the AI's and the user's. Called
-/// for every Delete/Strike of transcript text, in the action's transaction,
-/// on the live database and on each app backup
-/// (`redaction::redact_ai_outputs`), and when the meeting is deleted.
-/// Schema-tolerant: an old backup may not have the table.
-pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> Result<u64, sqlx::Error> {
+/// Purge: delete the AI's topics of a meeting (a topic paraphrases the
+/// transcript); the user's own topics stay, like comments (shared rule
+/// with iOS). Called for every Delete/Strike of transcript text, in the
+/// action's transaction, on the live database and on each app backup
+/// (`redaction::redact_ai_outputs`). Schema-tolerant: an old backup may
+/// not have the table.
+pub async fn purge_ai_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> Result<u64, sqlx::Error> {
     if !table_exists(conn).await? {
         return Ok(0);
     }
-    Ok(sqlx::query("DELETE FROM meeting_topics WHERE meeting_id = ?")
+    Ok(sqlx::query("DELETE FROM meeting_topics WHERE meeting_id = ? AND source = 'ai'")
         .bind(meeting_id)
         .execute(&mut *conn)
         .await?
         .rows_affected())
 }
 
-/// Rows a purge would delete (for the Delete/Strike preview).
+/// With the recording: every topic, the AI's and the user's, and the
+/// removed-topic memory (`DatabaseManager::delete_meeting`).
+pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> Result<u64, sqlx::Error> {
+    if !table_exists(conn).await? {
+        return Ok(0);
+    }
+    let n = sqlx::query("DELETE FROM meeting_topics WHERE meeting_id = ?")
+        .bind(meeting_id)
+        .execute(&mut *conn)
+        .await?
+        .rows_affected();
+    purge_removed_for_meeting(conn, meeting_id).await?;
+    Ok(n)
+}
+
+/// AI topics a transcript purge would delete (for the Delete/Strike preview).
 pub async fn count_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> i64 {
-    sqlx::query_scalar("SELECT COUNT(*) FROM meeting_topics WHERE meeting_id = ?")
+    sqlx::query_scalar("SELECT COUNT(*) FROM meeting_topics WHERE meeting_id = ? AND source = 'ai'")
         .bind(meeting_id)
         .fetch_one(&mut *conn)
         .await
@@ -583,7 +601,7 @@ async fn save_ai_locked(
     let room = MAX_TOPICS.saturating_sub(user.len());
     let now = chrono::Utc::now().to_rfc3339();
     let mut added = 0;
-    for f in found {
+    for f in found.iter().filter(|f| f.confidence >= MIN_CONFIDENCE) {
         if added >= room {
             break;
         }

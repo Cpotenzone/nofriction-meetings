@@ -15,6 +15,7 @@ import { AiSetupNotice, useAiStatus } from "./AiSetupNotice";
 import { notesLayout, notesStyleHint } from "../lib/recordingKind";
 import { useRecordingKind } from "../hooks/useRecordingKind";
 import ErrorState from "./ErrorState";
+import { TopicsEditor } from "./TopicChips";
 import "./MeetingNotesPanel.css";
 
 interface SavedNotes {
@@ -162,6 +163,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
 
     return (
         <div className="mn-panel">
+            <TopicsEditor meetingId={meetingId} />
             {showSetup && <AiSetupNotice feature={kind === "meeting" ? "AI notes and follow-up emails" : "AI notes"} />}
             {actionError && (
                 <p className="mn-error" role="alert">

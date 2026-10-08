@@ -1339,7 +1339,6 @@ impl DatabaseManager {
         {
             let mut conn = self.pool.acquire().await?;
             crate::topics::purge_for_meeting(&mut conn, id).await?;
-            crate::topics::purge_removed_for_meeting(&mut conn, id).await?;
             crate::chat::purge_for_meeting(&mut conn, id).await?;
         }
 

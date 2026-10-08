@@ -309,7 +309,7 @@ async fn topics_made_before_an_edit_are_never_saved_after_it() {
     rd::strike_words(f.db.pool(), &f.env, &WordTarget { meeting_id: "m1".into(), transcript_id: id, start: s, end: e, expected_text: None, whole_line: false }, None)
         .await
         .unwrap();
-    let found = vec![Found { label: "Krebs cycle".into(), key: "krebs cycle".into(), confidence: 0.9 }];
+    let found = vec![Found { label: "Krebs cycle".into(), key: "krebs cycle".into(), confidence: 0.9 }, Found { label: "Weak guess".into(), key: "weak gues".into(), confidence: 0.1 }];
     assert_eq!(save_ai_topics(f.db.pool(), "m1", &before, &found).await.unwrap_err(), crate::study::TRANSCRIPT_CHANGED);
     assert_eq!(rows(f.db.pool(), "m1").await, 0);
     // The prompt never carries the stricken words
@@ -318,6 +318,10 @@ async fn topics_made_before_an_edit_are_never_saved_after_it() {
     for t in m.texts() {
         assert!(!t.contains("Krebs") && t.contains("[stricken from the record]"), "{}", t);
     }
+    // A weak candidate is never stored
+    let now = crate::study::load_input(f.db.pool(), "m1").await.unwrap().fingerprint();
+    let saved = save_ai_topics(f.db.pool(), "m1", &now, &[Found { label: "Weak guess".into(), key: "weak gues".into(), confidence: 0.2 }]).await.unwrap();
+    assert!(saved.is_empty());
 }
 
 #[tokio::test]
@@ -326,10 +330,10 @@ async fn transcript_edits_and_meeting_delete_purge_topics_and_backups_tolerate_o
     let text = "osmosis moves water across membranes";
     let id = line_at(&f, "m1", 10, text).await;
     line_at(&f, "m2", 10, "photosynthesis needs light").await;
+    set_for_meeting(f.db.pool(), "m1", &["Water".into()]).await.unwrap();
     find_and_save(f.db.pool(), &Mock::new(32_768), "m1").await.unwrap();
     find_and_save(f.db.pool(), &Mock::new(32_768), "m2").await.unwrap();
-    set_for_meeting(f.db.pool(), "m1", &["Osmosis".into(), "Water".into()]).await.unwrap();
-    assert_eq!(rows(f.db.pool(), "m1").await, 2);
+    assert_eq!(rows(f.db.pool(), "m1").await, 3, "one user topic and two AI topics");
     // A backup copy made now
     rd::wal_checkpoint_truncate(f.db.pool()).await.unwrap();
     let bdir = f.env.app_data_dir.join("backups");
@@ -339,18 +343,19 @@ async fn transcript_edits_and_meeting_delete_purge_topics_and_backups_tolerate_o
     // The preview says so; the strike deletes them (the user's too), live and in the backup
     let (s, e) = utf16_span(text, "water");
     let preview = rd::preview_words(f.db.pool(), &f.env, &WordTarget { meeting_id: "m1".into(), transcript_id: id, start: s, end: e, expected_text: None, whole_line: false }).await.unwrap();
-    assert!(preview.iter().any(|i| i.contains("2 topics on this recording")), "{:?}", preview);
+    assert!(preview.iter().any(|i| i.contains("2 AI topics on this recording")), "{:?}", preview);
     let out = rd::strike_words(f.db.pool(), &f.env, &WordTarget { meeting_id: "m1".into(), transcript_id: id, start: s, end: e, expected_text: None, whole_line: false }, None)
         .await
         .unwrap();
-    assert_eq!(rows(f.db.pool(), "m1").await, 0, "strike");
+    assert_eq!(labels(&list_for_meeting(f.db.pool(), "m1").await.unwrap()), vec!["Water"], "strike: AI topics go, the user's stays");
     assert_eq!(rows(f.db.pool(), "m2").await, 2, "the other recording keeps its topics");
     assert_eq!((out.backups_purged, out.backups_deleted), (1, 0), "{:?}", out.warnings);
     let mut c = sqlx::sqlite::SqliteConnectOptions::new().filename(&copy).connect().await.unwrap();
-    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM meeting_topics WHERE meeting_id = 'm1'").fetch_one(&mut c).await.unwrap();
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM meeting_topics WHERE meeting_id = 'm1' AND source = 'ai'").fetch_one(&mut c).await.unwrap();
     assert_eq!(n, 0);
     // An older backup without the table is left alone, not an error
     sqlx::query("DROP TABLE meeting_topics").execute(&mut c).await.unwrap();
+    assert_eq!(purge_ai_for_meeting(&mut c, "m1").await.unwrap(), 0);
     assert_eq!(purge_for_meeting(&mut c, "m1").await.unwrap(), 0);
     assert!(rd::redact_ai_outputs(&mut c, "m2", "photosynthesis", "[stricken from the record]").await.is_ok());
     c.close().await.unwrap();
@@ -360,5 +365,7 @@ async fn transcript_edits_and_meeting_delete_purge_topics_and_backups_tolerate_o
     assert_eq!(rows(f.db.pool(), "m2").await, 0, "meeting delete");
     let removed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM meeting_topics_removed WHERE meeting_id = 'm2'").fetch_one(f.db.pool()).await.unwrap();
     assert_eq!(removed, 0, "its removed-topic memory goes with it");
-    assert!(index(f.db.pool()).await.unwrap().topics.is_empty());
+    let idx = index(f.db.pool()).await.unwrap();
+    assert_eq!(idx.topics.iter().map(|t| t.label.as_str()).collect::<Vec<_>>(), vec!["Water"]);
+    assert!(!idx.by_meeting.contains_key("m2"));
 }

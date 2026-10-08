@@ -160,10 +160,18 @@ back. Spellings that mean the same thing ("Q4 roadmap", "the q4 roadmaps")
 count as one topic in the chips, the grouping and Chat.
 
 **Mac:** **REWIND** has:
-- **Recordings**: each recording with its type, notebook and attendees, and
-  views for **Rewind** (the transcript next to the screenshot timeline: pick
-  any moment to see what was on screen and what was said), **Notes**,
-  **Links** and **Review**.
+- **Recordings**: each recording with its type, notebook, topics and
+  attendees, and views for **Rewind** (the transcript next to the screenshot
+  timeline: pick any moment to see what was on screen and what was said),
+  **Notes**, **Links** and **Review**. Filter the list with the
+  **Notebooks** and **Topics** chips, and **Group by** **Date**, **Notebook**
+  or **Topic** (a recording listed by topic appears under each of its
+  topics). Each row shows up to two topic chips; click one to filter by it.
+  Topics are named by your AI when notes are written, or with **Find
+  topics** on the recording's **Notes** view, where **edit** lets you rename,
+  remove or add them. Your own topics are kept when topics are found again,
+  and a topic you removed doesn't come back; spellings that mean the same
+  thing count as one topic in the chips, the grouping and CHAT.
 - **People**: everyone from your meetings, with invite notes, join links and
   LinkedIn links.
 - **Search**: full-text search across your transcripts.
@@ -273,9 +281,18 @@ The same Pro subscription and AI connection as the other features apply, and
 the same consent dialog when the endpoint is a public one.
 
 **Mac:**
-- **CHAT**: ask a question about your recordings ("What did we decide about
-  the launch date?", "What did the professor say about the midterm?"). The
-  answer is drawn from your transcripts.
+- **CHAT**: ask about your recordings ("What did we decide about the launch
+  date?", "What did the professor say about the midterm?"). Pick the scope
+  at the top first: **All recordings**, **This Notebook**, **This Topic** or
+  **This recording** (a new chat starts on the recording open in REWIND, if
+  any); every answer says which scope it used. Answers come only from your
+  transcripts, notes and marked moments, searched on this Mac, and cite them
+  as [1], [2]…; click a citation chip (or a line under **Sources**) to open
+  that recording in REWIND at that moment. An empty chat suggests questions
+  from the scope's titles and topics. Chats are kept on this Mac; **New
+  chat** starts another, and **Chats** lists past ones (delete with the
+  bin). If you delete or edit a recording, answers that drew on it are
+  removed and the chat says so.
 - **Live insights**: during a recording, LIVE shows action items, decisions,
   risks and deadlines as they come up.
 - **AI notes**: after a recording longer than six minutes, noFriction writes

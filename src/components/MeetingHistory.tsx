@@ -1,5 +1,6 @@
 // noFriction Meetings - Recordings list (REWIND → Recordings)
-// Past recordings with selection, filtered by notebook
+// Past recordings with selection, filtered by notebook and topic, grouped
+// by date, notebook or topic (docs/TOPICS_AND_CHAT.md)
 
 import { useState, useEffect } from "react";
 import * as tauri from "../lib/tauri";
@@ -10,6 +11,8 @@ import { CalendarIcon, TrashIcon } from "./icons";
 import { withFallback, mockMeetings } from "../lib/offline";
 import { NotebookFilterChips, useRecentNotebooks } from "./Notebook";
 import { kindLabel, parseKind } from "../lib/recordingKind";
+import { GroupByControl, RowTopics, TopicFilterChips, useGroupBy, useTopicIndex } from "./TopicChips";
+import { filterByTopic, groupRecordings } from "../lib/topicsLogic";
 
 /** "Class" / "Personal" tag; meetings (the default) get none. */
 function KindTag({ meeting }: { meeting: Meeting }) {
@@ -35,6 +38,10 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     // Notebook filter (null = All); chips come from the notebooks recordings have
     const [notebookFilter, setNotebookFilter] = useState<string | null>(null);
     const notebooks = useRecentNotebooks(refreshKey);
+    // Topic filter (null = All) and the grouping; the index also gives each row its chips
+    const [topicFilter, setTopicFilter] = useState<string | null>(null);
+    const topicIndex = useTopicIndex(refreshKey);
+    const [groupBy, setGroupBy] = useGroupBy();
 
     useEffect(() => {
         loadMeetings();
@@ -165,16 +172,24 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     }
 
     const filterChips = (
-        <NotebookFilterChips notebooks={notebooks} value={notebookFilter} onChange={setNotebookFilter} />
+        <>
+            <NotebookFilterChips notebooks={notebooks} value={notebookFilter} onChange={setNotebookFilter} />
+            <TopicFilterChips topics={topicIndex.topics} value={topicFilter} onChange={setTopicFilter} />
+            {!compact && <GroupByControl value={groupBy} onChange={setGroupBy} />}
+        </>
     );
+    const shownMeetings = filterByTopic(meetings, topicIndex, topicFilter);
+    const topicName = topicFilter ? topicIndex.topics.find((t) => t.key === topicFilter)?.label ?? topicFilter : null;
 
-    if (meetings.length === 0 && notebookFilter) {
+    if (shownMeetings.length === 0 && (notebookFilter || topicFilter)) {
         return (
             <div className="meeting-history">
                 {!compact && <h3>Recordings</h3>}
                 {filterChips}
                 <div className="empty-state">
-                    <div className="empty-state-text">No recordings in {notebookFilter}.</div>
+                    <div className="empty-state-text">
+                        No recordings {notebookFilter ? `in ${notebookFilter}` : ""}{notebookFilter && topicName ? " " : ""}{topicName ? `about ${topicName}` : ""}.
+                    </div>
                 </div>
             </div>
         );
@@ -201,7 +216,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         return (
             <div className="compact-meeting-list" style={{ overflowY: 'auto', maxHeight: '100%' }}>
                 {filterChips}
-                {meetings.map((meeting) => (
+                {shownMeetings.map((meeting) => (
                     <div
                         key={meeting.id}
                         className={`compact-meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
@@ -210,6 +225,7 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                         <div className="compact-meeting-title">{meeting.title}</div>
                         <KindTag meeting={meeting} />
                         {meeting.class_name && <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>}
+                        <RowTopics index={topicIndex} meetingId={meeting.id} />
                         <div className="compact-meeting-date">
                             {formatDate(meeting.started_at)}
                         </div>
@@ -219,17 +235,30 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         );
     }
 
+    const groups = groupRecordings(shownMeetings, topicIndex, groupBy);
+    const heading = topicName
+        ? `${topicName} (${shownMeetings.length})`
+        : notebookFilter
+            ? `${notebookFilter} (${shownMeetings.length})`
+            : `Recordings (${shownMeetings.length})`;
+
     return (
         <div className="meeting-history">
-            <h3>{notebookFilter ? `${notebookFilter} (${meetings.length})` : `Recordings (${meetings.length})`}</h3>
+            <h3>{heading}</h3>
             {filterChips}
             <div className="meeting-list scrollable">
-                {meetings.map((meeting) => {
+                {groups.map((group) => (
+                <div key={group.key} className="meeting-group">
+                <div className="group-head">
+                    {group.label}
+                    <span className="group-head__count">{group.meetings.length}</span>
+                </div>
+                {group.meetings.map((meeting) => {
                     const match = calendarMatches[meeting.id];
                     const isDismissed = dismissedMatches.has(meeting.id);
                     return (
                         <div
-                            key={meeting.id}
+                            key={`${group.key}:${meeting.id}`}
                             className={`meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
                             onClick={() => onSelectMeeting(meeting.id)}
                         >
@@ -282,9 +311,10 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                                     <div className="meeting-title">
                                         {meeting.title}
                                         <KindTag meeting={meeting} />
-                                        {meeting.class_name && !notebookFilter && (
+                                        {meeting.class_name && !notebookFilter && groupBy !== "notebook" && (
                                             <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>
                                         )}
+                                        <RowTopics index={topicIndex} meetingId={meeting.id} onPick={setTopicFilter} />
                                     </div>
                                     <div className="meeting-date">
                                         {formatDate(meeting.started_at)} at {formatTime(meeting.started_at)}
@@ -305,6 +335,8 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
                         </div>
                     );
                 })}
+                </div>
+                ))}
             </div>
         </div>
     );

@@ -44,7 +44,8 @@ pub use retrieval::{Passage, Scope, ScopeKind};
 pub const HISTORY_TURNS: usize = 8;
 /// Passages at most per answer.
 pub const MAX_PASSAGES: usize = 12;
-const TITLE_CHARS: usize = 60;
+/// Shared with iOS.
+const TITLE_CHARS: usize = 48;
 
 pub const FLAG_REMOVED: &str =
     "Some answers were removed from this chat because a recording they drew on was deleted or edited.";
