@@ -657,6 +657,8 @@ App Review notes above.
 | Mac | 5 screenshots, 2880×1800 | `mac/01-rewind`, `02-record-sheet`, `03-review`, `04-links`, `05-notebooks` |
 | Mac | app preview, 1920×1080, 28.8 s | `marketing/out/nofriction-app-preview-mac-1920x1080.mp4` (rendered, not committed) |
 
+| Apple Watch | 5 screenshots, 416×496 (Series 10/11/12 size), required once the Watch app ships in the build | `ios/AppStore/screenshots/watch-46mm/01-05` |
+
 The iPad 13" set still holds the older six screenshots (pre-relabel wording); replace it from the film harness before a later submission. Everything else below is the original plan.
 
 
