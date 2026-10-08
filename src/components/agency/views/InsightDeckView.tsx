@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { onRecordingSeek, takeRecordingSeek } from '../../../lib/navigation';
 import { MeetingHistory } from '../../MeetingHistory';
 import { KBSearch } from '../../KBSearch';
 import { InsightsView } from '../../InsightsView';
@@ -31,6 +32,22 @@ export const InsightDeckView: React.FC<InsightDeckViewProps> = ({ onSelectMeetin
         setSeek({ meetingId, ms, n: Date.now() });
         setMeetingView('rewind');
     };
+    // CHAT's citation chips: "open this recording at 12:03" (lib/navigation.ts).
+    // Taken when the recording becomes the selected one, or at once if it is.
+    useEffect(() => {
+        const pending = takeRecordingSeek(selectedMeetingId);
+        if (pending) {
+            setActiveTab('history');
+            jumpTo(pending.meetingId, pending.ms);
+        }
+        return onRecordingSeek((req) => {
+            if (req.meetingId === selectedMeetingId) {
+                takeRecordingSeek(selectedMeetingId);
+                setActiveTab('history');
+                jumpTo(req.meetingId, req.ms);
+            }
+        });
+    }, [selectedMeetingId]);
 
     return (
         <div className="agency-view insight-deck">

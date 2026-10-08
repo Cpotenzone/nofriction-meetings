@@ -8,7 +8,7 @@ import { InsightDeckView } from './views/InsightDeckView';
 import { ZenFocusView } from './views/ZenFocusView';
 import { VaultView } from './views/VaultView';
 import { IntelDashboard } from './views/IntelDashboard';
-import { DataChat } from './views/DataChat';
+import { RecordingsChat } from '../chat/RecordingsChat';
 import { HelpView } from './views/HelpView';
 import { PromptStudio } from './views/PromptStudio';
 import { useRecording } from '../../hooks/useRecording';
@@ -191,7 +191,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({
                             exit={{ opacity: 0, y: -15 }}
                             transition={{ duration: 0.3 }}
                         >
-                            <DataChat />
+                            <RecordingsChat selectedMeetingId={selectedMeetingId} onOpenRecording={onSelectMeeting} />
                         </motion.div>
                     )}
 

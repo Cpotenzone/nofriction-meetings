@@ -174,7 +174,9 @@ pub async fn load_input(pool: &Pool<Sqlite>, meeting_id: &str) -> Result<StudyIn
     load_input_conn(&mut conn, meeting_id).await
 }
 
-async fn has_pending_delete(conn: &mut SqliteConnection, meeting_id: &str) -> Result<bool, String> {
+/// A Delete of this meeting's transcript text is still in its undo window
+/// (topics.rs and chat.rs check this too before saving AI output).
+pub(crate) async fn has_pending_delete(conn: &mut SqliteConnection, meeting_id: &str) -> Result<bool, String> {
     let n: Option<i64> = sqlx::query_scalar(
         "SELECT 1 FROM redactions WHERE meeting_id = ? AND action = 'delete' AND pending_payload IS NOT NULL LIMIT 1",
     )

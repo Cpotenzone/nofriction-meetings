@@ -151,16 +151,27 @@ exist on the platform:
      transcript fingerprint is re-checked when saving). See
      [STUDY_TOOLS.md](STUDY_TOOLS.md#purge).
    - **AI topics are deleted, not rewritten** (iOS `MeetingTopic` with
-     `source = ai`; [TOPICS_AND_CHAT.md](TOPICS_AND_CHAT.md)): a topic is a
-     paraphrase of the transcript. Any Delete or Strike of transcript text
+     `source = ai`; Mac `meeting_topics` rows with `source = 'ai'`,
+     `topics::purge_ai_for_meeting` in `redact_ai_outputs`, live database
+     and app backups; [TOPICS_AND_CHAT.md](TOPICS_AND_CHAT.md)): a topic is
+     a paraphrase of the transcript. Any Delete or Strike of transcript text
      deletes the recording's AI topics; the user's own topics (added or
-     renamed by hand) stay, like comments. Screen-only edits keep them.
+     renamed by hand) stay, like comments. Screen-only edits keep them. The
+     Mac preview says "n AI topics on this recording: deleted". Topics
+     still being found are not saved if the transcript changed meanwhile
+     (the transcript fingerprint is re-checked when saving, as for the
+     guide).
    - **Chat answers that cite the recording are deleted** (iOS
-     `ChatThreadMessage` with a `ChatCitation` for that meeting): an answer
-     quotes the transcript and notes it cited, and its stored citations hold
-     an excerpt. The thread is flagged ("was edited; answers that cited it
-     were removed") so the user knows to ask again; the user's questions are
-     the user's own words and stay.
+     `ChatThreadMessage` with a `ChatCitation` for that meeting; Mac
+     `chat_messages` with a `chat_message_sources` row for the meeting,
+     which lists every recording whose passages went into the prompt,
+     cited or not, `chat::purge_for_meeting` in `redact_ai_outputs`, live
+     database and app backups): an answer quotes the transcript and notes
+     it cited, and its stored citations hold an excerpt. The thread is
+     flagged ("was edited; answers that cited it were removed") so the user
+     knows to ask again; the user's questions are the user's own words and
+     stay. The Mac preview says "n CHAT answers that drew on this recording:
+     deleted (the chat is marked)".
 6. **Exports.** Share/export/Markdown/Obsidian output from now on renders the
    marker. Files already exported outside the app can't be recalled; the Strike
    confirmation says so in one line.
@@ -195,7 +206,12 @@ added references and its hidden-link hashes (Mac: deleted explicitly in
 `DatabaseManager::delete_meeting` and by `ON DELETE CASCADE`; iOS: cascade
 from `Meeting`). On iOS it also removes its topics (cascade) and, before the
 row goes, every chat answer that cited it (`ChatStore.purge`, the thread
-flagged "was deleted"); a chat scoped to that recording is flagged too.
+flagged "was deleted"); a chat scoped to that recording is flagged too. On
+the Mac, `delete_meeting` explicitly deletes every topic of the recording
+(the AI's and the user's) and its removed-topic memory
+(`topics::purge_for_meeting`), and every chat answer that drew on it
+(`chat::purge_for_meeting`, threads flagged, a thread scoped to it flagged
+too), before the row goes; the cascade covers whatever is left.
 
 Device backups (Time Machine, iCloud backup) are outside the app's control.
 The Strike confirmation mentions it in one line.

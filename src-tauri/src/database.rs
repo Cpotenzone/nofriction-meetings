@@ -1071,6 +1071,9 @@ impl DatabaseManager {
         // Moment markers and study guides (docs/STUDY_TOOLS.md)
         crate::markers::ensure_schema(&mut conn).await?;
         crate::study::ensure_schema(&mut conn).await?;
+        // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
+        crate::topics::ensure_schema(&mut conn).await?;
+        crate::chat::ensure_schema(&mut conn).await?;
 
         log::info!("Database migrations completed (v3.0 - Calendar Integration)");
         Ok(())
@@ -1330,6 +1333,14 @@ impl DatabaseManager {
 
         // Added references and hidden-link hashes (docs/REDACTION.md checklist)
         crate::meeting_links::purge_meeting(&self.pool, id).await?;
+
+        // Its topics, and the chat answers that drew on it (their threads are
+        // flagged); explicit, so none of it depends on the cascade
+        {
+            let mut conn = self.pool.acquire().await?;
+            crate::topics::purge_for_meeting(&mut conn, id).await?;
+            crate::chat::purge_for_meeting(&mut conn, id).await?;
+        }
 
         sqlx::query("DELETE FROM meetings WHERE id = ?")
             .bind(id)

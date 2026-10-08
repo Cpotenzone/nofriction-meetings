@@ -2,7 +2,6 @@
 // Calendar intelligence, data chatbot, and meeting reports (v3.1.0+)
 
 use crate::AppState;
-use super::{search_knowledge_base, SearchOptions};
 use tauri::State;
 
 
@@ -268,130 +267,6 @@ pub async fn match_recording_to_calendar(
 
     // No match
     Ok(serde_json::json!(null))
-}
-
-// ─── Data Chatbot: RAG-powered conversational interface ─────────────────────
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ChatHistoryMessage {
-    pub role: String,
-    pub content: String,
-}
-
-/// RAG chatbot — search knowledge base, inject context, generate AI answer
-#[tauri::command(rename_all = "camelCase")]
-pub async fn chat_with_data(
-    message: String,
-    history: Vec<ChatHistoryMessage>,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    use crate::ai_client::{AIPreset, ChatMessage};
-
-    // Step 1: Retrieve — search knowledge base for relevant context
-    let search_options = SearchOptions {
-        query: Some(message.clone()),
-        start_date: None,
-        end_date: None,
-        category: None,
-        limit: Some(10),
-        sources: None,
-    };
-
-    let search_results = search_knowledge_base(search_options, state.clone())
-        .await
-        .unwrap_or_default();
-
-    // Step 2: Augment — build context string from search results
-    let mut context_parts = Vec::new();
-    let mut source_citations = Vec::new();
-
-    for (i, result) in search_results.iter().enumerate().take(8) {
-        let timestamp = result.timestamp.as_deref().unwrap_or("unknown time");
-        let source_label = match result.category.as_deref() {
-            Some("transcript") => "Meeting transcript",
-            _ => "Activity log",
-        };
-        let app = result.app_name.as_deref().unwrap_or("");
-
-        context_parts.push(format!(
-            "--- Source {} ({}, {}) ---\n{}\n{}",
-            i + 1,
-            source_label,
-            timestamp,
-            if app.is_empty() {
-                String::new()
-            } else {
-                format!("[App: {}] ", app)
-            },
-            result.summary
-        ));
-
-        source_citations.push(serde_json::json!({
-            "id": result.id,
-            "summary": result.summary.chars().take(150).collect::<String>(),
-            "source": result.source,
-            "score": result.score,
-            "timestamp": result.timestamp,
-            "app_name": result.app_name,
-        }));
-    }
-
-    let context = if context_parts.is_empty() {
-        "No relevant meeting data found in the knowledge base for this query.".to_string()
-    } else {
-        context_parts.join("\n\n")
-    };
-
-    // Step 3: Generate — resolve persona-specific Genie prompt from PromptManager
-    let active_theme = state
-        .settings
-        .get_active_theme()
-        .await
-        .unwrap_or_else(|_| "personal".to_string());
-
-    let genie_prompt_name = format!("genie_system_{}", active_theme);
-    let preset = match state
-        .prompt_manager
-        .get_prompt_by_name(&genie_prompt_name, Some(&active_theme))
-        .await
-        .ok()
-        .flatten()
-    {
-        Some(db_prompt) => AIPreset::from_prompt(&db_prompt),
-        None => AIPreset::qa(), // Fallback to hardcoded preset
-    };
-    let mut messages: Vec<ChatMessage> = history
-        .into_iter()
-        .map(|m| ChatMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect();
-
-    // Add the current user message
-    messages.push(ChatMessage {
-        role: "user".to_string(),
-        content: message,
-    });
-
-    let ai_client = state.ai_client.read().clone();
-    let answer = ai_client
-        .chat(&preset, messages, Some(&context))
-        .await
-        .or_else(|e| {
-            // Consent / setup problems go back as errors so the UI can act
-            if crate::ai_client::is_consent_error(&e) || e.starts_with("AI_NO_") {
-                Err(e)
-            } else {
-                Ok(format!("I wasn't able to process your question: {}", e))
-            }
-        })?;
-
-    Ok(serde_json::json!({
-        "answer": answer,
-        "sources": source_citations,
-        "context_count": search_results.len(),
-    }))
 }
 
 // ============================================

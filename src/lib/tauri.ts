@@ -901,34 +901,6 @@ export async function matchRecordingToCalendar(meetingId: string): Promise<Calen
     return invoke<CalendarMatchEvent | null>("match_recording_to_calendar", { meetingId });
 }
 
-// Data Chatbot (RAG)
-export interface ChatSource {
-    id: string;
-    summary: string;
-    source: string;
-    score: number | null;
-    timestamp: string | null;
-    app_name: string | null;
-}
-
-export interface ChatResponse {
-    answer: string;
-    sources: ChatSource[];
-    context_count: number;
-}
-
-export interface ChatHistoryMessage {
-    role: "user" | "assistant";
-    content: string;
-}
-
-export async function chatWithData(
-    message: string,
-    history: ChatHistoryMessage[]
-): Promise<ChatResponse> {
-    return withAiConsent(() => invoke<ChatResponse>("chat_with_data", { message, history }));
-}
-
 // ============================================
 // Meeting Report Prompt Commands
 // ============================================
