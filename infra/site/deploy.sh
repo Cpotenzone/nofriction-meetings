@@ -60,8 +60,10 @@ sync_type "sitemap.xml"  "application/xml; charset=utf-8" "$SHORT"
 sync_type "robots.txt"   "text/plain; charset=utf-8" "$SHORT"
 
 # 4. Remove anything no longer in site/ (README.md is never uploaded).
+# video/ is gitignored, so a CI checkout has none: never let --delete remove
+# the hero film that was uploaded from a machine that has it.
 run aws s3 sync "$SITE_DIR" "s3://$BUCKET" --delete \
-  --exclude "README.md" --exclude ".DS_Store" --size-only --no-progress
+  --exclude "README.md" --exclude ".DS_Store" --exclude "video/*" --size-only --no-progress
 
 # 5. Invalidate everything; the site is small and HTML is short-cached anyway.
 run aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" \
