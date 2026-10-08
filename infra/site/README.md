@@ -23,7 +23,19 @@ anywhere, but us-east-1 keeps it simple.
 
 Deploy: `AWS_PROFILE=quick-admin BUCKET=nofriction-io-site DISTRIBUTION_ID=E2AHX31YV2TCE4 infra/site/deploy.sh`
 
-### DNS cutover (nofriction.io is at Cloudflare; nameservers at GoDaddy)
+### DNS: Route 53 (since 2026-10-08)
+
+The zone moved from GoDaddy DNS to Route 53 hosted zone `Z02399811OYUG9F0GWPAO`
+(nameservers `ns-1332.awsdns-38.org`, `ns-1981.awsdns-55.co.uk`,
+`ns-706.awsdns-24.net`, `ns-496.awsdns-62.com`). The registrar is still
+GoDaddy; `switch-nameservers.sh` changes the nameservers there (needs a
+`gd_pat_…` token; `REVERT=1` restores GoDaddy's own). The Microsoft 365 /
+Proofpoint mail records (MX, SPF, autodiscover, lyncdiscover, sip, msoid)
+were copied verbatim; the apex is an ALIAS to the CloudFront distribution and
+`www` is a CNAME to it. Edit DNS with `aws route53 change-resource-record-sets`
+from now on, not at GoDaddy.
+
+### Original cutover notes (historical)
 
 1. Certificate validation CNAMEs (DNS only, not proxied):
    - `_1590c2c9ca450ae927b8557e4a6ad437.nofriction.io` → `_da4b66944f029f5ba9ccf22bcf671939.wzccmgtwzk.acm-validations.aws.`
