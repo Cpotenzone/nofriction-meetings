@@ -470,7 +470,15 @@ function handle(cmd: string, args: Args): unknown {
         case "get_ai_automation":
             return { liveInsights: true, autoNotes: true, autoNotesMinMinutes: 6 };
         case "get_local_stt_status":
-            return { ready: true, model: "base.en", downloaded: true };
+            return {
+                ready: true,
+                resolved_model: "large-v3-turbo-q5_0",
+                preferred_model: "large-v3-turbo-q5_0",
+                models: [
+                    { name: "large-v3-turbo-q5_0", size_mb: 547, description: "Recommended", installed: true, active: true },
+                    { name: "base.en", size_mb: 142, description: "Smaller", installed: false, active: false },
+                ],
+            };
         case "get_settings":
             return { deepgram_api_key: null, secret_status: {}, selected_microphone: null, selected_monitor: null, auto_start_recording: false, show_notifications: true };
         case "get_feature_flags":
@@ -662,6 +670,23 @@ function handle(cmd: string, args: Args): unknown {
         case "get_capture_mode":
             return "Paused";
 
+        // The one search, topics, devices (the Ive pass's Recordings and Settings)
+        case "search_recordings":
+            return searchRecordings(String(a.query ?? ""));
+        case "list_topics":
+            return topicIndex();
+        case "get_meeting_topics":
+            return topicsFor(String(a.meetingId)).map((t, i) => ({
+                ...t,
+                id: `${a.meetingId}-t${i}`,
+                meeting_id: a.meetingId,
+                confidence: null,
+                source: "ai",
+                created_at: new Date().toISOString(),
+            }));
+        case "get_audio_devices":
+            return [{ id: "builtin", name: "MacBook Pro Microphone", is_default: true, is_input: true }];
+
         // Plugins (dialogs, opener)
         case "plugin:dialog|ask":
         case "plugin:dialog|confirm":
@@ -672,6 +697,46 @@ function handle(cmd: string, args: Args): unknown {
     }
     console.warn("[mock] unhandled", cmd, args);
     return null;
+}
+
+// ── Search and topics from the demo data ─────────────────────────────
+
+const topicKey = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+function topicsFor(meetingId: string): { key: string; label: string }[] {
+    return (demoById.get(meetingId)?.notes?.key_topics ?? []).slice(0, 3).map((label) => ({ key: topicKey(label), label }));
+}
+
+function topicIndex() {
+    const counts = new Map<string, { key: string; label: string; count: number }>();
+    const by_meeting: Record<string, { key: string; label: string }[]> = {};
+    for (const m of meetings) {
+        const ts = topicsFor(m.id);
+        by_meeting[m.id] = ts;
+        for (const t of ts) {
+            const c = counts.get(t.key) ?? { ...t, count: 0 };
+            c.count += 1;
+            counts.set(t.key, c);
+        }
+    }
+    return { topics: [...counts.values()], by_meeting };
+}
+
+function searchRecordings(query: string) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hits: { meeting_id: string; kind: string; label: string; ms: number | null }[] = [];
+    for (const m of meetings) {
+        if (m.title.toLowerCase().includes(q)) hits.push({ meeting_id: m.id, kind: "title", label: m.title, ms: null });
+        if (m.class_name?.toLowerCase().includes(q)) hits.push({ meeting_id: m.id, kind: "notebook", label: m.class_name, ms: null });
+        for (const t of topicsFor(m.id)) {
+            if (t.label.toLowerCase().includes(q)) hits.push({ meeting_id: m.id, kind: "topic", label: t.label, ms: null });
+        }
+        for (const l of demoById.get(m.id)?.lines ?? []) {
+            if (l.text.toLowerCase().includes(q)) hits.push({ meeting_id: m.id, kind: "said", label: l.text, ms: ms(l.at) });
+        }
+    }
+    return hits;
 }
 
 /** Install the mocked backend. Call before the app is imported. */
