@@ -294,22 +294,50 @@ final class TopicStoreTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<MeetingTopic>()), 0)
     }
 
-    func testRecordingsGroupingByNotebookAndTopic() throws {
+    /// The list has one grouping (by day) and one filter (Notebooks); a
+    /// recording never appears twice. Topics stay searchable.
+    func testRecordingsGroupedByDayOnce() throws {
         let t0 = Date(timeIntervalSince1970: 1_790_000_000)
         let a = makeMeeting(["x"], title: "A", notebook: "BIO 101", start: t0)
         let b = makeMeeting(["x"], title: "B", notebook: "BIO 101", start: t0.addingTimeInterval(100))
-        let c = makeMeeting(["x"], title: "C", start: t0.addingTimeInterval(200))
+        let c = makeMeeting(["x"], title: "C", start: t0.addingTimeInterval(3 * 86_400))
         try TopicStore.applyAI([.init(label: "Mitosis", confidence: 0.9), .init(label: "Enzymes", confidence: 0.5)], to: a, context: context)
         try TopicStore.applyAI([.init(label: "mitosis", confidence: 0.9)], to: b, context: context)
-        let index = TopicIndex(entries: Meeting.topicEntries([a, b, c]))
-        let byNotebook = RecordingsGrouping.sections([c, b, a], by: .notebook, topics: index)
-        XCTAssertEqual(byNotebook.map(\.title), ["BIO 101", RecordingsGrouping.noNotebook])
-        XCTAssertEqual(byNotebook[0].meetings.map(\.title), ["B", "A"])
-        let byTopic = RecordingsGrouping.sections([c, b, a], by: .topic, topics: index)
-        XCTAssertEqual(byTopic.map(\.title), ["Mitosis", "Enzymes", RecordingsGrouping.noTopics])
-        XCTAssertEqual(byTopic[0].meetings.map(\.title), ["B", "A"])
-        XCTAssertEqual(byTopic[2].meetings.map(\.title), ["C"])
-        XCTAssertEqual(RecordingsGrouping.sections([c, b, a], by: .date, topics: index).count, 1)
+        let sections = RecordingsGrouping.byDate([c, b, a])
+        XCTAssertEqual(sections.count, 2, "two days")
+        XCTAssertEqual(sections[0].meetings.map(\.title), ["C"], "newest day first")
+        XCTAssertEqual(sections[1].meetings.map(\.title), ["B", "A"], "the order given inside a day")
+        XCTAssertEqual(sections.flatMap(\.meetings).count, 3, "each recording listed once, whatever its topics")
+    }
+
+    /// Notes of every type render through the same block-aware Markdown
+    /// (F-28): headings and bullets never show as raw "##" / "- ".
+    func testNotesMarkdownBlocks() {
+        let lecture = """
+        ## Summary
+        The cell membrane.
+
+        ## Definitions
+        - **Phospholipid bilayer**: controls what enters
+        - Channel proteins
+          - nested
+        1. first
+        """
+        let blocks = NotesMarkdown.blocks(lecture)
+        XCTAssertEqual(blocks, [
+            .heading("Summary", level: 2),
+            .paragraph("The cell membrane."),
+            .heading("Definitions", level: 2),
+            .bullet("**Phospholipid bilayer**: controls what enters", indent: 0),
+            .bullet("Channel proteins", indent: 0),
+            .bullet("nested", indent: 1),
+            .bullet("first", indent: 0),
+        ])
+        // Inline bold survives; the markers do not
+        let inline = String(NotesMarkdown.inline("**term**: definition").characters)
+        XCTAssertEqual(inline, "term: definition")
+        // Soft-wrapped lines join into one paragraph; "#hashtag" is not a heading
+        XCTAssertEqual(NotesMarkdown.blocks("one\ntwo\n\n#tag"), [.paragraph("one two"), .paragraph("#tag")])
     }
 
     // MARK: Chat purge and scope

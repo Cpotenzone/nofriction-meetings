@@ -344,9 +344,9 @@ Welcome to noFriction for iPhone and iPad.
 • Notebooks group your recordings, with filter chips
 • Mark this moment: Important, Question, and Follow up, On the test or Remember
 • Review guides with flashcards and a practice quiz (noFriction Pro)
-• Calendar matching, attendees and a People list
+• Calendar matching, attendees, and People under Recordings
 • Photos of slides and whiteboards in the timeline
-• AI notes and follow-up emails with Apple's on-device model or your own endpoint (noFriction Pro)
+• Notes and follow-up emails with Apple's on-device model or your own endpoint (noFriction Pro)
 • Delete, or Strike from the record
 • Stops at the time you choose, or when the meeting ends
 ```
@@ -519,8 +519,8 @@ review guides, billed yearly."); that file is only for local testing and
 doesn't need to match.
 
 Review information for each product: a screenshot of the paywall (iOS: the
-paywall from "Summarize"; Mac: Settings → Subscription) and the note "Unlocks
-the AI features. Reach it from a recording's Summarize button (iOS) or Settings →
+paywall from "Make notes"; Mac: Settings → Subscription) and the note "Unlocks
+the AI features. Reach it from a recording's Make notes button (iOS) or Settings →
 Subscription (Mac)."
 
 ---
@@ -543,33 +543,33 @@ review credential through App Review; never place a secret in the app or repo.
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
 
 RECORD AND TRANSCRIBE
-1. Open Record and tap Record. After the recording notice, keep Meeting (the default) in What is it?, pick a length in How long? (No limit is fine) and tap Start recording.
+1. Open Record and tap Record. After the one-time recording notice, keep Meeting (the default) in What is it?, pick a length in How long? (No limit is fine) and tap Record.
 2. Allow Microphone and Speech Recognition. Calendar access enables calendar matching. On a physical device with on-device speech recognition available, speak for a minute and check the live transcript. The Simulator can't test speech recognition.
-3. Optionally add a photo. Stop, then open the meeting in Meetings.
+3. Optionally add a photo. Stop, then open the recording in Recordings.
 
 PRO AND RESTORE
-4. Open the meeting and choose Summarize or Follow-up email. Without Pro, the paywall opens. Settings → Subscription also offers the subscription and Restore Purchases.
+4. Open the recording and choose Make notes or Follow-up email. Without Pro, the paywall opens. Settings → Subscription also offers the subscription and Restore Purchases.
 5. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require the Pro entitlement.
 
 OFFLINE AI PATH
-Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup or Settings, choose Use Apple on-device (no key), then return to Summarize or Follow-up email. This text-generation path runs on the device without a provider account or API key.
+Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup or Settings, choose Use Apple on-device (no key), then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
 Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
 7. While recording, tap Mark this moment, then ? Question, ✎ On the test or Note within six seconds. On a physical device, say a web address such as "example dot com".
-8. Stop. Recordings shows Notebook chips that filter the list. In the meeting, Marked moments lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched.
+8. Stop. Recordings shows Notebook chips that filter the list. In the recording, Marks lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched. People, a row at the top of Recordings, lists everyone from calendar invites.
 Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9). A short Meeting and a short Personal recording show the difference.
 
 REVIEW (Pro)
-9. In the meeting's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Summarize follows the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Summarize.
+9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Make notes follows the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Make notes.
 
 APPLE WATCH
 The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the recording appears in the iPhone app's Recordings tab. Delivery and transcription require a physical iPhone and Apple Watch.
 
 EDITING
-Open a meeting and select transcript text. Delete offers a brief undo period. Strike from the record is permanent and leaves a marker.
+Open a recording and select transcript text. Delete offers a brief undo period. Strike from the record is permanent and leaves a marker.
 
 The local-model path requires its setup, compatible hardware and Pro entitlement; it is not a hosted fallback. Reviewer contact details will be supplied separately in App Store Connect.
 ```
@@ -609,8 +609,9 @@ REVIEW (Pro)
 Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
-Optional attachment: a short screen recording of a recording → Summarize →
-paywall → notes, if review asks how to reach a feature.
+Optional attachment: a short screen recording of a recording → Make notes
+(iOS) / Generate notes (Mac) → paywall → notes, if review asks how to reach a
+feature.
 
 ### TestFlight (external testing) Test Information
 
@@ -685,11 +686,11 @@ Order and suggested captions:
 | 1 | Record (live transcript, recording) | Record tab while recording demo audio | Transcribed on your device |
 | 2 | The Record sheet: **What is it?** (Meeting · Class · Personal) above **How long?** | Record → Record, before Start recording | Meetings, classes and everyday life |
 | 3 | Meeting detail with AI notes | Meetings → "Kubernetes migration sync" (with notes generated) | Notes and action items, with your AI |
-| 4 | Class recording: Notebook BIO 101, **Marked moments** (★, ?, ✎ On the test, with notes) and the **Review** section showing the study guide is ready | Meetings → Notebook chip "BIO 101" → "Cell structure and the membrane" | Mark what's on the test |
+| 4 | Class recording: Notebook BIO 101, **Marks** (★, ?, ✎ On the test, with notes) and the **Review** section showing the study guide is ready | Recordings → Notebook chip "BIO 101" → "Cell structure and the membrane" | Mark what's on the test |
 | 5 | Study guide: **Flashcards** with a card flipped to its back, or **Practice quiz** with an answered question, its explanation and "Jump to this moment" | That recording → Review → open the guide | Flashcards and a quiz from any recording |
 | 6 | Personal recording: notes with summary, key points and to-dos, and a Remember mark | Meetings → Notebook chip "Home" → "Kitchen renovation walkthrough" | Remember what was said, and what to do |
 | 7 | Recordings list with Notebook chips (All · Acme project · BIO 101 · Home) | Recordings tab | Group recordings into Notebooks |
-| 8 | People | People tab | Know who was there |
+| 8 | People | Recordings → the People row | Know who was there |
 | 9 | Strike from the record marker | Meeting → select words → Strike | Strike it from the record |
 | 10 | Settings → Connect AI | Settings tab (no key entered) | Your key. Your provider. |
 
@@ -722,7 +723,7 @@ and Apple on-device AI. Speech recognition doesn't work in the Simulator.
    the Mac plays an invented talk (for example, "The contractor can start on
    the fourteenth. The tiles have to be ordered by Friday, and the old
    cabinets go out first."). Mark **Remember** with the note "order tiles".
-   Change the title to "Kitchen renovation walkthrough" and tap Summarize.
+   Change the title to "Kitchen renovation walkthrough" and tap Make notes.
 3. Give "Kubernetes migration sync" the Notebook **Acme project** on the
    recording, so row 7 shows all three chips. Then capture.
 Keep the share sheet closed in the shots, so third-party app names don't

@@ -9,7 +9,7 @@ struct LiveView: View {
     @State private var snapFlash = false
     @AppStorage("recordingNoticeAccepted") private var recordingNoticeAccepted = false
     @State private var showRecordingNotice = false
-    /// "What is it?", "How long?" and a notebook before recording
+    /// "What is it?", "How long?" and a notebook before recording (the Record sheet)
     @State private var showPlanSheet = false
     @State private var planAfterNotice = false
     @AppStorage(ClassNotice.shownKey) private var classNoticeShown = false
@@ -35,11 +35,7 @@ struct LiveView: View {
                     ClassNoticeBanner { showClassNotice = false }
                 }
                 TranscriptStream(meeting: session.meeting, partial: session.partial, phase: session.phase)
-                Label("Let everyone know you're recording.", systemImage: "person.wave.2")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 6)
-                    .accessibilityIdentifier("recording-reminder")
+                // The recording notice is the sheet on the first Record (once); no standing caption
                 // ★ / ? / ✎ moment markers (docs/STUDY_TOOLS.md); the ✎ label follows the type
                 if session.isActive { MarkControl() }
                 controls
@@ -310,7 +306,7 @@ private struct EmptyTranscript: View {
             } else {
                 PrivacyPromise()
                     .padding(.top, 6)
-                Text("Your calendar names the meeting and who's in it.")
+                Text("Your calendar names the recording and who was there.")
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -493,7 +489,7 @@ struct MeetingEndBanner: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.recordingStrong)
             .fixedSize()
-            .accessibilityHint("Stops and saves the meeting now")
+            .accessibilityHint("Stops and saves the recording now")
             .accessibilityIdentifier("meeting-end-stop")
     }
 }

@@ -2,28 +2,16 @@ import SwiftData
 import SwiftUI
 
 /// Past recordings (the Recordings tab). iPhone: a list that pushes detail. iPad: list + detail.
+/// Notebook chips are the one filter; People is a section under the list
+/// (topics stay a search facet and live on the recording).
 struct MeetingsView: View {
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
+    @Query(filter: #Predicate<Person> { !$0.isSelf }) private var people: [Person]
     @Environment(RecordingSession.self) private var session
     @State private var selection: Meeting?
     @State private var query = ""
     /// Notebook filter; nil = All
     @State private var notebookFilter: String?
-    /// Topic filter (a `TopicIndex.Group.key`); nil = All (docs/TOPICS_AND_CHAT.md)
-    @State private var topicFilter: String?
-    /// Group by: Date · Notebook · Topic (remembered)
-    @AppStorage("recordingsGroupBy") private var groupByRaw = RecordingsGroupBy.date.rawValue
-
-    private var groupBy: RecordingsGroupBy {
-        get { RecordingsGroupBy(rawValue: groupByRaw) ?? .date }
-        nonmutating set { groupByRaw = newValue.rawValue }
-    }
-
-    /// Topics across every saved recording, near-duplicates merged
-    private var topicIndex: TopicIndex { TopicIndex(entries: Meeting.topicEntries(meetings)) }
-
-    /// The topic filter, unless its last recording was deleted
-    private var activeTopic: TopicIndex.Group? { topicFilter.flatMap { topicIndex.group(forKey: $0) } }
 
     /// Notebooks of saved recordings, most recent first
     private var notebooks: [String] { Notebook.recent(meetings.map { ($0.courseName, $0.startedAt) }, limit: 50) }
@@ -35,10 +23,8 @@ struct MeetingsView: View {
     }
 
     private var shown: [Meeting] {
-        let topicIDs = activeTopic.map { Set($0.meetingIDs) }
         let past = meetings.filter {
             $0.id != session.meeting?.id && Notebook.matches($0.courseName, filter: activeNotebook)
-                && (topicIDs?.contains($0.id) ?? true)
         }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return past }
@@ -51,10 +37,8 @@ struct MeetingsView: View {
         }
     }
 
-    /// Sections by the Group by choice (`RecordingsGrouping`)
-    private var sections: [RecordingsGrouping.Section] {
-        RecordingsGrouping.sections(shown, by: groupBy, topics: topicIndex)
-    }
+    /// Sections by day, newest first (`RecordingsGrouping`)
+    private var sections: [RecordingsGrouping.Section] { RecordingsGrouping.byDate(shown) }
 
     var body: some View {
         NavigationSplitView {
@@ -67,10 +51,22 @@ struct MeetingsView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
-                if !topicIndex.groups.isEmpty {
-                    TopicFilterBar(groups: topicIndex.groups, selection: $topicFilter)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                if !people.isEmpty && query.isEmpty {
+                    Section {
+                        NavigationLink {
+                            PeopleListView()
+                        } label: {
+                            Label {
+                                Text("People")
+                            } icon: {
+                                Image(systemName: "person.2").foregroundStyle(Theme.accent)
+                            }
+                            .badge(people.count)
+                        }
+                        .accessibilityLabel("People, \(people.count)")
+                        .accessibilityHint("Everyone from your calendar invites, with their recordings")
+                        .accessibilityIdentifier("recordings-people")
+                    }
                 }
                 ForEach(sections) { section in
                     Section(section.title) {
@@ -86,20 +82,6 @@ struct MeetingsView: View {
             // Neutral selection on iPad; yellow fill made secondary text unreadable
             .tint(Color.white.opacity(0.14))
             .navigationTitle("Recordings")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Picker(Topic.groupByTitle, selection: Binding(get: { groupBy }, set: { groupBy = $0 })) {
-                            ForEach(RecordingsGroupBy.allCases) { g in
-                                Label(g.label, systemImage: g.systemImage).tag(g)
-                            }
-                        }
-                    } label: {
-                        Label("\(Topic.groupByTitle): \(groupBy.label)", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                    .accessibilityIdentifier("recordings-group-by")
-                }
-            }
             .searchable(text: $query, prompt: "Titles, people, topics, or anything said")
             .overlay {
                 if meetings.isEmpty {
@@ -109,8 +91,6 @@ struct MeetingsView: View {
                     ContentUnavailableView.search(text: query)
                 } else if shown.isEmpty, let activeNotebook {
                     ContentUnavailableView("No recordings in \(activeNotebook)", systemImage: "book.closed")
-                } else if shown.isEmpty, let activeTopic {
-                    ContentUnavailableView("No recordings about \(activeTopic.label)", systemImage: "tag")
                 }
             }
         } detail: {
@@ -163,7 +143,6 @@ private struct MeetingRow: View {
                 .font(.caption)
                 .lineLimit(1)
             }
-            TopicChipsRow(topics: meeting.orderedTopics)
             let names = meeting.people.prefix(3).map(\.person.displayName)
             if !names.isEmpty {
                 Text(names.joined(separator: ", ") + (meeting.people.count > 3 ? " +\(meeting.people.count - 3)" : ""))
@@ -187,27 +166,7 @@ struct WatchBadge: View {
     }
 }
 
-/// "Group by" in the Recordings list: Date · Notebook · Topic (same words as the Mac).
-enum RecordingsGroupBy: String, CaseIterable, Identifiable {
-    case date, notebook, topic
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .date: "Date"
-        case .notebook: Notebook.label
-        case .topic: Topic.label
-        }
-    }
-    var systemImage: String {
-        switch self {
-        case .date: "calendar"
-        case .notebook: "book.closed"
-        case .topic: "tag"
-        }
-    }
-}
-
-/// Sections of the Recordings list (pure; unit-tested through `sections(_:by:topics:)`).
+/// Sections of the Recordings list (pure; unit-tested through `byDate(_:)`).
 enum RecordingsGrouping {
     struct Section: Identifiable {
         var title: String
@@ -215,39 +174,12 @@ enum RecordingsGrouping {
         var id: String { title }
     }
 
-    static let noNotebook = "No notebook"
-    static let noTopics = "No topics"
-
-    /// Date: by day, newest first. Notebook: by name (most recent first),
-    /// then "No notebook". Topic: a recording appears under each of its
-    /// topics (biggest topic first), then "No topics".
+    /// By day, newest first; the order inside a day is the order given.
     @MainActor
-    static func sections(_ meetings: [Meeting], by grouping: RecordingsGroupBy, topics: TopicIndex) -> [Section] {
-        switch grouping {
-        case .date:
-            let grouped = Dictionary(grouping: meetings) { Calendar.current.startOfDay(for: $0.startedAt) }
-            return grouped.keys.sorted(by: >).map {
-                Section(title: $0.formatted(.dateTime.weekday(.wide).month(.wide).day()), meetings: grouped[$0]!)
-            }
-        case .notebook:
-            let names = Notebook.recent(meetings.map { ($0.courseName, $0.startedAt) }, limit: 500)
-            var out = names.map { n in Section(title: n, meetings: meetings.filter { Notebook.matches($0.courseName, filter: n) }) }
-            let none = meetings.filter { Notebook.normalize($0.courseName) == nil }
-            if !none.isEmpty { out.append(Section(title: noNotebook, meetings: none)) }
-            return out
-        case .topic:
-            let ids = Set(meetings.map(\.id))
-            var out: [Section] = []
-            var placed = Set<UUID>()
-            for g in topics.groups {
-                let members = meetings.filter { g.meetingIDs.contains($0.id) && ids.contains($0.id) }
-                guard !members.isEmpty else { continue }
-                out.append(Section(title: g.label, meetings: members))
-                members.forEach { placed.insert($0.id) }
-            }
-            let none = meetings.filter { !placed.contains($0.id) }
-            if !none.isEmpty { out.append(Section(title: noTopics, meetings: none)) }
-            return out
+    static func byDate(_ meetings: [Meeting]) -> [Section] {
+        let grouped = Dictionary(grouping: meetings) { Calendar.current.startOfDay(for: $0.startedAt) }
+        return grouped.keys.sorted(by: >).map {
+            Section(title: $0.formatted(.dateTime.weekday(.wide).month(.wide).day()), meetings: grouped[$0]!)
         }
     }
 }

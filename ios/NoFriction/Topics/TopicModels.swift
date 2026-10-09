@@ -3,8 +3,9 @@ import SwiftData
 
 // Topics (docs/TOPICS_AND_CHAT.md): what a recording was about, as 1–4
 // short noun phrases. The AI names them when notes are made (and on
-// demand); the user can rename, remove and add. Same vocabulary as the Mac:
-// a "Topics" chip row beside Notebooks, "Group by: Date · Notebook · Topic".
+// demand); the user can rename, remove and add. Topics live on the recording
+// (the Notes section), are a search facet in Recordings and a scope in Chat.
+// There is no topic filter or grouping in the list: Notebooks are the one filter.
 
 /// One topic on one recording. AI topics are replaced by a re-run; user
 /// topics (added or renamed by hand) are never touched by the AI. Deleted
@@ -42,15 +43,12 @@ final class MeetingTopic {
 enum Topic {
     static let label = "Topic"
     static let filterTitle = "Topics"
-    static let groupByTitle = "Group by"
     static let maxLabelLength = 40
     static let maxLabelWords = 6
     /// Most AI topics per recording
     static let maxAI = 4
     /// Most topics per recording in total (AI + user)
     static let maxPerRecording = 8
-    /// Shown on a row in the Recordings list
-    static let chipsPerRow = 2
     /// AI topics below this confidence are dropped
     static let minConfidence = 0.3
 

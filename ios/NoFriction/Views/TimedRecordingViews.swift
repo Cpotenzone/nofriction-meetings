@@ -33,18 +33,10 @@ struct RecordPlanSheet: View {
                         }
                         .pickerStyle(.segmented)
                         .accessibilityIdentifier("record-kind")
-                        Text(RecordingKind.help)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("How long?")
-                            .font(.headline)
-                            .accessibilityAddTraits(.isHeader)
-                        Text("The recording stops by itself at the end. You can add time while it runs.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("How long?")
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 10)], spacing: 10) {
                         ForEach(RecordingLimit.choices, id: \.self) { c in
                             LengthChoice(limit: c, selected: choice == c) { choice = c }
@@ -64,11 +56,6 @@ struct RecordPlanSheet: View {
                         NotebookChips(notebooks: Notebook.suggestions(notebook, recents: recents), selected: Notebook.normalize(notebook)) {
                             notebook = $0
                         }
-                        if kind == .class {
-                            Text("Notes for a class are written as lecture notes.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
                     }
                 }
                 .padding(24)
@@ -76,12 +63,14 @@ struct RecordPlanSheet: View {
             }
             .safeAreaInset(edge: .bottom) {
                 Button(action: start) {
-                    Text("Start recording").frame(maxWidth: .infinity).padding(.vertical, 6)
+                    Text("Record").frame(maxWidth: .infinity).padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.recordingStrong)
                 .padding(20)
                 .background(.bar)
+                .accessibilityLabel("Record")
+                .accessibilityHint("Starts recording with these choices")
                 .accessibilityIdentifier("record-plan-start")
             }
             .background(Theme.background)
@@ -89,7 +78,8 @@ struct RecordPlanSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
-        .presentationDetents([.medium, .large])
+        // Full height: the red button is never below the fold on first open
+        .presentationDetents([.large])
     }
 
     private func start() {

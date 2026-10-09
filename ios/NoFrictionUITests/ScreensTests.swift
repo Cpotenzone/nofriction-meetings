@@ -44,7 +44,7 @@ final class ScreensTests: XCTestCase {
         saveShot("\(device)-3-detail")
         XCTAssertTrue(app.staticTexts["Dana Whitfield"].firstMatch.waitForExistence(timeout: 3))
 
-        // AI is Pro: without a subscription, Summarize opens the paywall
+        // AI is Pro: without a subscription, Make notes opens the paywall
         let summarize = app.buttons["ai-summarize"].firstMatch
         if summarize.waitForExistence(timeout: 3) {
             summarize.tap()
@@ -54,7 +54,11 @@ final class ScreensTests: XCTestCase {
             sleep(1)
         }
 
-        app.buttons["People"].firstMatch.tap()
+        // People is a row under Recordings, not a tab
+        app.buttons["Recordings"].firstMatch.tap()
+        let peopleRow = app.descendants(matching: .any)["recordings-people"].firstMatch
+        XCTAssertTrue(peopleRow.waitForExistence(timeout: 5), "People row missing under Recordings")
+        peopleRow.tap()
         sleep(1)
         saveShot("\(device)-4-people")
         XCTAssertTrue(app.staticTexts["Marcus Lee"].firstMatch.waitForExistence(timeout: 3))
@@ -105,8 +109,11 @@ final class AppStoreScreenshots: XCTestCase {
         sleep(1)
         shot("03-stricken")
 
-        // 4. People
-        app.buttons["People"].firstMatch.tap()
+        // 4. People (a row under Recordings)
+        app.buttons["Recordings"].firstMatch.tap()
+        let peopleRow = app.descendants(matching: .any)["recordings-people"].firstMatch
+        XCTAssertTrue(peopleRow.waitForExistence(timeout: 5), "People row missing under Recordings")
+        peopleRow.tap()
         XCTAssertTrue(app.staticTexts["Priya Shah"].firstMatch.waitForExistence(timeout: 5))
         sleep(1)
         shot("04-people")
