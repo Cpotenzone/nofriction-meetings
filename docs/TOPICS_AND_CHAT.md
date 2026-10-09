@@ -4,9 +4,11 @@ Two AI features on top of recordings, with the same words on both platforms:
 
 - **Topics**: what a recording was about, as 1–4 short noun phrases
   ("Q4 roadmap", "Mitosis"). Named by the AI when notes are made (and on
-  demand with **Find topics**); the user can rename, remove and add. A
-  **Topics** chip row sits beside **Notebooks** in the recordings list, and
-  **Group by: Date · Notebook · Topic** regroups the list.
+  demand with **Find topics**); the user can rename, remove and add. On the
+  Mac a **Topics** chip row sits beside **Notebooks** in the recordings list
+  and **Group by: Date · Notebook · Topic** regroups the list; on iOS topics
+  are a search facet and live on the recording (Notebooks are the one
+  filter, the list is by day).
 - **Chat**: ask about your recordings. A scope at the top, **All recordings
   · this Notebook · this Topic · this recording**, decides which recordings
   are searched. Answers are Markdown with `[n]` citations; each citation
@@ -228,7 +230,7 @@ Tests: `ios/NoFrictionTests/TopicsAndChatTests.swift`.
   (keys only) remembers AI topics the user removed. Everything added is an
   optional column or a new entity, so stores from older builds open without
   a schema version (a test round-trips an on-disk store).
-- **When.** The same hook as notes: **Summarize** / **Redo notes** names the
+- **When.** The same hook as notes: **Make notes** / **Make again** names the
   topics after the notes are saved (a failure shows under the topics, not
   under the notes). **Find topics** / **Find again** in the recording's
   Notes section runs it alone. Both go through `MeetingDetailView.requestAI`,
@@ -266,13 +268,11 @@ Tests: `ios/NoFrictionTests/TopicsAndChatTests.swift`.
   records its key so a re-run doesn't bring it back; adding it again clears
   that. Generic words ("meeting") are refused. User topics show a small
   person mark.
-- **Recordings list.** **Topics** chips (All · topic · count) under the
-  Notebooks row; the search box also matches topic labels. **Group by**
-  (toolbar menu, remembered in `recordingsGroupBy`): **Date** (by day),
-  **Notebook** (by name, then "No notebook"), **Topic** (a recording appears
-  under each of its topics, biggest topic first, then "No topics"). Each row
-  shows up to two topic chips (user topics first, then by confidence) and
-  "+n".
+- **Recordings list.** No topic chips and no Group by (removed in the
+  Fadell-audit pass, F-12: a recording listed under each topic appeared
+  several times). The list is by day, **Notebooks** chips are the one
+  filter, and the search box matches topic labels. Topics show on the
+  recording and as a Chat scope.
 - **Purge.** Topics go with the recording (cascade). A Delete (when it
   commits) or Strike of transcript text deletes the recording's AI topics,
   through `RedactionEngine.purgeDerived` (with the study guide and the chat

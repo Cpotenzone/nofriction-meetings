@@ -100,8 +100,10 @@ Digital Crown scrolls each one:
 1. **What is it?** Meeting · Class · Personal (the shared vocabulary in
    `ios/Shared/RecordingVocabulary.swift`; the help line says "Personal
    covers everything else: conversations, appointments, talks, ideas."). A
-   **Start** row at the top starts at once with the last type and length
-   and no notebook. The **Discreet** switch is on this screen.
+   **Start · Meeting · No limit** row at the top (the remembered type and
+   length, with "or change it below") starts at once with those choices and
+   no notebook; the lists under it change them. The **Discreet** switch is
+   on this screen.
 2. **How long?** 15 / 30 / 60 / 90 min / No limit.
 3. **Notebook**: None, or one of the iPhone's recent notebooks. Skipped
    (None) while the watch has no list from the iPhone. There is no text

@@ -320,17 +320,21 @@ struct StartFlowView: View {
         NavigationStack(path: $path) {
             List {
                 Section {
+                    // "Start · Meeting · No limit": the row says what it starts with;
+                    // the lists below are how to change it (F-32)
                     Button {
                         start(remembered.kind, remembered.limit, nil)
                     } label: {
                         VStack(spacing: 2) {
-                            Label("Start", systemImage: "mic.fill")
+                            Label("Start · \(remembered.kind.label) · \(remembered.limit.label)", systemImage: "mic.fill")
                                 .font(.headline)
-                            Text("\(remembered.kind.label) · \(remembered.limit.label)")
-                                .font(.footnote)
-                                .foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.75)
+                                .multilineTextAlignment(.center)
+                            Text("or change it below")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.8))
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.8)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
@@ -341,6 +345,7 @@ struct StartFlowView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                     .accessibilityLabel("Start, \(remembered.kind.label), \(remembered.limit.spoken)")
+                    .accessibilityHint("Starts now with these choices. The lists below change them.")
                     .accessibilityIdentifier("watch-quick-start")
                 }
                 Section {
