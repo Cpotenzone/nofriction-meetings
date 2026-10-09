@@ -54,6 +54,12 @@ struct AIPreset: Identifiable, Hashable, Sendable {
         AIPreset(id: "anthropic", name: "Anthropic (Claude)", baseURL: "https://api.anthropic.com/v1",
                  defaultModel: "claude-sonnet-5-5", modelHint: "claude-haiku-5-5, claude-opus-5-5",
                  keyURL: "https://platform.claude.com/settings/keys", note: "Your Claude API key; billed by Anthropic."),
+        // Meta Model API (Muse): OpenAI-compatible Chat Completions at
+        // https://api.meta.ai/v1, Bearer auth; default muse-spark-1.3
+        // (https://dev.meta.ai/docs/quickstart). Keys: https://dev.meta.ai → API keys.
+        AIPreset(id: "meta", name: "Muse (Meta)", baseURL: "https://api.meta.ai/v1",
+                 defaultModel: "muse-spark-1.3", modelHint: "muse-spark-1.1",
+                 keyURL: "https://dev.meta.ai", note: "Your Meta Model API key; billed by Meta."),
         // xAI: OpenAI-compatible base https://api.x.ai/v1, Bearer auth
         // (https://docs.x.ai/docs/guides/chat); /v1/chat/completions is kept but
         // marked deprecated in favour of /v1/responses

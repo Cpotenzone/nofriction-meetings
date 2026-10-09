@@ -142,6 +142,20 @@ pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
         key_url: "https://platform.claude.com/settings/keys",
         note: "Your Claude API key; billed by Anthropic.",
     },
+    // Meta Model API (Muse): OpenAI-compatible Chat Completions at
+    // https://api.meta.ai/v1 with the key as a Bearer token; muse-spark-1.3 is
+    // the quickstart's default and muse-spark-1.1 is also listed
+    // (https://dev.meta.ai/docs/quickstart, https://dev.meta.ai/docs/protocols/chat-completions).
+    // Keys: the Model API dashboard → API keys (https://dev.meta.ai).
+    EndpointPreset {
+        id: "meta",
+        name: "Muse (Meta)",
+        base_url: "https://api.meta.ai/v1",
+        default_model: "muse-spark-1.3",
+        model_hint: "muse-spark-1.1",
+        key_url: "https://dev.meta.ai",
+        note: "Your Meta Model API key; billed by Meta.",
+    },
     // xAI: OpenAI-compatible base https://api.x.ai/v1 with Bearer auth
     // (https://docs.x.ai/docs/guides/chat). xAI marks /v1/chat/completions as
     // deprecated in favour of /v1/responses but keeps it available
@@ -438,7 +452,7 @@ pub fn context_window(provider: &str, model: &str, reported: Option<usize>) -> u
         "gemini" => Some(1_000_000),
         "openai" if m.starts_with("gpt-3.5") => Some(16_000),
         "openai" => Some(128_000),
-        "xai" | "groq" | "mistral" | "perplexity" => Some(128_000),
+        "xai" | "groq" | "mistral" | "perplexity" | "meta" => Some(128_000),
         "deepseek" => Some(64_000),
         // Local servers often run with a small default context (Ollama 4-8K)
         "ollama" | "lmstudio" => Some(8_192),
@@ -473,7 +487,7 @@ mod tests {
     fn endpoint_presets_are_static_https_and_never_selected_by_default() {
         assert_eq!(
             ENDPOINT_PRESETS.iter().map(|p| p.id).collect::<Vec<_>>(),
-            vec!["openai", "anthropic", "xai", "mistral"]
+            vec!["openai", "anthropic", "meta", "xai", "mistral"]
         );
         for p in ENDPOINT_PRESETS {
             assert_eq!(check_base_url(p.base_url).unwrap(), p.base_url, "{}", p.id);

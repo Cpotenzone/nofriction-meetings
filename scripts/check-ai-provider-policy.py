@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release source policy: noFriction has Apple on-device and one user-entered AI endpoint.
 
-Provider presets (OpenAI, Anthropic, xAI, Mistral) are UI convenience over that
+Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) are UI convenience over that
 endpoint: static data that pre-fills the base URL and model. This guard allows
 exactly that curated table (the same ids, hosts and default models on the Mac and
 iOS), and still fails on:
@@ -25,6 +25,7 @@ from pathlib import Path
 CURATED = {
     'openai':    {'base_url': 'https://api.openai.com/v1',    'key_host': 'platform.openai.com'},
     'anthropic': {'base_url': 'https://api.anthropic.com/v1', 'key_host': 'platform.claude.com'},
+    'meta':      {'base_url': 'https://api.meta.ai/v1',       'key_host': 'dev.meta.ai'},
     'xai':       {'base_url': 'https://api.x.ai/v1',          'key_host': 'console.x.ai'},
     'mistral':   {'base_url': 'https://api.mistral.ai/v1',    'key_host': 'console.mistral.ai'},
 }
@@ -33,9 +34,9 @@ IOS_TABLE = ('ios/NoFriction/AI/AIProvider.swift', r'static let all: \[AIPreset\
 
 # Any AI-service host: retired ones (never allowed) plus the preset hosts (table only).
 AI_HOSTS = re.compile(
-    r'(?:api\.(?:openai\.com|anthropic\.com|deepgram\.com|gladia\.io|groq\.com|x\.ai|mistral\.ai|deepseek\.com|perplexity\.ai|together\.xyz|together\.ai)'
+    r'(?:api\.(?:openai\.com|anthropic\.com|deepgram\.com|gladia\.io|groq\.com|x\.ai|mistral\.ai|meta\.ai|deepseek\.com|perplexity\.ai|together\.xyz|together\.ai)'
     r'|generativelanguage\.googleapis\.com|speech\.googleapis\.com|openrouter\.ai'
-    r'|platform\.openai\.com|platform\.claude\.com|console\.anthropic\.com|console\.x\.ai|console\.mistral\.ai)', re.I)
+    r'|platform\.openai\.com|platform\.claude\.com|console\.anthropic\.com|console\.x\.ai|console\.mistral\.ai|dev\.meta\.ai)', re.I)
 RETIRED_HOSTS = re.compile(
     r'(?:api\.(?:deepgram\.com|gladia\.io|groq\.com|deepseek\.com|perplexity\.ai|together\.xyz|together\.ai)'
     r'|generativelanguage\.googleapis\.com|speech\.googleapis\.com|openrouter\.ai)', re.I)
@@ -143,7 +144,7 @@ def audit(root):
     need(re.search(r'var selectedCard:\s*String\?\s*\n', settings_view), 'iOS preset card selection must start nil')
     tsx = (root / 'src/features/settings/AIProviderSettings.tsx').read_text()
     need(re.search(r'useState<string \| null>\(null\)', tsx), 'Mac preset card selection must start null')
-    need(not re.search(r'useState\(\s*"(?:openai|anthropic|xai|mistral)"', tsx), 'Mac settings must not pre-select a preset')
+    need(not re.search(r'useState\(\s*"(?:openai|anthropic|meta|xai|mistral)"', tsx), 'Mac settings must not pre-select a preset')
     presets_ts = (root / 'src/lib/aiPresets.ts').read_text()
     need(not re.search(r'https?://', presets_ts), 'Mac preset helpers must carry no URL (the table comes from the backend)')
 
@@ -228,7 +229,7 @@ def main():
     args = parser.parse_args()
     errors = audit(args.root.resolve())
     print(json.dumps({'status': 'FAIL' if errors else 'PASS',
-                      'policy': 'Apple/custom AI with curated presets (OpenAI, Anthropic, xAI, Mistral) as UI data only; '
+                      'policy': 'Apple/custom AI with curated presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) as UI data only; '
                                 'no keys, no default provider, no startup network, provider hosts only in the preset tables; local transcription',
                       'presets': list(CURATED), 'errors': errors}))
     return bool(errors)

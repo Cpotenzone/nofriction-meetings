@@ -17,10 +17,10 @@ spec=importlib.util.spec_from_file_location('redacted_audit',HERE/'audit-embedde
 core=importlib.util.module_from_spec(spec);spec.loader.exec_module(core)
 # Hosts that must never ship (removed cloud transcription and AI services).
 RETIRED_SERVICE_HOSTS=re.compile(rb'\b(?:generativelanguage\.googleapis\.com|(?:[a-z0-9-]+-)?speech\.googleapis\.com|api\.deepgram\.com|api\.gladia\.io|api\.groq\.com|openrouter\.ai|api\.deepseek\.com|api\.perplexity\.ai|api\.together\.(?:xyz|ai))\b',re.I)
-# Hosts of the curated provider presets (OpenAI, Anthropic, xAI, Mistral): allowed in
+# Hosts of the curated provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral): allowed in
 # the artifact as static preset data (docs/AI_PROVIDERS.md); inventoried, never a failure.
 # The source guard (check-ai-provider-policy.py) proves they appear only in the preset tables.
-PRESET_HOSTS=re.compile(rb'\b(?:api\.openai\.com|api\.anthropic\.com|api\.x\.ai|api\.mistral\.ai|platform\.openai\.com|platform\.claude\.com|console\.x\.ai|console\.mistral\.ai)\b',re.I)
+PRESET_HOSTS=re.compile(rb'\b(?:api\.openai\.com|api\.anthropic\.com|api\.x\.ai|api\.mistral\.ai|api\.meta\.ai|dev\.meta\.ai|platform\.openai\.com|platform\.claude\.com|console\.x\.ai|console\.mistral\.ai)\b',re.I)
 
 def retired_hosts(name,data):
     return [{'file':name,'host':host.decode('ascii').lower(),'classification':'retired service host, not a credential'} for host in sorted(set(RETIRED_SERVICE_HOSTS.findall(data)))]
