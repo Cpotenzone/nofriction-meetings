@@ -1,5 +1,6 @@
 
 import { Component, ErrorInfo, ReactNode } from "react";
+import { WarningIcon } from "./icons";
 
 interface Props {
     children: ReactNode;
@@ -41,7 +42,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                     gap: "20px"
                 }}>
                     <div>
-                        <span style={{ fontSize: "40px" }}>💥</span>
+                        <WarningIcon size={40} strokeWidth={1.5} />
                         <h1 style={{ fontSize: "24px", fontWeight: "bold", margin: "10px 0" }}>Something went wrong</h1>
                         <p style={{ color: "#9ca3af" }}>The application encountered an error and cannot display.</p>
                     </div>

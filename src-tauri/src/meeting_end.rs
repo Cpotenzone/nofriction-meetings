@@ -555,15 +555,9 @@ async fn read_settings(app: &AppHandle) -> (bool, i64) {
         .flatten()
         .map(|v| v != "false")
         .unwrap_or(true);
-    let minutes = state
-        .settings
-        .get(SETTING_SILENCE_MINUTES)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|v| v.trim().parse::<i64>().ok())
-        .unwrap_or(DEFAULT_SILENCE_MINUTES)
-        .clamp(1, 60);
+    // Silence is a decision, not a setting (Fadell audit F-9): always the
+    // default, whatever an older build saved under SETTING_SILENCE_MINUTES
+    let minutes = DEFAULT_SILENCE_MINUTES;
     (enabled, minutes)
 }
 
