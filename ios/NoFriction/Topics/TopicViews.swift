@@ -1,88 +1,9 @@
 import SwiftData
 import SwiftUI
 
-// Topic UI (docs/TOPICS_AND_CHAT.md): the Topics chip row in the Recordings
-// list, the chips on a row, and the editor in a recording's Notes.
-
-/// Recordings list: **Topics** chips beside the Notebooks row. `selection`
-/// is a group key (`TopicIndex.Group.key`).
-struct TopicFilterBar: View {
-    let groups: [TopicIndex.Group]
-    @Binding var selection: String?
-    /// Most chips shown; the rest are reachable by grouping by Topic
-    static let maxChips = 20
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(Topic.filterTitle.uppercased())
-                .font(.caption2.weight(.semibold))
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    chip("All", on: selection == nil) { selection = nil }
-                    ForEach(groups.prefix(Self.maxChips)) { g in
-                        chip(g.count > 1 ? "\(g.label) · \(g.count)" : g.label, on: selection == g.key) {
-                            selection = selection == g.key ? nil : g.key
-                        }
-                        .accessibilityLabel("\(Topic.label): \(g.label), \(g.count) recordings")
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Topic.filterTitle)
-        .accessibilityIdentifier("topic-filter")
-    }
-
-    private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.subheadline.weight(on ? .semibold : .regular))
-                .lineLimit(1)
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(on ? Theme.ai.opacity(0.22) : Theme.card, in: Capsule())
-                .overlay { Capsule().stroke(on ? Theme.ai : Color.clear, lineWidth: 1) }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
-/// Up to two topic chips on a Recordings row.
-struct TopicChipsRow: View {
-    let topics: [MeetingTopic]
-
-    var body: some View {
-        if !topics.isEmpty {
-            HStack(spacing: 6) {
-                ForEach(topics.prefix(Topic.chipsPerRow)) { t in
-                    TopicChip(label: t.label)
-                }
-                if topics.count > Topic.chipsPerRow {
-                    Text("+\(topics.count - Topic.chipsPerRow)").font(.caption2).foregroundStyle(.tertiary)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(Topic.filterTitle): " + topics.map(\.label).joined(separator: ", "))
-            .accessibilityIdentifier("meeting-row-topics")
-        }
-    }
-}
-
-struct TopicChip: View {
-    let label: String
-    var body: some View {
-        Text(label)
-            .font(.caption2.weight(.medium))
-            .lineLimit(1)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .foregroundStyle(Theme.ai)
-            .background(Theme.ai.opacity(0.14), in: Capsule())
-    }
-}
+// Topic UI (docs/TOPICS_AND_CHAT.md): the editor in a recording's Notes.
+// Topics are a search facet in Recordings and a scope in Chat; the list has
+// no topic chips (Notebooks are the one filter).
 
 /// In a recording's Notes: its topics, with rename / remove (context menu
 /// or long press), add, and **Find topics**.
