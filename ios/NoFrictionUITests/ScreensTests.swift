@@ -146,12 +146,15 @@ final class StrikeFlowTests: XCTestCase {
 
         app.buttons["Recordings"].firstMatch.tap()
         let meeting = app.staticTexts["Weekly sync with Marcus"].firstMatch
+        // Below the fold since People and the Notebooks chips sit above the list
+        XCTAssertTrue(app.staticTexts["Brightwater pilot kickoff"].firstMatch.waitForExistence(timeout: 5))
+        scrollTo(meeting, in: app)
         XCTAssertTrue(meeting.waitForExistence(timeout: 5))
         meeting.tap()
 
         let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Quick one today")).firstMatch
+        scrollTo(line, in: app)   // the transcript is lazy: the line exists once scrolled near
         XCTAssertTrue(line.waitForExistence(timeout: 5))
-        scrollTo(line, in: app, maxSwipes: 4)
         line.tap()
 
         let word = app.descendants(matching: .any)["word-0"].firstMatch
