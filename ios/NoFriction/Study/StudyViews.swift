@@ -102,7 +102,7 @@ struct MarkControl: View {
     }
 }
 
-// MARK: - Recording: marked moments
+// MARK: - Recording: marks
 
 struct MarkersSection: View {
     let meeting: Meeting
@@ -115,7 +115,7 @@ struct MarkersSection: View {
     var body: some View {
         let all = meeting.orderedMarkers
         let shown = all.filter { filter == nil || $0.markerKind == filter }
-        SectionBlock(title: "Marked moments") {
+        SectionBlock(title: "Marks") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("Show", selection: $filter) {
                     Text("All \(all.count)").tag(MarkerKind?.none)
@@ -124,7 +124,7 @@ struct MarkersSection: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .accessibilityLabel("Show markers of type")
+                .accessibilityLabel("Show marks of type")
                 if shown.isEmpty {
                     Text("None of this type.").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -150,14 +150,14 @@ struct MarkersSection: View {
                                 noteDraft = m.note ?? ""
                                 editing = m
                             }
-                            Button("Delete marker", systemImage: "trash", role: .destructive) {
+                            Button("Delete mark", systemImage: "trash", role: .destructive) {
                                 context.delete(m)
                                 try? context.save()
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle").foregroundStyle(.secondary)
                         }
-                        .accessibilityLabel("Marker options")
+                        .accessibilityLabel("Mark options")
                     }
                     .padding(.vertical, 2)
                 }
@@ -241,7 +241,7 @@ struct StudySection: View {
                 ForEach(failures, id: \.self) { f in
                     Label(f, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange)
                 }
-                Button(has ? "Remake \(guide.lowercased())" : "Make \(guide.lowercased())", systemImage: "sparkles", action: onMake)
+                Button(has ? "Make \(guide.lowercased()) again" : "Make \(guide.lowercased())", systemImage: "sparkles", action: onMake)
                     .buttonStyle(.bordered)
                     .tint(Theme.ai)
                     .disabled(busy)
@@ -348,7 +348,7 @@ struct StudyGuideView: View {
     }
 
     private var missing: some View {
-        Text("This part wasn't made. Close this and use Remake \(meeting.kind.guideTitle.lowercased()).").font(.footnote).foregroundStyle(.secondary)
+        Text("This part wasn't made. Close this and make the \(meeting.kind.guideTitle.lowercased()) again.").font(.footnote).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private func asksView(_ asks: StudyAsks?) -> some View {

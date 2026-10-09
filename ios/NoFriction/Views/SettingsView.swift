@@ -316,7 +316,6 @@ struct SettingsView: View {
     @State private var restoring = false
     @State private var customModel = ""
     @AppStorage(MeetingEndDetector.Config.enabledKey) private var autoStop = true
-    @AppStorage(MeetingEndDetector.Config.minutesKey) private var autoStopMinutes = 3
     @AppStorage(Onboarding.completedKey) private var onboardingCompleted = false
 
     var body: some View {
@@ -346,24 +345,19 @@ struct SettingsView: View {
 
     private var recordingSection: some View {
         Section {
-            Toggle("Stop automatically when the meeting ends", isOn: $autoStop)
+            Toggle("Stop when it's over", isOn: $autoStop)
                 .accessibilityIdentifier("auto-stop-toggle")
-            if autoStop {
-                Stepper(value: $autoStopMinutes, in: MeetingEndDetector.Config.minutesRange) {
-                    LabeledContent("After silence of", value: "\(autoStopMinutes) min")
-                }
-            }
         } header: {
             Text("Recording")
         } footer: {
-            Text("When the calendar event is over and the room goes quiet, or nobody has spoken for this long, noFriction asks, then stops after 30 seconds unless you keep recording. Everything said is kept.")
+            Text("When the calendar event is over and the room goes quiet, or nobody has spoken for \(Int(MeetingEndDetector.Config().silenceMinutes)) minutes, noFriction asks, then stops after 30 seconds unless you keep recording. Everything said is kept.")
         }
     }
 
     // MARK: AI
 
     @ViewBuilder private var activeSection: some View {
-        Section("AI provider") {
+        Section("AI") {
             if let p = settings.effectiveProvider {
                 LabeledContent("Active", value: settings.displayName(for: p))
                 if p == .apple {
@@ -387,7 +381,7 @@ struct SettingsView: View {
                 Text(whatLeaves(p))
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
-                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your recordings are unchanged. Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below." : "Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below to use AI notes and follow-ups.")
+                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your recordings are unchanged. Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below." : "Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below to make notes, review guides and Chat answers.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }

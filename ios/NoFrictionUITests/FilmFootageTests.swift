@@ -179,7 +179,7 @@ final class FilmFootageTests: XCTestCase {
         mark("end")
     }
 
-    /// The lecture: notes, Review, Marked moments (★ / ? / On the test) on its
+    /// The lecture: notes, Review, Marks (★ / ? / On the test) on its
     /// first screen; a slow scroll down to the marks in the transcript and
     /// back to the top, ending on the clean first screen.
     func testClip05Lecture() {
@@ -299,12 +299,12 @@ final class FilmFootageTests: XCTestCase {
         hold(0.8)
 
         // 2. The lecture at the top of its page: title, notes, Review and the
-        // Marked moments, nothing scrolled under the status bar
+        // Marks, nothing scrolled under the status bar
         openRecordings(app)
         app.staticTexts["Lecture 7: Cellular respiration"].firstMatch.tap()
-        let moments = app.staticTexts["MARKED MOMENTS"].firstMatch
+        let moments = app.staticTexts["MARKS"].firstMatch
         XCTAssertTrue(app.buttons["study-open"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(moments.waitForExistence(timeout: 3) && moments.isHittable, "Marked moments not on the first screen")
+        XCTAssertTrue(moments.waitForExistence(timeout: 3) && moments.isHittable, "Marks not on the first screen")
         XCTAssertTrue(element(app, labelContains: "why oxygen").isHittable, "the last marked moment is cut off")
         hold(1.0)
         shot("02-class-marks")

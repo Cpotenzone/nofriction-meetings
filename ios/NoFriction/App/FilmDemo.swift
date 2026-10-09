@@ -102,7 +102,7 @@ enum FilmDemo {
         }
         let all = (try? context.fetch(FetchDescriptor<Meeting>())) ?? []
         // Notes as the detail view renders them best (inline Markdown: bold headings, • bullets),
-        // short enough that the lecture's top screen also shows Review and Marked moments
+        // short enough that the lecture's top screen also shows Review and Marks
         if let lecture = all.first(where: { $0.title == "Lecture 7: Cellular respiration" }) {
             lecture.aiNotes = """
             **Summary**

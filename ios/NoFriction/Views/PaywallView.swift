@@ -46,17 +46,18 @@ struct PaywallView: View {
                 .font(.system(size: 38))
                 .foregroundStyle(Theme.ai)
             Text("noFriction Pro").font(.largeTitle.weight(.bold))
-            Text("AI notes and review guides for every recording, using the AI you choose.")
+            Text("Notes, a review guide and answers for every recording, with the AI you choose.")
                 .foregroundStyle(.secondary)
         }
     }
 
     private var features: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Summaries, decisions and action items", systemImage: "list.bullet.rectangle")
-            Label("Follow-up email drafts", systemImage: "envelope")
-            Label("Apple on-device or your own AI endpoint and model", systemImage: "key")
-            Text("Recording, transcription, calendar and people stay free.")
+            Label("Notes", systemImage: "list.bullet.rectangle")
+            Label("Review guide", systemImage: "text.book.closed")
+            Label("Chat", systemImage: "bubble.left.and.text.bubble.right")
+            Label("Follow-up email", systemImage: "envelope")
+            Text("Apple on-device or your own AI endpoint. Recording, transcription, calendar and people stay free.")
                 .font(.footnote).foregroundStyle(.secondary)
                 .padding(.top, 4)
         }

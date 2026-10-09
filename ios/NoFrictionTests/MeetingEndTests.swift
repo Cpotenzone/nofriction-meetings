@@ -258,7 +258,8 @@ final class MeetingEndDetectorTests: XCTestCase {
         defaults.set(false, forKey: MeetingEndDetector.Config.enabledKey)
         defaults.set(7, forKey: MeetingEndDetector.Config.minutesKey)
         XCTAssertEqual(MeetingEndDetector.Config.load(defaults).enabled, false)
-        XCTAssertEqual(MeetingEndDetector.Config.load(defaults).silenceMinutes, 7)
+        // The silence time is a decision, not a setting: a stored value from an older build is ignored
+        XCTAssertEqual(MeetingEndDetector.Config.load(defaults).silenceMinutes, 3)
         defaults.removePersistentDomain(forName: "MeetingEndDetectorTests")
     }
 

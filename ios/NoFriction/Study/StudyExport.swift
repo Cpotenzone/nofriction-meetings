@@ -75,7 +75,7 @@ enum StudyExport {
             out += "\n"
         }
         if !marks.isEmpty {
-            out += "## Marked moments\n\n"
+            out += "## Marks\n\n"
             for m in marks {
                 out += "- \(StudyParse.clock(m.ms)) \(m.kind.symbol) \(m.kind.label(for: kind))"
                 if let n = m.note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { out += ": \(mdEscape(n))" }
