@@ -26,10 +26,8 @@
 }
 
 .lt-para__speaker {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--hazard-yellow, #facc15);
   margin-bottom: 4px;
 }
@@ -123,8 +121,11 @@
 }
 
 .lt-empty__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 16px;
-  padding: 10px 22px;
+  padding: 11px 26px;
   border-radius: 999px;
   border: none;
   background: var(--hazard-yellow, #facc15);
@@ -138,6 +139,13 @@
 .lt-empty__action:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(250, 204, 21, 0.25);
+}
+
+.lt-empty__action-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-danger, #ef4444);
 }
 
 .lt-empty__action:focus-visible {

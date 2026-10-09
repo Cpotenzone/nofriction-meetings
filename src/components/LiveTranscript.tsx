@@ -1,4 +1,4 @@
-// noFriction Meetings - Live Transcript
+// noFriction - live transcript, and the idle Record screen
 //
 // One job: make what's being said readable the instant it's said.
 // Text is set as calm paragraphs in a single reading column. The words
@@ -95,8 +95,9 @@ export function LiveTranscriptView({ transcripts, isRecording, onStartRecording 
                     <PrivacyPromise />
                 )}
                 {!isRecording && onStartRecording && (
-                    <button className="lt-empty__action" onClick={onStartRecording} type="button">
-                        Start recording
+                    <button className="lt-empty__action" onClick={onStartRecording} type="button" title="⌘N records with your last type and length">
+                        <span className="lt-empty__action-dot" aria-hidden />
+                        Record
                     </button>
                 )}
             </div>

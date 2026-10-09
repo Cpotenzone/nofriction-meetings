@@ -153,7 +153,7 @@ export function MarkButton({ isRecording }: { isRecording: boolean }) {
                         value={note}
                         maxLength={280}
                         placeholder="Add a note (optional)"
-                        aria-label="Note for this marker"
+                        aria-label="Note for this mark"
                         onFocus={() => {
                             holding.current = true;
                             clearTimer();

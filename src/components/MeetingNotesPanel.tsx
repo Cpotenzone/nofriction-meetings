@@ -1,9 +1,8 @@
-// noFriction Meetings - Notes for one recording (Recordings → Notes)
-// Shows the saved AI notes (written automatically after recordings over 6
-// minutes, or on demand), with Generate / Regenerate, the "made before an
-// edit" banner, and (meetings) a follow-up email draft. The notes' style
-// follows the recording's type: meeting notes, lecture notes (class) or
-// personal notes (summary, key points, to-dos and reminders).
+// Notes for one recording (Recordings → Notes): the saved AI notes (made
+// automatically after a recording over 6 minutes, or with Make notes), the
+// "made before an edit" banner, (meetings) a follow-up email draft, and the
+// Topics under the notes. The notes' style follows the recording's type:
+// meeting notes, lecture notes (class) or personal notes.
 
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -103,13 +102,12 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
         setActionError(null);
         setNeedsAi(false);
         try {
-            // A meeting uses the persona's meeting_report prompt (PROMPTS); a
-            // class or personal recording its own prompt (recording_kind.rs)
+            // The notes prompt follows the recording's type (recording_kind.rs)
             await tauri.generateMeetingReport(meetingId);
             await load();
         } catch (e) {
             if (isNoProviderError(e)) setNeedsAi(true);
-            else setActionError(aiFailure(e, "AI notes"));
+            else setActionError(aiFailure(e, "Notes"));
         } finally {
             setGenerating(false);
         }
@@ -151,7 +149,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
     const actions = (
         <div className="mn-actions">
             <button className="mn-btn primary" onClick={generate} disabled={generating || showSetup}>
-                {generating ? (notes ? "Regenerating…" : "Writing notes…") : notes ? "Regenerate" : "Generate notes"}
+                {generating ? "Making notes…" : notes ? "Make again" : "Make notes"}
             </button>
             {kind === "meeting" && (
                 <button className="mn-btn" onClick={draftEmail} disabled={drafting || showSetup}>
@@ -163,8 +161,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
 
     return (
         <div className="mn-panel">
-            <TopicsEditor meetingId={meetingId} />
-            {showSetup && <AiSetupNotice feature={kind === "meeting" ? "AI notes and follow-up emails" : "AI notes"} />}
+            {showSetup && <AiSetupNotice feature={kind === "meeting" ? "Notes and follow-up emails" : "Notes"} />}
             {actionError && (
                 <p className="mn-error" role="alert">
                     {actionError}
@@ -173,10 +170,10 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
 
             {!notes ? (
                 <div className="mn-empty">
-                    <h3>No AI notes yet</h3>
+                    <h3>No notes yet</h3>
                     <p>
-                        Notes are written automatically when a recording longer than 6 minutes stops (Settings → AI
-                        Engine → Automatic AI). Generate them now from the transcript{proNote}. {notesStyleHint(kind)}
+                        Notes are made from the transcript by the AI you set up{proNote}, on their own when a recording
+                        longer than 6 minutes stops (Settings → AI). {notesStyleHint(kind)}
                     </p>
                     {actions}
                 </div>
@@ -184,19 +181,20 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
                 <div className="mn-notes">
                     {notes.stale_after_edit && (
                         <div className="rd-stale" role="status">
-                            <span>These notes were made before an edit. Regenerate?</span>
+                            <span>These notes were made before an edit.</span>
                             <button className="rd-btn" onClick={generate} disabled={generating || showSetup}>
-                                {generating ? "Regenerating…" : "Regenerate"}
+                                {generating ? "Making notes…" : "Make again"}
                             </button>
                         </div>
                     )}
                     <NotesBody notes={notes} />
                     <p className="mn-meta">
-                        Written {new Date(notes.generated_at).toLocaleString()}
+                        Made {new Date(notes.generated_at).toLocaleString()}
                     </p>
                     {actions}
                 </div>
             )}
+            <TopicsEditor meetingId={meetingId} />
 
             {email && <FollowUpSheet email={email} onClose={() => setEmail(null)} />}
         </div>
@@ -406,7 +404,7 @@ function FollowUpSheet({ email, onClose }: { email: FollowUpEmail; onClose: () =
             <div className="mn-sheet" onClick={(e) => e.stopPropagation()}>
                 <h3 id="mn-sheet-title">Follow-up email</h3>
                 <p className="mn-muted">
-                    Drafted by your AI provider from the transcript. Check it before sending.
+                    Drafted by your AI from the transcript. Check it before sending.
                     {email.to.length > 0 ? ` To: ${email.to.join(", ")}` : ""}
                 </p>
                 <label className="mn-label" htmlFor="mn-subject">Subject</label>

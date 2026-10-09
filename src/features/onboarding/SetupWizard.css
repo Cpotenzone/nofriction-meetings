@@ -160,8 +160,8 @@
 .api-key-section label {
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--text-secondary, #a3a3a3);
 }
 
@@ -336,8 +336,8 @@
 .quick-start h3 {
     font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--text-secondary, #a3a3a3);
     margin: 0 0 10px;
 }
@@ -585,4 +585,28 @@
 }
 .mode-card .setup-btn {
   align-self: center;
+}
+
+/* The speech model downloads in the background: one progress line */
+.setup-model {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.setup-model__line {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.setup-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #facc15;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

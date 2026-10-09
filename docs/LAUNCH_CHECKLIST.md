@@ -67,7 +67,7 @@ days.
 | ☑ | Release regions: **USA only** for the app and subscriptions; automatic expansion to new territories off. Done 2026-10-03. Decide separately before adding countries. | App Store Connect → Pricing and Availability | Owner |
 | ☑ | App name `noFriction: Meeting Notes`, subtitle `Record, transcribe, summarize`. Done 2026-10-03. | App Store Connect | Owner |
 | ☐ | Decide whether the Mac DMG (Developer ID) stays available. It has no StoreKit, so it can't honor subscriptions. | — | Owner |
-| ☐ | Verify on real hardware that automatic AI respects the selected endpoint and model, the consent for a public endpoint, and the two Settings → AI Engine → Automatic AI toggles. Offline AI uses Apple on-device or a local server; noFriction offers no hosted AI. | `src/features/settings/AIProviderSettings.tsx` | Eng |
+| ☐ | Verify on real hardware that automatic AI respects the selected endpoint and model, the consent for a public endpoint, and the Settings → AI → Make notes automatically switch (no AI runs during a recording). Offline AI uses Apple on-device or a local server; noFriction offers no hosted AI. | `src/features/settings/AIProviderSettings.tsx` | Eng |
 
 ## 4. Identifiers and the app record
 

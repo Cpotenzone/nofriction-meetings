@@ -93,6 +93,8 @@ pub mod study;
 // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
 pub mod chat;
 pub mod topics;
+// The one search at the top of Recordings
+pub mod search;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -521,15 +523,6 @@ pub fn run() {
 
                                     log::info!("State managed, emitting app-ready...");
                                     let _ = handle_clone.emit("app-ready", ());
-                                    // Tray checkbox mirrors the auto-stop setting
-                                    {
-                                        let h = handle_clone.clone();
-                                        tauri::async_runtime::spawn(async move {
-                                            if let Ok(s) = meeting_end::get_auto_stop_settings(h.clone()).await {
-                                                tray_builder::set_auto_stop_checked(&h, s.enabled);
-                                            }
-                                        });
-                                    }
                                     commands::people::spawn_startup_sync(&handle_clone);
                                     // Tray "Start Recording (60 min)" shows the remembered length
                                     {
@@ -895,6 +888,7 @@ pub fn run() {
             chat::commands::get_chat_thread,
             chat::commands::delete_chat_thread,
             chat::commands::chat_scope_summary,
+            search::search_recordings,
             // Build flavor / capabilities (UI hides features the build lacks)
             build_info::get_build_capabilities,
             // StoreKit (Mac App Store build; DMG returns "not available")

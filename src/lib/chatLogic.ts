@@ -23,7 +23,7 @@ export interface ScopeSummary {
     kinds: string[];
 }
 
-/** The scope a new chat opens with: the recording open in REWIND, else All. */
+/** The scope a new chat opens with: the recording open in Recordings, else All. */
 export function defaultScope(selectedMeetingId: string | null | undefined): Scope {
     return selectedMeetingId ? { kind: "meeting", value: selectedMeetingId } : ALL_SCOPE;
 }

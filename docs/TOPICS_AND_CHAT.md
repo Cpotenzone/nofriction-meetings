@@ -125,8 +125,8 @@ Notes-tab editor), `src/components/chat/` (`RecordingsChat.tsx`,
   NOCASE)`, `… IN (SELECT meeting_id FROM meeting_topics WHERE topic_key
   = ?)`, `= ?`) and a label. `ScopePicker` offers All recordings, This
   Notebook (recent notebooks), This Topic (the index), This recording
-  (every recording, the one open in REWIND first); a new chat opens with
-  the recording open in REWIND, else All. `chat_scope_summary` returns
+  (every recording, the one open in Recordings first); a new chat opens with
+  the recording open in Recordings, else All. `chat_scope_summary` returns
   the label, count, recent titles, topics, notebooks and types of the
   scope for the header and the suggestions. Every answer stores and shows
   the scope it was made in.

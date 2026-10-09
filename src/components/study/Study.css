@@ -259,7 +259,7 @@
     text-align: center;
 }
 .study-card.is-flipped { background: var(--bg-card, #0d0d0d); border-color: var(--hazard-yellow-dim, rgba(250, 204, 21, 0.5)); }
-.study-card__side { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary, #a3a3a3); }
+.study-card__side { font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text-secondary, #a3a3a3); }
 .study-card__text { font-size: var(--ds-text-md, 1rem); line-height: 1.5; white-space: pre-wrap; }
 .study-card__hint { font-size: 11px; color: #737373; }
 .study-done { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px; text-align: center; }

@@ -50,8 +50,7 @@ asked once). Choose what it is and how long (see below), and tap **Record**.
 The transcript appears as people talk. Recording continues with the screen
 locked. Tap **Stop** when you're done.
 
-**Mac:** click **START CAPTURE** (or start from **LIVE**), choose what it is
-and how long, and start. For a meeting, the bar shows the matched calendar
+**Mac:** click **Record**, choose what it is and how long, and start. For a meeting, the bar shows the matched calendar
 event and how many people are invited. Stop when you're done.
 
 > Tell people you're recording. In many places everyone must agree to be
@@ -69,8 +68,8 @@ or the meeting window closes.
 Turn it off:
 - iPhone/iPad: **Settings tab → Recording → Stop when it's over** (the
   silence time is 3 minutes).
-- Mac: **Settings → General → Recording** ("Stop automatically when the
-  meeting ends", "Silence before stopping").
+- Mac: **Settings → Recording → Stop when it's over**. The silence time is
+  always 3 minutes.
 
 ### What is it, how long, and notebook
 
@@ -102,24 +101,23 @@ notebook (or its type) and the date, for example "BIO 101 — Oct 7" or
   warning with **+15 min** and **No limit**. The same buttons sit next to the
   time left on the recording screen (Mac: the capture bar; also in the
   menu-bar icon).
-- Mac: ⌘N, the menu-bar icon's **Start Recording** and the command palette
+- Mac: ⌘N and the menu-bar icon's **Start Recording**
   skip the questions and use your last type and length (the menu-bar icon
-  shows them, for example "Start Recording (Meeting, 60 min)"). **Start
-  Recording For** in the menu-bar icon picks a length directly.
+  shows them, for example "Start Recording (Meeting, 60 min)").
 - iPhone/iPad: the warning is also a notification, if you've allowed
   notifications for noFriction. You're asked the first time you record with a
   time limit (or a meeting-end auto-stop), never when the app opens.
 
 ### Notes by type
 
-| Type | AI notes |
+| Type | Notes |
 |---|---|
 | Meeting | Summary, key topics, decisions and action items, plus a follow-up email |
 | Class | Lecture notes: key concepts, definitions and examples, and announcements or deadlines the instructor mentioned |
 | Personal | Summary, key points, and to-dos and reminders |
 
 Filter your recordings by notebook with the **Notebooks** chips in
-**Recordings** (iPhone/iPad) or **REWIND → Recordings** (Mac).
+**Recordings** (iPhone/iPad and Mac).
 
 The first time you record a **Class**, noFriction shows this once:
 
@@ -135,9 +133,9 @@ or **Choose from Photos** to add screenshots. They appear in the recording.
 
 **Mac:** noFriction saves a screenshot of the chosen screens when they change
 (about once a second at most) while you record.
-- Choose what's captured: **LIVE → Change**, then pick any screens or
+- Choose what's captured: **Change** in the bar while recording, then pick any screens or
   windows. If nothing is selected, the main display is captured.
-- Save one right now: **Snap**.
+- Save one right now: **Capture screen**.
 
 ---
 
@@ -158,22 +156,16 @@ are kept when topics are found again, and a topic you removed doesn't come
 back. Spellings that mean the same thing ("Q4 roadmap", "the q4 roadmaps")
 count as one topic in the chips, the grouping and Chat.
 
-**Mac:** **REWIND** has:
-- **Recordings**: each recording with its type, notebook, topics and
-  attendees, and views for **Rewind** (the transcript next to the screenshot
-  timeline: pick any moment to see what was on screen and what was said),
-  **Notes**, **Links** and **Review**. Filter the list with the
-  **Notebooks** and **Topics** chips, and **Group by** **Date**, **Notebook**
-  or **Topic** (a recording listed by topic appears under each of its
-  topics). Each row shows up to two topic chips; click one to filter by it.
-  Topics are named by your AI when notes are written, or with **Find
-  topics** on the recording's **Notes** view, where **edit** lets you rename,
-  remove or add them. Your own topics are kept when topics are found again,
-  and a topic you removed doesn't come back; spellings that mean the same
-  thing count as one topic in the chips, the grouping and CHAT.
-- **People**: everyone from your meetings, with invite notes, join links and
-  LinkedIn links.
-- **Search**: full-text search across your transcripts.
+**Mac:** **Recordings** lists every recording by day. The search field at
+the top (⌘K) finds titles, people, topics and anything said; a line that
+matches opens the recording at that moment. Filter with the **Notebooks**
+chips. Open a recording to see its type, notebook and attendees, and views
+for **Rewind** (the transcript next to the screenshot timeline: pick any
+moment to see what was on screen and what was said), **Notes**, **Links**
+and **Review guide**. Topics are named by your AI when notes are made, and
+listed under the notes; **Edit** there renames, removes or adds them, and
+**Find again** asks your AI. Your own topics are kept when topics are found
+again, and a topic you removed doesn't come back.
 
 ---
 
@@ -195,7 +187,7 @@ Nothing leaves the device.
   tap **Use Apple on-device (no key)**, or tap **Apple on-device** if it's
   already listed. It's also offered in the **Set up AI** sheet that opens the
   first time you tap **Make notes**, **Chat** or make a review guide.
-- Mac: **Settings → AI Engine → Saved providers → Apple on-device → Use**.
+- Mac: **Settings → AI → Saved connections → Apple on-device → Use**.
   On the Mac, Apple on-device doesn't analyze screenshots.
 
 ### Your own endpoint
@@ -217,11 +209,11 @@ your server's documentation you need:
 Enter them:
 - iPhone/iPad: **Settings tab → Your AI endpoint**: **Base URL**, **Model
   ID**, **API key (optional)** → **Save endpoint**.
-- Mac: **Settings → AI Engine → Local & custom servers**: the URL, **Model
-  name** and **API key (optional)** → **Save connection**.
+- Mac: **Settings → AI**: pick a card, or **Custom endpoint**, then
+  **Base URL**, **Model** and **API key** → **Save connection**.
 
-Saving doesn't contact the server. To check it on the Mac, click **Test**
-next to it under **Saved providers**; **↻** under **Models** reloads the
+Saving doesn't contact the server. To check it on the Mac, click **Test connection**
+(or **Test** next to it under **Saved connections**); **↻** under **Models** reloads the
 server's model list. On iPhone/iPad, try **Make notes** on a recording.
 
 Good to know:
@@ -231,7 +223,7 @@ Good to know:
 - **Permission before sending.** Before recording content first goes to a public
   (internet) endpoint, the app asks you and shows where it will go. Revoke it
   any time: iPhone/iPad, **Settings tab → What leaves this device → Revoke**;
-  Mac, **Settings → AI Engine → Revoke permission to send to …**. Endpoints on
+  Mac, **Settings → AI → Revoke permission to send to …**. Endpoints on
   your own network don't ask, but the content still travels to that machine.
 - **What's sent.** Depending on the feature: transcript text, the recording's
   title and notebook, attendee names and emails, notes and, on the Mac, screenshots for
@@ -247,7 +239,7 @@ Good to know:
   recordings aren't affected.
 
 To remove a connection and its key: iPhone/iPad, swipe left on it under
-**Saved connections**; Mac, **Settings → AI Engine → Saved providers →
+**Saved connections**; Mac, **Settings → AI → Saved connections →
 Remove**.
 
 ---
@@ -280,27 +272,23 @@ The same Pro subscription and AI connection as the other features apply, and
 the same consent dialog when the endpoint is a public one.
 
 **Mac:**
-- **CHAT**: ask about your recordings ("What did we decide about the launch
+- **Chat**: ask about your recordings ("What did we decide about the launch
   date?", "What did the professor say about the midterm?"). Pick the scope
   at the top first: **All recordings**, **This Notebook**, **This Topic** or
-  **This recording** (a new chat starts on the recording open in REWIND, if
-  any); every answer says which scope it used. Answers come only from your
+  **This recording** (a new chat starts on the recording open in Recordings,
+  if any); every answer says which scope it used. Answers come only from your
   transcripts, notes and marked moments, searched on this Mac, and cite them
   as [1], [2]…; click a citation chip (or a line under **Sources**) to open
-  that recording in REWIND at that moment. An empty chat suggests questions
+  that recording in Rewind at that moment. An empty chat suggests questions
   from the scope's titles and topics. Chats are kept on this Mac; **New
   chat** starts another, and **Chats** lists past ones (delete with the
   bin). If you delete or edit a recording, answers that drew on it are
   removed and the chat says so.
-- **Live insights**: during a recording, LIVE shows action items, decisions,
-  risks and deadlines as they come up.
-- **AI notes**: after a recording longer than six minutes, noFriction writes
+- **Notes**: after a recording longer than six minutes, noFriction makes
   notes in the recording type's style with your chosen AI. Read them in the
   recording's **Notes** view, or export them to Obsidian (see
   [Export](#export-your-recordings)). A meeting's notes also offer a
   **Follow-up email**.
-- **Meeting prep**: in **INTEL**, **Lookup** on an upcoming meeting gives a
-  prep brief on the attendees (uses notes in your Obsidian vault).
 
 AI can be wrong. Check names, numbers and dates before you send anything.
 
@@ -309,7 +297,7 @@ AI can be wrong. Check names, numbers and dates before you send anything.
 ## Mark moments and review
 
 **Mark a moment while you record.** Press **Mark** (Mac: in the bar at the
-top of LIVE; iPhone/iPad: **Mark this moment** above the record button). One
+top of the Record screen, or the menu-bar icon; iPhone/iPad: **Mark this moment** above the record button). One
 press marks it **★ Important**. Right after, pick **? Question** (something
 to ask, or you were confused) or the third mark, named for the recording's
 type, and add a short note if you like:
@@ -321,11 +309,11 @@ type, and add a short note if you like:
 | Personal | **✎ Remember** |
 
 On the Mac, **⌃⌥⌘M** marks the moment even while your slides, browser or
-video call are in front, and **File → Mark Moment** does the same.
+video call are in front, and **File → Mark** does the same.
 
-**Find your marks later.** Mac: in **REWIND**, marks sit on the timeline and
-in the transcript at their time, and the **Markers** list jumps to each one.
-Filter it to show only **✎ Follow up** after a meeting, or **✎ On the test**
+**Find your marks later.** Mac: in **Rewind**, marks sit on the timeline and
+in the transcript at their time, and **Marks** (above the transcript, closed
+until you open it) jumps to each one. Filter it to show only **✎ Follow up** after a meeting, or **✎ On the test**
 before an exam. You can change a mark's type or note, delete it, or add one
 at the scrubber's time. iPhone/iPad: **Marks** in the recording.
 
@@ -379,7 +367,7 @@ endpoint can't be recalled. On the Mac, you can't edit the screens of a
 recording that is still running.
 
 To delete a whole recording: iPhone/iPad, open it → **⋯ → Delete Recording**; Mac,
-the delete button next to it in **REWIND → Recordings**.
+the bin next to it in **Recordings** (you get 5 seconds to **Undo**).
 
 ---
 
@@ -387,9 +375,10 @@ the delete button next to it in **REWIND → Recordings**.
 
 - **iPhone/iPad:** in a recording, tap the **Share** button to send it
   as text (Markdown) to Notes, Mail, Files or any app.
-- **Mac:** **Settings → Obsidian** to pick your vault folder and, if you like,
-  turn on **Auto-Export Recordings**. Export by hand from **VAULT**. To export
-  everything as JSON: **Settings → Data → Export Data to JSON**.
+- **Mac:** **Settings → Recording → Export to Obsidian** picks your vault
+  folder; the switch beside it exports each recording as Markdown when it
+  stops. **Export everything as JSON**
+  in the same place saves one file you choose.
 
 Recordings don't sync between devices. Each device keeps what it recorded.
 
@@ -423,8 +412,8 @@ Recordings don't sync between devices. Each device keeps what it recorded.
   AI features send recording text (and, on the Mac, screenshots for screen
   features) straight to that endpoint, after your permission if it's on the
   internet. On the Mac, once AI is set up (and approved, for an internet
-  endpoint), live insights and the automatic notes use it automatically.
-  Turn either off in **Settings → AI Engine → Automatic AI**.
+  endpoint), the automatic notes use it. Turn that off in
+  **Settings → AI → Make notes automatically**. No AI runs while you record.
 - No accounts, no analytics, no tracking, no noFriction servers.
 
 Full policy: [nofriction.io/privacy](https://nofriction.io/privacy).
@@ -437,7 +426,7 @@ Full policy: [nofriction.io/privacy](https://nofriction.io/privacy).
 |---|---|
 | No transcript | Allow Microphone and Speech Recognition (iPhone/iPad), or Microphone (Mac), in System Settings → Privacy & Security. On a Mac, make sure the speech model finished downloading (Settings → Transcription). |
 | Other people on the call aren't transcribed (Mac) | Allow **Screen & System Audio Recording**, then restart the recording. |
-| No screenshots (Mac) | Allow Screen & System Audio Recording; check **LIVE → Change** has a screen or window selected. |
+| No screenshots (Mac) | Allow Screen & System Audio Recording; check **Change** in the recording bar has a screen or window selected. |
 | Recording not named from the calendar | Allow Calendars. The recording must overlap a calendar event; otherwise it's named after its notebook or type and the date. |
 | AI asks to be set up | Choose Apple on-device, or enter your endpoint's base URL and model (see [Connect your AI](#connect-your-ai)). A service chosen by name in an older version is no longer available. |
 | Apple on-device isn't offered | It needs iOS 26 or macOS 26 or later on a device that supports Apple Intelligence, with Apple Intelligence turned on and its model finished downloading. |
@@ -446,7 +435,7 @@ Full policy: [nofriction.io/privacy](https://nofriction.io/privacy).
 | Model not found or no answer | Check the model ID is exactly what your server lists. On the Mac, **↻** under **Models** reloads the list. |
 | Can't reach a local server | Check the address and that the server is running. Plain `http://` only works for this device, your local network or Tailscale. On iPhone/iPad, allow Local Network access, and use the computer's network address, not `localhost`. |
 | Recording stopped by itself | That's the time limit you chose or automatic stop; see [What is it, how long, and notebook](#what-is-it-how-long-and-notebook) and [Automatic stop](#automatic-stop). |
-| Notes are in the wrong style | Change the recording's type (Mac: **Type** on the recording in REWIND), then **Regenerate** the notes. |
+| Notes are in the wrong style | Change the recording's type (Mac: the type row under the recording's title), then **Make again** on the notes. |
 | Subscription not recognized | **Restore Purchases**, signed in with the Apple Account you subscribed with. |
 
 Still stuck? Email [casey@nofriction.io](mailto:casey@nofriction.io) or use

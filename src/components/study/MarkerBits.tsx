@@ -44,7 +44,7 @@ export function KindPicker({
 }) {
     const meta = useMarkerMeta();
     return (
-        <div className={`study-kinds${compact ? " is-compact" : ""}`} role="group" aria-label="Marker type">
+        <div className={`study-kinds${compact ? " is-compact" : ""}`} role="group" aria-label="Mark type">
             {MARKER_KINDS.map((k) => (
                 <button
                     key={k}

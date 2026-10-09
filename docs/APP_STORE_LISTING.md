@@ -356,7 +356,10 @@ Welcome to noFriction for iPhone and iPad.
 ## 6. macOS version page
 
 The Mac app's first App Store version is **3.6.0** (`tauri.conf.json`),
-not 1.0; versions are per platform.
+not 1.0; versions are per platform. **3.6.0 (build 40) is in App Review with
+the 3.6.0 text.** The text below is for **3.7.0**, the Ive pass (one window
+with Record · Recordings · Chat, no AI while recording; see
+`docs/design/FADELL_AUDIT.md`). Paste it when 3.7.0 is submitted.
 
 ### Promotional text (limit 170)
 
@@ -368,7 +371,7 @@ Notes for meetings, classes and everyday life, transcribed on your Mac. Rewind s
 
 ### Description (limit 4000)
 
-**3989 / 4000 characters**
+**3998 / 4000 characters**
 
 ```text
 noFriction keeps your Mac's recordings, transcripts, screenshots and notes in one place: meetings, classes and anything else worth keeping. Go back to any moment in Rewind, and turn the transcript into notes with the AI you choose.
@@ -387,13 +390,12 @@ RECORD AND REWIND
 • Capture the displays or windows you choose, and see screenshots and transcript side by side in Rewind
 • Mark a moment with Control-Option-Command-M, even from another app: Important, Question, or the third mark for the type, with a note, shown on the Rewind timeline
 • Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
-• Search every transcript
+• Search titles, people, topics and every transcript from one field
 • See the web addresses said in a recording, and add your own references. Nothing is fetched
 
 FOR MEETINGS
 • Link recordings to calendar events and their attendees
 • Meeting notes (summary, key topics, decisions, action items) and follow-up email drafts
-• Live insights while you record
 • Mark Follow up as you go
 
 FOR CLASSES
@@ -444,20 +446,19 @@ meeting,notes,transcription,recorder,slides,lecture,class,minutes,action items,f
 
 Not shown for the first macOS version either; use it for TestFlight.
 
-**804 / 4000 characters**
+**787 / 4000 characters**
 
 ```text
-noFriction is now on the Mac App Store.
-• Notes and Rewind for meetings, classes and everyday life
-• What is it? Meeting, Class or Personal: notes and marks follow the type
-• Notebooks group your recordings, with filter chips in Rewind
-• Mark a moment with ⌃⌥⌘M: Important, Question, and Follow up, On the test or Remember
-• REVIEW: review guides with flashcards and a practice quiz (noFriction Pro)
-• Choose how long to record: 15, 30, 60 or 90 minutes, or no limit
-• Recordings stop when the meeting ends, with a 30-second banner to keep going
-• Choose where AI runs: Apple's on-device model, or your own compatible AI endpoint
-• Delete, or Strike from the record: remove words, lines or screenshots everywhere
-• Transcription runs on your Mac
+Simpler, calmer noFriction.
+• One window: Record, Recordings and Chat
+• One search field at the top of Recordings (⌘K) for titles, people, topics and anything said; a line opens the recording at that moment
+• Setup is one screen; the speech model downloads in the background
+• No AI runs while you record. Notes are made when you stop
+• Edit a transcript with one bar: Delete or Strike from the record, and Select time… for ranges
+• Delete a recording with 5 seconds to undo
+• Settings in five places: Recording, Transcription, AI, Subscription, About
+• The menu-bar icon: Start Recording, Stop, Pause, Resume, Mark
+• AI settings offer ChatGPT, Anthropic, Grok and Mistral cards that fill in the endpoint; you paste your own key
 • One noFriction Pro subscription for Mac, iPhone and iPad
 ```
 
@@ -576,41 +577,41 @@ The local-model path requires its setup, compatible hardware and Pro entitlement
 
 ### macOS
 
-**3958 / 4000 characters**
+**3865 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
 
 SETUP AND RECORDING
-1. In setup, choose the Recommended (or Smaller) speech model and complete the download while online. Model size depends on the selected model. Subsequent local transcription works offline.
-2. Grant Microphone, Screen & System Audio Recording and Calendar permissions as needed for the features being tested.
-3. Open LIVE and start recording. Keep Meeting (the default) in What is it?, pick a length in How long? (No limit is fine) and click Start recording. Speak or use a call to check the transcript. Choose displays/windows with Change and use Snap to save a screenshot.
-4. Stop, then open REWIND → RECORDINGS and select the meeting to inspect the transcript and screenshots.
+1. Setup is one screen: allow Microphone, Screen & System Audio Recording and Calendar. The speech model downloads in the background (a progress line; complete it while online). Later transcription works offline. Click Continue.
+2. On Record, click Record. Keep Meeting in What is it?, pick a length in How long? (No limit is fine) and click Start recording. Speak or use a call to check the transcript. Choose displays/windows with Change and use Capture screen to save one.
+3. Click Stop (top right), then open Recordings and select the recording to see the transcript and screenshots in Rewind.
 
 PRO AND RESTORE
-5. Settings → Subscription offers plans and Restore Purchases. An AI action without Pro opens the paywall. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require Pro.
+4. Settings (gear) → Subscription offers plans and Restore Purchases. An AI action without Pro opens the paywall. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require Pro.
 
 OFFLINE AI PATH
-Use an Apple Intelligence-compatible Mac running macOS 26 or later, with Apple Intelligence enabled and its model download complete. With no text provider configured, the app uses the available Apple on-device model automatically for text AI. No cloud account or API key is required for that path.
+Use an Apple Intelligence-compatible Mac running macOS 26 or later, with Apple Intelligence enabled and its model download complete. With no text provider configured, the app uses the available Apple on-device model automatically. No cloud account or API key is required for that path.
 
-Alternatively enter a local OpenAI-compatible model server and model in Settings → AI Engine. Complete model downloads before offline testing. A model on another computer requires a reachable local network.
+Alternatively enter a local OpenAI-compatible model server and model in Settings → AI → Custom endpoint. A model on another computer requires a reachable local network.
 
-Open CHAT and ask What did we decide? Or use REWIND → RECORDINGS → select a meeting → NOTES → Generate notes / Follow-up email. LIVE provides insights during a recording. Apple on-device is text-only; screenshot capture and review do not require image analysis.
+Open Chat and ask What did we decide? Or Recordings → select a recording → Notes → Make notes / Follow-up email. No AI runs during a recording. Apple on-device is text-only; screenshot capture and review do not require image analysis.
 
-RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
-6. Start another recording from LIVE. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit (keys 1-5, Enter starts) and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end, after a banner with +15 min and No limit (5 minutes before; 2 for 15 min).
-7. While recording, click Mark in the capture bar, or press ⌃⌥⌘M with another app in front (File → Mark Moment also works). Choose ? Question or ✎ On the test and add a note. Say a web address such as "example dot com".
-8. Stop. REWIND → RECORDINGS shows Notebook chips that filter the list, and marks on the timeline, in the transcript and in the Markers list. Select the meeting → LINKS lists the address as Said; use Add reference to add one. Links are never fetched.
-Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9). A short Meeting and a short Personal recording show the difference.
+RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS, LINKS AND SEARCH (free)
+5. Record again. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit (keys 1-5, Enter starts) and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end, after a banner with +15 min and No limit (5 minutes before; 2 for 15 min).
+6. While recording, click Mark in the bar, or press ⌃⌥⌘M with another app in front (File → Mark and the menu-bar icon also work). Choose ? Question or ✎ On the test and add a note. Say a web address such as "example dot com".
+7. Stop. Recordings shows Notebook chips that filter the list, and marks on the Rewind timeline and in the transcript. Select the recording → Links lists the address as Said; use Add reference to add one. Links are never fetched.
+8. Type a word you said into the search field at the top of Recordings (⌘K); click a matching line to open the recording at that moment.
+Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type.
 
 REVIEW (Pro)
-9. Select the meeting → REVIEW and make the guide: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. NOTES follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
+9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. NOTES follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
 
 Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Make notes
-(iOS) / Generate notes (Mac) → paywall → notes, if review asks how to reach a
+(iOS and Mac) → paywall → notes, if review asks how to reach a
 feature.
 
 ### TestFlight (external testing) Test Information
@@ -761,11 +762,10 @@ can appear.
 4. Make a 3-slide Keynote deck ("Cutover plan", "Rollback", "Owners") with
    invented text, for the screen capture.
 5. Install the TestFlight or App Store build of noFriction for Mac in the Demo
-   user. In the setup wizard choose the Recommended speech model and let it
-   download. Grant Microphone, Screen & System Audio Recording and Calendars.
+   user. On the setup screen let the speech model download. Grant Microphone, Screen & System Audio Recording and Calendars.
 6. Settings → Subscription: subscribe in Apple's sandbox (TestFlight purchases
    are free). Use Apple on-device on a compatible Mac or enter your own local
-   OpenAI-compatible model server in Settings → AI Engine. Finish model
+   OpenAI-compatible model server in Settings → AI. Finish model
    downloads first.
    Remove the demo profile after capturing the screenshots.
 7. Turn on Do Not Disturb; hide the Dock (System Settings → Desktop & Dock →
@@ -787,30 +787,29 @@ can appear.
     ```
 
 **Capture**
-1. Open the Keynote deck in a window. In noFriction LIVE → "Change", pick
-   the Keynote window.
-2. Record. Play the three audio clips. Click "Snap" once on the title slide,
+1. Open the Keynote deck in a window. Start a recording in noFriction, then
+   "Change" in the bar and pick the Keynote window.
+2. Record. Play the three audio clips. Click "Capture screen" once on the title slide,
    then advance slides.
 3. Shots (window capture: ⌘⇧4, then Space, then click the noFriction window;
    hold Option to omit the window shadow, then crop/pad to 16:10):
 
 | # | Screen | Caption |
 |---|---|---|
-| 1 | LIVE while recording: live transcript + captured slide thumbnails | Everyone on the call, transcribed on your Mac |
-| 2 | REWIND → RECORDINGS: the meeting with transcript and screenshot timeline | Every slide, next to what was said |
+| 1 | Record while recording: live transcript + captured slide thumbnails | Everyone on the call, transcribed on your Mac |
+| 2 | Recordings → the meeting in Rewind: transcript and screenshot timeline | Every slide, next to what was said |
 | 3 | The record sheet: **What is it?** (Meeting · Class · Personal) above **How long?** | Meetings, classes and everyday life |
-| 4 | REWIND → RECORDINGS with the Notebook chips (All · Acme project · BIO 101 · Home), the lecture selected, marker pins on the timeline and the Markers list filtered to ✎ On the test | Mark what's on the test |
-| 5 | The lecture → REVIEW: Flashcards with a card flipped to its back, or Practice quiz with an answered question, its explanation and "Jump to this moment" | Flashcards and a quiz from any recording |
-| 6 | CHAT: ask "What did we decide about the cutover?" with the answer | Ask your recordings anything |
-| 7 | LIVE → "LIVE INTELLIGENCE" cards during the recording (needs Pro + a configured AI) | Action items as they happen |
-| 8 | Settings → AI Engine (key field empty, or showing only `••••` + last 4 of the throwaway key) | Bring your own AI |
+| 4 | Recordings with the Notebook chips (All · Acme project · BIO 101 · Home), the lecture selected, mark pins on the timeline and Marks filtered to ✎ On the test | Mark what's on the test |
+| 5 | The lecture → Study guide: Flashcards with a card flipped to its back, or Practice quiz with an answered question, its explanation and "Jump to this moment" | Flashcards and a quiz from any recording |
+| 6 | Chat: ask "What did we decide about the cutover?" with the answer | Ask your recordings anything |
+| 7 | Recordings: the search field with "cutover" typed and a matching line | Find anything that was said |
+| 8 | Settings → AI with the preset cards (key field empty, or showing only `••••` + last 4 of the throwaway key) | Bring your own AI |
 | 9 | A transcript line struck from the record (marker visible) | Strike it from the record |
-| 10 (optional) | REWIND → PEOPLE with invented attendees | Know who was there |
 
 4. Stop the recording and let the auto-stop banner appear for an optional
    shot ("This seems to have ended"). Give this recording the Notebook
-   **Acme project** in REWIND → RECORDINGS.
-5. Type picker (shot 3): click LIVE → Start recording and capture the sheet
+   **Acme project** in Recordings (the notebook row under the title).
+5. Type picker (shot 3): click Record and capture the sheet
    before starting, with Meeting selected and a length picked.
 6. Home chip: record the everyday clip with **What is it? Personal** and
    Notebook **Home**, mark **Remember**, and stop.
@@ -818,9 +817,9 @@ can appear.
    **What is it? Class**, **How long? 15 min** and Notebook **BIO 101 — Cell
    Biology**, and play the two lecture clips. While they play, press
    **⌃⌥⌘M** three times with Keynote in front (each makes a ★ Important
-   mark). Stop, then in REWIND → RECORDINGS select the lecture and, in the
-   Markers list, change one mark to **✎ On the test** (note "midterm") and one
-   to **? Question**. Then **REVIEW** → make the study guide. Don't open the
+   mark). Stop, then in Recordings select the lecture and, in Marks,
+   change one mark to **✎ On the test** (note "midterm") and one
+   to **? Question**. Then **Study guide** → make it. Don't open the
    export save dialog in a shot.
 8. Check every image at 100% for real names, emails, notifications, menu-bar
    items, course codes and key characters before uploading.

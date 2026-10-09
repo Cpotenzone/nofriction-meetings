@@ -1,6 +1,5 @@
-// noFriction Meetings - "Add an AI key" notice
-// Shown by every AI entry point when no AI provider is set up (instead of a
-// raw AI_NO_PROVIDER error), with a button to Settings → AI Engine.
+// "Set up AI" notice: shown by every AI entry point when no AI is set up
+// (instead of a raw AI_NO_PROVIDER error), with a button to Settings → AI.
 
 import { useCallback, useEffect, useState } from "react";
 import { ai, AI_STATUS_EVENT, type AiStatus } from "../lib/ai";
@@ -44,7 +43,7 @@ export function useAiStatus(): { status: AiStatus | null; configured: boolean | 
 }
 
 interface AiSetupNoticeProps {
-    /** What needs AI, e.g. "AI notes" → "AI notes need an AI provider." */
+    /** What needs AI, e.g. "Notes" → "Notes need AI." */
     feature?: string;
     compact?: boolean;
 }
@@ -58,15 +57,14 @@ export function AiSetupNotice({ feature, compact = false }: AiSetupNoticeProps) 
                 </div>
             )}
             <div className="nf-ai-setup__text">
-                <strong>Add an AI key in Settings → AI Engine</strong>
+                <strong>Set up AI in Settings → AI</strong>
                 <span>
-                    {feature ? `${feature} need${feature.endsWith("s") ? "" : "s"} an AI provider. ` : ""}
-                    Pick a provider and paste your own key, enter any
-                    OpenAI-compatible endpoint, or use Apple's on-device model where available.
+                    {feature ? `${feature} need${feature.endsWith("s") ? "" : "s"} AI. ` : ""}
+                    Use Apple's on-device model where available, or enter one endpoint with your own key.
                 </span>
             </div>
             <button className="nf-ai-setup__btn" type="button" onClick={() => openSettings("ai")}>
-                Open AI Engine
+                Open Settings
             </button>
         </div>
     );

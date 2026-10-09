@@ -1,4 +1,4 @@
-/* CHAT with your recordings (RecordingsChat) */
+/* Chat with your recordings (RecordingsChat) */
 
 .rc {
     display: flex;
@@ -21,21 +21,16 @@
 }
 
 .rc-header h2 {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #facc15;
+    font-size: 16px;
+    font-weight: 600;
+    color: #f5f5f5;
     margin: 0;
+    letter-spacing: -0.01em;
 }
 
 .rc-header__status {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 12px;
     color: #737373;
-    letter-spacing: 1px;
-    text-transform: uppercase;
 }
 
 .rc-header__actions { display: flex; gap: 8px; }
@@ -44,14 +39,11 @@
     background: transparent;
     border: 1px solid #333;
     color: #a3a3a3;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 12px;
     padding: 5px 10px;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, color 0.2s ease;
 }
 .rc-btn:hover:not(:disabled) { border-color: #facc15; color: #facc15; }
 .rc-btn:disabled { opacity: 0.4; cursor: default; }
@@ -67,10 +59,8 @@
     flex-wrap: wrap;
 }
 .rc-scope__title {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     color: #737373;
 }
 .rc-scope__kind, .rc-scope__value {
@@ -169,12 +159,10 @@
 }
 .rc-empty__icon { opacity: 0.6; }
 .rc-empty__title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 16px;
-    font-weight: 700;
-    color: #e5e5e5;
-    letter-spacing: 1px;
-    text-transform: uppercase;
+    font-size: 18px;
+    font-weight: 600;
+    color: #f5f5f5;
+    letter-spacing: -0.01em;
 }
 .rc-empty__subtitle { font-size: 13px; color: #737373; max-width: 420px; line-height: 1.6; }
 .rc-suggestions { display: flex; flex-wrap: wrap; gap: 8px; max-width: 560px; justify-content: center; margin-top: 4px; }
@@ -197,10 +185,7 @@
 .rc-msg.user { align-self: flex-end; }
 .rc-msg.assistant { align-self: flex-start; }
 .rc-msg__label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
+    font-size: 11px;
     margin-bottom: 4px;
     padding: 0 4px;
 }
@@ -261,13 +246,10 @@
 .rc-sources__toggle {
     background: transparent;
     border: none;
-    color: #525252;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    color: #737373;
+    font-size: 11px;
     cursor: pointer;
     padding: 4px 0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
 }
 .rc-sources__toggle:hover { color: #facc15; }
 .rc-sources__list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
@@ -312,7 +294,7 @@
 .rc-thinking__dots span:nth-child(2) { animation-delay: 0.2s; }
 .rc-thinking__dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes rcDot { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
-.rc-thinking__label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #525252; text-transform: uppercase; letter-spacing: 1px; }
+.rc-thinking__label { font-size: 12px; color: #737373; }
 
 /* Input */
 .rc-input {

@@ -301,15 +301,6 @@ impl Registry {
     }
 }
 
-/// Tray status line: "Time left: 12 min" / "Time limit: none".
-pub fn tray_status_text(status: Option<&Status>) -> String {
-    match status.and_then(|s| s.remaining_seconds) {
-        Some(secs) => format!("Time left: {} min", (secs + 59) / 60),
-        None if status.is_some() => "Time limit: none".to_string(),
-        None => "Time limit: not recording".to_string(),
-    }
-}
-
 /// Warning notification: ("5 minutes left in this recording", "It stops at 10:45. …").
 pub fn warning_copy(seconds_left: i64, stops_at_local: &str) -> (String, String) {
     let minutes = ((seconds_left + 59) / 60).max(1);
@@ -380,14 +371,9 @@ fn is_recording_meeting(app: &AppHandle, meeting_id: &str) -> Option<bool> {
     Some(recording && current.as_deref() == Some(meeting_id))
 }
 
-/// Tell the UI and the tray where the plan stands.
+/// Tell the UI where the plan stands.
 fn publish(app: &AppHandle) {
     let status = REGISTRY.lock().status(Utc::now());
-    crate::tray_builder::set_time_limit_status(
-        app,
-        &tray_status_text(status.as_ref()),
-        status.as_ref().map(|s| s.deadline.is_some()).unwrap_or(false),
-    );
     let _ = app.emit("timed-recording-changed", status);
 }
 
@@ -488,7 +474,6 @@ fn request_stop(app: &AppHandle, generation: u64, meeting_id: &str) {
         "timed-recording-auto-stop",
         serde_json::json!({ "meetingId": meeting_id, "plannedMinutes": planned }),
     );
-    crate::tray_builder::set_time_limit_status(app, "Time limit reached — stopping…", false);
     let app = app.clone();
     let meeting_id = meeting_id.to_string();
     tauri::async_runtime::spawn(async move {
@@ -809,10 +794,12 @@ mod tests {
         );
         assert_eq!(warning_copy(40, "x").0, "1 minute left in this recording");
         let mut r = Registry::default();
-        assert_eq!(tray_status_text(None), "Time limit: not recording");
+        assert!(r.status(at(61)).is_none());
         r.arm("m1", t0(), Limit::Minutes(30));
-        assert_eq!(tray_status_text(r.status(at(61)).as_ref()), "Time left: 29 min");
+        let left = r.status(at(61)).and_then(|s| s.remaining_seconds).unwrap();
+        assert_eq!((left + 59) / 60, 29);
         r.arm("m2", t0(), Limit::NoLimit);
-        assert_eq!(tray_status_text(r.status(at(61)).as_ref()), "Time limit: none");
+        let s = r.status(at(61)).unwrap();
+        assert!(s.remaining_seconds.is_none());
     }
 }

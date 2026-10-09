@@ -1,7 +1,7 @@
-// CHAT: a conversation that answers from the user's recordings
-// (docs/TOPICS_AND_CHAT.md). Scope at the top, threads on the side,
+// Chat: a conversation that answers from the user's recordings
+// (docs/TOPICS_AND_CHAT.md). Scope at the top, past chats on the side,
 // answers in Markdown with [n] citation chips that open the recording in
-// REWIND at that moment. Retrieval is local; the one AI request goes
+// Rewind at that moment. Retrieval is local; the one AI request goes
 // through the backend's AI client (Pro and consent are checked there).
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -10,15 +10,16 @@ import { defaultScope, sameScope, scopeLabel, suggestedQuestions, type Scope, ty
 import { aiErrorClass, friendlyAiError, isNoProviderError } from "../../lib/ai";
 import { requestRecordingSeek } from "../../lib/navigation";
 import { AiSetupNotice, useAiStatus } from "../AiSetupNotice";
+import { useUndoDelete } from "../UndoToast";
 import { BrainIcon, TrashIcon } from "../icons";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ScopePicker } from "./ScopePicker";
 import "./RecordingsChat.css";
 
 interface Props {
-    /** The recording open in REWIND: the default scope of a new chat */
+    /** The recording open in Recordings: the default scope of a new chat */
     selectedMeetingId: string | null;
-    /** Open a recording in REWIND (a citation chip adds the moment) */
+    /** Open a recording (a citation chip adds the moment) */
     onOpenRecording: (meetingId: string) => void;
 }
 
@@ -48,12 +49,14 @@ export function RecordingsChat({ selectedMeetingId, onOpenRecording }: Props) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const { configured } = useAiStatus();
     const showSetup = configured === false || needsAi;
+    // Deleting a chat: gone at once, Undo for a few seconds (no confirm dialog)
+    const undoDelete = useUndoDelete((e) => setError(String(e)));
 
     useEffect(() => {
         if (configured) setNeedsAi(false);
     }, [configured]);
 
-    // A different recording opened in REWIND: a fresh chat follows it
+    // A different recording was opened: a fresh chat follows it
     useEffect(() => {
         if (!thread && messages.length === 0) setScope((s) => {
             const d = defaultScope(selectedMeetingId);
@@ -126,15 +129,17 @@ export function RecordingsChat({ selectedMeetingId, onOpenRecording }: Props) {
         textareaRef.current?.focus();
     };
 
-    const removeThread = async (t: ChatThread) => {
-        if (!confirm(`Delete the chat “${t.title}”? Its questions and answers are removed from this Mac.`)) return;
-        try {
-            await chatApi.remove(t.id);
-            if (thread?.id === t.id) newChat();
-            loadThreads();
-        } catch (e) {
-            setError(String(e));
-        }
+    const removeThread = (t: ChatThread) => {
+        setThreads((prev) => prev.filter((x) => x.id !== t.id));
+        if (thread?.id === t.id) newChat();
+        undoDelete.start(
+            `Deleted the chat "${t.title}"`,
+            async () => {
+                await chatApi.remove(t.id);
+                loadThreads();
+            },
+            () => loadThreads(),
+        );
     };
 
     const cite = (c: Citation) => {
@@ -150,8 +155,8 @@ export function RecordingsChat({ selectedMeetingId, onOpenRecording }: Props) {
         <div className="rc" data-testid="recordings-chat">
             <div className="rc-header">
                 <div>
-                    <h2>CHAT WITH YOUR RECORDINGS</h2>
-                    <span className="rc-header__status">Searched on this Mac · {scopeText}{count}</span>
+                    <h2>Chat</h2>
+                    <span className="rc-header__status">Answers come from {scopeText}{count}, searched on this Mac</span>
                 </div>
                 <div className="rc-header__actions">
                     <button className="rc-btn" onClick={() => setShowThreads((v) => !v)} aria-expanded={showThreads}>
@@ -220,7 +225,7 @@ export function RecordingsChat({ selectedMeetingId, onOpenRecording }: Props) {
                             {messages.map((m) => (
                                 <div key={m.id} className={`rc-msg ${m.role}`}>
                                     <span className="rc-msg__label">
-                                        {m.role === "user" ? "YOU" : `NOFRICTION · ${m.scope_label ?? "your recordings"}`}
+                                        {m.role === "user" ? "You" : `From ${m.scope_label ?? "your recordings"}`}
                                     </span>
                                     <div className="rc-msg__bubble">
                                         {m.role === "user" ? (
@@ -246,6 +251,7 @@ export function RecordingsChat({ selectedMeetingId, onOpenRecording }: Props) {
                     {error && <div className="rc-error" role="alert">{error}</div>}
                 </div>
             </div>
+            {undoDelete.toast}
 
             <div className="rc-input">
                 <textarea
@@ -288,7 +294,7 @@ function SourcesList({ citations, onCite }: { citations: Citation[]; onCite: (c:
             {open && (
                 <div className="rc-sources__list">
                     {citations.map((c) => (
-                        <button key={c.n} className="rc-source" onClick={() => onCite(c)} title="Open in REWIND">
+                        <button key={c.n} className="rc-source" onClick={() => onCite(c)} title="Open this moment in the recording">
                             <span className="rc-source__n">{c.n}</span>
                             <span className="rc-source__title">{c.title}</span>
                             <span className="rc-source__when">

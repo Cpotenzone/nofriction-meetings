@@ -1,9 +1,8 @@
-// noFriction Meetings - Capture Bar
+// noFriction - the capture bar, shown only while recording
 //
-// The one place that answers "what is this app capturing right now?"
-// Status on the left, the chosen sources in the middle, and two actions:
-// choose sources, and snap them now. Choosing a window is a click on its
-// picture — no settings page, no IDs.
+// The one place that answers "what is being recorded right now?": status
+// on the left, time left, the screens being captured (click to change),
+// Mark, and Capture screen. Choosing a window is a click on its picture.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -77,14 +76,14 @@ export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarP
                 if (main) list.push(main.target);
             }
             const results = await Promise.all(list.map((t) => snapCaptureTarget(t)));
-            setFlash(results.length === 1 ? `Saved ${results[0].label}` : `Saved ${results.length} snapshots`);
+            setFlash(results.length === 1 ? `Saved ${results[0].label}` : `Saved ${results.length} screens`);
         } catch (e) {
-            setFlash(`Snapshot failed — ${String(e)}`);
+            setFlash(`Couldn't capture the screen: ${String(e)}`);
         }
         setTimeout(() => setFlash(null), 2200);
     }, [targets]);
 
-    // ⌘⇧S — snap without reaching for the mouse
+    // ⌘⇧S: capture the screen without reaching for the mouse
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "s") {
@@ -138,9 +137,9 @@ export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarP
                 {/* Moment markers: ★ / ? / ✎ (docs/STUDY_TOOLS.md) */}
                 <MarkButton isRecording={isRecording} />
 
-                <button className="cbar__snap" onClick={snap} type="button" title="Snap now (⌘⇧S)">
+                <button className="cbar__snap" onClick={snap} type="button" title="Save a picture of the captured screens now (⌘⇧S)">
                     <CameraIcon size={15} />
-                    <span>Snap</span>
+                    <span>Capture screen</span>
                 </button>
 
                 {flash && <div className="cbar__flash" role="status">{flash}</div>}
@@ -205,8 +204,8 @@ function SourcePicker({ selected, onChange, onClose }: SourcePickerProps) {
             <div className="spick" role="dialog" aria-modal="true" aria-labelledby="spick-title">
                 <header className="spick__head">
                     <div>
-                        <h2 id="spick-title">What should be captured?</h2>
-                        <p>Pick any screens or windows. Captured about once a second, and only when they change.</p>
+                        <h2 id="spick-title">Which screens?</h2>
+                        <p>Pick any screens or windows. A picture is saved about once a second, only when they change.</p>
                     </div>
                     <div className="spick__head-actions">
                         <button className="spick__ghost" onClick={load} type="button">Refresh</button>
@@ -214,7 +213,7 @@ function SourcePicker({ selected, onChange, onClose }: SourcePickerProps) {
                     </div>
                 </header>
 
-                {error && <p className="spick__error">Couldn't list sources — {error}. Check Screen Recording permission in System Settings.</p>}
+                {error && <p className="spick__error">Couldn't list your screens: {error}. Allow Screen & System Audio Recording in System Settings.</p>}
                 {!sources && !error && <p className="spick__loading">Looking at your screens…</p>}
 
                 {sources && (
@@ -278,9 +277,9 @@ function SourceGroup({
     );
 }
 
-// ── Filmstrip of recent captures ────────────────────────────────────────
+// ── Screens captured so far ─────────────────────────────────────────────
 
-export function CaptureFilmstrip({ isRecording }: { isRecording: boolean }) {
+export function Screens({ isRecording }: { isRecording: boolean }) {
     const [frames, setFrames] = useState<FrameCapturedEvent[]>([]);
 
     useEffect(() => {
@@ -302,12 +301,12 @@ export function CaptureFilmstrip({ isRecording }: { isRecording: boolean }) {
     return (
         <section className="film">
             <header className="film__head">
-                <h3>Captures</h3>
+                <h3>Screens</h3>
                 <span>{frames.length ? `${frames.length} recent` : ""}</span>
             </header>
             {frames.length === 0 ? (
                 <p className="film__empty">
-                    {isRecording ? "A new picture is saved whenever a captured screen changes." : "Screens you capture appear here."}
+                    {isRecording ? "A picture is saved whenever a captured screen changes." : ""}
                 </p>
             ) : (
                 <div className="film__strip">

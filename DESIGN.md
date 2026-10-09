@@ -1,7 +1,11 @@
-# noFriction Meetings — Design System
+# noFriction — Design System
 
-**Version:** 1.1.0  
-**Last Updated:** 2026-07-12
+**Version:** 1.2.0  
+**Last Updated:** 2026-10-09
+
+> v1.2.0 (the Ive pass, after `docs/design/FADELL_AUDIT.md`): one window
+> with Record · Recordings · Chat, sentence case everywhere, one vocabulary.
+> The hazard-yellow palette and Inter stay.
 
 > v1.1.0 records the design system the app actually ships: the hazard-yellow
 > "command center" brand implemented in `src/App.css`. The previous indigo
@@ -91,6 +95,8 @@
 ```
 
 ### Rules
+- **Sentence case everywhere.** No `text-transform: uppercase`, no tracked
+  all-caps labels. Caps read as a dashboard; this is a notebook.
 - Body text is 14px (`--text-base`), not 16px. This is a desktop app, not a website.
 - Never go below 11px (`--text-xs`).
 - Headings: `--weight-semibold`. Body: `--weight-regular`. Labels: `--weight-medium`.
@@ -196,28 +202,41 @@ Every async operation MUST have an error state that includes:
 
 ## Navigation Model
 
-### Primary Modes (4 max, top bar)
-| Mode | Icon (icons.tsx) | Purpose |
-|------|------------------|---------|
-| **LIVE** | `LiveIcon` | Active recording, live transcript, live intelligence |
-| **REWIND** | `RewindIcon` | Recordings library, frame/transcript playback, insights, search — the signature feature, always one click away |
-| **INTEL** | `RadarIcon` | Intel dashboard, sentiment/energy scoring |
-| **CHAT** | `ChatIcon` | RAG chat across all meeting data |
+### Three views (top bar)
+| View | Purpose |
+|------|---------|
+| **Record** | Idle: a title, the privacy promise, one Record button. Recording: the capture bar (time left, Mark, Capture screen), the live transcript, the screens. No AI runs here. |
+| **Recordings** | One search field (⌘K), Notebook chips, the list by day; the open recording's title block and **Rewind · Notes · Links · Review guide**. |
+| **Chat** | Ask your recordings, scoped to all, a notebook, a topic or one recording, with citations. |
 
-### Secondary (••• MORE overflow)
-- **VAULT** — Obsidian vault sync (power feature)
-- **ZEN** — focus view
-- **PROMPTS** — Prompt Studio
-- **HELP** — documentation
-
-Settings opens from the gear button; search/commands from the ⌘K button.
+Right side of the bar: **Stop** while recording, and the Settings gear.
+Settings has five sections: Recording, Transcription, AI, Subscription
+(`mas` only), About. Help is one document, `docs/USER_GUIDE.md`.
 
 ### Rules
-- Maximum 4 primary items in the top bar at all times.
-- The recordings library + rewind is the product; it never moves into an overflow menu.
-- Power-user features (Vault, Prompt Studio, Admin) live under MORE or Settings, not at the top level.
-- Current mode is always visually indicated (highlight + label visible).
-- The "trunk test": cover everything except the nav. Can you still tell what section you're in? If not, the nav has failed.
+- Three views. Nothing goes under a MORE menu; if it can't earn a place in
+  the three views or Settings, it is cut.
+- One control per act: one Record, one Stop, one search, one Delete with
+  Undo, one Strike from the record.
+- Banners live in the one slot under the top bar, never over it.
+- The menu bar, tray and window use the same words.
+
+## Vocabulary
+
+| Concept | Say | Never |
+|---------|-----|-------|
+| The thing you made | recording | meeting (in UI), capture, session, file |
+| Start / stop | Record / Stop | Start capture, Stop now |
+| The list | Recordings | Rewind (as a tab), Knowledge Base |
+| The timeline inside a recording | Rewind | |
+| AI notes | Notes; verbs **Make notes** / **Make again** | Summarize, Generate, Regenerate, AI notes |
+| Marks | **Mark** (verb), **Marks** (list) | Markers, marked moments |
+| Grouping | Notebook | class, course, tag |
+| Type | Meeting · Class · Personal | |
+| Review material | Review guide (Study guide for a Class) | Study (for every type) |
+| Screens (Mac) / Photos (iOS) | Capture screen | Snap |
+| AI | AI (section), endpoint (the URL), connection (saved) | AI Engine, provider (in UI) |
+| Settings / Help | Settings, Help | System, Overlay, Admin Console, Docs |
 
 ---
 

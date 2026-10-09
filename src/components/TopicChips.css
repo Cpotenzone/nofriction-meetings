@@ -1,26 +1,4 @@
-/* Topics in the library and on the Notes tab (TopicChips) */
-
-.topic-chip__count {
-  margin-left: 5px;
-  font-size: 10px;
-  color: #737373;
-}
-.class-chip.is-on .topic-chip__count { color: inherit; opacity: 0.8; }
-
-.group-by {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0 10px;
-}
-
-.row-topics {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-left: 6px;
-  vertical-align: middle;
-}
+/* Topics on the Notes view (TopicChips) and the day headers in Recordings */
 
 .topic-tag {
   display: inline-block;
@@ -37,39 +15,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.topic-tag[role="button"] { cursor: pointer; }
-.topic-tag[role="button"]:hover { border-color: #93c5fd; }
-.topic-tag--more { color: #737373; border-color: #333; background: transparent; }
 .topic-tag--user { border-style: dashed; }
 
 .group-head {
   margin: 10px 0 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: #737373;
 }
 .group-head:first-child { margin-top: 0; }
 .group-head__count { margin-left: 6px; font-weight: 400; }
 
-/* Notes tab editor */
-.topics-editor { margin-bottom: 14px; }
+/* Notes view editor */
+.topics-editor { margin-top: 4px; }
 .topics-editor__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .topics-editor__head h4 { margin: 0; }
-.topics-editor__actions { display: flex; gap: 6px; }
+.topics-editor__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .topics-editor__chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .topics-editor__chips .topic-tag { font-size: 12px; max-width: 320px; }
-.topics-editor__edit {
-  background: transparent;
-  border: none;
-  color: #737373;
-  font-size: 11px;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0 4px;
-}
-.topics-editor__edit:hover { color: #facc15; }
 .topics-editor__form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .topics-editor__row { display: flex; gap: 6px; }
 .topics-editor__row input {

@@ -47,8 +47,7 @@ sandboxed app). Use TestFlight; see [MAC_APP_STORE_BUILD.md](MAC_APP_STORE_BUILD
 ### API keys in development
 
 There are no `.env` files and no keys in the repo. Paste keys in the running
-app (Settings → AI Engine; cloud transcription keys in Settings →
-Transcription). They're stored in the login Keychain under the service
+app (Settings → AI). They're stored in the login Keychain under the service
 `com.nofriction.meetings.ai`. Never hardcode a key, even as a fallback.
 
 ### Data and logs

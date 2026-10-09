@@ -1,6 +1,6 @@
 [package]
 name = "nofriction-meetings"
-version = "3.6.0"
+version = "3.7.0"
 description = "noFriction - record, transcribe, rewind: meetings, classes and everyday life, on your Mac"
 authors = ["noFriction AI"]
 edition = "2021"

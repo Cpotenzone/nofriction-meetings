@@ -12,7 +12,7 @@ interface Props {
     scope: Scope;
     onChange: (s: Scope) => void;
     disabled?: boolean;
-    /** The recording open in REWIND, offered first under "this recording" */
+    /** The recording open in Recordings, offered first under "this recording" */
     selectedMeetingId: string | null;
 }
 
