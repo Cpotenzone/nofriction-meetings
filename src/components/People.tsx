@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
     getCalendarAccessStatus,
@@ -161,7 +162,7 @@ function ConnectCalendar({ access, onSynced }: { access: CalendarAccess | null; 
             const r = await syncCalendar();
             if (r.access !== "authorized") {
                 setMsg("Calendar access is off. Turn on noFriction in System Settings → Privacy & Security → Calendars, then try again.");
-                open("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars");
+                invoke("open_system_settings", { pane: "calendar" }).catch((e) => console.error("open failed", e));
             } else {
                 setMsg(r.report ? `Linked ${r.report.meetings_linked} of ${r.report.meetings_checked} recordings to your calendar.` : null);
                 onSynced();

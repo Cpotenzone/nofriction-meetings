@@ -42,9 +42,12 @@ test("scope labels match the backend's", () => {
 test("suggested questions follow the scope and its contents, at most four", () => {
     const all = suggestedQuestions({ kind: "all" }, summary());
     assert.equal(all.length, 4);
-    assert.equal(all[0], "Summarize my week");
+    assert.equal(all[0], "What happened this week?");
     assert.ok(all.includes("What did we decide about Q4 roadmap?"));
-    assert.ok(all.includes("What's on the test for Acme?"), "a class in the scope asks about the test");
+    assert.ok(all.includes("What's likely to be on the test?"), "a class in the scope asks about the test");
+    assert.ok(!all.some((q) => q.includes("test for Acme")), "never names a meeting notebook in a test question");
+    const classesOnly = suggestedQuestions({ kind: "all" }, summary({ kinds: ["class"], notebooks: ["BIO 101"] }));
+    assert.ok(classesOnly.includes("What's on the test for BIO 101?"));
     const nb = suggestedQuestions({ kind: "notebook", value: "BIO 101" }, summary({ notebooks: ["BIO 101"], kinds: ["class"], topics: ["Mitosis"] }));
     assert.equal(nb[0], "What's on the test for BIO 101?");
     assert.ok(nb.includes("What was said about Mitosis?"));
@@ -54,8 +57,8 @@ test("suggested questions follow the scope and its contents, at most four", () =
     assert.equal(topic[0], "What did we decide about Q4 roadmap?");
     assert.ok(topic[3].includes("Acme weekly sync"));
     const one = suggestedQuestions({ kind: "meeting", value: "m1" }, summary({ count: 1, kinds: ["class"], topics: [] }));
-    assert.deepEqual(one, ["Summarize this recording", "What's likely to be on the test?", "What should I follow up on?"]);
-    assert.deepEqual(suggestedQuestions({ kind: "all" }, null), ["Summarize my week", "What did we decide recently?", "What's still open?"]);
+    assert.deepEqual(one, ["What were the main points?", "What's likely to be on the test?", "What should I follow up on?"]);
+    assert.deepEqual(suggestedQuestions({ kind: "all" }, null), ["What happened this week?", "What did we decide recently?", "What's still open?"]);
     assert.deepEqual(suggestedQuestions({ kind: "notebook", value: "x" }, summary({ count: 0 })), []);
     const long = suggestedQuestions({ kind: "all" }, summary({ topics: [], kinds: ["personal"], recent_titles: ["A very long recording title that keeps going and going past the limit"] }));
     assert.ok(long.some((q) => q.endsWith("…?")), long.join(" | "));

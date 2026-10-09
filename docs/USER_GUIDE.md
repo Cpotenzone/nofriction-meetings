@@ -32,13 +32,15 @@ up yourself. It works on iPhone, iPad and Mac. There's no account to create.
 ### Mac (macOS 12.3 or later)
 
 1. Install noFriction from the Mac App Store and open it.
-2. The setup wizard offers a speech model for on-device transcription. Click
-   **Download** on the recommended model (547 MB; a smaller one is offered for
-   older or Intel Macs). It's downloaded once, and then the app transcribes on
-   your Mac, even offline. No cloud transcription service or key is used.
-3. Allow **Microphone**, **Screen & System Audio Recording** (so the other
-   people on a call are captured, and screens can be saved) and **Calendars**.
-   If you miss a prompt, open System Settings → Privacy & Security.
+2. Setup is one screen. Click **Allow** next to **Microphone**, **Screen &
+   System Audio** (so the other people on a call are captured, and screens can
+   be saved) and **Calendar** (optional). If you miss a prompt, open System
+   Settings → Privacy & Security.
+3. The speech model (547 MB) downloads on its own while you're on that
+   screen; a progress line shows how far it is. **Smaller model** offers a
+   lighter one for older or Intel Macs. It's downloaded once, and then the app
+   transcribes on your Mac, even offline. No cloud transcription service or
+   key is used. Click **Continue**.
 
 ---
 
@@ -61,7 +63,7 @@ event and how many people are invited. Stop when you're done.
 When the calendar event is over and the room goes quiet, or nobody has spoken
 for a few minutes, noFriction shows a banner and stops after 30 seconds.
 Choose **Keep recording** to carry on (it won't ask again for 10 minutes on
-iPhone/iPad), or **Stop now**. Nothing said before the stop is lost. On the Mac
+iPhone/iPad), or **Stop**. Nothing said before the stop is lost. On the Mac
 it also notices when the call app releases the microphone (macOS 14.2 or later)
 or the meeting window closes.
 
@@ -321,8 +323,8 @@ at the scrubber's time. iPhone/iPad: **Marks** in the recording.
 endpoint). It's called a **study guide** for a class; the contents are the
 same for every type: for a class it's what to study, for a meeting what to
 remember and follow up, for personal recordings what to remember. Mac: open
-the recording → **REVIEW** → **Make review guide** (**Make study guide** for a
-class). iPhone/iPad: open the recording and make the guide there. You get:
+the recording → **Review guide** → **Make review guide** (**Study guide** →
+**Make study guide** for a class). iPhone/iPad: open the recording and make the guide there. You get:
 - **Summary** as short notes
 - **Key terms** with definitions
 - **Flashcards**: click or tap to flip, then **Known** or **Again** (Mac:
@@ -361,8 +363,8 @@ Select words, whole lines, or a photo/screenshot, then choose:
 
 Both remove the content from the transcript, search, the saved audio
 (iPhone/iPad, replaced with silence), screenshots, the app's backups (Mac)
-and future exports. AI notes made before the edit are marked so you can
-regenerate them. Copies you already shared, exported or sent to an AI
+and future exports. Notes made before the edit are marked so you can
+make them again. Copies you already shared, exported or sent to an AI
 endpoint can't be recalled. On the Mac, you can't edit the screens of a
 recording that is still running.
 

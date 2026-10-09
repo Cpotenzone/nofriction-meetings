@@ -3,7 +3,7 @@
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
-    AppHandle, Emitter, Runtime, Wry,
+    AppHandle, Emitter, Manager, Runtime, Wry,
 };
 
 /// Menu item IDs for event handling. Every item in the menu bar does
@@ -99,7 +99,7 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )
         .item(
             &MenuItemBuilder::with_id(menu_ids::VIEW_CHAT, "Chat")
-                .accelerator("CmdOrCtrl+Shift+I")
+                .accelerator("CmdOrCtrl+3")
                 .build(app)?,
         )
         .separator()
@@ -166,7 +166,51 @@ pub fn handle_menu_event(app: &AppHandle<Wry>, event_id: &str) {
             return;
         }
     };
+    if shows_window(event_id) {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
     emit_to_frontend(app, event);
+}
+
+/// Menu items whose result is in the window. Stop, Pause and Mark work
+/// without it (the menu-bar icon shows the state).
+fn shows_window(event_id: &str) -> bool {
+    matches!(
+        event_id,
+        menu_ids::NEW_RECORDING
+            | menu_ids::VIEW_RECORD
+            | menu_ids::VIEW_RECORDINGS
+            | menu_ids::VIEW_CHAT
+            | menu_ids::VIEW_SETTINGS
+            | menu_ids::SEARCH
+            | menu_ids::HELP
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_items_bring_the_window_back() {
+        for id in [
+            menu_ids::NEW_RECORDING,
+            menu_ids::VIEW_RECORD,
+            menu_ids::VIEW_RECORDINGS,
+            menu_ids::VIEW_CHAT,
+            menu_ids::VIEW_SETTINGS,
+            menu_ids::SEARCH,
+            menu_ids::HELP,
+        ] {
+            assert!(shows_window(id), "{id} acts in the window");
+        }
+        for id in [menu_ids::STOP_RECORDING, menu_ids::PAUSE_RECORDING, menu_ids::MARK_MOMENT, menu_ids::CONTACT_SUPPORT] {
+            assert!(!shows_window(id), "{id} works without the window");
+        }
+    }
 }
 
 fn emit_to_frontend(app: &AppHandle<Wry>, event: &str) {

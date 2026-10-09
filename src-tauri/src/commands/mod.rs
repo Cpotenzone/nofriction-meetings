@@ -1269,9 +1269,9 @@ pub async fn stop_recording_core(state: &AppState) -> Result<(), String> {
                         {
                             Ok(notes) => {
                                 log::info!(
-                                    "✅ Auto-report generated for meeting {}: {}",
+                                    "✅ Auto-report generated for meeting {} ({} characters)",
                                     meeting_id,
-                                    notes.summary.chars().take(80).collect::<String>()
+                                    notes.summary.chars().count()
                                 );
                             }
                             Err(e) => {

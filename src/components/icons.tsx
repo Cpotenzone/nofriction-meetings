@@ -180,3 +180,19 @@ export const LockIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, clas
         <path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </svg>
 );
+
+/** Clock — time left on a timed recording */
+export const ClockIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+    </svg>
+);
+
+/** Stop — a square in a circle (the recording seems to have ended) */
+export const StopCircleIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <circle cx="12" cy="12" r="8.5" />
+        <rect x="9" y="9" width="6" height="6" rx="1" />
+    </svg>
+);

@@ -57,6 +57,20 @@ pub enum CalendarAccessStatus {
     Unknown,
 }
 
+/// `EKAuthorizationStatus` → our status. 3 is `Authorized` before macOS 14
+/// and `FullAccess` from 14 (same value); 4 is `WriteOnly` (macOS 14+), which
+/// can add events but can't read them, so it is not access for us.
+pub fn status_from_ek(status: i64) -> CalendarAccessStatus {
+    match status {
+        0 => CalendarAccessStatus::NotDetermined,
+        1 => CalendarAccessStatus::Restricted,
+        2 => CalendarAccessStatus::Denied,
+        3 => CalendarAccessStatus::Authorized,
+        4 => CalendarAccessStatus::Denied,
+        _ => CalendarAccessStatus::Unknown,
+    }
+}
+
 /// Configuration for calendar client
 #[derive(Debug, Clone)]
 pub struct CalendarConfig {
@@ -131,14 +145,7 @@ impl CalendarClient {
             // EKAuthorizationStatusForEntityType: 0 = Events
             let status: i64 = msg_send![ek_class, authorizationStatusForEntityType: 0i64];
 
-            match status {
-                0 => CalendarAccessStatus::NotDetermined,
-                1 => CalendarAccessStatus::Restricted,
-                2 => CalendarAccessStatus::Denied,
-                3 => CalendarAccessStatus::Authorized, // Legacy (macOS < 14)
-                4 => CalendarAccessStatus::Authorized, // EKAuthorizationStatusFullAccess (macOS 14+)
-                _ => CalendarAccessStatus::Unknown,
-            }
+            status_from_ek(status)
         }
     }
 
@@ -214,8 +221,18 @@ impl CalendarClient {
                 descriptor: &DESCRIPTOR,
             };
 
-            // Fire the permission request — macOS shows the consent dialog
-            let _: () = msg_send![store, requestFullAccessToEventsWithCompletion: &mut block as *mut BlockLiteral as *mut c_void];
+            // Fire the permission request — macOS shows the consent dialog.
+            // requestFullAccessToEventsWithCompletion: is macOS 14+; on
+            // 12.3–13 it doesn't exist (an unrecognized selector aborts), so
+            // use the older entity-type request there.
+            let full_access: objc::runtime::BOOL =
+                msg_send![store, respondsToSelector: sel!(requestFullAccessToEventsWithCompletion:)];
+            if full_access == objc::runtime::YES {
+                let _: () = msg_send![store, requestFullAccessToEventsWithCompletion: &mut block as *mut BlockLiteral as *mut c_void];
+            } else {
+                // EKEntityTypeEvent = 0
+                let _: () = msg_send![store, requestAccessToEntityType: 0u64 completion: &mut block as *mut BlockLiteral as *mut c_void];
+            }
         }
 
         // Poll for the user's response (permission dialog is async)
@@ -681,5 +698,25 @@ mod tests {
     fn test_check_access() {
         // Just verify this doesn't crash
         let _ = CalendarClient::check_access();
+    }
+
+    #[test]
+    fn ek_status_mapping() {
+        assert_eq!(status_from_ek(0), CalendarAccessStatus::NotDetermined);
+        assert_eq!(status_from_ek(1), CalendarAccessStatus::Restricted);
+        assert_eq!(status_from_ek(2), CalendarAccessStatus::Denied);
+        assert_eq!(status_from_ek(3), CalendarAccessStatus::Authorized);
+        // Write-only can't read events: not access
+        assert_eq!(status_from_ek(4), CalendarAccessStatus::Denied);
+        assert_eq!(status_from_ek(9), CalendarAccessStatus::Unknown);
+    }
+
+    /// calendar_client finds EKEventStore by name; EventKit is linked in
+    /// build.rs so the class always resolves. Looking the class up doesn't
+    /// touch calendar data or ask for access.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn eventkit_is_linked() {
+        assert!(objc::runtime::Class::get("EKEventStore").is_some());
     }
 }

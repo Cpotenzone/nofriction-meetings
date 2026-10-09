@@ -18,14 +18,17 @@ import {
 import "../features/settings/AIProviderSettings.css";
 import "./PaywallModal.css";
 
+// What Pro unlocks in this build, and nothing it doesn't have (guideline
+// 2.3 / 3.1.2): the AI features reachable from Recordings and Chat.
 export const PRO_FEATURES = [
-    "AI notes, summaries and to-dos",
+    "Notes in the recording's style, with decisions and to-dos",
+    "Review and study guides: key terms, flashcards and a practice quiz",
     "Follow-up email drafts",
     "Chat with your recordings",
-    "Pre-meeting attendee briefings",
 ];
 
-export const FREE_FEATURES = "Recording, transcription, calendar & people, screenshots and export stay free.";
+export const FREE_FEATURES =
+    "Recording, transcription, Rewind, search, marks, notebooks, calendar and people, screenshots, editing and export stay free.";
 
 function billingLine(p: StoreProduct): string {
     return p.period ? `${p.displayPrice} per ${p.period.replace(/^1 /, "")}` : p.displayPrice;
@@ -67,7 +70,7 @@ export function ProOffer({ onPro }: { onPro: () => void }) {
         try {
             const e = await store.restore();
             if (e.isPro) onPro();
-            else setMessage("No active noFriction Pro subscription was found for this Apple ID.");
+            else setMessage("No active noFriction Pro subscription was found for this Apple Account.");
         } catch (e) {
             setMessage(`Restore failed: ${String(e)}`);
         } finally {
@@ -105,7 +108,7 @@ export function ProOffer({ onPro }: { onPro: () => void }) {
             )}
             {message && <p className="paywall-message">{message}</p>}
             <p className="paywall-legal">
-                Payment is charged to your Apple ID. Subscriptions renew automatically unless cancelled at
+                Payment is charged to your Apple Account. Subscriptions renew automatically unless cancelled at
                 least 24 hours before the end of the current period; manage or cancel them in your App Store
                 account settings. Any unused free-trial time ends when you subscribe.
             </p>

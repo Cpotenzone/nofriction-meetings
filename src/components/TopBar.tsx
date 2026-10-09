@@ -16,7 +16,7 @@ interface TopBarProps {
 const MODES: { mode: AppMode; label: string; shortcut: string }[] = [
     { mode: "record", label: "Record", shortcut: "⌘1" },
     { mode: "recordings", label: "Recordings", shortcut: "⌘2" },
-    { mode: "chat", label: "Chat", shortcut: "⇧⌘I" },
+    { mode: "chat", label: "Chat", shortcut: "⌘3" },
 ];
 
 export function TopBar({ activeMode, onModeChange, isRecording, onStop, onOpenSettings }: TopBarProps) {

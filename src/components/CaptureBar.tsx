@@ -30,11 +30,14 @@ interface TranscriptionStatus {
 
 interface CaptureBarProps {
     isRecording: boolean;
+    /** Paused from the menu bar or the menu-bar icon: say so, and offer Resume here */
+    isPaused?: boolean;
+    onResume?: () => void;
     sttStatus: TranscriptionStatus | null;
     audioWarning?: string | null;
 }
 
-export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarProps) {
+export function CaptureBar({ isRecording, isPaused = false, onResume, sttStatus, audioWarning }: CaptureBarProps) {
     const [targets, setTargets] = useState<CaptureTarget[]>([]);
     const [labels, setLabels] = useState<Record<string, string>>({});
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -97,6 +100,8 @@ export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarP
 
     const status = !isRecording
         ? { tone: "idle", text: "Not recording" }
+        : isPaused
+            ? { tone: "warn", text: "Paused" }
         : sttStatus && !sttStatus.connected
             ? { tone: "warn", text: sttStatus.error ? `Transcription stopped — ${sttStatus.error}` : "Transcription stopped" }
             : audioWarning
@@ -118,6 +123,11 @@ export function CaptureBar({ isRecording, sttStatus, audioWarning }: CaptureBarP
                 <div className={`cbar__status is-${status.tone}`}>
                     <span className="cbar__dot" aria-hidden />
                     <span className="cbar__status-text" title={status.text}>{status.text}</span>
+                    {isPaused && onResume && (
+                        <button className="tlim__btn" onClick={onResume} type="button">
+                            Resume
+                        </button>
+                    )}
                 </div>
 
                 {/* Time left (or elapsed) with +15 min / No limit — timed_recording.rs */}

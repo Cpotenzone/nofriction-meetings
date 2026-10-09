@@ -193,6 +193,8 @@
 }
 
 .record-view__transcript {
+  /* The privacy badge is pinned inside it (PrivacyPromise.css) */
+  position: relative;
   min-height: 0;
   display: flex;
   flex-direction: column;

@@ -43,15 +43,12 @@
     <key>com.apple.security.personal-information.calendars</key>
     <true/>
 
-    <!-- Obsidian vault folder chosen in the open panel, kept across launches
-         with an app-scoped security bookmark (bookmarks.rs) -->
+    <!-- Files the user picks: the Obsidian vault folder (kept across
+         launches with an app-scoped security bookmark, bookmarks.rs), and the
+         save panels for Export everything as JSON and the review-guide exports -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
     <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-
-    <!-- "Export data" saves a JSON file via the web view download -->
-    <key>com.apple.security.files.downloads.read-write</key>
     <true/>
 
     <!-- Screen Recording (ScreenCaptureKit / screenshots) has no entitlement;

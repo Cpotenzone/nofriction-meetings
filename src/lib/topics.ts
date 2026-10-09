@@ -2,6 +2,7 @@
 // (docs/TOPICS_AND_CHAT.md). Pure logic lives in topicsLogic.ts.
 
 import { invoke } from "@tauri-apps/api/core";
+import { withAiConsent } from "./ai";
 import type { MeetingTopic, TopicIndex } from "./topicsLogic";
 
 /** Fired in the window after a recording's topics change, so open lists refresh. */
@@ -17,5 +18,5 @@ export const topicsApi = {
     /** The user's own list for a recording (rename, remove, add); [] clears it */
     set: (meetingId: string, labels: string[]) => invoke<MeetingTopic[]>("set_meeting_topics", { meetingId, labels }),
     /** Find (again) with the user's AI; user topics are kept */
-    find: (meetingId: string) => invoke<MeetingTopic[]>("find_topics", { meetingId }),
+    find: (meetingId: string) => withAiConsent(() => invoke<MeetingTopic[]>("find_topics", { meetingId })),
 };

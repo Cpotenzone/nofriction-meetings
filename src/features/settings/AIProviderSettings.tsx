@@ -193,9 +193,13 @@ function SavedProviders({ saved, onChange }: { saved: AiProviderInfo[]; onChange
                             {p.local && <span className="ai-badge">Local</span>}
                         </span>
                         <span className="label-sub">
-                            {p.last4 ? `Key ••••${p.last4}` : p.key === "required" ? "Key saved" : p.base_url}
-                            {p.model ? ` · ${p.model}` : ""}
-                            {!p.local && !p.consent ? " · needs permission" : ""}
+                            {[
+                                p.last4 ? `Key ••••${p.last4}` : p.key === "required" ? "Key saved" : p.base_url,
+                                p.model,
+                                !p.local && !p.consent ? "needs permission" : null,
+                            ]
+                                .filter(Boolean)
+                                .join(" · ")}
                         </span>
                         {results[p.id] && (
                             <span className={results[p.id]!.ok ? "ai-ok-text" : "ai-error-text"}>{results[p.id]!.text}</span>
@@ -236,12 +240,16 @@ function ModelPickers({
     onChange: () => void;
 }) {
     const usable = providers.filter((p) => p.configured);
+    // Apple on-device is text-only: it can't be the Screens model
+    const visionUsable = usable.filter((p) => p.protocol !== "apple");
     if (usable.length === 0) return null;
     return (
         <section className="settings-section">
             <h3>Models</h3>
             <ModelPicker kind="text" label="Notes, review guides and chat" usable={usable} byId={byId} current={status?.text ?? null} onChange={onChange} />
-            <ModelPicker kind="vision" label="Screens" usable={usable} byId={byId} current={status?.vision ?? null} onChange={onChange} />
+            {visionUsable.length > 0 && (
+                <ModelPicker kind="vision" label="Screens" usable={visionUsable} byId={byId} current={status?.vision ?? null} onChange={onChange} />
+            )}
         </section>
     );
 }
@@ -309,7 +317,7 @@ function ModelPicker({
                 {error && <span className="ai-error-text">{error}</span>}
             </div>
             <div className="ai-model-controls">
-                <select className="ai-select" value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={`${label} provider`}>
+                <select className="ai-select" value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={`${label} connection`}>
                     {usable.map((u) => (
                         <option key={u.id} value={u.id}>
                             {u.name}

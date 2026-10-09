@@ -15,6 +15,7 @@ import {
     removeTimedRecordingLimit,
     type TimedStatus,
 } from "../lib/timedRecording";
+import { ClockIcon } from "./icons";
 import "./TimedRecording.css";
 
 /** The running plan, kept current from `timed-recording-changed`. */
@@ -145,7 +146,7 @@ export function TimeLimitBanner({ isRecording }: { isRecording: boolean }) {
     return (
         <div className="tlim-banner" role="alertdialog" aria-live="assertive" aria-labelledby="tlim-banner-title">
             <div className="meeting-detection-banner sliding-in">
-                <div className="mdb-icon" aria-hidden>⏱</div>
+                <div className="mdb-icon" aria-hidden><ClockIcon size={26} strokeWidth={1.75} /></div>
                 <div className="mdb-content">
                     <div className="mdb-title" id="tlim-banner-title">
                         {minutes === 1 ? "1 minute left" : `${minutes} minutes left`}

@@ -44,7 +44,7 @@
 }
 
 .paywall-product:hover:not(:disabled) {
-  border-color: var(--accent-color, #3b82f6);
+  border-color: var(--hazard-yellow, #facc15);
 }
 
 .paywall-product:disabled {
@@ -70,7 +70,7 @@
   margin-top: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent-color, #3b82f6);
+  color: var(--hazard-yellow, #facc15);
 }
 
 .paywall-message {

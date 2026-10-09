@@ -37,26 +37,21 @@ export function TranscriptionSettings({ onSave }: { onSave?: () => void }) {
         catch (e) { setStatus(String(e)); }
     };
     return <div className="settings-content-panel fade-in">
-        <h2>Transcription on this Mac</h2>
         <p className="section-desc">Download a speech model once. Recordings are transcribed on this Mac; no cloud transcription service or API key is used.</p>
                     {/* Local Whisper — offline, first-class */}
                     <div className="provider-card active">
                         <div className="provider-header">
-                            <span className="name">Local Whisper (Offline)</span>
-                            <span className="badge">Active</span>
+                            <span className="name">Speech model (Whisper)</span>
+                            <span className="badge">In use</span>
                         </div>
                         <p className="provider-desc">
-                            Runs entirely on this Mac (Metal-accelerated). No API key, no
-                            network, nothing leaves your machine. Download a model once,
-                            then transcription works offline forever.
+                            Runs on this Mac. After the download, transcription works offline
+                            and nothing leaves this Mac.
                         </p>
                         {localStatus && (
                             <div className="input-group">
                                 <label>
-                                    Models{" "}
-                                    {localStatus.ready
-                                        ? `— ready (${localStatus.resolved_model})`
-                                        : "— none installed yet"}
+                                    {localStatus.ready ? "Models" : "Models: none downloaded yet"}
                                 </label>
                                 {localStatus.models.map((m) => (
                                     <div
@@ -75,6 +70,8 @@ export function TranscriptionSettings({ onSave }: { onSave?: () => void }) {
                                             checked={m.active}
                                             disabled={!m.installed}
                                             onChange={() => handleSelectModel(m.name)}
+                                            aria-label={`Use ${m.name}`}
+                                            style={{ accentColor: "var(--hazard-yellow)" }}
                                         />
                                         <span style={{ minWidth: 110, fontWeight: 600 }}>{m.name}</span>
                                         <span style={{ flex: 1, opacity: 0.7 }}>

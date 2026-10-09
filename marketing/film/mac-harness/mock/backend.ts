@@ -11,6 +11,28 @@ import { DEMO_MEETINGS, LIVE_SCRIPTS, RECENT_NOTEBOOKS, type DemoMeeting, type K
 
 type Args = Record<string, any> | undefined;
 
+// ── Harness flags (URL parameters, see harness.ts) ──────────────────────
+//   ?setup=1  first run: nothing allowed yet, the speech model downloading
+//   ?pro=0    not subscribed: AI calls fail with PRO_REQUIRED (the paywall)
+//   ?ai=none  no AI set up yet
+const flags = new URLSearchParams(location.search);
+const FIRST_RUN = flags.get("setup") === "1";
+let isPro = flags.get("pro") !== "0";
+const AI_NONE = flags.get("ai") === "none";
+// ?ai=openai: the ChatGPT card saved with a key, not yet allowed (the
+// consent dialog names api.openai.com on the first AI action)
+const AI_OPENAI = flags.get("ai") === "openai";
+let openaiConsent = false;
+
+const PRODUCTS = [
+    { id: "com.nofriction.meetings.pro.monthly", displayName: "Pro Monthly", description: "AI notes, summaries and reviews, monthly", displayPrice: "$0.99", period: "1 month", periodUnit: "month", periodValue: 1, introOffer: "1 week free" },
+    { id: "com.nofriction.meetings.pro.yearly", displayName: "Pro Yearly", description: "AI notes, summaries and reviews, yearly", displayPrice: "$5.99", period: "1 year", periodUnit: "year", periodValue: 1, introOffer: "1 week free" },
+];
+const entitlement = () =>
+    isPro
+        ? { isPro: true, productId: "com.nofriction.meetings.pro.yearly", expiration: new Date(Date.now() + 200 * 86_400_000).toISOString(), willRenew: true, loaded: true }
+        : { isPro: false, productId: null, expiration: null, willRenew: null, loaded: true };
+
 // ── Clock helpers ───────────────────────────────────────────────────────
 
 const ms = (clock: string): number => {
@@ -135,6 +157,7 @@ interface Live {
     frames: { id: string; image: string; at: number }[];
     timers: number[];
     stopped: boolean;
+    warned?: boolean;
 }
 
 let live: Live | null = null;
@@ -160,7 +183,7 @@ const timedStatus = () =>
               plannedMinutes: live.plannedMinutes,
               deadline: live.deadline ? new Date(live.deadline).toISOString() : null,
               remainingSeconds: live.deadline ? Math.max(0, Math.round((live.deadline - Date.now()) / 1000)) : null,
-              warned: false,
+              warned: !!live.warned,
           }
         : null;
 
@@ -311,8 +334,8 @@ const CAPABILITIES = {
     pro_gating: true,
     apple_intelligence: true,
     apple_intelligence_reason: "",
-    version: "3.6.0",
-    build: "1",
+    version: "3.7.0",
+    build: "41",
 };
 
 const AI_STATUS = {
@@ -322,6 +345,19 @@ const AI_STATUS = {
     vision_ready: false,
     what_leaves: "Nothing leaves this Mac.",
 };
+
+// Settings → AI: Apple on-device in use, the custom endpoint empty (a fresh
+// install). The preset cards are the backend's table (ai/providers.rs).
+const AI_PROVIDERS = [
+    { id: "apple", name: "Apple on-device", preset: null, protocol: "apple", base_url: null, key_url: "", key: "none", local: true, editable_url: false, configured: true, last4: null, consent: true, needs_consent: false, model: "Apple Intelligence", vision_model: null, models: [], active_text: true, active_vision: false },
+    { id: "custom", name: "Custom (OpenAI-compatible)", preset: null, protocol: "openai", base_url: null, key_url: "", key: "optional", local: false, editable_url: true, configured: false, last4: null, consent: false, needs_consent: false, model: null, vision_model: null, models: [], active_text: false, active_vision: false },
+];
+const AI_PRESETS = [
+    { id: "openai", name: "ChatGPT (OpenAI)", base_url: "https://api.openai.com/v1", default_model: "gpt-6-luna", model_hint: "gpt-6.1-sol, gpt-6-astra", key_url: "https://platform.openai.com/api-keys", note: "Your OpenAI API key; billed by OpenAI." },
+    { id: "anthropic", name: "Anthropic (Claude)", base_url: "https://api.anthropic.com/v1", default_model: "claude-sonnet-5-5", model_hint: "claude-haiku-5-5, claude-opus-5-5", key_url: "https://platform.claude.com/settings/keys", note: "Your Claude API key; billed by Anthropic." },
+    { id: "xai", name: "Grok (xAI)", base_url: "https://api.x.ai/v1", default_model: "grok-4.7", model_hint: "grok-4.3", key_url: "https://console.x.ai", note: "Your xAI API key; billed by xAI." },
+    { id: "mistral", name: "Mistral", base_url: "https://api.mistral.ai/v1", default_model: "mistral-large-latest", model_hint: "mistral-small-latest", key_url: "https://console.mistral.ai/api-keys", note: "Your Mistral API key; billed by Mistral." },
+];
 
 function timelineFor(id: string) {
     const row = meetingById(id);
@@ -460,22 +496,59 @@ function handle(cmd: string, args: Args): unknown {
             return CAPABILITIES;
         case "store_entitlement":
         case "store_restore":
-            return { isPro: true, productId: "com.nofriction.meetings.pro.yearly", willRenew: true, loaded: true };
+            return entitlement();
         case "store_products":
-            return { products: [] };
+            return { products: PRODUCTS };
+        case "store_purchase":
+            isPro = true;
+            emitEvent("subscription-changed", entitlement());
+            return { status: "purchased", entitlement: entitlement() };
+        case "store_manage_subscriptions":
+            return null;
         case "ai_status":
-            return AI_STATUS;
+            if (AI_OPENAI) {
+                return {
+                    text: { provider: "custom", name: "ChatGPT (OpenAI)", model: "gpt-6-luna", local: false, consent: openaiConsent, state: openaiConsent ? "ready" : "consent_required" },
+                    vision: null,
+                    text_ready: openaiConsent,
+                    vision_ready: false,
+                    what_leaves: "Transcripts and titles go to api.openai.com when you use an AI feature.",
+                };
+            }
+            return AI_NONE ? { text: null, vision: null, text_ready: false, vision_ready: false, what_leaves: "Nothing leaves this Mac." } : AI_STATUS;
+        case "ai_grant_consent":
+            openaiConsent = true;
+            return null;
         case "ai_list_providers":
-            return [];
+            if (AI_OPENAI) {
+                return AI_PROVIDERS.map((p) =>
+                    p.id === "custom"
+                        ? { ...p, name: "ChatGPT (OpenAI)", preset: "openai", base_url: "https://api.openai.com/v1", configured: true, last4: "a1b2", consent: openaiConsent, needs_consent: !openaiConsent, model: "gpt-6-luna", active_text: true }
+                        : { ...p, active_text: false },
+                );
+            }
+            return AI_NONE ? AI_PROVIDERS.map((p) => ({ ...p, active_text: false })) : AI_PROVIDERS;
+        case "ai_list_presets":
+            return AI_PRESETS;
+        case "ai_test":
+            return { ok: true, class: "connected", message: "Connected. The endpoint answered." };
+        case "plugin:app|version":
+            return CAPABILITIES.version;
+        case "get_vault_status":
+            return { configured: false, path: null, valid: false, topicCount: 0, totalFiles: 0 };
+        case "get_setting":
+            return null;
         case "get_ai_automation":
-            return { liveInsights: true, autoNotes: true, autoNotesMinMinutes: 6 };
+            return { autoReport: true };
+        case "set_ai_automation":
+            return { autoReport: !!a.autoReport };
         case "get_local_stt_status":
             return {
-                ready: true,
+                ready: !FIRST_RUN,
                 resolved_model: "large-v3-turbo-q5_0",
                 preferred_model: "large-v3-turbo-q5_0",
                 models: [
-                    { name: "large-v3-turbo-q5_0", size_mb: 547, description: "Recommended", installed: true, active: true },
+                    { name: "large-v3-turbo-q5_0", size_mb: 547, description: "Recommended", installed: !FIRST_RUN, active: !FIRST_RUN },
                     { name: "base.en", size_mb: 142, description: "Smaller", installed: false, active: false },
                 ],
             };
@@ -488,7 +561,18 @@ function handle(cmd: string, args: Args): unknown {
         case "get_auto_stop_settings":
             return { enabled: true, silenceMinutes: 10 };
         case "check_permissions":
-            return { microphone: "granted", screen: "granted", accessibility: "not_applicable" };
+            return FIRST_RUN
+                ? { microphone: false, screen_recording: false, accessibility: false, calendar: false }
+                : { microphone: true, screen_recording: true, accessibility: false, calendar: true };
+        case "get_microphone_auth_status":
+            return FIRST_RUN ? "not_determined" : "authorized";
+        case "download_whisper_model":
+            // First run: the recommended model is part-way down (a progress line)
+            emitEvent("whisper_download_progress", { model: a.model, downloaded_bytes: 212 * 1_048_576, total_bytes: 547 * 1_048_576, done: false, error: null });
+            return never();
+        case "set_active_provider":
+        case "set_local_whisper_model":
+            return null;
 
         // Recordings
         case "get_meetings": {
@@ -559,7 +643,7 @@ function handle(cmd: string, args: Args): unknown {
         case "get_meeting_people":
             return never();
         case "get_calendar_access_status":
-            return "authorized";
+            return FIRST_RUN ? "not_determined" : "authorized";
         case "list_people":
             return [];
         case "get_meeting_attendees":
@@ -687,6 +771,32 @@ function handle(cmd: string, args: Args): unknown {
         case "get_audio_devices":
             return [{ id: "builtin", name: "MacBook Pro Microphone", is_default: true, is_input: true }];
 
+        // AI (Pro in the Mac App Store build: ai::client::complete → PRO_REQUIRED)
+        case "generate_meeting_report":
+        case "draft_followup_email":
+        case "generate_study_guide":
+            if (!isPro) throw "PRO_REQUIRED: noFriction Pro unlocks the AI features.";
+            if (cmd === "draft_followup_email") {
+                return { subject: "Acme sync: decisions and next steps", body: "Hi all,\n\nThanks for today. We locked the plan names and agreed to test onboarding with five beta teams.\n\nPriya", to: ["dana@example.com", "marcus@example.com"] };
+            }
+            return null;
+
+        // Chat (chat.rs)
+        case "list_chat_threads":
+            return chatThreads;
+        case "get_chat_thread": {
+            const t = chatThreads.find((x) => x.id === a.threadId);
+            return { thread: t, messages: chatMessages.filter((m) => m.thread_id === a.threadId) };
+        }
+        case "delete_chat_thread":
+            return null;
+        case "chat_scope_summary":
+            return scopeSummary(a.scope);
+        case "chat_ask":
+            if (!isPro) throw "PRO_REQUIRED: noFriction Pro unlocks the AI features.";
+            if (AI_OPENAI && !openaiConsent) throw "CONSENT_REQUIRED:custom";
+            return chatAnswer(a.threadId ?? null, a.scope, String(a.message ?? ""));
+
         // Plugins (dialogs, opener)
         case "plugin:dialog|ask":
         case "plugin:dialog|confirm":
@@ -697,6 +807,65 @@ function handle(cmd: string, args: Args): unknown {
     }
     console.warn("[mock] unhandled", cmd, args);
     return null;
+}
+
+// ── Chat from the demo data ──────────────────────────────────────────
+
+const chatThreads: any[] = [];
+const chatMessages: any[] = [];
+
+function scopeMeetings(scope: any) {
+    if (!scope || scope.kind === "all") return meetings;
+    if (scope.kind === "notebook") return meetings.filter((m) => (m.class_name ?? "").toLowerCase() === String(scope.value ?? "").toLowerCase());
+    if (scope.kind === "meeting") return meetings.filter((m) => m.id === scope.value);
+    if (scope.kind === "topic") return meetings.filter((m) => topicsFor(m.id).some((t) => t.key === scope.value));
+    return meetings;
+}
+
+function scopeLabel(scope: any) {
+    if (!scope || scope.kind === "all") return "All recordings";
+    if (scope.kind === "notebook") return String(scope.value);
+    if (scope.kind === "meeting") return meetingById(scope.value)?.title ?? "This recording";
+    return topicIndex().topics.find((t) => t.key === scope.value)?.label ?? "This topic";
+}
+
+function scopeSummary(scope: any) {
+    const ms_ = scopeMeetings(scope);
+    return {
+        label: scopeLabel(scope),
+        count: ms_.length,
+        recent_titles: ms_.slice(0, 3).map((m) => m.title),
+        topics: [...new Set(ms_.flatMap((m) => topicsFor(m.id).map((t) => t.label)))].slice(0, 4),
+        notebooks: [...new Set(ms_.map((m) => m.class_name).filter(Boolean))],
+        kinds: [...new Set(ms_.map((m) => m.recording_kind))],
+    };
+}
+
+function chatAnswer(threadId: string | null, scope: any, message: string) {
+    const now = new Date().toISOString();
+    let thread = chatThreads.find((t) => t.id === threadId);
+    if (!thread) {
+        thread = { id: `thread-${chatThreads.length + 1}`, title: message.slice(0, 60), scope: scope ?? { kind: "all" }, flag: null, created_at: now, updated_at: now };
+        chatThreads.unshift(thread);
+    }
+    const acme = meetingById("m-acme-sync");
+    const user = { id: `msg-${chatMessages.length + 1}`, thread_id: thread.id, role: "user", content: message, citations: [], scope_label: null, created_at: now };
+    const assistant = {
+        id: `msg-${chatMessages.length + 2}`,
+        thread_id: thread.id,
+        role: "assistant",
+        content:
+            "You decided to lock the plan names by Friday so billing can start [1], and to send team invites after the first project instead of during setup [2]. The new onboarding will be tested with five beta teams before it's built [3].",
+        citations: [
+            { n: 1, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: ms("12:40"), excerpt: "Let's lock the plan names by Friday so billing can start.", source: "transcript" },
+            { n: 2, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: ms("10:26"), excerpt: "Invites come after the first project, not during setup.", source: "transcript" },
+            { n: 3, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: null, excerpt: "Test the new onboarding with five beta teams before building it", source: "notes" },
+        ],
+        scope_label: scopeLabel(scope),
+        created_at: now,
+    };
+    chatMessages.push(user, assistant);
+    return { thread, user, assistant };
 }
 
 // ── Search and topics from the demo data ─────────────────────────────
@@ -776,6 +945,14 @@ export const harnessApi = {
     startLive(kind: Kind = "meeting", opts: { prefill?: number; backdateSec?: number; duration?: string } = {}) {
         pendingStart = { kind, ...opts };
         emitEvent("tray:start_recording", { duration: opts.duration ?? "60" });
+    },
+    /** The time-limit warning: five minutes left, as timed_recording.rs sends it. */
+    warnLive() {
+        if (!live) return;
+        live.deadline = Date.now() + 5 * 60_000 - 1000;
+        live.warned = true;
+        emitEvent("timed-recording-changed", timedStatus());
+        emitEvent("timed-recording-warning", timedStatus());
     },
     get liveId() {
         return live?.id ?? null;

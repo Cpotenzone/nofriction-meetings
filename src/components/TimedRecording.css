@@ -230,13 +230,8 @@
 
 /* ── Warning banner (styled like the meeting-end banner) ──────────────── */
 
-.tlim-banner {
-  position: fixed;
-  top: 72px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 120;
-}
+/* Lives in the shell's banner slot (Shell.css), under the top bar */
+.tlim-banner { position: relative; }
 
 /* ── One-time class notice (first Class-type recording) ────────────────────────────────────────── */
 
