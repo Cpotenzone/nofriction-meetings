@@ -469,7 +469,7 @@ struct StrikeSummary {
             }
         }
         if meeting.aiNotes != nil, !plan.changes.isEmpty {
-            destroyed.append("Matching text in the AI notes (they're marked as made before an edit)")
+            destroyed.append("Matching text in the notes (they're marked as made before an edit)")
         }
         if !meeting.studyMaterials.isEmpty, !plan.changes.isEmpty {
             destroyed.append("This recording's \(meeting.kind.guideTitle.lowercased()) (make it again after the strike)")
@@ -479,7 +479,7 @@ struct StrikeSummary {
         }
         destroyed.append("Freed space in the app's database (it's compacted after the strike)")
 
-        caveats.append("Copies already shared, exported or sent to an AI provider can't be recalled.")
+        caveats.append("Copies already shared, exported or sent to an AI endpoint can't be recalled.")
         caveats.append("iCloud and device backups made before now are outside the app's control.")
         if !plan.snapshots.isEmpty {
             caveats.append("Photos imported from your library stay in the Photos app.")

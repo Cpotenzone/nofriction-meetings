@@ -109,7 +109,7 @@ enum ChatSuggestions {
             for t in topics.prefix(2) { add("What was said about \(t)?") }
             add("What questions were left open?")
         case .topic(_, let label):
-            add("Summarize what was said about \(label).")
+            add("What was said about \(label)?")
             add("What was decided about \(label), and when?")
             if let r = recent.first { add("What did “\(r.title)” say about \(label)?") }
             add("What's still open about \(label)?")

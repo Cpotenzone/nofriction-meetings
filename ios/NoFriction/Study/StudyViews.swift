@@ -36,9 +36,13 @@ struct MarkControl: View {
                             keepOpen()
                         } label: {
                             Label(k.label(for: kind), systemImage: k.systemImage)
-                                .font(.caption.weight(last.markerKind == k ? .semibold : .regular))
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .tint(last.markerKind == k ? k.color : .secondary)
                         .accessibilityAddTraits(last.markerKind == k ? .isSelected : [])
                     }
@@ -50,6 +54,7 @@ struct MarkControl: View {
                         Image(systemName: last.note == nil ? "note.text.badge.plus" : "note.text")
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .accessibilityLabel(last.note == nil ? "Add a note" : "Edit the note")
                 }
                 .transition(.opacity)
@@ -277,11 +282,7 @@ struct StudyGuideView: View {
         let asks = load(.questions, StudyAsks.self)
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Part", selection: $part) {
-                    ForEach(StudyKind.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding()
+                StudyPartBar(part: $part)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         switch part {
@@ -364,7 +365,7 @@ struct StudyGuideView: View {
             }
         }
         if !confused.isEmpty {
-            Text("You marked as confusing").font(.headline).padding(.top, 8)
+            Text("You marked Question").font(.headline).padding(.top, 8)
             ForEach(confused) { m in
                 HStack(alignment: .firstTextBaseline) {
                     Text("• " + (m.note ?? "No note")).font(.callout)
@@ -382,6 +383,45 @@ struct StudyGuideView: View {
             when: meeting.startedAt.formatted(date: .complete, time: .shortened),
             summary: s, terms: t, cards: c, quiz: q, asks: a,
             marks: meeting.orderedMarkers.map { .init(ms: Int(($0.offset(in: meeting) * 1000).rounded()), kind: $0.markerKind, note: $0.note) })
+    }
+}
+
+/// The guide's five parts as chips that scroll sideways: a five-way
+/// segmented control cut "Practice quiz" and "Questions to ask" to
+/// "Practice…" and "Question…" on an iPhone.
+private struct StudyPartBar: View {
+    @Binding var part: StudyKind
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(StudyKind.allCases, id: \.self) { k in
+                        let on = part == k
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) { part = k }
+                        } label: {
+                            Text(k.label)
+                                .font(.subheadline.weight(on ? .semibold : .regular))
+                                .lineLimit(1)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .foregroundStyle(on ? Theme.ai : .primary)
+                                .background(on ? Theme.ai.opacity(0.18) : Theme.card, in: Capsule())
+                                .overlay { Capsule().stroke(on ? Theme.ai : Color.clear, lineWidth: 1) }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+                        .id(k)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+            .onChange(of: part) { _, k in withAnimation { proxy.scrollTo(k, anchor: .center) } }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Part")
+        .accessibilityIdentifier("study-parts")
     }
 }
 
@@ -410,7 +450,7 @@ struct FlashcardsView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { deck.flip() }
                 } label: {
                     VStack(spacing: 10) {
-                        Text(deck.flipped ? "ANSWER" : "QUESTION").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(deck.flipped ? "Answer" : "Question").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         Text(deck.flipped ? c.back : c.front).font(.title3).multilineTextAlignment(.center)
                         if !deck.flipped { Text("Tap to flip").font(.caption2).foregroundStyle(.tertiary) }
                     }

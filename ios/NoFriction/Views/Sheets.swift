@@ -91,7 +91,7 @@ struct RecordingNoticeSheet: View {
                 .accessibilityAddTraits(.isHeader)
             Text(Self.text)
                 .foregroundStyle(.secondary)
-            Text("Audio and transcripts are stored on this device. Optional cloud AI sends transcript text directly to the provider you choose.")
+            Text("Audio and transcripts are stored on this device. If you set up AI with an endpoint on the internet, transcript text goes straight to that endpoint, only after you allow it.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)

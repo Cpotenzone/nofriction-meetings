@@ -72,7 +72,7 @@ struct PaywallView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(store.loadError ?? "Subscriptions aren't available right now.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    Button("Try Again") { Task { await store.loadProducts() } }
+                    Button("Try again") { Task { await store.loadProducts() } }
                 }
             }
         } else {

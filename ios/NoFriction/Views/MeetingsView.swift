@@ -86,11 +86,12 @@ struct MeetingsView: View {
             .overlay {
                 if meetings.isEmpty {
                     ContentUnavailableView("No recordings yet", systemImage: "waveform",
-                                           description: Text("Meetings, classes and everything else you record appear here with their transcript and photos."))
+                                           description: Text("Tap Record to make your first one. Meetings, classes and everything else you record appear here with their transcript and photos."))
                 } else if shown.isEmpty && !query.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else if shown.isEmpty, let activeNotebook {
-                    ContentUnavailableView("No recordings in \(activeNotebook)", systemImage: "book.closed")
+                    ContentUnavailableView("No recordings in \(activeNotebook)", systemImage: "book.closed",
+                                           description: Text("Tap All to see every recording."))
                 }
             }
         } detail: {

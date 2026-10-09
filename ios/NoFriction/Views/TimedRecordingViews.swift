@@ -162,9 +162,8 @@ struct NotebookFilterBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(Notebook.filterTitle.uppercased())
-                .font(.caption2.weight(.semibold))
-                .tracking(0.8)
+            Text(Notebook.filterTitle)
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -228,7 +227,7 @@ struct RecordingKindNotebookField: View {
                 .foregroundStyle(.secondary)
             }
             .accessibilityLabel("\(RecordingKind.pickerTitle) \(meeting.kind.label)")
-            .accessibilityHint("Changes the notes style and the third marker's name")
+            .accessibilityHint("Changes the notes style and the third mark's name")
             .accessibilityIdentifier("meeting-kind")
             HStack(spacing: 8) {
                 Image(systemName: "book.closed")

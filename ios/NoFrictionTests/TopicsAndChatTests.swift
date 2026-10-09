@@ -338,6 +338,12 @@ final class TopicStoreTests: XCTestCase {
         XCTAssertEqual(inline, "term: definition")
         // Soft-wrapped lines join into one paragraph; "#hashtag" is not a heading
         XCTAssertEqual(NotesMarkdown.blocks("one\ntwo\n\n#tag"), [.paragraph("one two"), .paragraph("#tag")])
+        // A bold-only line is a heading, not the start of the next paragraph
+        XCTAssertEqual(NotesMarkdown.blocks("**Summary**\nHow cells make ATP.\n**Action items:**\n• Read chapter 9"),
+                       [.heading("Summary", level: 2), .paragraph("How cells make ATP."),
+                        .heading("Action items", level: 2), .bullet("Read chapter 9", indent: 0)])
+        // Bold inside a sentence stays a paragraph
+        XCTAssertEqual(NotesMarkdown.blocks("**Bold** and **more**"), [.paragraph("**Bold** and **more**")])
     }
 
     // MARK: Chat purge and scope
@@ -572,7 +578,7 @@ final class ChatRetrievalTests: XCTestCase {
         let cls = ChatSuggestions.questions(scope: .recording(id: UUID(), title: "BIO 101 week 3"), recordings: recs, topics: ["Mitosis"])
         XCTAssertEqual(cls[0], "What were the key concepts in “BIO 101 week 3”?")
         XCTAssertTrue(cls.contains("What was said about Mitosis?"))
-        XCTAssertEqual(ChatSuggestions.questions(scope: .topic(key: "mitosis", label: "Mitosis"), recordings: [], topics: [])[0], "Summarize what was said about Mitosis.")
+        XCTAssertEqual(ChatSuggestions.questions(scope: .topic(key: "mitosis", label: "Mitosis"), recordings: [], topics: [])[0], "What was said about Mitosis?")
         XCTAssertEqual(ChatSuggestions.questions(scope: .notebook("BIO 101"), recordings: [], topics: []).first, "What are the main themes in BIO 101 so far?")
         XCTAssertFalse(ChatSuggestions.questions(scope: .all, recordings: [], topics: []).isEmpty)
     }

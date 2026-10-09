@@ -102,17 +102,20 @@ final class DynamicTypeTests: XCTestCase {
 
         // Record controls
         assertOnScreen(app.buttons["Stop recording"], app, "record button")
-        assertOnScreen(app.buttons["Snap"], app, "Snap")
+        assertOnScreen(app.buttons["Photo"], app, "Photo")
         saveShot("xxxl-record")
 
         // Line editor actions (Delete / Strike) and the strike confirmation
         app.buttons["Recordings"].firstMatch.tap()
         let meeting = app.staticTexts["Weekly sync with Marcus"].firstMatch
+        // Below the fold since People and the Notebooks chips sit above the list
+        XCTAssertTrue(app.staticTexts["Brightwater pilot kickoff"].firstMatch.waitForExistence(timeout: 5))
+        scrollTo(meeting, in: app)
         XCTAssertTrue(meeting.waitForExistence(timeout: 5))
         meeting.tap()
         let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Quick one today")).firstMatch
+        scrollTo(line, in: app)   // the transcript is lazy: the line exists once scrolled near
         XCTAssertTrue(line.waitForExistence(timeout: 5))
-        scrollTo(line, in: app)
         line.tap()
         let word = app.descendants(matching: .any)["word-0"].firstMatch
         XCTAssertTrue(word.waitForExistence(timeout: 5))
