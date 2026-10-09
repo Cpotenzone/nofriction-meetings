@@ -10,7 +10,10 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct ProviderInfo {
     pub id: String,
+    /// The matched preset's name when the URL is a preset's, else the generic name
     pub name: String,
+    /// Preset id matching the configured URL (derived, never stored); None = custom/none
+    pub preset: Option<String>,
     pub protocol: Protocol,
     pub base_url: Option<String>,
     pub key_url: String,
@@ -47,9 +50,11 @@ fn provider_info(cfg: &config::AiConfig, id: &str) -> Option<ProviderInfo> {
         }]
     };
     let vision_sel = cfg.selection(Kind::Vision);
+    let matched = cfg.base_url(id).as_deref().and_then(providers::preset_for_url);
     Some(ProviderInfo {
         id: id.to_string(),
-        name: p.name.to_string(),
+        name: cfg.display_name(id),
+        preset: matched.map(|m| m.id.to_string()),
         protocol: p.protocol,
         base_url: cfg.base_url(id),
         key_url: p.key_url.to_string(),
@@ -72,6 +77,13 @@ fn provider_info(cfg: &config::AiConfig, id: &str) -> Option<ProviderInfo> {
 pub async fn ai_list_providers() -> Result<Vec<ProviderInfo>, String> {
     let cfg = config::snapshot();
     Ok(PRESETS.iter().filter_map(|p| provider_info(&cfg, p.id)).collect())
+}
+
+/// The static preset table (name, base URL, default model, key page, note).
+/// Pure data for the settings form: nothing is selected, saved or contacted.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn ai_list_presets() -> Result<&'static [providers::EndpointPreset], String> {
+    Ok(providers::ENDPOINT_PRESETS)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -105,7 +117,7 @@ pub async fn ai_save_key(key: String, provider: Option<String>, expected_base_ur
     let st = cfg.provider("custom");
     Ok(SaveKeyResult {
         provider: "custom".into(),
-        name: "Custom endpoint".into(),
+        name: cfg.display_name("custom"),
         models: st.models.iter().map(|m| m.id.clone()).collect(),
         model: st.model,
         vision_model: st.vision_model,
@@ -246,56 +258,32 @@ pub async fn ai_list_models(provider: String) -> Result<Vec<ModelInfo>, String> 
     Ok(models)
 }
 
-#[derive(Serialize)]
-pub struct TestResult {
-    pub ok: bool,
-    /// connected | wrong_key | no_credit | unreachable | bad_url | model_missing | other
-    pub class: String,
-    pub message: String,
-    pub model_count: usize,
-}
-
-/// Test connection without sending any meeting content (lists models and
-/// checks the chosen model exists), so it needs no consent.
+/// Test connection: one fixed word ("Hi") with a one-token answer to the saved
+/// endpoint with the saved key. It carries no meeting content, so it is the
+/// only request allowed before consent, and it runs only on this explicit
+/// command (never at startup or on save).
 #[tauri::command(rename_all = "camelCase")]
-pub async fn ai_test(provider: String) -> Result<TestResult, String> {
-    match ai_list_models(provider.clone()).await {
-        Ok(models) => {
-            let cfg = config::snapshot();
-            let st = cfg.provider(&provider);
-            let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
-            let missing = st.model.as_deref().filter(|m| !ids.contains(m));
-            Ok(match missing {
-                Some(m) => TestResult {
-                    ok: false,
-                    class: "model_missing".into(),
-                    message: format!("Connected, but the model '{}' isn't available on this account.", m),
-                    model_count: models.len(),
-                },
-                None => TestResult {
-                    ok: true,
-                    class: "connected".into(),
-                    message: format!("Connected · {} models", models.len()),
-                    model_count: models.len(),
-                },
-            })
-        }
-        Err(e) => {
-            let class = e
-                .split(':')
-                .next()
-                .map(|p| match p {
-                    "AI_WRONG_KEY" => "wrong_key",
-                    "AI_NO_CREDIT" => "no_credit",
-                    "AI_UNREACHABLE" => "unreachable",
-                    "AI_BAD_URL" => "bad_url",
-                    "AI_NO_KEY" => "no_key",
-                    _ => "other",
-                })
-                .unwrap_or("other");
-            Ok(TestResult { ok: false, class: class.into(), message: e, model_count: 0 })
-        }
-    }
+pub async fn ai_test(provider: String) -> Result<client::ProbeOutcome, String> {
+    let p = preset(&provider).ok_or("Unknown provider")?;
+    let cfg = config::snapshot();
+    let model = cfg
+        .provider(&provider)
+        .model
+        .clone()
+        .or(if p.protocol == Protocol::Apple { Some(providers::APPLE_MODEL.into()) } else { None })
+        .ok_or("Enter a model and save the connection first.")?;
+    let host = cfg
+        .base_url(&provider)
+        .and_then(|u| url::Url::parse(&u).ok())
+        .and_then(|u| u.host_str().map(String::from))
+        .unwrap_or_else(|| p.name.to_string());
+    let target = match client::resolve_for_probe(&cfg, &provider, &model) {
+        Ok(t) => t,
+        Err(e) => return Ok(client::ProbeOutcome::from_error(&e, &host)),
+    };
+    let outcome = client::probe(&target).await;
+    log::info!("AI: connection test for {} ({}): {}", provider, target.hint, outcome.class);
+    Ok(outcome)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -386,7 +374,7 @@ fn active_info(cfg: &config::AiConfig, kind: Kind) -> Option<ActiveInfo> {
     };
     Some(ActiveInfo {
         provider: sel.provider.clone(),
-        name: p.name.to_string(),
+        name: if p.protocol == Protocol::Apple { p.name.to_string() } else { cfg.display_name(&sel.provider) },
         model: sel.model,
         local,
         consent,

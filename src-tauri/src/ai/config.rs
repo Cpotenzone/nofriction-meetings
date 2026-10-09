@@ -156,11 +156,22 @@ impl AiConfig {
             .and_then(|s| s.models.iter().find(|m| m.id == model).cloned())
     }
 
-    /// Model accepts images? Uses reported capability, then heuristics.
+    /// Model accepts images? Uses reported capability, then heuristics keyed
+    /// by the matched preset (a custom URL that is a preset's gets its rules).
     pub fn vision_capable(&self, provider: &str, model: &str) -> Option<bool> {
         self.model_info(provider, model)
             .and_then(|m| m.vision)
-            .or_else(|| providers::supports_vision(provider, model))
+            .or_else(|| providers::supports_vision(self.provider_hint(provider), model))
+    }
+
+    /// Preset id matching the configured URL, else the provider id.
+    pub fn provider_hint(&self, provider: &str) -> &'static str {
+        providers::provider_hint(provider, self.base_url(provider).as_deref())
+    }
+
+    /// Name shown for a provider: the matched preset's, else the generic one.
+    pub fn display_name(&self, provider: &str) -> String {
+        providers::display_name(provider, self.base_url(provider).as_deref())
     }
 
     /// The selection for `kind`, applying the vision→text fallback: when no
@@ -375,6 +386,37 @@ mod tests {
         c.change_endpoint("custom", Some("https://second.example.com/v1".into()), || panic!("same URL must retain its key")).unwrap();
         assert!(c.change_endpoint("custom", Some("https://third.example.com/v1".into()), || Err("Keychain deletion failed".into())).is_err());
         assert_eq!(c.base_url("custom").as_deref(), Some("https://second.example.com/v1"));
+    }
+
+    #[test]
+    fn switching_presets_forgets_the_previous_key_consent_and_model() {
+        let mut c = AiConfig::default();
+        // No preset is selected on a fresh config
+        assert_eq!(c.provider_hint("custom"), "custom");
+        assert_eq!(c.display_name("custom"), "Custom (OpenAI-compatible)");
+        let openai = providers::endpoint_preset("openai").unwrap();
+        let anthropic = providers::endpoint_preset("anthropic").unwrap();
+        c.change_endpoint("custom", Some(openai.base_url.into()), || Ok(())).unwrap();
+        c.provider_mut("custom").consent = true;
+        c.provider_mut("custom").model = Some(openai.default_model.into());
+        c.text = Some(Selection { provider: "custom".into(), model: openai.default_model.into() });
+        assert_eq!(c.provider_hint("custom"), "openai");
+        assert_eq!(c.display_name("custom"), "ChatGPT (OpenAI)");
+        assert!(!c.is_local("custom"));
+        let openai_account = c.credential_account("custom").unwrap();
+        let mut forgotten = false;
+        c.change_endpoint("custom", Some(anthropic.base_url.into()), || { forgotten = true; Ok(()) }).unwrap();
+        assert!(forgotten, "the previous preset's key must be deleted");
+        assert!(!c.provider("custom").consent);
+        assert!(c.provider("custom").model.is_none());
+        assert!(c.text.is_none());
+        assert_ne!(c.credential_account("custom").unwrap(), openai_account);
+        assert_eq!(c.provider_hint("custom"), "anthropic");
+        assert_eq!(c.vision_capable("custom", "claude-sonnet-5-5"), Some(true));
+        // Editing the URL away from the preset drops the preset name but keeps the connection
+        c.change_endpoint("custom", Some("https://proxy.example.com/v1".into()), || Ok(())).unwrap();
+        assert_eq!(c.provider_hint("custom"), "custom");
+        assert_eq!(c.display_name("custom"), "Custom (OpenAI-compatible)");
     }
 
     #[test]

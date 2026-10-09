@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { ai, onConsentRequest, type ConsentRequest } from "../lib/ai";
+import { consentDestination } from "../lib/aiPresets";
 import "../features/settings/AIProviderSettings.css";
 
 const NOT_NOW_QUIET_MS = 10 * 60 * 1000;
@@ -13,6 +14,7 @@ const NOT_NOW_QUIET_MS = 10 * 60 * 1000;
 export function AiConsentModal() {
     const [request, setRequest] = useState<ConsentRequest | null>(null);
     const [endpoint, setEndpoint] = useState<string>("");
+    const [destination, setDestination] = useState<{ host: string; name: string } | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const queue = useRef<ConsentRequest[]>([]);
@@ -27,11 +29,16 @@ export function AiConsentModal() {
         }
         current.current = req;
         setEndpoint("");
+        setDestination(null);
         setError(null);
         try {
+            // Always the real destination (host + full base URL), whether it
+            // came from a preset card or was typed by hand.
             const selected = (await ai.listProviders()).find((p) => p.id === req.provider);
-            if (!selected?.base_url || selected.id !== "custom") throw new Error("Configure your endpoint before allowing AI.");
-            setEndpoint(selected.base_url);
+            const dest = consentDestination(selected);
+            if (!dest) throw new Error("Configure your endpoint before allowing AI.");
+            setEndpoint(dest.endpoint);
+            setDestination({ host: dest.host, name: dest.name });
         } catch (e) {
             setError(String(e));
         }
@@ -97,11 +104,12 @@ export function AiConsentModal() {
         <div className="modal-overlay ai-consent-overlay" role="dialog" aria-modal="true" aria-labelledby="ai-consent-title">
             <div className="modal-content ai-consent-modal">
                 <div className="modal-header">
-                    <h2 id="ai-consent-title">Send recording content to your endpoint?</h2>
+                    <h2 id="ai-consent-title">Send recording content to {destination?.host ?? "your endpoint"}?</h2>
                 </div>
                 <div className="modal-body">
                     <p className="ai-consent-copy">
-                        Destination: <strong style={{ overflowWrap: "anywhere" }}>{endpoint || "Unavailable"}</strong>.
+                        Destination: <strong style={{ overflowWrap: "anywhere" }}>{endpoint || "Unavailable"}</strong>
+                        {destination && destination.name !== "Custom (OpenAI-compatible)" ? ` (${destination.name})` : ""}.
                         If you allow it, noFriction sends transcripts, titles, attendee names,
                         email/company details and selected screenshots needed for AI features directly to this endpoint,
                         using your optional API key. Its operator's privacy policy and terms apply.

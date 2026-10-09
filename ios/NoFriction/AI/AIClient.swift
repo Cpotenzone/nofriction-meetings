@@ -132,6 +132,70 @@ enum RequestBuilder {
         }
     }
 
+    /// The connection test body: the single word "Hi" with a one-token answer.
+    /// Never any recording content, so it needs no consent.
+    static func probe(_ ep: AIEndpoint, completionTokens: Bool = false) throws -> URLRequest {
+        var req = try chat(ep, messages: [ChatMessage(role: "user", content: "Hi")], maxTokens: 1,
+                           temperature: nil, completionTokens: completionTokens)
+        req.timeoutInterval = 30
+        return req
+    }
+
+}
+
+// MARK: - Connection test (explicit tap; one fixed word, never recording content)
+
+enum ConnectionTest {
+    enum Outcome: Equatable, Sendable {
+        case connected(String)
+        case wrongKey(String)
+        case noCredit(String)
+        case unreachable(String)
+        case badURL(String)
+        case modelMissing(String)
+        case noKey(String)
+        case other(String)
+
+        var ok: Bool { if case .connected = self { return true } else { return false } }
+
+        var message: String {
+            switch self {
+            case .connected(let m), .wrongKey(let m), .noCredit(let m), .unreachable(let m),
+                 .badURL(let m), .modelMissing(let m), .noKey(let m), .other(let m): m
+            }
+        }
+    }
+
+    /// Plain words from the probe's status and body. Pure; unit tested.
+    static func classify(host: String, model: String, status: Int, data: Data, secrets: [String]) -> Outcome {
+        let msg = ResponseParser.errorMessage(data, secrets: secrets)
+        let mentionsModel = msg.lowercased().contains("model")
+        switch status {
+        case 200..<300: return .connected("Connected to \(host) with model \(model).")
+        case 401, 403: return .wrongKey("\(host) rejected the API key (\(status)). Check the key and save it again.")
+        case 402, 429: return .noCredit("\(host) accepted the key but reported no credit or a rate limit (\(status)). \(msg)")
+        case 300..<400: return .badURL("\(host) redirected the request (\(status)); the base URL is probably wrong.")
+        case 404 where !mentionsModel: return .badURL("\(host) has no chat/completions at this base URL (404). It usually ends in /v1.")
+        case 400, 404, 422: return mentionsModel
+            ? .modelMissing("\(host) doesn't offer the model '\(model)'. \(msg)")
+            : .other("\(host) answered \(status): \(msg)")
+        default: return .other("\(host) answered \(status): \(msg)")
+        }
+    }
+
+    /// Transport and configuration errors in the same plain words.
+    static func outcome(for error: AIError, host: String) -> Outcome {
+        switch error {
+        case .notConfigured: return .badURL("Enter a base URL and model, then save the connection first.")
+        case .insecureURL: return .badURL(error.localizedDescription)
+        case .atsBlocked: return .unreachable(error.localizedDescription)
+        case .unreachable(let m): return .unreachable("Couldn't reach \(host). \(m)")
+        case .wrongKey(let m): return .wrongKey("\(host) rejected the API key. \(m)")
+        case .noCredit(let m): return .noCredit("\(host) reported no credit or a rate limit. \(m)")
+        case .tooLarge, .badResponse: return .other("\(host) sent a response this app couldn't read.")
+        default: return .other(error.localizedDescription)
+        }
+    }
 }
 
 // MARK: - Response parsing (pure; unit-tested)
@@ -222,9 +286,48 @@ actor AIClient {
 
     /// Models known to want max_completion_tokens and no temperature ("endpoint|model").
     private var completionTokenModels: Set<String>
+    /// URLProtocol classes for tests (a stub answers instead of the network). Empty in the app.
+    private let protocolClasses: [AnyClass]
 
-    init() {
+    init(protocolClasses: [AnyClass] = []) {
         completionTokenModels = Set(UserDefaults.standard.stringArray(forKey: Self.completionTokenModelsKey) ?? [])
+        self.protocolClasses = protocolClasses
+    }
+
+    /// The connection test: one fixed word with a one-token answer to the saved
+    /// endpoint with its saved key. It carries no recording content, so it is
+    /// the only request allowed before consent, and it runs only on an
+    /// explicit tap (never at launch or on save). Failures come back as plain
+    /// words, never thrown.
+    func testConnection(_ ep: AIEndpoint) async -> ConnectionTest.Outcome {
+        if ep.provider.proto == .foundationModels {
+            return AppleOnDevice.isAvailable ? .connected("Apple on-device model is available.") : .unreachable("Apple on-device model is not available on this device.")
+        }
+        guard ep.provider == .custom, let base = ep.baseURL,
+              !ep.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ConnectionTest.outcome(for: .notConfigured, host: ep.provider.name)
+        }
+        let host = base.host() ?? base.absoluteString
+        guard URLPolicy.isAllowed(base) else { return ConnectionTest.outcome(for: .insecureURL, host: host) }
+        let secrets = [ep.apiKey].compactMap { $0 }
+        var useCompletionTokens = completionTokenModels.contains("\(base.absoluteString)|\(ep.model)")
+        for attempt in 0..<2 {
+            do {
+                let req = try RequestBuilder.probe(ep, completionTokens: useCompletionTokens)
+                let (data, status) = try await send(req, secrets: secrets)
+                if status == 400, attempt == 0, !useCompletionTokens,
+                   ResponseParser.wantsCompletionTokens(ResponseParser.errorMessage(data, secrets: secrets)) {
+                    useCompletionTokens = true
+                    continue
+                }
+                return ConnectionTest.classify(host: host, model: ep.model, status: status, data: data, secrets: secrets)
+            } catch let e as AIError {
+                return ConnectionTest.outcome(for: e, host: host)
+            } catch {
+                return .unreachable("Couldn't reach \(host). \(Redactor.redact(error.localizedDescription, secrets: secrets))")
+            }
+        }
+        return .other("\(host) rejected the request twice.")
     }
 
     func complete(_ messages: [ChatMessage], maxTokens: Int, temperature: Double = 0.3, endpoint ep: AIEndpoint) async throws -> String {
@@ -272,6 +375,7 @@ actor AIClient {
         config.waitsForConnectivity = false
         config.httpCookieStorage = nil
         config.urlCache = nil
+        if !protocolClasses.isEmpty { config.protocolClasses = protocolClasses }
         let session = URLSession(configuration: config, delegate: NoRedirects(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         do {

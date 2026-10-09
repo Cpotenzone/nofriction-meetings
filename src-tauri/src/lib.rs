@@ -662,6 +662,7 @@ pub fn run() {
             commands::get_capture_settings,
             // AI Providers (bring your own key; Keychain-backed)
             ai::commands::ai_list_providers,
+            ai::commands::ai_list_presets,
             ai::commands::ai_detect_provider,
             ai::commands::ai_save_key,
             ai::commands::ai_delete_key,

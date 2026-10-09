@@ -25,6 +25,236 @@ final class AIProviderCatalogTests: XCTestCase {
     }
 }
 
+final class AIPresetTests: XCTestCase {
+    func testPresetTableIsStaticHTTPSAndNeverAProviderOrDefault() {
+        XCTAssertEqual(AIPreset.all.map(\.id), ["openai", "anthropic", "xai", "mistral"])
+        for p in AIPreset.all {
+            let url = try! XCTUnwrap(URL(string: p.baseURL), p.id)
+            XCTAssertTrue(p.baseURL.hasPrefix("https://"), p.id)
+            XCTAssertTrue(URLPolicy.isAllowed(url), p.id)
+            XCTAssertTrue(URLPolicy.needsConsent(provider: .custom, baseURL: url), "\(p.id): a preset is public and needs consent")
+            XCTAssertTrue(p.keyURL.hasPrefix("https://"), p.id)
+            XCTAssertFalse(p.defaultModel.isEmpty, p.id)
+            XCTAssertNil(AIProvider.byID(p.id), "\(p.id) must not be a provider id; the saved connection stays custom")
+            XCTAssertEqual(AIPreset.matching(url)?.id, p.id)
+            XCTAssertEqual(AIPreset.matching(p.baseURL + "/")?.id, p.id)
+        }
+        XCTAssertNil(AIPreset.matching("https://proxy.example/v1"))
+        XCTAssertNil(AIPreset.matching("http://127.0.0.1:11434/v1"))
+        XCTAssertNil(AIPreset.matching(nil as URL?))
+    }
+
+    @MainActor
+    func testNoCardIsSelectedOrSavedByDefault() throws {
+        let form = AIConnectModel()
+        XCTAssertNil(form.selectedCard)
+        XCTAssertNil(form.chosenPreset)
+        XCTAssertTrue(form.serverURL.isEmpty && form.serverModel.isEmpty && form.serverKey.isEmpty)
+        let s = AISettings(defaults: try XCTUnwrap(UserDefaults(suiteName: "nf-tests-\(UUID().uuidString)")), keyStore: .init(get: { _ in nil }, set: { _, _ in }, delete: { _ in }))
+        form.loadSaved(s)
+        XCTAssertNil(form.selectedCard, "a fresh install highlights nothing")
+        XCTAssertTrue(s.saved.isEmpty)
+        XCTAssertNil(s.activeProviderID)
+    }
+
+    @MainActor
+    func testChoosingAPresetFillsURLAndModelAndClearsTypedKey() {
+        let form = AIConnectModel()
+        let openai = AIPreset.byID("openai")!
+        form.serverKey = "typed-key-fixture"
+        form.choose(openai)
+        XCTAssertEqual(form.selectedCard, "openai")
+        XCTAssertEqual(form.serverURL, openai.baseURL)
+        XCTAssertEqual(form.serverModel, openai.defaultModel)
+        XCTAssertEqual(form.serverKey, "", "a key typed for one host is never carried to another")
+        XCTAssertEqual(form.formPreset?.id, "openai")
+        XCTAssertTrue(form.whatWillBeSent.contains("ChatGPT (OpenAI) at api.openai.com"))
+        XCTAssertTrue(form.whatWillBeSent.contains("\"Hi\""))
+        form.serverKey = "another-typed-key"
+        form.choose(AIPreset.byID("mistral")!)
+        XCTAssertEqual(form.serverURL, "https://api.mistral.ai/v1")
+        XCTAssertEqual(form.serverModel, "mistral-large-latest")
+        XCTAssertEqual(form.serverKey, "")
+        // Editing the URL away from the preset drops the preset match
+        form.serverURL = "https://proxy.example/v1"
+        XCTAssertNil(form.formPreset)
+    }
+
+    @MainActor
+    func testSwitchingPresetsOnSaveDeletesOldKeyAndConsent() throws {
+        var vault: String?
+        var deletions = 0
+        let store = AISettings.KeyStore(get: { _ in vault }, set: { key, _ in vault = key }, delete: { _ in deletions += 1; vault = nil })
+        let s = AISettings(defaults: try XCTUnwrap(UserDefaults(suiteName: "nf-tests-\(UUID().uuidString)")), keyStore: store)
+        let form = AIConnectModel()
+        form.choose(AIPreset.byID("openai")!)
+        form.serverKey = "synthetic-openai-key-fixture"
+        form.saveEndpoint(s)
+        s.grantConsent(.custom)
+        XCTAssertEqual(s.endpoint()?.baseURL?.host(), "api.openai.com")
+        XCTAssertEqual(s.endpoint()?.apiKey, "synthetic-openai-key-fixture")
+        XCTAssertEqual(s.displayName(for: .custom), "ChatGPT (OpenAI)")
+        XCTAssertTrue(s.hasConsent(.custom))
+        XCTAssertEqual(form.consentPrompt, .custom, "a preset is a public endpoint: consent is asked")
+        XCTAssertTrue(form.canTest(s))
+
+        form.choose(AIPreset.byID("anthropic")!)
+        XCTAssertFalse(form.canTest(s), "the form no longer shows the saved endpoint")
+        form.saveEndpoint(s)
+        XCTAssertEqual(s.endpoint()?.baseURL?.host(), "api.anthropic.com")
+        XCTAssertNil(s.endpoint()?.apiKey, "the OpenAI key must not travel to Anthropic")
+        XCTAssertNil(vault)
+        XCTAssertGreaterThan(deletions, 0)
+        XCTAssertFalse(s.hasConsent(.custom), "consent is for a destination, not a brand")
+        XCTAssertEqual(s.displayName(for: .custom), "Anthropic (Claude)")
+
+        // Reopening the screen highlights the saved preset; a custom URL highlights Custom
+        let again = AIConnectModel()
+        again.loadSaved(s)
+        XCTAssertEqual(again.selectedCard, "anthropic")
+        again.chooseCustom(s)
+        XCTAssertEqual(again.selectedCard, AIConnectModel.customCard)
+        XCTAssertTrue(again.serverURL.isEmpty, "custom starts blank: no default remote URL")
+        again.serverURL = "http://192.168.1.9:8080/v1"
+        again.serverModel = "local-model"
+        again.saveEndpoint(s)
+        XCTAssertEqual(s.displayName(for: .custom), AIProvider.custom.name)
+        let third = AIConnectModel()
+        third.loadSaved(s)
+        XCTAssertEqual(third.selectedCard, AIConnectModel.customCard)
+    }
+}
+
+/// Answers every request from a canned handler, so no test touches the network.
+final class StubURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, Data))?
+    nonisolated(unsafe) static var lastBody: Data?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        var body = request.httpBody
+        if body == nil, let stream = request.httpBodyStream {
+            stream.open()
+            var data = Data()
+            let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
+            defer { buf.deallocate() }
+            while stream.hasBytesAvailable {
+                let n = stream.read(buf, maxLength: 4096)
+                if n <= 0 { break }
+                data.append(buf, count: n)
+            }
+            body = data
+        }
+        Self.lastBody = body
+        do {
+            let (status, data) = try Self.handler!(request)
+            let resp = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+            client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+    override func stopLoading() {}
+}
+
+final class ConnectionTestTests: XCTestCase {
+    private func ep(key: String? = "stub-key-value-1234", base: String = "https://endpoint.example/v1", model: String = "stub-model") -> AIEndpoint {
+        AIEndpoint(provider: .custom, baseURL: URL(string: base), apiKey: key, model: model,
+                   contextTokens: 32_768, consentGranted: false)
+    }
+
+    func testProbeIsOneFixedWordWithOneToken() throws {
+        let r = try RequestBuilder.probe(ep())
+        XCTAssertEqual(r.url?.absoluteString, "https://endpoint.example/v1/chat/completions")
+        let b = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(r.httpBody)) as? [String: Any])
+        XCTAssertEqual(b["max_tokens"] as? Int, 1)
+        XCTAssertNil(b["temperature"])
+        let msgs = try XCTUnwrap(b["messages"] as? [[String: String]])
+        XCTAssertEqual(msgs.count, 1)
+        XCTAssertEqual(msgs.first?["content"], "Hi")
+        XCTAssertEqual(r.value(forHTTPHeaderField: "Authorization"), "Bearer stub-key-value-1234")
+        let c = try RequestBuilder.probe(ep(), completionTokens: true)
+        let cb = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(c.httpBody)) as? [String: Any])
+        XCTAssertEqual(cb["max_completion_tokens"] as? Int, 1)
+        XCTAssertNil(cb["max_tokens"])
+    }
+
+    func testClassifiesStatusesInPlainWordsAndRedacts() {
+        let ok = ConnectionTest.classify(host: "h.example", model: "m1", status: 200, data: Data("{}".utf8), secrets: [])
+        XCTAssertTrue(ok.ok)
+        XCTAssertEqual(ok, .connected("Connected to h.example with model m1."))
+        let bad = ConnectionTest.classify(host: "h.example", model: "m1", status: 401,
+                                          data: Data(#"{"error":{"message":"Incorrect API key provided: sk-proj-SECRET123456"}}"#.utf8), secrets: ["sk-proj-SECRET123456"])
+        guard case .wrongKey(let m) = bad else { return XCTFail("\(bad)") }
+        XCTAssertFalse(m.contains("SECRET123456"))
+        XCTAssertTrue(m.contains("h.example"))
+        if case .wrongKey = ConnectionTest.classify(host: "h", model: "m", status: 403, data: Data(), secrets: []) {} else { XCTFail() }
+        if case .noCredit = ConnectionTest.classify(host: "h", model: "m", status: 429, data: Data(), secrets: []) {} else { XCTFail() }
+        if case .noCredit = ConnectionTest.classify(host: "h", model: "m", status: 402, data: Data(), secrets: []) {} else { XCTFail() }
+        if case .badURL = ConnectionTest.classify(host: "h", model: "m", status: 404, data: Data("<html>no</html>".utf8), secrets: []) {} else { XCTFail() }
+        if case .modelMissing = ConnectionTest.classify(host: "h", model: "m", status: 404, data: Data(#"{"error":{"message":"The model `m` does not exist"}}"#.utf8), secrets: []) {} else { XCTFail() }
+        if case .modelMissing = ConnectionTest.classify(host: "h", model: "m", status: 400, data: Data(#"{"error":{"message":"invalid model"}}"#.utf8), secrets: []) {} else { XCTFail() }
+        if case .badURL = ConnectionTest.classify(host: "h", model: "m", status: 302, data: Data(), secrets: []) {} else { XCTFail() }
+        if case .other = ConnectionTest.classify(host: "h", model: "m", status: 500, data: Data("oops".utf8), secrets: []) {} else { XCTFail() }
+        if case .unreachable(let m) = ConnectionTest.outcome(for: .unreachable("dns failed"), host: "h") {
+            XCTAssertTrue(m.contains("h") && m.contains("dns failed"))
+        } else { XCTFail() }
+        if case .badURL = ConnectionTest.outcome(for: .insecureURL, host: "h") {} else { XCTFail() }
+    }
+
+    func testProbeReportsSuccessAuthFailureAndNetworkErrorWithoutConsent() async throws {
+        let client = AIClient(protocolClasses: [StubURLProtocol.self])
+        StubURLProtocol.handler = { _ in (200, Data(#"{"choices":[{"message":{"content":""},"finish_reason":"length"}]}"#.utf8)) }
+        let ok = await client.testConnection(ep())
+        XCTAssertTrue(ok.ok, ok.message)
+        XCTAssertTrue(ok.message.contains("endpoint.example"))
+        let sent = String(decoding: StubURLProtocol.lastBody ?? Data(), as: UTF8.self)
+        XCTAssertTrue(sent.contains("\"Hi\""), sent)
+        XCTAssertFalse(sent.contains("transcript"), sent)
+
+        StubURLProtocol.handler = { _ in (401, Data(#"{"error":{"message":"Incorrect API key provided: stub-key-value-1234"}}"#.utf8)) }
+        let bad = await client.testConnection(ep())
+        guard case .wrongKey(let m) = bad else { return XCTFail("\(bad)") }
+        XCTAssertFalse(m.contains("stub-key-value-1234"))
+
+        StubURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
+        let down = await client.testConnection(ep())
+        guard case .unreachable(let u) = down else { return XCTFail("\(down)") }
+        XCTAssertTrue(u.hasPrefix("Couldn't reach endpoint.example"), u)
+
+        // Misconfiguration never reaches the network
+        StubURLProtocol.handler = { _ in XCTFail("no request expected"); return (200, Data()) }
+        if case .badURL = await client.testConnection(ep(base: "http://public.example/v1")) {} else { XCTFail() }
+        if case .badURL = await client.testConnection(ep(model: " ")) {} else { XCTFail() }
+    }
+
+    @MainActor
+    func testFormTestUsesSavedEndpointAndReportsWords() async throws {
+        var vault: String?
+        let store = AISettings.KeyStore(get: { _ in vault }, set: { key, _ in vault = key }, delete: { _ in vault = nil })
+        let s = AISettings(defaults: try XCTUnwrap(UserDefaults(suiteName: "nf-tests-\(UUID().uuidString)")), keyStore: store)
+        let form = AIConnectModel()
+        let client = AIClient(protocolClasses: [StubURLProtocol.self])
+        await form.testConnection(s, using: client)
+        XCTAssertEqual(form.testStatus, .failed("Save the connection first."))
+        form.choose(AIPreset.byID("xai")!)
+        form.serverKey = "synthetic-xai-key-fixture"
+        form.saveEndpoint(s)
+        XCTAssertFalse(s.hasConsent(.custom), "the test must not need consent")
+        StubURLProtocol.handler = { req in
+            XCTAssertEqual(req.url?.absoluteString, "https://api.x.ai/v1/chat/completions")
+            XCTAssertEqual(req.value(forHTTPHeaderField: "Authorization"), "Bearer synthetic-xai-key-fixture")
+            return (200, Data(#"{"choices":[{"message":{"content":"Hi"}}]}"#.utf8))
+        }
+        await form.testConnection(s, using: client)
+        XCTAssertEqual(form.testStatus, .connected("Connected to api.x.ai with model grok-4.7."))
+        XCTAssertFalse(form.testing)
+    }
+}
+
 final class URLPolicyTests: XCTestCase {
     private func allowed(_ s: String) -> Bool { URLPolicy.isAllowed(URL(string: s)!) }
 

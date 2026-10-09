@@ -88,6 +88,122 @@ pub fn preset(id: &str) -> Option<&'static Preset> {
 }
 
 // ---------------------------------------------------------------------------
+// Endpoint presets (UI convenience over the one custom endpoint)
+// ---------------------------------------------------------------------------
+
+/// A named provider preset. Picking one only pre-fills the custom endpoint's
+/// base URL and model in the settings form; the user still pastes their own
+/// key, saves, and consents before any meeting content is sent. No preset is
+/// selected or active until the user clicks it, and the saved configuration
+/// remains an ordinary custom endpoint (same Keychain binding, same consent).
+///
+/// This table is the only place in the Mac source where provider hosts may
+/// appear (`scripts/check-ai-provider-policy.py` enforces that, and checks
+/// the iOS table carries the same hosts and models).
+#[derive(Debug, Serialize)]
+pub struct EndpointPreset {
+    pub id: &'static str,
+    pub name: &'static str,
+    /// OpenAI-compatible chat-completions base (the app appends `/chat/completions`)
+    pub base_url: &'static str,
+    pub default_model: &'static str,
+    /// Other model ids worth trying, for the hint under the model field
+    pub model_hint: &'static str,
+    /// Where the user creates their own API key ("Get a key" link)
+    pub key_url: &'static str,
+    /// One line shown on the card
+    pub note: &'static str,
+}
+
+pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
+    // OpenAI Chat Completions API. Base URL and endpoint per the API reference
+    // (https://developers.openai.com/api/docs/changelog lists gpt-6-luna,
+    // gpt-6.1-sol and gpt-6-astra under v1/chat/completions, Sep 2026;
+    // model catalogue: https://developers.openai.com/api/docs/models).
+    EndpointPreset {
+        id: "openai",
+        name: "ChatGPT (OpenAI)",
+        base_url: "https://api.openai.com/v1",
+        default_model: "gpt-6-luna",
+        model_hint: "gpt-6.1-sol, gpt-6-astra",
+        key_url: "https://platform.openai.com/api-keys",
+        note: "Your OpenAI API key; billed by OpenAI.",
+    },
+    // Anthropic's OpenAI SDK compatibility layer: base URL
+    // https://api.anthropic.com/v1/ with the Claude key as a Bearer token
+    // (https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk).
+    // Model ids: https://platform.claude.com/docs/en/models/overview.
+    EndpointPreset {
+        id: "anthropic",
+        name: "Anthropic (Claude)",
+        base_url: "https://api.anthropic.com/v1",
+        default_model: "claude-sonnet-5-5",
+        model_hint: "claude-haiku-5-5, claude-opus-5-5",
+        key_url: "https://platform.claude.com/settings/keys",
+        note: "Your Claude API key; billed by Anthropic.",
+    },
+    // xAI: OpenAI-compatible base https://api.x.ai/v1 with Bearer auth
+    // (https://docs.x.ai/docs/guides/chat). xAI marks /v1/chat/completions as
+    // deprecated in favour of /v1/responses but keeps it available
+    // (https://docs.x.ai/developers/model-capabilities/text/comparison).
+    // Model ids: https://docs.x.ai/docs/models.
+    EndpointPreset {
+        id: "xai",
+        name: "Grok (xAI)",
+        base_url: "https://api.x.ai/v1",
+        default_model: "grok-4.7",
+        model_hint: "grok-4.3",
+        key_url: "https://console.x.ai",
+        note: "Your xAI API key; billed by xAI.",
+    },
+    // Mistral: POST https://api.mistral.ai/v1/chat/completions with Bearer auth
+    // (https://docs.mistral.ai/api/); model aliases mistral-large-latest and
+    // mistral-small-latest appear in that reference.
+    EndpointPreset {
+        id: "mistral",
+        name: "Mistral",
+        base_url: "https://api.mistral.ai/v1",
+        default_model: "mistral-large-latest",
+        model_hint: "mistral-small-latest",
+        key_url: "https://console.mistral.ai/api-keys",
+        note: "Your Mistral API key; billed by Mistral.",
+    },
+];
+
+pub fn endpoint_preset(id: &str) -> Option<&'static EndpointPreset> {
+    ENDPOINT_PRESETS.iter().find(|p| p.id == id)
+}
+
+/// The preset whose base URL is exactly the configured one (after
+/// normalization), if any. Derived from the URL, never stored: a user who
+/// edits the URL to a proxy is no longer "on" the preset.
+pub fn preset_for_url(base_url: &str) -> Option<&'static EndpointPreset> {
+    let base = check_base_url(base_url).ok()?;
+    ENDPOINT_PRESETS.iter().find(|p| p.base_url == base)
+}
+
+/// Provider id to use for per-service heuristics (context window, vision,
+/// token-parameter quirks): the matched preset's id, else the provider id.
+pub fn provider_hint(provider: &str, base_url: Option<&str>) -> &'static str {
+    base_url
+        .and_then(preset_for_url)
+        .map(|p| p.id)
+        .unwrap_or(match preset(provider) {
+            Some(p) => p.id,
+            None => "custom",
+        })
+}
+
+/// Display name for a configured endpoint: the preset name when the URL is a
+/// preset's, else the provider's generic name.
+pub fn display_name(provider: &str, base_url: Option<&str>) -> String {
+    if let Some(p) = base_url.and_then(preset_for_url) {
+        return p.name.to_string();
+    }
+    preset(provider).map(|p| p.name.to_string()).unwrap_or_else(|| provider.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Paste-a-key
 // ---------------------------------------------------------------------------
 
@@ -292,7 +408,7 @@ pub fn supports_vision(provider: &str, model: &str) -> Option<bool> {
     let has = |xs: &[&str]| xs.iter().any(|x| m.contains(x));
     match provider {
         "anthropic" => Some(!m.contains("claude-2") && !m.contains("instant")),
-        "openai" => Some(has(&["gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4", "gpt-4-turbo", "vision"])),
+        "openai" => Some(has(&["gpt-4o", "gpt-4.1", "gpt-5", "gpt-6", "o1", "o3", "o4", "gpt-4-turbo", "vision"])),
         "gemini" => Some(m.contains("gemini") && !m.contains("embedding")),
         "xai" => Some(has(&["vision", "grok-4", "grok-2-vision"])),
         "groq" => Some(has(&["llama-4", "vision"])),
@@ -317,7 +433,8 @@ pub fn context_window(provider: &str, model: &str, reported: Option<usize>) -> u
     }
     let m = model.to_ascii_lowercase();
     let known = match provider {
-        "anthropic" => Some(200_000),
+        // Claude 4.6+ and GPT-6 report 1M; the 128K cap below still applies
+        "anthropic" => Some(1_000_000),
         "gemini" => Some(1_000_000),
         "openai" if m.starts_with("gpt-3.5") => Some(16_000),
         "openai" => Some(128_000),
@@ -350,6 +467,35 @@ mod tests {
         for legacy in ["gemini", "openai", "anthropic", "ollama", "lmstudio", "deepseek"] {
             assert!(preset(legacy).is_none());
         }
+    }
+
+    #[test]
+    fn endpoint_presets_are_static_https_and_never_selected_by_default() {
+        assert_eq!(
+            ENDPOINT_PRESETS.iter().map(|p| p.id).collect::<Vec<_>>(),
+            vec!["openai", "anthropic", "xai", "mistral"]
+        );
+        for p in ENDPOINT_PRESETS {
+            assert_eq!(check_base_url(p.base_url).unwrap(), p.base_url, "{}", p.id);
+            assert!(p.base_url.starts_with("https://"), "{}", p.id);
+            assert!(!url_is_local(p.base_url), "{}: a preset is a public endpoint and needs consent", p.id);
+            assert!(p.key_url.starts_with("https://"), "{}", p.id);
+            assert!(!p.default_model.trim().is_empty(), "{}", p.id);
+            assert_eq!(preset_for_url(p.base_url).map(|x| x.id), Some(p.id));
+            assert_eq!(preset_for_url(&format!("{}/", p.base_url)).map(|x| x.id), Some(p.id));
+            // Presets never become a provider id: the saved connection stays "custom"
+            assert!(preset(p.id).is_none(), "{}", p.id);
+        }
+        assert!(preset_for_url("https://proxy.example.com/v1").is_none());
+        assert!(preset_for_url("http://127.0.0.1:11434/v1").is_none());
+        assert_eq!(provider_hint("custom", Some("https://api.openai.com/v1/")), "openai");
+        assert_eq!(provider_hint("custom", Some("https://proxy.example.com/v1")), "custom");
+        assert_eq!(provider_hint("custom", None), "custom");
+        assert_eq!(provider_hint("apple", None), "apple");
+        assert_eq!(display_name("custom", Some("https://api.anthropic.com/v1")), "Anthropic (Claude)");
+        assert_eq!(display_name("custom", Some("https://proxy.example.com/v1")), "Custom (OpenAI-compatible)");
+        // Nothing is pre-selected: the provider table and a fresh config have no preset URL
+        assert!(PRESETS.iter().all(|p| preset_for_url(p.base_url).is_none()));
     }
 
     #[test]

@@ -16,8 +16,11 @@ export interface AiModelInfo {
 
 export interface AiProviderInfo {
     id: string;
+    /** The matched preset's name when the URL is a preset's, else the generic name */
     name: string;
-    protocol: "openai" | "anthropic";
+    /** Preset id matching the saved URL (derived from the URL, never stored) */
+    preset: string | null;
+    protocol: "openai" | "anthropic" | "apple";
     base_url: string | null;
     key_url: string;
     key: "required" | "optional" | "none";
@@ -67,15 +70,31 @@ export interface AiStatus {
     what_leaves: string;
 }
 
+/** Result of the one-token connection test, already in plain words. */
 export interface AiTestResult {
     ok: boolean;
+    /** connected | wrong_key | no_credit | unreachable | bad_url | model_missing | no_key | other */
     class: string;
     message: string;
-    model_count: number;
+}
+
+/**
+ * A named provider preset: static data from the backend table. Choosing one
+ * only fills the endpoint form; nothing is saved, selected or contacted.
+ */
+export interface AiPreset {
+    id: string;
+    name: string;
+    base_url: string;
+    default_model: string;
+    model_hint: string;
+    key_url: string;
+    note: string;
 }
 
 export const ai = {
     listProviders: () => invoke<AiProviderInfo[]>("ai_list_providers"),
+    listPresets: () => invoke<AiPreset[]>("ai_list_presets"),
     detect: (key: string) => invoke<AiDetection>("ai_detect_provider", { key }),
     saveKey: (key: string, provider: string, expectedBaseUrl: string) =>
         invoke<AiSaveKeyResult>("ai_save_key", { key, provider, expectedBaseUrl }),

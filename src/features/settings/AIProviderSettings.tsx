@@ -5,15 +5,29 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
     ai,
     friendlyAiError,
     notifyAiStatusChanged,
     requestConsent,
     type AiKind,
+    type AiPreset,
     type AiProviderInfo,
     type AiStatus,
 } from "../../lib/ai";
+import {
+    APPLE_CARD,
+    CUSTOM_CARD,
+    EMPTY_FORM,
+    applyCustom,
+    applyPreset,
+    hostOf,
+    initialCard,
+    presetForUrl,
+    whatWillBeSent,
+    type EndpointForm,
+} from "../../lib/aiPresets";
 import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
 import "./AIProviderSettings.css";
 
@@ -57,7 +71,7 @@ export function AIProviderSettings() {
             <SavedProviders saved={saved} onChange={refresh} />
             <ModelPickers providers={providers} byId={byId} status={status} onChange={refresh} />
             <AutomaticAi configured={!!status?.text} />
-            <LocalEndpoints providers={providers.filter((p) => LOCAL_IDS.includes(p.id))} onChange={refresh} />
+            <ConnectProvider providers={providers} onChange={refresh} />
             <Advanced />
         </div>
     );
@@ -84,8 +98,8 @@ function ActiveSummary({ status, onChange }: { status: AiStatus | null; onChange
         <section className="settings-section">
             <h3>AI provider</h3>
             <p className="section-desc">
-                Use Apple on-device, or enter your own OpenAI-compatible endpoint and model. No remote
-                service is configured by default. Keys are optional and stay in your macOS Keychain.
+                Use Apple on-device, pick a provider preset (your own key), or enter any OpenAI-compatible
+                endpoint. No provider is active by default. Keys stay in your macOS Keychain, tied to the endpoint.
             </p>
             <div className="ai-active-grid">
                 <div className="ai-active-item">
@@ -144,7 +158,7 @@ function SavedProviders({ saved, onChange }: { saved: AiProviderInfo[]; onChange
         setBusy(p.id);
         try {
             const r = await ai.test(p.id);
-            setResults((x) => ({ ...x, [p.id]: { ok: r.ok, text: r.ok ? `✓ ${r.message}` : friendlyAiError(r.message) } }));
+            setResults((x) => ({ ...x, [p.id]: { ok: r.ok, text: r.ok ? `✓ ${r.message}` : r.message } }));
         } catch (e) {
             setResults((x) => ({ ...x, [p.id]: { ok: false, text: friendlyAiError(e) } }));
         } finally {
@@ -423,87 +437,217 @@ function AutomaticAi({ configured }: { configured: boolean }) {
 
 // ---------------------------------------------------------------------------
 
-function LocalEndpoints({ providers, onChange }: { providers: AiProviderInfo[]; onChange: () => void }) {
-    return (
-        <section className="settings-section">
-            <h3>Local & custom servers</h3>
-            <p className="section-desc">
-                Enter a local or remote OpenAI-compatible endpoint yourself. Remote addresses require HTTPS
-                and permission before recording content is sent. Private local addresses may use HTTP.
-            </p>
-            {providers.map((p) => (
-                <LocalEndpoint key={p.id} p={p} onChange={onChange} />
-            ))}
-        </section>
-    );
-}
-
-function LocalEndpoint({ p, onChange }: { p: AiProviderInfo; onChange: () => void }) {
-    const [url, setUrl] = useState(p.base_url ?? "");
-    const [key, setKey] = useState("");
-    const [model, setModel] = useState(p.model ?? "");
-    const [busy, setBusy] = useState(false);
+/**
+ * Connect a provider: preset cards (Apple on-device, ChatGPT, Anthropic, Grok,
+ * Mistral, Custom) over the one custom endpoint form. A card only fills the
+ * URL and model; the user pastes their own key and clicks Save. Nothing is
+ * selected until clicked, and "Test connection" is the only request that can
+ * happen before consent (one fixed word, no meeting content).
+ */
+function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[]; onChange: () => void }) {
+    const custom = providers.find((p) => p.id === "custom");
+    const apple = providers.find((p) => p.id === "apple");
+    const [presets, setPresets] = useState<AiPreset[]>([]);
+    const [card, setCard] = useState<string | null>(null);
+    const [form, setForm] = useState<EndpointForm>(EMPTY_FORM);
+    const [busy, setBusy] = useState<"save" | "test" | "apple" | null>(null);
     const [feedback, setFeedback] = useState<Feedback>(null);
+    const [testResult, setTestResult] = useState<Feedback>(null);
 
-    useEffect(() => setUrl(p.base_url ?? ""), [p.base_url]);
+    // Static table from the backend: the only place provider URLs exist.
+    useEffect(() => {
+        ai.listPresets().then(setPresets).catch((e) => console.error("AI presets unavailable:", e));
+    }, []);
 
-    const connect = async () => {
-        setBusy(true);
+    // Reflect the saved connection (a fresh install highlights nothing).
+    useEffect(() => {
+        setCard(initialCard(providers, presets));
+        setForm({ url: custom?.base_url ?? "", model: custom?.model ?? "", key: "" });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [custom?.base_url, custom?.model, presets]);
+
+    const selectedPreset = card && card !== CUSTOM_CARD && card !== APPLE_CARD ? presets.find((p) => p.id === card) ?? null : null;
+    const formPreset = presetForUrl(presets, form.url);
+
+    const choose = (id: string) => {
+        setFeedback(null);
+        setTestResult(null);
+        setCard(id);
+        if (id === APPLE_CARD) return;
+        if (id === CUSTOM_CARD) {
+            // Custom keeps what is saved; a blank form otherwise (no default remote URL)
+            setForm(custom?.base_url && !presetForUrl(presets, custom.base_url) ? { url: custom.base_url, model: custom.model ?? "", key: "" } : applyCustom());
+            return;
+        }
+        const preset = presets.find((p) => p.id === id);
+        if (preset) setForm(applyPreset(preset));
+    };
+
+    const useApple = async () => {
+        setBusy("apple");
         setFeedback(null);
         try {
-            if (url.trim() !== (p.base_url ?? "")) await ai.setEndpoint(p.id, url.trim());
-            if (key.trim()) {
-                await ai.saveKey(key, "custom", url.trim());
-                setKey("");
-            }
-            await ai.setActive(p.id, model.trim(), "text");
-            setFeedback({ ok: true, text: "Connection saved. No test request was sent." });
+            await ai.setActive("apple", null, "text");
+            setFeedback({ ok: true, text: "Apple on-device is now used for text AI. Nothing leaves this Mac." });
             onChange();
-            const fresh = (await ai.listProviders()).find((x) => x.id === p.id);
-            if (fresh?.needs_consent && fresh.active_text) await requestConsent(p.id);
         } catch (e) {
             setFeedback({ ok: false, text: friendlyAiError(e) });
         } finally {
-            setBusy(false);
+            setBusy(null);
         }
     };
 
+    const save = async () => {
+        if (!custom) return;
+        setBusy("save");
+        setFeedback(null);
+        setTestResult(null);
+        const url = form.url.trim();
+        try {
+            // A changed URL deletes the old key and clears consent in the backend
+            if (url !== (custom.base_url ?? "")) await ai.setEndpoint(custom.id, url);
+            if (form.key.trim()) {
+                await ai.saveKey(form.key, "custom", url);
+                setForm((f) => ({ ...f, key: "" }));
+            }
+            await ai.setActive(custom.id, form.model.trim(), "text");
+            setFeedback({ ok: true, text: `Saved. Requests will go to ${hostOf(url)}. No request was sent; use Test connection to check the key.` });
+            onChange();
+            const fresh = (await ai.listProviders()).find((x) => x.id === custom.id);
+            if (fresh?.needs_consent && fresh.active_text) await requestConsent(custom.id);
+        } catch (e) {
+            setFeedback({ ok: false, text: friendlyAiError(e) });
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const test = async () => {
+        if (!custom) return;
+        setBusy("test");
+        setTestResult(null);
+        try {
+            const r = await ai.test(custom.id);
+            setTestResult({ ok: r.ok, text: r.message });
+        } catch (e) {
+            setTestResult({ ok: false, text: friendlyAiError(e) });
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const savedMatchesForm =
+        !!custom?.base_url && form.url.trim() === custom.base_url && !!custom.model && form.model.trim() === custom.model;
+    const canTest = !!custom?.configured && savedMatchesForm && !form.key.trim();
+
+    const cards: { id: string; name: string; note: string; disabled?: boolean }[] = [
+        {
+            id: APPLE_CARD,
+            name: "Apple on-device",
+            note: apple?.configured ? "Runs on this Mac. Nothing leaves it." : "Needs macOS 26 with Apple Intelligence.",
+            disabled: !apple?.configured,
+        },
+        ...presets.map((p) => ({ id: p.id, name: p.name, note: p.note })),
+        { id: CUSTOM_CARD, name: "Custom endpoint", note: "Any OpenAI-compatible server, local or remote." },
+    ];
+
     return (
-        <div className="settings-row ai-local-row">
-            <div className="settings-label">
-                <span className="label-main">
-                    {p.name}
-                    {p.configured && <span className="ai-badge ai-badge-ok">Connected</span>}
-                </span>
-                {feedback && <span className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</span>}
+        <section className="settings-section">
+            <h3>Connect a provider</h3>
+            <p className="section-desc">
+                Pick a provider to fill in its endpoint and a model, then paste your own API key. Presets are
+                only a shortcut: no provider is active until you save, and nothing is sent until you allow it.
+            </p>
+            <div className="ai-preset-grid" role="radiogroup" aria-label="AI provider">
+                {cards.map((c) => (
+                    <button
+                        key={c.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={card === c.id}
+                        className={`ai-preset-card${card === c.id ? " selected" : ""}`}
+                        onClick={() => choose(c.id)}
+                        disabled={c.disabled}
+                    >
+                        <span className="ai-preset-name">{c.name}</span>
+                        <span className="ai-preset-note">{c.note}</span>
+                    </button>
+                ))}
             </div>
-            <div className="ai-model-controls">
-                <input
-                    className="ai-text-input ai-url-input"
-                    placeholder={p.id === "custom" ? "https://your-server/v1" : p.base_url ?? ""}
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    spellCheck={false}
-                    aria-label={`${p.name} URL`}
-                />
-                <input className="ai-text-input" value={model} onChange={(e) => setModel(e.target.value)}
-                    placeholder="Model name" aria-label="Custom server model" autoComplete="off" />
-                {p.id === "custom" && (
-                    <input
-                        className="ai-text-input"
-                        type="password"
-                        placeholder={p.last4 ? `Key ••••${p.last4}` : "API key (optional)"}
-                        value={key}
-                        onChange={(e) => setKey(e.target.value)}
-                        autoComplete="off"
-                        aria-label="Custom server API key"
-                    />
-                )}
-                <button className="btn-secondary" onClick={connect} disabled={busy || !url.trim() || !model.trim()}>
-                    {busy ? "Saving…" : "Save connection"}
-                </button>
-            </div>
-        </div>
+            {card === APPLE_CARD && (
+                <div className="ai-preset-form">
+                    <p className="ai-what-leaves">AI runs on Apple's on-device model. No key, no network, no consent needed.</p>
+                    <div className="ai-model-controls">
+                        <button className="btn-primary" onClick={useApple} disabled={busy !== null || apple?.active_text}>
+                            {apple?.active_text ? "In use" : busy === "apple" ? "Switching…" : "Use Apple on-device"}
+                        </button>
+                    </div>
+                    {feedback && <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</p>}
+                </div>
+            )}
+            {card && card !== APPLE_CARD && custom && (
+                <div className="ai-preset-form">
+                    <div className="ai-preset-fields">
+                        <label className="ai-field">
+                            <span>Base URL</span>
+                            <input
+                                className="ai-text-input ai-url-input"
+                                placeholder="https://your-server/v1"
+                                value={form.url}
+                                onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+                                spellCheck={false}
+                                aria-label="Endpoint base URL"
+                            />
+                        </label>
+                        <label className="ai-field">
+                            <span>Model</span>
+                            <input
+                                className="ai-text-input"
+                                value={form.model}
+                                onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                                placeholder="Model id"
+                                aria-label="Model id"
+                                autoComplete="off"
+                            />
+                            {selectedPreset?.model_hint && <small className="ai-field-hint">Also: {selectedPreset.model_hint}</small>}
+                        </label>
+                        <label className="ai-field">
+                            <span>API key</span>
+                            <input
+                                className="ai-text-input"
+                                type="password"
+                                placeholder={custom.last4 && savedMatchesForm ? `Saved ••••${custom.last4}` : selectedPreset ? "Paste your key" : "API key (optional)"}
+                                value={form.key}
+                                onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
+                                autoComplete="off"
+                                aria-label="API key"
+                            />
+                            {selectedPreset && (
+                                <button type="button" className="ai-link-button" onClick={() => openUrl(selectedPreset.key_url).catch(() => undefined)}>
+                                    Get a key from {hostOf(selectedPreset.key_url)}
+                                </button>
+                            )}
+                        </label>
+                    </div>
+                    <p className="ai-what-leaves">{whatWillBeSent(form, formPreset)}</p>
+                    <div className="ai-model-controls ai-preset-actions">
+                        <button className="btn-primary" onClick={save} disabled={busy !== null || !form.url.trim() || !form.model.trim()}>
+                            {busy === "save" ? "Saving…" : "Save connection"}
+                        </button>
+                        <button
+                            className="btn-secondary"
+                            onClick={test}
+                            disabled={busy !== null || !canTest}
+                            title={canTest ? 'Sends the word "Hi" with a one-token answer. No meeting content.' : "Save the connection first"}
+                        >
+                            {busy === "test" ? "Testing…" : "Test connection"}
+                        </button>
+                    </div>
+                    {feedback && <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</p>}
+                    {testResult && <p className={testResult.ok ? "ai-ok-text" : "ai-error-text"}>{testResult.text}</p>}
+                </div>
+            )}
+        </section>
     );
 }
 

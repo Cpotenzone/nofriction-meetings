@@ -84,14 +84,29 @@ final class AISettings {
         !URLPolicy.needsConsent(provider: provider, baseURL: baseURL(for: provider)) || consented.contains(provider.id)
     }
 
+    /// Name shown for a provider: the matched preset's when the saved URL is a
+    /// preset's, else the provider's generic name. Derived, never stored.
+    func displayName(for provider: AIProvider) -> String {
+        if provider == .custom, let p = AIPreset.matching(baseURL(for: provider)) { return p.name }
+        return provider.name
+    }
+
     /// Resolve everything a request needs. Reads the key from the Keychain.
     func endpoint() -> AIEndpoint? {
         guard let p = effectiveProvider else { return nil }
+        return endpoint(for: p)
+    }
+
+    /// The saved endpoint for a provider whether or not it is active (the
+    /// connection test uses this for the custom endpoint). Same URL/model
+    /// checks as `effectiveProvider`.
+    func endpoint(for p: AIProvider) -> AIEndpoint? {
         if p == .apple {
             return AIEndpoint(provider: p, baseURL: nil, apiKey: nil, model: "apple-on-device",
                               contextTokens: AppleOnDevice.contextTokens, consentGranted: true)
         }
-        guard let s = saved[p.id] else { return nil }
+        guard let s = saved[p.id], let base = baseURL(for: p), URLPolicy.isAllowed(base),
+              !s.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         // A key is read only when this saved endpoint explicitly includes one.
         let key = s.last4 == nil ? nil : keyStore.get(p.id)
         if s.last4 != nil && (key ?? "").isEmpty { return nil }

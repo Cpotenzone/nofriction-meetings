@@ -537,7 +537,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3935 / 4000 characters**
+**3968 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -554,7 +554,7 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup or Settings, choose Use Apple on-device (no key), then return to Summarize or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
-Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. A custom endpoint is optional and entered by the user with their own account/key; the app requests consent before sending recording content to a public endpoint. No provider credential is supplied in these notes.
+Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
@@ -576,7 +576,7 @@ The local-model path requires its setup, compatible hardware and Pro entitlement
 
 ### macOS
 
-**3882 / 4000 characters**
+**3958 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -606,7 +606,7 @@ Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember
 REVIEW (Pro)
 9. Select the meeting → REVIEW and make the guide: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. NOTES follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
 
-A custom AI endpoint is optional, is entered by the user with their own account/key, and requires consent before recording content is sent to a public endpoint. No provider credential is supplied in these notes. Reviewer contact details will be supplied separately in App Store Connect.
+Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Summarize →
