@@ -13,12 +13,13 @@ The custom URL, model and key begin empty. There is no default remote URL, key-p
 
 ## Provider presets (UI convenience, same invariants)
 
-The AI settings show text-only cards: **Apple on-device**, **ChatGPT (OpenAI)**, **Anthropic (Claude)**, **Grok (xAI)**, **Mistral** and **Custom endpoint**. A preset is static data (name, base URL, default model, model hint, key-page URL, one-line note) kept in exactly two places, `src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS` and `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, with the documentation source cited beside each entry. The Mac UI fetches the table from the backend (`ai_list_presets`); it carries no URL of its own.
+The AI settings show text-only cards: **Apple on-device**, **ChatGPT (OpenAI)**, **Anthropic (Claude)**, **Muse (Meta)**, **Grok (xAI)**, **Mistral** and **Custom endpoint**. A preset is static data (name, base URL, default model, model hint, key-page URL, one-line note) kept in exactly two places, `src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS` and `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, with the documentation source cited beside each entry. The Mac UI fetches the table from the backend (`ai_list_presets`); it carries no URL of its own.
 
 | Preset | Base URL | Default model | Also | Key page |
 |---|---|---|---|---|
 | ChatGPT (OpenAI) | `https://api.openai.com/v1` | `gpt-6-luna` | `gpt-6.1-sol`, `gpt-6-astra` | platform.openai.com/api-keys |
 | Anthropic (Claude) | `https://api.anthropic.com/v1` | `claude-sonnet-5-5` | `claude-haiku-5-5`, `claude-opus-5-5` | platform.claude.com/settings/keys |
+| Muse (Meta) | `https://api.meta.ai/v1` | `muse-spark-1.3` | `muse-spark-1.1` | dev.meta.ai → API keys |
 | Grok (xAI) | `https://api.x.ai/v1` | `grok-4.7` | `grok-4.3` | console.x.ai |
 | Mistral | `https://api.mistral.ai/v1` | `mistral-large-latest` | `mistral-small-latest` | console.mistral.ai/api-keys |
 

@@ -335,7 +335,7 @@ meeting,notes,transcription,recorder,voice,memo,lecture,class,minutes,action ite
 App Store Connect doesn't show this field for an app's first version. Use the
 text in the TestFlight "What to Test" field now and keep it for 1.0.1.
 
-**685 / 4000 characters**
+**693 / 4000 characters**
 
 ```text
 Welcome to noFriction for iPhone and iPad.
@@ -446,7 +446,7 @@ meeting,notes,transcription,recorder,slides,lecture,class,minutes,action items,f
 
 Not shown for the first macOS version either; use it for TestFlight.
 
-**787 / 4000 characters**
+**793 / 4000 characters**
 
 ```text
 Simpler, calmer noFriction.
@@ -458,7 +458,7 @@ Simpler, calmer noFriction.
 • Delete a recording with 5 seconds to undo
 • Settings in five places: Recording, Transcription, AI, Subscription, About
 • The menu-bar icon: Start Recording, Stop, Pause, Resume, Mark
-• AI settings offer ChatGPT, Anthropic, Grok and Mistral cards that fill in the endpoint; you paste your own key
+• AI settings offer ChatGPT, Anthropic, Muse, Grok and Mistral cards that fill in the endpoint; you paste your own key
 • One noFriction Pro subscription for Mac, iPhone and iPad
 ```
 
@@ -538,7 +538,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3988 / 4000 characters**
+**3999 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -555,7 +555,7 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup sheet or Settings → Connect, choose Apple on-device, then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
-Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
+Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
@@ -577,7 +577,7 @@ The local-model path requires its setup, compatible hardware and Pro entitlement
 
 ### macOS
 
-**3963 / 4000 characters**
+**3976 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -607,7 +607,7 @@ Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember
 REVIEW (Pro)
 9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Notes follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
 
-The ChatGPT (OpenAI), Anthropic (Claude), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
+The ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Make notes

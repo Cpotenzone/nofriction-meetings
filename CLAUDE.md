@@ -117,7 +117,7 @@ these rules apply.
   shortcut for filling that endpoint in.** The choices are Apple Foundation
   Models (iOS/macOS 26+ with Apple Intelligence) or one OpenAI-compatible
   endpoint with a base URL, model and optional user-supplied key. Provider
-  preset cards (ChatGPT/OpenAI, Anthropic/Claude, Grok/xAI, Mistral; owner
+  preset cards (ChatGPT/OpenAI, Anthropic/Claude, Muse/Meta, Grok/xAI, Mistral; owner
   decision 2026-10-09) are static data in exactly two tables
   (`src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS`,
   `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, docs cited beside each

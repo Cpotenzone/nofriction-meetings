@@ -27,7 +27,7 @@ final class AIProviderCatalogTests: XCTestCase {
 
 final class AIPresetTests: XCTestCase {
     func testPresetTableIsStaticHTTPSAndNeverAProviderOrDefault() {
-        XCTAssertEqual(AIPreset.all.map(\.id), ["openai", "anthropic", "xai", "mistral"])
+        XCTAssertEqual(AIPreset.all.map(\.id), ["openai", "anthropic", "meta", "xai", "mistral"])
         for p in AIPreset.all {
             let url = try! XCTUnwrap(URL(string: p.baseURL), p.id)
             XCTAssertTrue(p.baseURL.hasPrefix("https://"), p.id)
