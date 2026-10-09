@@ -130,8 +130,9 @@ The first time you record a **Class**, noFriction shows this once:
 
 ## Add slides and screens
 
-**iPhone/iPad:** while recording, tap **Take Photo** for a slide or whiteboard,
-or **Choose from Photos** to add screenshots. They appear in the recording.
+**iPhone/iPad:** while recording, tap **Photo** to take a picture of a slide
+or whiteboard, or touch and hold it and choose **Choose from Photos** to add
+screenshots. They appear in the recording.
 
 **Mac:** noFriction saves a screenshot of the chosen screens when they change
 (about once a second at most) while you record.
@@ -185,9 +186,9 @@ Nothing leaves the device.
 
 - If you haven't chosen anything else, the app uses it automatically when it's
   available.
-- iPhone/iPad: to switch to it, go to **Settings tab → Saved connections** and
-  tap **Use Apple on-device (no key)**, or tap **Apple on-device** if it's
-  already listed. It's also offered in the **Set up AI** sheet that opens the
+- iPhone/iPad: to switch to it, tap the **Apple on-device** card under
+  **Settings tab → Connect** (or **Apple on-device** under **Saved
+  connections**). It's also offered in the **Set up AI** sheet that opens the
   first time you tap **Make notes**, **Chat** or make a review guide.
 - Mac: **Settings → AI → Saved connections → Apple on-device → Use**.
   On the Mac, Apple on-device doesn't analyze screenshots.
@@ -209,14 +210,15 @@ your server's documentation you need:
 - **API key**: only if your server requires one. Leave it empty otherwise.
 
 Enter them:
-- iPhone/iPad: **Settings tab → Your AI endpoint**: **Base URL**, **Model
-  ID**, **API key (optional)** → **Save endpoint**.
+- iPhone/iPad: **Settings tab → Connect**: pick a card, or **Custom
+  endpoint**, then **Base URL**, **Model ID** and **API key** → **Save**.
 - Mac: **Settings → AI**: pick a card, or **Custom endpoint**, then
   **Base URL**, **Model** and **API key** → **Save connection**.
 
-Saving doesn't contact the server. To check it on the Mac, click **Test connection**
-(or **Test** next to it under **Saved connections**); **↻** under **Models** reloads the
-server's model list. On iPhone/iPad, try **Make notes** on a recording.
+Saving doesn't contact the server. To check it, tap **Test connection**
+(iPhone/iPad) or click **Test connection** (Mac; or **Test** next to it under
+**Saved connections**); it sends only the word "Hi". On the Mac, **↻** under
+**Models** reloads the server's model list.
 
 Good to know:
 - **HTTPS for the internet.** An address on the internet must start with
@@ -264,8 +266,8 @@ Apple on-device or your own endpoint (see [Connect your AI](#connect-your-ai)).
 decide about the launch date?", "What did the professor say about the
 midterm?"). Pick the scope at the top first: **All recordings**, **this
 Notebook**, **this Topic** or **this recording**; every answer says which
-scope it used. Answers come only from your transcripts, notes and marked
-moments, and cite them as [1], [2]…; tap a citation chip to open that
+scope it used. Answers come only from your transcripts, notes and marks,
+and cite them as [1], [2]…; tap a citation chip to open that
 recording at that moment. An empty chat suggests questions from the scope's
 titles and topics. Chats are kept on the device; **New chat** starts another,
 and the list button shows past chats (swipe to delete). If you delete or
@@ -324,7 +326,8 @@ endpoint). It's called a **study guide** for a class; the contents are the
 same for every type: for a class it's what to study, for a meeting what to
 remember and follow up, for personal recordings what to remember. Mac: open
 the recording → **Review guide** → **Make review guide** (**Study guide** →
-**Make study guide** for a class). iPhone/iPad: open the recording and make the guide there. You get:
+**Make study guide** for a class). iPhone/iPad: open the recording →
+**Review** → **Make review guide** (**Make study guide** for a class). You get:
 - **Summary** as short notes
 - **Key terms** with definitions
 - **Flashcards**: click or tap to flip, then **Known** or **Again** (Mac:

@@ -538,7 +538,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3968 / 4000 characters**
+**3988 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -553,7 +553,7 @@ PRO AND RESTORE
 5. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require the Pro entitlement.
 
 OFFLINE AI PATH
-Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup or Settings, choose Use Apple on-device (no key), then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
+Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup sheet or Settings → Connect, choose Apple on-device, then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
 Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
 
@@ -561,7 +561,7 @@ RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
 7. While recording, tap Mark this moment, then ? Question, ✎ On the test or Note within six seconds. On a physical device, say a web address such as "example dot com".
 8. Stop. Recordings shows Notebook chips that filter the list. In the recording, Marks lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched. People, a row at the top of Recordings, lists everyone from calendar invites.
-Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9). A short Meeting and a short Personal recording show the difference.
+Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9).
 
 REVIEW (Pro)
 9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Make notes follows the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Make notes.
@@ -858,7 +858,7 @@ from Business to Education.
 | Monthly description | 38 | 45 | |
 | Yearly display name | 10 | 30 | |
 | Yearly description | 37 | 45 | |
-| iOS review notes | 3935 | 4000 | changed (was 3593) |
+| iOS review notes | 3988 | 4000 | changed 2026-10-09 (was 4053, over the limit; header said 3968) |
 | Mac review notes (3.7.0) | 3963 | 4000 | changed in the 3.7.0 acceptance pass (was 3865) |
 | Beta description | 308 | 4000 | changed (was 281) |
 | What to Test | 1366 | 4000 | changed (was 1058) |
