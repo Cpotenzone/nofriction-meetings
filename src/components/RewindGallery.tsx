@@ -22,12 +22,10 @@ import {
 import {
     EMPTY_SELECTION,
     clickItem,
-    lineSpan,
     linkSelection,
     matchesPreview,
     plural,
     pruneSelection,
-    screenSpans,
     selectAll,
     selectLastMinutes,
     selectToEnd,
@@ -92,7 +90,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     // the user last selected in. The panes are linked by time.
     const [screenSel, setScreenSel] = useState<Selection>(EMPTY_SELECTION);
     const [lineSel, setLineSel] = useState<Selection>(EMPTY_SELECTION);
-    const [origin, setOrigin] = useState<Pane | null>(null);
+    const [, setOrigin] = useState<Pane | null>(null);
     const [hint, setHint] = useState<Hint | null>(null);
     // Word-level editing (the token picker): double-click a line, or "Edit words"
     const [wordMode, setWordMode] = useState(false);
@@ -308,7 +306,6 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     );
     const meetingEndMs = Math.max(maxTime, (timeline?.duration_seconds ?? 0) * 1000);
     const startedAt = timeline?.started_at ?? "";
-    const sSpans = useMemo(() => screenSpans(frames, meetingEndMs), [frames, meetingEndMs]);
 
     // What is selected: everything the time spans remove, in both panes.
     // The counts in the bar and the ids sent are these same lists.
