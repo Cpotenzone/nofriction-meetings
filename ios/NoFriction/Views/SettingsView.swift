@@ -5,7 +5,9 @@ import UIKit
 
 // MARK: - Endpoint setup
 
-/// Store explicit routing input locally. No key detection, validation probe or model discovery.
+/// Store explicit routing input locally. No key detection, validation probe or
+/// model discovery on save. A preset card only fills the URL and model; the
+/// connection test runs only on its own tap.
 @MainActor
 @Observable
 final class AIConnectModel {
@@ -15,19 +17,103 @@ final class AIConnectModel {
         case failed(String)
     }
 
+    /// Card id for "enter your own endpoint" (keeps the form as typed).
+    static let customCard = "custom"
+
     var serverURL = ""
     var serverModel = ""
     var serverKey = ""
     var status: Status = .idle
+    var testStatus: Status = .idle
+    var testing = false
     var consentPrompt: AIProvider?
+    /// The highlighted card: a preset id or `customCard`. Nil until the user
+    /// taps one or a saved preset URL is loaded; never set by default.
+    var selectedCard: String?
 
     var canSave: Bool {
         !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !serverModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// The preset matching the URL in the form (nil for a custom URL).
+    var formPreset: AIPreset? { AIPreset.matching(serverURL) }
+
+    /// The preset the user chose from the cards (nil for custom / none).
+    var chosenPreset: AIPreset? { selectedCard.flatMap(AIPreset.byID) }
+
     func pasteFromClipboard() {
         if let s = UIPasteboard.general.string { serverKey = KeyDetector.normalize(s) }
+    }
+
+    /// Fill the form from a preset: its base URL and default model. The key
+    /// field is cleared so a key typed for one host is never carried to another.
+    func choose(_ preset: AIPreset) {
+        selectedCard = preset.id
+        serverURL = preset.baseURL
+        serverModel = preset.defaultModel
+        serverKey = ""
+        status = .idle
+        testStatus = .idle
+    }
+
+    /// The custom card: blank fields (there is no default remote URL), or the
+    /// saved custom URL when one is saved and is not a preset's.
+    func chooseCustom(_ settings: AISettings) {
+        selectedCard = Self.customCard
+        if let saved = settings.saved[AIProvider.custom.id], let url = saved.baseURL, AIPreset.matching(URL(string: url)) == nil {
+            serverURL = url
+            serverModel = saved.model
+        } else {
+            serverURL = ""
+            serverModel = ""
+        }
+        serverKey = ""
+        status = .idle
+        testStatus = .idle
+    }
+
+    /// Reflect the saved connection when the screen opens: a saved preset URL
+    /// highlights its card; any other saved URL highlights Custom; a fresh
+    /// install highlights nothing.
+    func loadSaved(_ settings: AISettings) {
+        guard let saved = settings.saved[AIProvider.custom.id], let url = saved.baseURL else { return }
+        serverURL = url
+        serverModel = saved.model
+        selectedCard = AIPreset.matching(URL(string: url))?.id ?? Self.customCard
+    }
+
+    /// The saved custom endpoint is what the form shows (so the test checks what the user sees).
+    func canTest(_ settings: AISettings) -> Bool {
+        guard let saved = settings.saved[AIProvider.custom.id], let url = saved.baseURL else { return false }
+        return URLPolicy.parseBaseURL(serverURL)?.absoluteString == url
+            && serverModel.trimmingCharacters(in: .whitespacesAndNewlines) == saved.model
+            && serverKey.isEmpty
+    }
+
+    /// Plain words under the form: where requests will go, and that the
+    /// test sends only "Hi".
+    var whatWillBeSent: String {
+        let raw = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return "Enter a base URL to see where requests will go." }
+        let host = URLPolicy.parseBaseURL(raw)?.host() ?? raw
+        let model = serverModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let who = formPreset.map { "\($0.name) at \(host)" } ?? host
+        return "Requests go straight from this device to \(who) using model \(model.isEmpty ? "(enter a model)" : model) and your own key. Nothing is sent until you save and allow it; Test connection sends only the word \"Hi\"."
+    }
+
+    /// One fixed word to the saved custom endpoint with its saved key. Runs
+    /// only from the Test connection button.
+    func testConnection(_ settings: AISettings, using client: AIClient = .shared) async {
+        guard let ep = settings.endpoint(for: .custom) else {
+            testStatus = .failed("Save the connection first.")
+            return
+        }
+        testing = true
+        testStatus = .idle
+        let outcome = await client.testConnection(ep)
+        testing = false
+        testStatus = outcome.ok ? .connected(outcome.message) : .failed(outcome.message)
     }
 
     func saveEndpoint(_ settings: AISettings) {
@@ -40,7 +126,9 @@ final class AIConnectModel {
             try settings.save(.custom, key: key.isEmpty ? nil : key, baseURL: url,
                               models: [ModelInfo(id: model, contextTokens: nil)])
             serverKey = ""
-            status = .connected("Endpoint saved. It will be used when you request AI notes or a follow-up.")
+            testStatus = .idle
+            let host = url.host() ?? url.absoluteString
+            status = .connected("Saved. Requests will go to \(host). No request was sent; use Test connection to check the key.")
             if !settings.hasConsent(.custom) { consentPrompt = .custom }
         } catch {
             status = .failed(Redactor.redact(error.localizedDescription, secrets: [key]))
@@ -54,36 +142,109 @@ struct AIEndpointSection: View {
 
     var body: some View {
         Section {
+            presetCards
             TextField("Base URL", text: $model.serverURL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
                 .accessibilityIdentifier("ai-endpoint-url")
-            TextField("Model ID", text: $model.serverModel)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("ai-model-id")
-            SecureField("API key (optional)", text: $model.serverKey)
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Model ID", text: $model.serverModel)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("ai-model-id")
+                if let p = model.chosenPreset, !p.modelHint.isEmpty {
+                    Text("Also: \(p.modelHint)").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            SecureField(model.chosenPreset == nil ? "API key (optional)" : "Paste your API key", text: $model.serverKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .privacySensitive()
-                .accessibilityLabel("API key, optional")
+                .accessibilityLabel(model.chosenPreset == nil ? "API key, optional" : "API key")
                 .accessibilityIdentifier("api-key-field")
+            if let p = model.chosenPreset, let keyURL = URL(string: p.keyURL) {
+                Link("Get a key from \(p.host.replacingOccurrences(of: "api.", with: ""))", destination: keyURL)
+                    .font(.footnote)
+                    .accessibilityIdentifier("get-key-link")
+            }
+            Text(model.whatWillBeSent)
+                .font(.footnote).foregroundStyle(.secondary)
+                .accessibilityIdentifier("what-will-be-sent")
             HStack(spacing: 10) {
                 Button("Paste key", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
                     .buttonStyle(.bordered)
-                Button("Save endpoint", systemImage: "checkmark") { model.saveEndpoint(settings) }
+                Button("Save", systemImage: "checkmark") { model.saveEndpoint(settings) }
                     .buttonStyle(.borderedProminent)
                     .foregroundStyle(.black)
                     .disabled(!model.canSave)
                     .accessibilityIdentifier("save-ai-endpoint")
+                Button {
+                    Task { await model.testConnection(settings) }
+                } label: {
+                    if model.testing { ProgressView() } else { Label("Test connection", systemImage: "antenna.radiowaves.left.and.right") }
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.testing || !model.canTest(settings))
+                .accessibilityHint("Sends the word Hi with a one-token answer. No recording content.")
+                .accessibilityIdentifier("test-ai-connection")
             }
             StatusLine(status: model.status)
+            StatusLine(status: model.testStatus)
         } header: {
-            Text("Your AI endpoint")
+            Text("Connect a provider")
         } footer: {
-            Text("Enter a base URL and model ID for your own OpenAI-compatible endpoint. The key is optional and stored only in this device's Keychain. Saving makes no network request. Remote endpoints need HTTPS; HTTP is allowed only on your device or private network.")
+            Text("Pick a provider to fill in its endpoint and a model, then paste your own API key, or enter any OpenAI-compatible endpoint. Presets are only a shortcut: no provider is active until you save, and nothing is sent until you allow it. Keys are stored only in this device's Keychain, tied to the endpoint; changing the endpoint deletes the old key. Remote endpoints need HTTPS; HTTP is allowed only on your device or private network.")
         }
+        .onAppear { if model.selectedCard == nil { model.loadSaved(settings) } }
+    }
+
+    /// Text-only cards (no third-party logos). Apple on-device appears when available.
+    private var presetCards: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if AppleOnDevice.isAvailable {
+                    PresetCard(name: "Apple on-device", note: settings.effectiveProvider == .apple ? "In use. Nothing leaves this device." : "No key. Nothing leaves this device.",
+                               selected: settings.effectiveProvider == .apple && model.selectedCard == nil) {
+                        settings.useApple()
+                        model.selectedCard = nil
+                    }
+                }
+                ForEach(AIPreset.all) { p in
+                    PresetCard(name: p.name, note: p.note, selected: model.selectedCard == p.id) { model.choose(p) }
+                        .accessibilityIdentifier("preset-\(p.id)")
+                }
+                PresetCard(name: "Custom endpoint", note: "Any OpenAI-compatible server, local or remote.",
+                           selected: model.selectedCard == AIConnectModel.customCard) { model.chooseCustom(settings) }
+                    .accessibilityIdentifier("preset-custom")
+            }
+            .padding(.vertical, 4)
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("AI provider")
+    }
+}
+
+private struct PresetCard: View {
+    let name: String
+    let note: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                Text(note).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+            }
+            .frame(width: 150, alignment: .leading)
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Theme.ai : Color.secondary.opacity(0.25), lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -113,7 +274,7 @@ struct AISetupSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Use Apple on-device when available, or enter your own AI endpoint and model. noFriction provides no hosted models.")
+                    Text("Use Apple on-device when available, pick a provider and paste your own key, or enter your own AI endpoint and model. noFriction provides no hosted models.")
                         .font(.callout)
                 }
                 AIEndpointSection(model: model)
@@ -204,7 +365,7 @@ struct SettingsView: View {
     @ViewBuilder private var activeSection: some View {
         Section("AI provider") {
             if let p = settings.effectiveProvider {
-                LabeledContent("Active", value: p.name)
+                LabeledContent("Active", value: settings.displayName(for: p))
                 if p == .apple {
                     LabeledContent("Model", value: "Apple on-device")
                 } else if let saved = settings.saved[p.id] {
@@ -226,7 +387,7 @@ struct SettingsView: View {
                 Text(whatLeaves(p))
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
-                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your recordings are unchanged. Choose Apple on-device when available, or enter your endpoint and model below." : "Choose Apple on-device when available, or enter your endpoint and model below to use AI notes and follow-ups.")
+                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your recordings are unchanged. Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below." : "Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below to use AI notes and follow-ups.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -242,7 +403,7 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(p.name).foregroundStyle(.primary)
+                                Text(settings.displayName(for: p)).foregroundStyle(.primary)
                                 Text(detail(p)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()

@@ -113,17 +113,28 @@ these rules apply.
 - **Client-only.** No noFriction servers. Never add Supabase, Pinecone, an
   ingest server or any owner-hosted endpoint. AI requests go straight from the
   client to the endpoint the user entered. Spec: `docs/AI_PROVIDERS.md`.
-- **AI is Apple on-device or one user-entered endpoint, nothing else.** The
-  choices are Apple Foundation Models (iOS/macOS 26+ with Apple Intelligence)
-  or one OpenAI-compatible endpoint with a user-entered base URL, model and
-  optional user-supplied key. Never add named service presets or pickers
-  (OpenAI, Anthropic, Gemini, xAI, Groq, …), key-prefix detection, a default
-  remote URL, a startup provider probe or hosted AI. The custom URL, model
-  and key start empty. A saved legacy named provider fails closed (no
-  fallback to another network service) and meetings are kept.
-  `python3 scripts/check-ai-provider-policy.py` must pass; both release
-  scripts run it and then scan the signed artifact for credentials and
-  retired service hosts.
+- **AI is Apple on-device or one user-entered endpoint; presets are only a
+  shortcut for filling that endpoint in.** The choices are Apple Foundation
+  Models (iOS/macOS 26+ with Apple Intelligence) or one OpenAI-compatible
+  endpoint with a base URL, model and optional user-supplied key. Provider
+  preset cards (ChatGPT/OpenAI, Anthropic/Claude, Grok/xAI, Mistral; owner
+  decision 2026-10-09) are static data in exactly two tables
+  (`src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS`,
+  `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, docs cited beside each
+  entry) that pre-fill the URL and model; the saved connection stays the
+  `custom` provider with the same Keychain binding and consent rule, and the
+  preset match is derived from the URL, never stored. Never add a default
+  remote URL, a provider active at first run, a preset selected without a
+  click, key-prefix detection, a startup provider probe, bundled keys or
+  hosted AI; provider hosts may appear nowhere but the two tables. The only
+  pre-consent request is the explicit "Test connection" button (the word
+  "Hi", one token, saved endpoint and key). Custom URL, model and key start
+  empty; switching the endpoint deletes the old key and clears consent. A
+  saved legacy named provider id fails closed (no fallback to another network
+  service) and meetings are kept. `python3 scripts/check-ai-provider-policy.py`
+  must pass; both release scripts run it and then scan the signed artifact for
+  credentials and retired service hosts (the four preset hosts are
+  inventoried, not failed). Spec: `docs/AI_PROVIDERS.md`.
 - **Transcription is on-device only:** local Whisper on the Mac, Apple speech
   on iOS. The cloud transcription modules (Deepgram, Gladia, Google, Gemini)
   were removed from the source; don't bring them back.

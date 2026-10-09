@@ -11,6 +11,7 @@
 use super::config::{self, Kind};
 use super::providers::{self, preset, KeyNeed, Protocol};
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -179,6 +180,8 @@ impl From<AiError> for String {
 #[derive(Debug, Clone)]
 pub struct Target {
     pub provider: String,
+    /// Preset id matching the URL (for per-service quirks), else `provider`
+    pub hint: &'static str,
     pub protocol: Protocol,
     pub base_url: String,
     pub key: Option<String>,
@@ -194,7 +197,7 @@ pub fn prefers_completion_tokens(provider: &str, model: &str) -> bool {
         return false;
     }
     let m = model.to_ascii_lowercase();
-    ["o1", "o3", "o4", "gpt-5"].iter().any(|p| m.starts_with(p)) && !m.contains("chat")
+    ["o1", "o3", "o4", "gpt-5", "gpt-6"].iter().any(|p| m.starts_with(p)) && !m.contains("chat")
 }
 
 /// Resolve the active provider for `kind`, enforcing consent and URL policy.
@@ -214,6 +217,17 @@ pub fn resolve(kind: Kind) -> Result<Target, AiError> {
 }
 
 pub fn resolve_for(cfg: &config::AiConfig, provider: &str, model: &str) -> Result<Target, AiError> {
+    resolve_inner(cfg, provider, model, true)
+}
+
+/// Resolution for the connection test only: same URL and key rules, but no
+/// consent gate, because the test sends a fixed one-word prompt and never
+/// any meeting content. Only `commands::ai_test` (an explicit click) uses it.
+pub fn resolve_for_probe(cfg: &config::AiConfig, provider: &str, model: &str) -> Result<Target, AiError> {
+    resolve_inner(cfg, provider, model, false)
+}
+
+fn resolve_inner(cfg: &config::AiConfig, provider: &str, model: &str, enforce_consent: bool) -> Result<Target, AiError> {
     let p = preset(provider).ok_or_else(|| AiError::Other(format!("Unknown provider '{}'", provider)))?;
     if p.protocol == Protocol::Apple {
         // On-device: no URL, no key, no consent (nothing leaves the Mac)
@@ -223,6 +237,7 @@ pub fn resolve_for(cfg: &config::AiConfig, provider: &str, model: &str) -> Resul
         }
         return Ok(Target {
             provider: provider.to_string(),
+            hint: providers::APPLE_PROVIDER,
             protocol: Protocol::Apple,
             base_url: providers::APPLE_BASE_URL.to_string(),
             key: None,
@@ -235,7 +250,7 @@ pub fn resolve_for(cfg: &config::AiConfig, provider: &str, model: &str) -> Resul
         .base_url(provider)
         .ok_or_else(|| AiError::BadUrl(format!("No endpoint URL set for {}", p.name)))?;
     let base = providers::check_base_url(&base).map_err(AiError::BadUrl)?;
-    if !cfg.is_local(provider) && !cfg.provider(provider).consent {
+    if enforce_consent && !cfg.is_local(provider) && !cfg.provider(provider).consent {
         super::emit_consent_required(provider);
         return Err(AiError::ConsentRequired(provider.to_string()));
     }
@@ -245,15 +260,17 @@ pub fn resolve_for(cfg: &config::AiConfig, provider: &str, model: &str) -> Resul
     }
     let st = cfg.provider(provider);
     let info = cfg.model_info(provider, model);
+    let hint = providers::provider_hint(provider, Some(&base));
     Ok(Target {
         provider: provider.to_string(),
+        hint,
         protocol: p.protocol,
         base_url: base,
         key,
         model: model.to_string(),
-        context_tokens: providers::context_window(provider, model, info.and_then(|i| i.context)),
+        context_tokens: providers::context_window(hint, model, info.and_then(|i| i.context)),
         completion_tokens: st.completion_tokens_models.iter().any(|m| m == model)
-            || prefers_completion_tokens(provider, model),
+            || prefers_completion_tokens(hint, model),
     })
 }
 
@@ -385,7 +402,7 @@ pub fn anthropic_accepts_temperature(model: &str) -> bool {
 }
 
 /// Models with thinking on by default spend output tokens thinking first.
-fn anthropic_thinks_by_default(model: &str) -> bool {
+pub fn anthropic_thinks_by_default(model: &str) -> bool {
     let m = model.to_ascii_lowercase();
     ["claude-opus-5", "claude-sonnet-5", "claude-fable", "claude-mythos"].iter().any(|p| m.starts_with(p))
 }
@@ -668,6 +685,13 @@ pub async fn run(t: &Target, mut msgs: Vec<Msg>, opts: Opts) -> Result<String, A
             let url = format!("{}/chat/completions", t.base_url);
             let headers = request_headers(Protocol::OpenAI, &t.provider, key);
             let mut completion_tokens = t.completion_tokens;
+            // Claude 5 via Anthropic's OpenAI-compatible layer thinks by
+            // default, and thinking counts against max_tokens.
+            let max_tokens = if t.hint == "anthropic" && anthropic_thinks_by_default(&t.model) {
+                max_tokens + REASONING_HEADROOM
+            } else {
+                max_tokens
+            };
             for attempt in 0..2 {
                 let body = build_openai_request(&t.model, &msgs, max_tokens, opts.temperature, completion_tokens);
                 let cap = if completion_tokens { max_tokens + REASONING_HEADROOM } else { max_tokens };
@@ -717,6 +741,132 @@ pub async fn run(t: &Target, mut msgs: Vec<Msg>, opts: Opts) -> Result<String, A
                 return Err(err);
             }
             Err(AiError::Other("Request rejected twice".into()))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Connection test (explicit click; one fixed word, never meeting content)
+// ---------------------------------------------------------------------------
+
+/// Plain-words result of the connection test for the settings screen.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ProbeOutcome {
+    pub ok: bool,
+    /// connected | wrong_key | no_credit | unreachable | bad_url | model_missing | no_key | other
+    pub class: &'static str,
+    pub message: String,
+}
+
+impl ProbeOutcome {
+    fn new(ok: bool, class: &'static str, message: String) -> Self {
+        Self { ok, class, message }
+    }
+
+    /// Map a resolution error (no key, bad URL, …) to a test outcome.
+    pub fn from_error(e: &AiError, host: &str) -> Self {
+        let text = e.to_string();
+        let detail = text.splitn(2, ": ").nth(1).unwrap_or(&text).to_string();
+        match e {
+            AiError::NoKey(_) => Self::new(false, "no_key", "No API key is saved for this endpoint. Paste your key and save first.".into()),
+            AiError::BadUrl(m) => Self::new(false, "bad_url", format!("Check the base URL: {}", m)),
+            AiError::Unreachable(m) => Self::new(false, "unreachable", format!("Couldn't reach {}: {}", host, m)),
+            AiError::WrongKey(_) => Self::new(false, "wrong_key", format!("{} rejected the API key. {}", host, detail)),
+            AiError::NoCredit(_) => Self::new(false, "no_credit", format!("{} accepted the key but reported no credit or a rate limit. {}", host, detail)),
+            _ => Self::new(false, "other", detail),
+        }
+    }
+}
+
+/// The fixed probe body: one user word, a one-token answer, no meeting
+/// content. `completion_tokens` switches to `max_completion_tokens`.
+pub fn build_probe_request(model: &str, completion_tokens: bool) -> Value {
+    let mut body = json!({"model": model, "messages": [{"role": "user", "content": "Hi"}], "stream": false});
+    if completion_tokens {
+        body["max_completion_tokens"] = json!(1);
+    } else {
+        body["max_tokens"] = json!(1);
+    }
+    body
+}
+
+/// Turn the probe's HTTP status and body into plain words. Pure; unit tested.
+pub fn classify_probe(host: &str, model: &str, status: u16, body: &[u8], key: Option<&str>) -> ProbeOutcome {
+    let msg = providers::redact_with(&error_message(body), key);
+    let mentions_model = msg.to_ascii_lowercase().contains("model");
+    match status {
+        200..=299 => ProbeOutcome::new(true, "connected", format!("Connected to {} with model {}.", host, model)),
+        401 | 403 => ProbeOutcome::new(
+            false,
+            "wrong_key",
+            format!("{} rejected the API key ({}). Check the key and save it again.", host, status),
+        ),
+        402 | 429 => ProbeOutcome::new(
+            false,
+            "no_credit",
+            format!("{} accepted the key but reported no credit or a rate limit ({}). {}", host, status, msg),
+        ),
+        300..=399 => ProbeOutcome::new(
+            false,
+            "bad_url",
+            format!("{} redirected the request ({}); the base URL is probably wrong.", host, status),
+        ),
+        404 if !mentions_model => ProbeOutcome::new(
+            false,
+            "bad_url",
+            format!("{} has no /chat/completions at this base URL (404). It usually ends in /v1.", host),
+        ),
+        400 | 404 | 422 if mentions_model => ProbeOutcome::new(
+            false,
+            "model_missing",
+            format!("{} doesn't offer the model '{}'. {}", host, model, msg),
+        ),
+        _ => ProbeOutcome::new(false, "other", format!("{} answered {}: {}", host, status, msg)),
+    }
+}
+
+fn host_of(base_url: &str) -> String {
+    url::Url::parse(base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_string()))
+        .unwrap_or_else(|| base_url.to_string())
+}
+
+/// Send the one-token hello to a resolved target. Network failures become
+/// outcomes rather than errors so the UI always gets plain words.
+pub async fn probe(t: &Target) -> ProbeOutcome {
+    let host = host_of(&t.base_url);
+    let key = t.key.as_deref();
+    match t.protocol {
+        Protocol::Apple => ProbeOutcome::new(true, "connected", "Apple on-device model is available.".into()),
+        Protocol::Anthropic => {
+            let url = format!("{}/messages", t.base_url);
+            let headers = request_headers(Protocol::Anthropic, &t.provider, key);
+            let body = build_anthropic_request(&t.model, &[Msg::user("Hi")], 1, None);
+            let req = HTTP.post(&url).json(&body).timeout(Duration::from_secs(30));
+            match send(req, &headers, key).await {
+                Ok((status, bytes)) => classify_probe(&host, &t.model, status, &bytes, key),
+                Err(e) => ProbeOutcome::from_error(&e, &host),
+            }
+        }
+        Protocol::OpenAI => {
+            let url = format!("{}/chat/completions", t.base_url);
+            let headers = request_headers(Protocol::OpenAI, &t.provider, key);
+            let mut completion_tokens = t.completion_tokens;
+            for attempt in 0..2 {
+                let body = build_probe_request(&t.model, completion_tokens);
+                let req = HTTP.post(&url).json(&body).timeout(Duration::from_secs(30));
+                let (status, bytes) = match send(req, &headers, key).await {
+                    Ok(r) => r,
+                    Err(e) => return ProbeOutcome::from_error(&e, &host),
+                };
+                if attempt == 0 && !completion_tokens && needs_completion_tokens_retry(status, &String::from_utf8_lossy(&bytes)) {
+                    completion_tokens = true;
+                    continue;
+                }
+                return classify_probe(&host, &t.model, status, &bytes, key);
+            }
+            ProbeOutcome::new(false, "other", format!("{} rejected the request twice.", host))
         }
     }
 }
@@ -970,5 +1120,149 @@ mod tests {
     fn timeouts_scale_with_max_tokens() {
         assert_eq!(request_timeout(0), Duration::from_secs(60));
         assert_eq!(request_timeout(1600), Duration::from_secs(260));
+    }
+
+    #[test]
+    fn preset_urls_get_their_service_quirks_without_consent_bypass() {
+        let mut c = config::AiConfig::default();
+        c.provider_mut("custom").base_url = Some("https://api.openai.com/v1".into());
+        // Real use still needs consent for a preset (it is a public endpoint)
+        assert_eq!(resolve_for(&c, "custom", "gpt-6-luna").unwrap_err(), AiError::ConsentRequired("custom".into()));
+        // The connection test resolves without consent but with the same URL and key rules
+        let t = resolve_for_probe(&c, "custom", "gpt-6-luna").unwrap();
+        assert_eq!(t.hint, "openai");
+        assert!(t.completion_tokens, "gpt-6 wants max_completion_tokens");
+        assert_eq!(t.context_tokens, 128_000);
+        c.provider_mut("custom").base_url = Some("https://api.anthropic.com/v1".into());
+        let t = resolve_for_probe(&c, "custom", "claude-sonnet-5-5").unwrap();
+        assert_eq!(t.hint, "anthropic");
+        assert!(!t.completion_tokens);
+        c.provider_mut("custom").base_url = Some("https://proxy.example.com/v1".into());
+        let t = resolve_for_probe(&c, "custom", "gpt-6-luna").unwrap();
+        assert_eq!(t.hint, "custom");
+        assert!(!t.completion_tokens);
+        assert_eq!(t.context_tokens, 32_768);
+        // A bad URL is still refused for the probe
+        c.provider_mut("custom").base_url = Some("http://public.example.com/v1".into());
+        assert!(matches!(resolve_for_probe(&c, "custom", "m"), Err(AiError::BadUrl(_))));
+    }
+
+    #[test]
+    fn probe_body_is_one_fixed_word_and_one_token() {
+        let b = build_probe_request("gpt-6-luna", false);
+        assert_eq!(b["max_tokens"], 1);
+        assert_eq!(b["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(b["messages"][0]["content"], "Hi");
+        assert!(b.get("temperature").is_none());
+        let b = build_probe_request("gpt-6-luna", true);
+        assert_eq!(b["max_completion_tokens"], 1);
+        assert!(b.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn probe_outcomes_are_plain_words_and_redacted() {
+        let ok = classify_probe("api.example.com", "m1", 200, br#"{"choices":[]}"#, None);
+        assert!(ok.ok);
+        assert_eq!(ok.class, "connected");
+        assert!(ok.message.contains("api.example.com") && ok.message.contains("m1"));
+        let e = classify_probe("api.example.com", "m1", 401, br#"{"error":{"message":"Incorrect API key provided: sk-proj-ABCDEFGHIJKLMNOPQRST"}}"#, None);
+        assert_eq!((e.ok, e.class), (false, "wrong_key"));
+        assert!(!e.message.contains("ABCDEFGHIJKLMNOPQRST"));
+        assert_eq!(classify_probe("h", "m", 403, b"", None).class, "wrong_key");
+        assert_eq!(classify_probe("h", "m", 429, b"slow down", None).class, "no_credit");
+        assert_eq!(classify_probe("h", "m", 402, b"", None).class, "no_credit");
+        assert_eq!(classify_probe("h", "m", 404, b"<html>not here</html>", None).class, "bad_url");
+        assert_eq!(classify_probe("h", "m", 404, br#"{"error":{"message":"The model `m` does not exist"}}"#, None).class, "model_missing");
+        assert_eq!(classify_probe("h", "m", 400, br#"{"error":{"message":"invalid model"}}"#, None).class, "model_missing");
+        assert_eq!(classify_probe("h", "m", 302, b"", None).class, "bad_url");
+        assert_eq!(classify_probe("h", "m", 500, b"oops", None).class, "other");
+        let e = ProbeOutcome::from_error(&AiError::NoKey("x".into()), "h");
+        assert_eq!(e.class, "no_key");
+        let e = ProbeOutcome::from_error(&AiError::Unreachable("dns failed".into()), "h");
+        assert_eq!(e.class, "unreachable");
+        assert!(e.message.contains("h") && e.message.contains("dns failed"));
+    }
+
+    /// Loopback stub that answers one request with a canned status/body.
+    fn stub_server(status: u16, body: &'static str) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 4096];
+            loop {
+                let n = s.read(&mut tmp).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&tmp[..n]);
+                if let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buf[..end]).to_ascii_lowercase();
+                    let len: usize = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse().ok())
+                        .unwrap_or(0);
+                    if buf.len() >= end + 4 + len {
+                        // Assert the probe carries no meeting content
+                        let sent = String::from_utf8_lossy(&buf[end + 4..]);
+                        assert!(sent.contains("\"Hi\""), "{}", sent);
+                        assert!(!sent.contains("transcript"), "{}", sent);
+                        break;
+                    }
+                }
+            }
+            let reason = match status {
+                200 => "OK",
+                401 => "Unauthorized",
+                _ => "Error",
+            };
+            let resp = format!(
+                "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                status,
+                reason,
+                body.len(),
+                body
+            );
+            let _ = s.write_all(resp.as_bytes());
+            let _ = s.flush();
+        });
+        format!("http://127.0.0.1:{}/v1", port)
+    }
+
+    fn target(base_url: String, key: Option<&str>) -> Target {
+        Target {
+            provider: "custom".into(),
+            hint: "custom",
+            protocol: Protocol::OpenAI,
+            base_url,
+            key: key.map(String::from),
+            model: "stub-model".into(),
+            context_tokens: 32_768,
+            completion_tokens: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_reports_success_auth_failure_and_network_error() {
+        let ok = probe(&target(stub_server(200, r#"{"choices":[{"message":{"content":"Hi"},"finish_reason":"length"}]}"#), Some("stub-key-value-1234"))).await;
+        assert_eq!((ok.ok, ok.class), (true, "connected"), "{}", ok.message);
+        assert!(ok.message.contains("127.0.0.1"));
+
+        let bad = probe(&target(stub_server(401, r#"{"error":{"message":"Incorrect API key provided: stub-key-value-1234"}}"#), Some("stub-key-value-1234"))).await;
+        assert_eq!((bad.ok, bad.class), (false, "wrong_key"), "{}", bad.message);
+        assert!(!bad.message.contains("stub-key-value-1234"));
+
+        // A port nobody listens on
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let down = probe(&target(format!("http://127.0.0.1:{}/v1", port), None)).await;
+        assert_eq!((down.ok, down.class), (false, "unreachable"), "{}", down.message);
+        assert!(down.message.starts_with("Couldn't reach 127.0.0.1"));
     }
 }

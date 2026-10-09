@@ -7,7 +7,15 @@ struct AIConsentSheet: View {
     let onAllow: () -> Void
     @Environment(\.dismiss) private var dismiss
 
+    /// The real destination host, whether it came from a preset card or was typed.
     private var recipient: String { settings.baseURL(for: provider)?.host() ?? provider.name }
+
+    /// Full base URL plus the preset name when the URL is a preset's.
+    private var destinationLine: String {
+        let url = settings.baseURL(for: provider)?.absoluteString ?? provider.name
+        let name = settings.displayName(for: provider)
+        return name == provider.name ? "Destination: \(url)" : "Destination: \(url) (\(name))"
+    }
 
     var body: some View {
         NavigationStack {
@@ -19,6 +27,10 @@ struct AIConsentSheet: View {
                         .accessibilityHidden(true)
                     Text("Send recording content to \(recipient)?")
                         .font(.title2.weight(.semibold))
+                    Text(destinationLine)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("consent-destination")
                     Text(Self.body(recipient))
                         .font(.body)
                         .foregroundStyle(.secondary)

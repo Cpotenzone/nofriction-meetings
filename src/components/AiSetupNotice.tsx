@@ -61,8 +61,8 @@ export function AiSetupNotice({ feature, compact = false }: AiSetupNoticeProps) 
                 <strong>Add an AI key in Settings → AI Engine</strong>
                 <span>
                     {feature ? `${feature} need${feature.endsWith("s") ? "" : "s"} an AI provider. ` : ""}
-                    Enter your own endpoint and model, or use Apple's
-                    on-device model where available.
+                    Pick a provider and paste your own key, enter any
+                    OpenAI-compatible endpoint, or use Apple's on-device model where available.
                 </span>
             </div>
             <button className="nf-ai-setup__btn" type="button" onClick={() => openSettings("ai")}>

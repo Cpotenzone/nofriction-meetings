@@ -15,10 +15,18 @@ sys.dont_write_bytecode = True
 HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('redacted_audit',HERE/'audit-embedded-credentials.py')
 core=importlib.util.module_from_spec(spec);spec.loader.exec_module(core)
-RETIRED_SERVICE_HOSTS=re.compile(rb'\b(?:api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|(?:[a-z0-9-]+-)?speech\.googleapis\.com|api\.deepgram\.com|api\.gladia\.io|api\.x\.ai|api\.groq\.com|openrouter\.ai|api\.mistral\.ai|api\.deepseek\.com|api\.perplexity\.ai|api\.together\.(?:xyz|ai))\b',re.I)
+# Hosts that must never ship (removed cloud transcription and AI services).
+RETIRED_SERVICE_HOSTS=re.compile(rb'\b(?:generativelanguage\.googleapis\.com|(?:[a-z0-9-]+-)?speech\.googleapis\.com|api\.deepgram\.com|api\.gladia\.io|api\.groq\.com|openrouter\.ai|api\.deepseek\.com|api\.perplexity\.ai|api\.together\.(?:xyz|ai))\b',re.I)
+# Hosts of the curated provider presets (OpenAI, Anthropic, xAI, Mistral): allowed in
+# the artifact as static preset data (docs/AI_PROVIDERS.md); inventoried, never a failure.
+# The source guard (check-ai-provider-policy.py) proves they appear only in the preset tables.
+PRESET_HOSTS=re.compile(rb'\b(?:api\.openai\.com|api\.anthropic\.com|api\.x\.ai|api\.mistral\.ai|platform\.openai\.com|platform\.claude\.com|console\.x\.ai|console\.mistral\.ai)\b',re.I)
 
 def retired_hosts(name,data):
     return [{'file':name,'host':host.decode('ascii').lower(),'classification':'retired service host, not a credential'} for host in sorted(set(RETIRED_SERVICE_HOSTS.findall(data)))]
+
+def preset_hosts(name,data):
+    return [{'file':name,'host':host.decode('ascii').lower(),'classification':'curated preset host (static preset data), not a credential'} for host in sorted(set(PRESET_HOSTS.findall(data)))]
 
 def run(args):
     path=Path(args.artifact).resolve()
@@ -35,7 +43,7 @@ def run(args):
             name,value=entry.split('=',1);value=value.strip().strip('\"\'')
             if value and re.fullmatch(r'[A-Z0-9_]+',name) and re.search(r'KEY|TOKEN|SECRET|PASSWORD|CONNECTION_STRING',name):
                 known[name]=value.encode()
-    exact=[];host_findings=[]
+    exact=[];host_findings=[];preset_findings=[]
     if path.suffix=='.app':
         members=((str(p.relative_to(path)),p.read_bytes()) for p in path.rglob('*') if p.is_file())
         app_prefix=''
@@ -66,6 +74,7 @@ def run(args):
                         info['present']=False
         if name==record.get('executable_file'):executable=data
         host_findings.extend(retired_hosts(name,data))
+        preset_findings.extend(preset_hosts(name,data))
         for key,value in known.items():
             if value in data:exact.append({'file':name,'local_variable_name':key,'value':'REDACTED'})
     assets=[];asset_matches=[];embedded_types=set()
@@ -92,6 +101,7 @@ def run(args):
                     embedded_types.add(p.suffix)
                     asset_matches.extend(hits)
                     host_findings.extend(retired_hosts(str(p),data))
+                    preset_findings.extend(preset_hosts(str(p),data))
                     exact.extend({'file':str(p),'local_variable_name':k,'value':'REDACTED'} for k in local)
     embedded=list(wanted.values())
     embedded_ok=all(e['present'] and e['files_scanned']>1 and (not e['expected_identifier'] or e['identifier']==e['expected_identifier']) for e in embedded)
@@ -99,9 +109,9 @@ def run(args):
     count=len(record['redacted_matches'])+len(asset_matches)+len(exact)
     forbidden_hosts=bool(args.reject_retired_services and host_findings)
     status='INCOMPLETE' if not coverage_ok else 'FAIL_CANDIDATES' if count else 'FAIL_RETIRED_SERVICES' if forbidden_hosts else 'PASS_STATIC_SCOPE'
-    output={'schema':'nofriction.redacted-release-credential-gate.v1','checked_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'status':status,'candidate_count':count,'reject_retired_services':args.reject_retired_services,'retired_service_host_findings':host_findings,'embedded_bundles':embedded,'artifact':record,'decoded_assets':assets,'known_local_variable_names':sorted(known),'exact_local_matches':exact,'tauri_linked_types':sorted(embedded_types),'limitations':['Static pass is not proof of zero credentials: opaque, encrypted, fragmented or unrecognised secrets may escape patterns.','No credential validity requests are sent. A match is a candidate, not proof of an active credential.','For Tauri, raw executable scans do not cover compressed content unless linked assets were decoded.','Retired-host matches establish packaged strings, not execution; unknown, constructed or encrypted hosts can evade this list.','Independent credential-loading, build-environment and source-to-artifact audit remains required.']}
+    output={'schema':'nofriction.redacted-release-credential-gate.v1','checked_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'status':status,'candidate_count':count,'reject_retired_services':args.reject_retired_services,'retired_service_host_findings':host_findings,'preset_host_findings':preset_findings,'embedded_bundles':embedded,'artifact':record,'decoded_assets':assets,'known_local_variable_names':sorted(known),'exact_local_matches':exact,'tauri_linked_types':sorted(embedded_types),'limitations':['Static pass is not proof of zero credentials: opaque, encrypted, fragmented or unrecognised secrets may escape patterns.','No credential validity requests are sent. A match is a candidate, not proof of an active credential.','For Tauri, raw executable scans do not cover compressed content unless linked assets were decoded.','Retired-host matches establish packaged strings, not execution; unknown, constructed or encrypted hosts can evade this list.','Preset hosts (OpenAI, Anthropic, xAI, Mistral) are expected static preset data and are inventoried, not failed; the source guard proves they appear only in the preset tables.','Independent credential-loading, build-environment and source-to-artifact audit remains required.']}
     Path(args.receipt).write_text(json.dumps(output,indent=2)+'\n')
-    print(json.dumps({'status':status,'candidate_count':count,'retired_service_host_count':len(host_findings),'reject_retired_services':args.reject_retired_services,'receipt':str(Path(args.receipt).resolve()),'bundle_identity':record['identity'],'executable_sha256':record.get('executable_sha256'),'tauri_linked_types':sorted(embedded_types),'embedded_bundles':[{k:e.get(k) for k in ('path','identifier','files_scanned','present')} for e in embedded]}))
+    print(json.dumps({'status':status,'candidate_count':count,'retired_service_host_count':len(host_findings),'preset_host_count':len(preset_findings),'reject_retired_services':args.reject_retired_services,'receipt':str(Path(args.receipt).resolve()),'bundle_identity':record['identity'],'executable_sha256':record.get('executable_sha256'),'tauri_linked_types':sorted(embedded_types),'embedded_bundles':[{k:e.get(k) for k in ('path','identifier','files_scanned','present')} for e in embedded]}))
     return 2 if not coverage_ok else 1 if count or forbidden_hosts else 0
 
 def self_test():
@@ -136,10 +146,14 @@ def self_test():
         (app/'.env').write_bytes(b'EXAMPLE_API_KEY='+b'opaque_synthetic_not_a_real_key\n')
         assert run(args)==1
         (app/'.env').write_bytes(b'EXAMPLE_TOKEN=\n')
-        (app/'Test').write_bytes(b'https://api.openai.com/v1')
+        (app/'Test').write_bytes(b'https://api.deepgram.com/v1')
         args.reject_retired_services=True
         assert run(args)==1
         assert json.loads((root/'receipt.json').read_text())['status']=='FAIL_RETIRED_SERVICES'
+        # Curated preset hosts are static preset data: inventoried, never a failure
+        (app/'Test').write_bytes(b'https://api.openai.com/v1 https://api.anthropic.com/v1 https://api.x.ai/v1 https://api.mistral.ai/v1')
+        assert run(args)==0, 'preset hosts must not fail the artifact scan'
+        assert json.loads((root/'receipt.json').read_text())['preset_host_findings'][0]['host']=='api.anthropic.com'
         # Embedded Apple Watch app: required, identified and scanned
         (app/'Test').write_bytes(b'ordinary non-secret fixture')
         args.require_embedded=['Watch/NoFrictionWatch.app=com.nofriction.meetings.watchkitapp']
@@ -153,7 +167,7 @@ def self_test():
         receipt=json.loads((root/'receipt.json').read_text())
         assert receipt['artifact']['identity']['CFBundleIdentifier']=='com.nofriction.meetings', 'nested plist must not replace the app identity'
         assert receipt['embedded_bundles'][0]['files_scanned']==2
-        (watch/'NoFrictionWatch').write_bytes(b'https://api.openai.com/v1')
+        (watch/'NoFrictionWatch').write_bytes(b'https://api.deepgram.com/v1')
         assert run(args)==1, 'retired host inside the watch app must fail'
         (watch/'NoFrictionWatch').write_bytes(b'sk-'+b'notavalidcredential1234567890')
         assert run(args)==1, 'credential candidate inside the watch app must fail'
@@ -175,7 +189,7 @@ def self_test():
         args.asset_cache=[str(cache)];args.require_tauri_assets=True
         assert run(args)==1
         assert json.loads((root/'receipt.json').read_text())['status']=='FAIL_RETIRED_SERVICES'
-    print(json.dumps({'self_test':'PASS','cases':13,'secret_values_printed':False}))
+    print(json.dumps({'self_test':'PASS','cases':14,'secret_values_printed':False}))
     return 0
 
 if __name__=='__main__':

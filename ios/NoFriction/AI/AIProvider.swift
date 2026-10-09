@@ -18,6 +18,80 @@ struct AIProvider: Identifiable, Hashable, Sendable {
     static func byID(_ id: String) -> AIProvider? { all.first { $0.id == id } }
 }
 
+// MARK: - Endpoint presets (UI convenience over the one custom endpoint)
+
+/// A named provider preset. Tapping one only pre-fills the custom endpoint's
+/// base URL and model in the setup form; the user still pastes their own key,
+/// saves, and consents before any recording content is sent. No preset is
+/// selected or active until tapped, and the saved connection stays `.custom`
+/// (same Keychain binding, same consent). This table is the only place in the
+/// iOS source where provider hosts may appear; `scripts/check-ai-provider-policy.py`
+/// enforces that and checks it matches the Mac table.
+struct AIPreset: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    /// OpenAI-compatible chat-completions base (the app appends `chat/completions`)
+    let baseURL: String
+    let defaultModel: String
+    /// Other model ids worth trying, shown under the model field
+    let modelHint: String
+    /// Where the user creates their own API key ("Get a key" link, opens Safari)
+    let keyURL: String
+    /// One line shown on the card
+    let note: String
+
+    static let all: [AIPreset] = [
+        // OpenAI Chat Completions API (https://developers.openai.com/api/docs/changelog
+        // lists gpt-6-luna, gpt-6.1-sol and gpt-6-astra under v1/chat/completions;
+        // catalogue: https://developers.openai.com/api/docs/models).
+        AIPreset(id: "openai", name: "ChatGPT (OpenAI)", baseURL: "https://api.openai.com/v1",
+                 defaultModel: "gpt-6-luna", modelHint: "gpt-6.1-sol, gpt-6-astra",
+                 keyURL: "https://platform.openai.com/api-keys", note: "Your OpenAI API key; billed by OpenAI."),
+        // Anthropic's OpenAI SDK compatibility layer: base https://api.anthropic.com/v1/
+        // with the Claude key as a Bearer token
+        // (https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk);
+        // model ids: https://platform.claude.com/docs/en/models/overview.
+        AIPreset(id: "anthropic", name: "Anthropic (Claude)", baseURL: "https://api.anthropic.com/v1",
+                 defaultModel: "claude-sonnet-5-5", modelHint: "claude-haiku-5-5, claude-opus-5-5",
+                 keyURL: "https://platform.claude.com/settings/keys", note: "Your Claude API key; billed by Anthropic."),
+        // xAI: OpenAI-compatible base https://api.x.ai/v1, Bearer auth
+        // (https://docs.x.ai/docs/guides/chat); /v1/chat/completions is kept but
+        // marked deprecated in favour of /v1/responses
+        // (https://docs.x.ai/developers/model-capabilities/text/comparison).
+        AIPreset(id: "xai", name: "Grok (xAI)", baseURL: "https://api.x.ai/v1",
+                 defaultModel: "grok-4.7", modelHint: "grok-4.3",
+                 keyURL: "https://console.x.ai", note: "Your xAI API key; billed by xAI."),
+        // Mistral: POST https://api.mistral.ai/v1/chat/completions, Bearer auth
+        // (https://docs.mistral.ai/api/).
+        AIPreset(id: "mistral", name: "Mistral", baseURL: "https://api.mistral.ai/v1",
+                 defaultModel: "mistral-large-latest", modelHint: "mistral-small-latest",
+                 keyURL: "https://console.mistral.ai/api-keys", note: "Your Mistral API key; billed by Mistral."),
+    ]
+
+    static func byID(_ id: String) -> AIPreset? { all.first { $0.id == id } }
+
+    /// The preset whose base URL is the given one (trailing slash and case
+    /// ignored). Derived from the URL, never stored: a URL edited to a proxy
+    /// is no longer "on" the preset.
+    static func matching(_ url: URL?) -> AIPreset? {
+        guard let url else { return nil }
+        let wanted = normalized(url.absoluteString)
+        return all.first { normalized($0.baseURL) == wanted }
+    }
+
+    static func matching(_ raw: String) -> AIPreset? {
+        matching(URLPolicy.parseBaseURL(raw))
+    }
+
+    private static func normalized(_ s: String) -> String {
+        var t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while t.hasSuffix("/") { t.removeLast() }
+        return t
+    }
+
+    var host: String { URL(string: baseURL)?.host() ?? baseURL }
+}
+
 // MARK: - Key input
 
 enum KeyDetector {
