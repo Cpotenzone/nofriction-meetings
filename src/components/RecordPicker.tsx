@@ -17,11 +17,9 @@ import {
 } from "../lib/recordPlan";
 import {
     DEFAULT_KIND,
-    KIND_HELP,
     NOTEBOOK_LABEL,
     RECORDING_KINDS,
     notebookPlaceholder,
-    notesStyleHint,
     parseKind,
     type RecordingKind,
 } from "../lib/recordingKind";
@@ -113,7 +111,7 @@ export function RecordPicker({ onCancel, onStart }: RecordPickerProps) {
                 ref={dialogRef}
             >
                 <h2 id="rpick-kind-title">What is it?</h2>
-                <div className="rpick__kinds" role="radiogroup" aria-labelledby="rpick-kind-title" aria-describedby="rpick-kind-help">
+                <div className="rpick__kinds" role="radiogroup" aria-labelledby="rpick-kind-title">
                     {RECORDING_KINDS.map((k) => (
                         <button
                             key={k.value}
@@ -128,14 +126,10 @@ export function RecordPicker({ onCancel, onStart }: RecordPickerProps) {
                         </button>
                     ))}
                 </div>
-                <p id="rpick-kind-help" className="rpick__hint">{KIND_HELP}</p>
 
                 <div className="rpick__section">
                     <h2 id="rpick-length-title">How long?</h2>
-                    <p id="rpick-sub" className="rpick__sub">
-                        The recording stops by itself at the end. You can add time while it runs.
-                    </p>
-                    <div className="rpick__choices" role="radiogroup" aria-labelledby="rpick-length-title" aria-describedby="rpick-sub">
+                    <div className="rpick__choices" role="radiogroup" aria-labelledby="rpick-length-title">
                         {DURATION_CHOICES.map((c) => (
                             <button
                                 key={c.value}
@@ -167,7 +161,7 @@ export function RecordPicker({ onCancel, onStart }: RecordPickerProps) {
                     maxLength={120}
                     autoComplete="off"
                     spellCheck={false}
-                    aria-describedby="rpick-notes-style"
+
                 />
                 {chips.length > 0 && (
                     <div className="rpick__chips" aria-label="Recent notebooks">
@@ -183,7 +177,6 @@ export function RecordPicker({ onCancel, onStart }: RecordPickerProps) {
                         ))}
                     </div>
                 )}
-                <p id="rpick-notes-style" className="rpick__hint">{notesStyleHint(kind)}</p>
 
                 {error && <p className="rpick__error" role="alert">Couldn't start — {error}</p>}
 
