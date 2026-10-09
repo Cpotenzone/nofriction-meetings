@@ -260,7 +260,7 @@ Meetings, classes and everyday life: record and transcribe on your device, mark 
 
 App Store Connect rejects some symbols in descriptions with "This field contains one or more invalid characters" (seen 2026-10-07 for ★; key glyphs like ⌘ are avoided too). Write marks and shortcuts in words here; bullets (•) are fine.
 
-**3959 / 4000 characters**
+**3987 / 4000 characters**
 
 ```text
 noFriction records and transcribes on your iPhone or iPad so you can stay in the moment: a meeting, a class, or anything else worth keeping. Then create notes, follow-up drafts and review guides with the AI you choose.
@@ -305,7 +305,9 @@ Edit transcript text, remove unwanted material, or use Strike from the record to
 FREE AND PRO
 Recording, on-device transcription, recording types, Notebooks, timed recording, marks, links, calendar and people, photos, search, editing and text sharing are free. AI features, including notes and review guides, require noFriction Pro. One subscription unlocks Pro on iPhone, iPad and Mac.
 
-noFriction Pro is an auto-renewing monthly or yearly subscription. Payment is charged to your Apple Account. Subscriptions renew automatically unless canceled at least 24 hours before the current period ends. Manage or cancel in your Apple Account settings. Optional third-party AI usage is billed separately by your provider.
+noFriction Pro is an auto-renewing monthly or yearly subscription charged to your Apple Account; it renews unless canceled at least 24 hours before the period ends. Manage it in your Apple Account settings.
+Privacy Policy: https://nofriction.io/privacy
+Terms of Use (Apple Standard EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 
 Tell participants before recording and obtain any required consent. Many schools require the instructor's permission to record a class; check your school's policy.
 ```
@@ -366,7 +368,7 @@ Notes for meetings, classes and everyday life, transcribed on your Mac. Rewind s
 
 ### Description (limit 4000)
 
-**3975 / 4000 characters**
+**3989 / 4000 characters**
 
 ```text
 noFriction keeps your Mac's recordings, transcripts, screenshots and notes in one place: meetings, classes and anything else worth keeping. Go back to any moment in Rewind, and turn the transcript into notes with the AI you choose.
@@ -413,7 +415,9 @@ Keep recordings on your Mac, edit transcript text, remove unwanted material or u
 FREE AND PRO
 Recording, transcription, recording types, Notebooks, timed recording, marks, links, screenshots, calendar and people, search, editing and export are free. AI features, including notes and review guides, require noFriction Pro. One subscription unlocks Pro on Mac, iPhone and iPad.
 
-noFriction Pro is an auto-renewing monthly or yearly subscription. Payment is charged to your Apple Account. Subscriptions renew automatically unless canceled at least 24 hours before the current period ends. Manage or cancel in your Apple Account settings. Optional third-party AI usage is billed separately by your provider.
+noFriction Pro is an auto-renewing monthly or yearly subscription charged to your Apple Account; it renews unless canceled 24 hours before the period ends. Manage it in Apple Account settings.
+Privacy Policy: https://nofriction.io/privacy
+Terms of Use (Apple Standard EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 
 Tell participants before recording and obtain any required consent. Many schools require the instructor's permission to record a class; check your school's policy.
 ```
@@ -842,11 +846,11 @@ from Business to Education.
 | Name | 28 | 30 | changed (was 25, "noFriction: Meeting Notes") |
 | Subtitle | 29 | 30 | changed (was "Record, transcribe, summarize") |
 | iOS promotional text | 159 | 170 | changed (was 166) |
-| iOS description | 3959 | 4000 | changed (was 3865) |
+| iOS description | 3987 | 4000 | changed (was 3865) |
 | iOS keywords | 96 | 100 | changed |
 | iOS What's New 1.0 | 685 | 4000 | changed (was 365) |
 | Mac promotional text | 158 | 170 | changed (was 166) |
-| Mac description | 3975 | 4000 | changed (was 3900) |
+| Mac description | 3989 | 4000 | changed (was 3900) |
 | Mac keywords | 100 | 100 | changed |
 | Mac What's New 3.6.0 | 804 | 4000 | changed (was 381) |
 | Group display name | 14 | 30 | |
