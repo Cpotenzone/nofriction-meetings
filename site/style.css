@@ -236,3 +236,32 @@ main.doc th { color: var(--muted); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Guides (/guides/): step text beside a phone screenshot; wide Mac shots */
+main.doc.guide { max-width: 980px; }
+.g-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+.g-card { display: block; background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 22px; text-decoration: none; color: var(--ink); }
+.g-card:hover { border-color: var(--accent); color: var(--ink); }
+.g-card h2 { border: 0; padding: 0; margin: 0 0 8px; font-size: 21px; }
+.g-card p { color: var(--muted); margin: 0 0 14px; }
+.g-go { color: var(--accent); font-weight: 600; }
+.g-step { padding: 0; border-top: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 32px; align-items: start; margin: 28px 0; }
+.g-num { color: var(--accent); font-size: 13px; font-weight: 600; margin: 0 0 4px; }
+.g-step h3 { margin-top: 0; }
+.g-fig { margin: 0; }
+.g-shot { display: block; width: 100%; height: auto; }
+.g-shot.phone { border-radius: 28px; border: 1px solid var(--rule-strong); }
+.g-shot.mac { border-radius: 12px; border: 1px solid var(--rule-strong); }
+.g-wide { margin: 28px 0; }
+.g-wide.narrow { max-width: 620px; }
+.g-wide figcaption { color: var(--muted); font-size: 15px; margin-top: 10px; }
+.g-tip { color: var(--muted); font-size: 15px; }
+.g-uses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.g-uses .box { margin: 0; }
+.g-uses h3 { margin-top: 0; }
+@media (max-width: 760px) {
+  .g-step { padding: 0; }
+  .g-cards, .g-uses { grid-template-columns: 1fr; }
+  .g-step { grid-template-columns: 1fr; gap: 16px; }
+  .g-fig { max-width: 300px; }
+}

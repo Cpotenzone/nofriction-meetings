@@ -11,6 +11,7 @@ scripts. Deployed as-is to S3 + CloudFront; see
 |---|---|---|
 | `/` | `index.html` | Sales page: hero + film slot, privacy strip, how it works, three audiences, Rewind and features, Apple Watch, pricing, FAQ, notify CTA |
 | `/download/` | `download/index.html` | "Get notified" + TestFlight today; App Store badges once live |
+| `/guides/` | `guides/index.html` | How-to guides: `guides/notes/` (taking notes) and `guides/classes/` (capturing classes); images in `img/guides/` from the acceptance-test screenshots |
 | `/support/` | `support/index.html` | Support and FAQ |
 | `/privacy/` | `privacy/index.html` | App privacy policy (the App Store Connect privacy URL) |
 | `/privacy/website/` | `privacy/website/index.html` | Website and consulting privacy policy |
