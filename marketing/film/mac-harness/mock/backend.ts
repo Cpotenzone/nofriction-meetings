@@ -19,6 +19,10 @@ const flags = new URLSearchParams(location.search);
 const FIRST_RUN = flags.get("setup") === "1";
 let isPro = flags.get("pro") !== "0";
 const AI_NONE = flags.get("ai") === "none";
+// ?ai=openai: the ChatGPT card saved with a key, not yet allowed (the
+// consent dialog names api.openai.com on the first AI action)
+const AI_OPENAI = flags.get("ai") === "openai";
+let openaiConsent = false;
 
 const PRODUCTS = [
     { id: "com.nofriction.meetings.pro.monthly", displayName: "Pro Monthly", description: "AI notes, summaries and reviews, monthly", displayPrice: "$0.99", period: "1 month", periodUnit: "month", periodValue: 1, introOffer: "1 week free" },
@@ -502,8 +506,27 @@ function handle(cmd: string, args: Args): unknown {
         case "store_manage_subscriptions":
             return null;
         case "ai_status":
+            if (AI_OPENAI) {
+                return {
+                    text: { provider: "custom", name: "ChatGPT (OpenAI)", model: "gpt-6-luna", local: false, consent: openaiConsent, state: openaiConsent ? "ready" : "consent_required" },
+                    vision: null,
+                    text_ready: openaiConsent,
+                    vision_ready: false,
+                    what_leaves: "Transcripts and titles go to api.openai.com when you use an AI feature.",
+                };
+            }
             return AI_NONE ? { text: null, vision: null, text_ready: false, vision_ready: false, what_leaves: "Nothing leaves this Mac." } : AI_STATUS;
+        case "ai_grant_consent":
+            openaiConsent = true;
+            return null;
         case "ai_list_providers":
+            if (AI_OPENAI) {
+                return AI_PROVIDERS.map((p) =>
+                    p.id === "custom"
+                        ? { ...p, name: "ChatGPT (OpenAI)", preset: "openai", base_url: "https://api.openai.com/v1", configured: true, last4: "a1b2", consent: openaiConsent, needs_consent: !openaiConsent, model: "gpt-6-luna", active_text: true }
+                        : { ...p, active_text: false },
+                );
+            }
             return AI_NONE ? AI_PROVIDERS.map((p) => ({ ...p, active_text: false })) : AI_PROVIDERS;
         case "ai_list_presets":
             return AI_PRESETS;
@@ -771,6 +794,7 @@ function handle(cmd: string, args: Args): unknown {
             return scopeSummary(a.scope);
         case "chat_ask":
             if (!isPro) throw "PRO_REQUIRED: noFriction Pro unlocks the AI features.";
+            if (AI_OPENAI && !openaiConsent) throw "CONSENT_REQUIRED:custom";
             return chatAnswer(a.threadId ?? null, a.scope, String(a.message ?? ""));
 
         // Plugins (dialogs, opener)
