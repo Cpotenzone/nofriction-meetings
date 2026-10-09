@@ -577,7 +577,7 @@ The local-model path requires its setup, compatible hardware and Pro entitlement
 
 ### macOS
 
-**3865 / 4000 characters**
+**3963 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -605,9 +605,9 @@ RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS, LINKS AND SEARCH (free)
 Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type.
 
 REVIEW (Pro)
-9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. NOTES follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
+9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Notes follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
 
-Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. Reviewer contact details will be supplied separately in App Store Connect.
+The ChatGPT (OpenAI), Anthropic (Claude), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Make notes
@@ -859,6 +859,6 @@ from Business to Education.
 | Yearly display name | 10 | 30 | |
 | Yearly description | 37 | 45 | |
 | iOS review notes | 3935 | 4000 | changed (was 3593) |
-| Mac review notes | 3882 | 4000 | changed (was 3495) |
+| Mac review notes (3.7.0) | 3963 | 4000 | changed in the 3.7.0 acceptance pass (was 3865) |
 | Beta description | 308 | 4000 | changed (was 281) |
 | What to Test | 1366 | 4000 | changed (was 1058) |
