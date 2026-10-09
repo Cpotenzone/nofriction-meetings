@@ -3,7 +3,6 @@ import EventKit
 import Speech
 import SwiftData
 import SwiftUI
-import UserNotifications
 
 /// First-run state. `completed` is set when the welcome flow is finished or
 /// skipped; Settings → "Show welcome again" clears it.
@@ -13,12 +12,14 @@ enum Onboarding {
 
 // MARK: - Permissions
 
-/// The four permissions the app uses, each asked for in context with its reason.
+/// The permissions asked for up front, each with its reason. Notifications
+/// are asked in context instead, the first time a timed recording is about
+/// to end (`RecordingSession`), never here.
 @MainActor
 @Observable
 final class PermissionsModel {
     enum Kind: String, CaseIterable, Identifiable {
-        case microphone, speech, calendar, notifications
+        case microphone, speech, calendar
         var id: String { rawValue }
 
         var title: String {
@@ -26,16 +27,14 @@ final class PermissionsModel {
             case .microphone: "Microphone"
             case .speech: "Speech recognition"
             case .calendar: "Calendar"
-            case .notifications: "Notifications"
             }
         }
 
         var reason: String {
             switch self {
-            case .microphone: "To record meetings, classes and everything else. Audio stays on this device."
+            case .microphone: "To record. Audio stays on this device."
             case .speech: "To turn the recording into text, on this device."
-            case .calendar: "To name each meeting and list who attended. Read only."
-            case .notifications: "To warn before a timed recording stops, and to ask before stopping when a meeting seems to be over."
+            case .calendar: "To name each recording and list who attended. Read only."
             }
         }
 
@@ -44,7 +43,6 @@ final class PermissionsModel {
             case .microphone: "mic.fill"
             case .speech: "text.bubble.fill"
             case .calendar: "calendar"
-            case .notifications: "bell.badge.fill"
             }
         }
     }
@@ -71,12 +69,6 @@ final class PermissionsModel {
         case .notDetermined: .notAsked
         default: .denied
         }
-        let n = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-        states[.notifications] = switch n {
-        case .authorized, .provisional, .ephemeral: .granted
-        case .notDetermined: .notAsked
-        default: .denied
-        }
     }
 
     func request(_ kind: Kind) async {
@@ -89,8 +81,6 @@ final class PermissionsModel {
             }
         case .calendar:
             _ = await CalendarService.shared.requestAccess()
-        case .notifications:
-            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
         }
         await refresh()
     }
@@ -98,20 +88,16 @@ final class PermissionsModel {
 
 // MARK: - Flow
 
-/// Welcome → recording consent → permissions → AI setup → Pro. Every step
-/// can be skipped; the recording notice still appears before the first
-/// recording if it wasn't acknowledged here.
+/// Welcome → permissions, then the Record screen. Both steps can be skipped.
+/// The recording notice is shown once, on the first tap of Record; AI setup
+/// and Pro appear the first time they are needed (Make notes, Chat, Review).
 struct OnboardingView: View {
     let onFinish: () -> Void
 
-    enum Step: Int, CaseIterable { case welcome, consent, permissions, ai, pro }
+    enum Step: Int, CaseIterable { case welcome, permissions }
 
     @State private var step: Step = .welcome
     @State private var permissions = PermissionsModel()
-    @State private var connect = AIConnectModel()
-    @State private var showPaywall = false
-    @AppStorage("recordingNoticeAccepted") private var recordingNoticeAccepted = false
-    @Environment(AISettings.self) private var aiSettings
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
 
@@ -121,10 +107,7 @@ struct OnboardingView: View {
             Group {
                 switch step {
                 case .welcome: welcome
-                case .consent: consent
                 case .permissions: permissionsPage
-                case .ai: aiPage
-                case .pro: proPage
                 }
             }
             .frame(maxWidth: 560)
@@ -137,10 +120,6 @@ struct OnboardingView: View {
         .tint(Theme.accent)
         .preferredColorScheme(.dark)
         .task { await permissions.refresh() }
-        .sheet(item: $connect.consentPrompt) { p in
-            AIConsentSheet(provider: p) { aiSettings.grantConsent(p) }
-        }
-        .sheet(isPresented: $showPaywall) { PaywallView() }
     }
 
     private func next() {
@@ -236,9 +215,9 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 16) {
                 feature("waveform", "Transcribed on this device", "Recording and transcription stay on your iPhone or iPad.")
-                feature("calendar", "Matched to your calendar", "Each recording is named after the meeting, with who attended.")
+                feature("calendar", "Matched to your calendar", "Each recording is named after its event, with who attended.")
                 feature("eye.slash", "Strike from the record", "Remove words, lines or photos for good, audio included.")
-                feature("sparkles", "AI notes, your way", "Use Apple on-device or your own AI endpoint.")
+                feature("sparkles", "Notes, your way", "Apple on-device or your own AI endpoint, when you want notes.")
             }
             .padding(.top, 6)
         } actions: {
@@ -261,33 +240,6 @@ struct OnboardingView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var consent: some View {
-        page {
-            Image(systemName: "person.wave.2.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(Theme.accent)
-                .accessibilityHidden(true)
-                .padding(.top, 8)
-            Text("Before you record")
-                .font(.largeTitle.weight(.bold))
-                .accessibilityAddTraits(.isHeader)
-            Text(RecordingNoticeSheet.text)
-                .font(.title3)
-                .accessibilityIdentifier("onboarding-consent-text")
-            Label("noFriction shows a reminder on the Record screen while you record.", systemImage: "info.circle")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Label("Audio and transcripts are stored only on this device.", systemImage: "lock.fill")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        } actions: {
-            primary("I understand", id: "onboarding-consent-accept") {
-                recordingNoticeAccepted = true
-                next()
-            }
-        }
-    }
-
     private var permissionsPage: some View {
         page {
             Text("Permissions")
@@ -302,7 +254,7 @@ struct OnboardingView: View {
                 }
             }
         } actions: {
-            primary("Continue", id: "onboarding-continue") { next() }
+            primary("Get started", id: "onboarding-finish") { onFinish() }
         }
     }
 
@@ -350,91 +302,5 @@ struct OnboardingView: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("permission-\(kind.rawValue)")
-    }
-
-    private var aiPage: some View {
-        VStack(spacing: 0) {
-            Form {
-                Section {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Set up AI")
-                            .font(.largeTitle.weight(.bold))
-                            .accessibilityAddTraits(.isHeader)
-                        Text("Use Apple on-device when available, or enter your own endpoint, model ID and optional key. Saving sends no request. Your key stays in this device's Keychain.")
-                            .foregroundStyle(.secondary)
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
-                }
-                AIEndpointSection(model: connect)
-                if AppleOnDevice.isAvailable {
-                    Section {
-                        Button {
-                            aiSettings.useApple()
-                            next()
-                        } label: {
-                            Label("Use Apple on-device (no key)", systemImage: "apple.logo")
-                        }
-                        .accessibilityIdentifier("onboarding-use-apple")
-                    } footer: {
-                        Text("Runs on this device with Apple Intelligence. Nothing leaves it.")
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            VStack(spacing: 10) {
-                if aiSettings.savedProviders.isEmpty {
-                    Button("Skip for now") { next() }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .accessibilityHint("You can connect AI later in Settings.")
-                        .accessibilityIdentifier("onboarding-ai-skip")
-                } else {
-                    primary("Continue", id: "onboarding-continue") { next() }
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-        }
-    }
-
-    private var proPage: some View {
-        page {
-            Image(systemName: "sparkles")
-                .font(.system(size: 44))
-                .foregroundStyle(Theme.ai)
-                .accessibilityHidden(true)
-                .padding(.top, 8)
-            Text("Free to record. Pro for AI.")
-                .font(.largeTitle.weight(.bold))
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("onboarding-pro")
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Always free").font(.headline)
-                Label("Recording and on-device transcription", systemImage: "checkmark")
-                Label("Calendar matching and people", systemImage: "checkmark")
-                Label("Edit, delete and strike from the record", systemImage: "checkmark")
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            VStack(alignment: .leading, spacing: 14) {
-                Text("noFriction Pro").font(.headline).foregroundStyle(Theme.ai)
-                Label("AI summaries, decisions and action items", systemImage: "list.bullet.rectangle")
-                Label("Follow-up email drafts", systemImage: "envelope")
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            Text("Try Pro whenever you like, from Settings or the first time you tap Summarize.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        } actions: {
-            primary("Get started", id: "onboarding-finish") { onFinish() }
-            Button("See Pro plans") { showPaywall = true }
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("onboarding-see-plans")
-        }
     }
 }

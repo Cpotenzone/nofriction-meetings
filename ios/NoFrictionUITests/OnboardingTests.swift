@@ -1,7 +1,8 @@
 import XCTest
 
-/// First-run welcome: every step, a permission asked in context, AI skip,
-/// and reopening it from Settings.
+/// First-run welcome: two steps (welcome, permissions), a permission asked
+/// in context, the recording notice on the first Record, and reopening the
+/// welcome from Settings.
 final class OnboardingTests: XCTestCase {
     private func allowSystemAlert(timeout: TimeInterval = 5) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -23,47 +24,33 @@ final class OnboardingTests: XCTestCase {
         saveShot("onboarding-1-welcome")
         app.buttons["onboarding-continue"].tap()
 
-        // 2. Recording consent: the same notice as before the first recording
-        let consent = app.staticTexts["onboarding-consent-text"]
-        XCTAssertTrue(consent.waitForExistence(timeout: 3))
-        XCTAssertTrue(consent.label.hasPrefix("Recording laws differ"))
-        saveShot("onboarding-2-consent")
-        app.buttons["onboarding-consent-accept"].tap()
-
-        // 3. Permissions: four rows, each with its reason; ask for one in context
-        for kind in ["microphone", "speech", "calendar", "notifications"] {
+        // 2. Permissions: three rows, each with its reason; ask for one in context.
+        // No consent page (the notice is the sheet on the first Record), no
+        // Notifications row (asked when a timer is about to end), no AI or Pro page.
+        for kind in ["microphone", "speech", "calendar"] {
             XCTAssertTrue(app.descendants(matching: .any)["permission-\(kind)"].firstMatch.waitForExistence(timeout: 3), "missing \(kind) row")
         }
-        XCTAssertTrue(app.staticTexts["To record meetings, classes and everything else. Audio stays on this device."].exists)
-        saveShot("onboarding-3-permissions")
-        let allowNotifications = app.buttons["Allow Notifications"]
-        if allowNotifications.exists {
-            allowNotifications.tap()
+        XCTAssertFalse(app.descendants(matching: .any)["permission-notifications"].exists, "Notifications is not asked in onboarding")
+        XCTAssertTrue(app.staticTexts["To record. Audio stays on this device."].exists)
+        saveShot("onboarding-2-permissions")
+        let allowCalendar = app.buttons["Allow Calendar"]
+        if allowCalendar.exists {
+            allowCalendar.tap()
             allowSystemAlert()
-            XCTAssertTrue(app.images["Allowed"].waitForExistence(timeout: 5) || app.buttons["Notifications is off. Open Settings"].exists,
-                          "notification row didn't update after the system prompt")
+            XCTAssertTrue(app.images["Allowed"].waitForExistence(timeout: 5) || app.buttons["Calendar is off. Open Settings"].exists,
+                          "calendar row didn't update after the system prompt")
         }
-        app.buttons["onboarding-continue"].tap()
-
-        // 4. AI: explicit endpoint and model, optional key, or skip
-        let key = app.secureTextFields["api-key-field"]
-        XCTAssertTrue(key.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.textFields["ai-endpoint-url"].exists)
-        XCTAssertTrue(app.textFields["ai-model-id"].exists)
-        XCTAssertFalse(app.buttons["save-ai-endpoint"].isEnabled)
-        saveShot("onboarding-4-ai")
-        let skip = app.buttons["onboarding-ai-skip"]
-        if skip.exists { skip.tap() } else { app.buttons["onboarding-continue"].tap() }
-
-        // 5. Pro: explained, no hard paywall
-        XCTAssertTrue(app.staticTexts["onboarding-pro"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["onboarding-see-plans"].exists)
-        saveShot("onboarding-5-pro")
+        XCTAssertFalse(app.secureTextFields["api-key-field"].exists, "AI setup is not part of onboarding")
         app.buttons["onboarding-finish"].tap()
 
-        // Lands on Record; the consent was recorded, so no notice sheet is pending
+        // Lands on Record. The recording notice comes once, on the first tap of Record.
         XCTAssertTrue(app.buttons["record-button"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["onboarding-welcome"].exists)
+        app.buttons["record-button"].tap()
+        let notice = app.buttons["recording-notice-continue"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 3), "recording notice didn't show on the first Record")
+        saveShot("first-record-notice")
+        app.buttons["Cancel"].firstMatch.tap()
 
         // Settings → Show welcome again → Skip closes it
         app.buttons["Settings"].firstMatch.tap()
@@ -103,16 +90,8 @@ final class DynamicTypeTests: XCTestCase {
         assertOnScreen(app.buttons["onboarding-skip"], app, "Skip")
         saveShot("xxxl-onboarding-welcome")
         app.buttons["onboarding-continue"].tap()
-        assertOnScreen(app.buttons["onboarding-consent-accept"], app, "I understand")
-        saveShot("xxxl-onboarding-consent")
-        app.buttons["onboarding-consent-accept"].tap()
-        assertOnScreen(app.buttons["onboarding-continue"], app, "permissions Continue")
-        saveShot("xxxl-onboarding-permissions")
-        app.buttons["onboarding-continue"].tap()
-        let skip = app.buttons["onboarding-ai-skip"]
-        if skip.waitForExistence(timeout: 3) { assertOnScreen(skip, app, "Skip for now"); skip.tap() } else { app.buttons["onboarding-continue"].tap() }
         assertOnScreen(app.buttons["onboarding-finish"], app, "Get started")
-        saveShot("xxxl-onboarding-pro")
+        saveShot("xxxl-onboarding-permissions")
         app.buttons["onboarding-finish"].tap()
     }
 

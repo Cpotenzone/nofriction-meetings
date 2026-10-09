@@ -40,8 +40,8 @@ The kind and note can be changed afterwards, and a marker can be deleted.
 - **iOS** (`ios/NoFriction/Study/StudyModels.swift`, `MomentMarker`,
   cascade from `Meeting.markers`). **Mark this moment** on the Record screen;
   for six seconds after, the three kinds and **Note** are offered. The
-  meeting shows **Marked moments** (filter, change type or note, delete,
-  jump to the line) and the markers inline in the transcript. On Apple
+  recording shows **Marks** (filter, change type or note, delete, jump to
+  the line) and the marks inline in the transcript. On Apple
   Watch, tap the screen while recording to mark ★ (touch and hold for
   the others); see [WATCH_APP.md](WATCH_APP.md).
 

@@ -45,10 +45,10 @@ up yourself. It works on iPhone, iPad and Mac. There's no account to create.
 ## Record
 
 **iPhone/iPad:** open the **Record** tab and tap **Record**. The first time,
-a notice reminds you that recording laws vary; tap **I understand**. Choose
-what it is and how long (see below), and start. The transcript appears as
-people talk. Recording continues with the screen locked. Tap **Stop** when
-you're done.
+a notice reminds you that recording laws vary; tap **I understand** (it's
+asked once). Choose what it is and how long (see below), and tap **Record**.
+The transcript appears as people talk. Recording continues with the screen
+locked. Tap **Stop** when you're done.
 
 **Mac:** click **START CAPTURE** (or start from **LIVE**), choose what it is
 and how long, and start. For a meeting, the bar shows the matched calendar
@@ -66,8 +66,9 @@ iPhone/iPad), or **Stop now**. Nothing said before the stop is lost. On the Mac
 it also notices when the call app releases the microphone (macOS 14.2 or later)
 or the meeting window closes.
 
-Turn it off or change the silence time:
-- iPhone/iPad: **Settings tab → Recording**.
+Turn it off:
+- iPhone/iPad: **Settings tab → Recording → Stop when it's over** (the
+  silence time is 3 minutes).
 - Mac: **Settings → General → Recording** ("Stop automatically when the
   meeting ends", "Silence before stopping").
 
@@ -118,7 +119,7 @@ notebook (or its type) and the date, for example "BIO 101 — Oct 7" or
 | Personal | Summary, key points, and to-dos and reminders |
 
 Filter your recordings by notebook with the **Notebooks** chips in
-**Meetings** (iPhone/iPad) or **REWIND → Recordings** (Mac).
+**Recordings** (iPhone/iPad) or **REWIND → Recordings** (Mac).
 
 The first time you record a **Class**, noFriction shows this once:
 
@@ -142,14 +143,12 @@ or **Choose from Photos** to add screenshots. They appear in the recording.
 
 ## Find and review recordings
 
-**iPhone/iPad:** the **Recordings** tab lists every recording, named from your
-calendar when it matches an event. Search by title, person, topic or anything
-said. Filter with the **Notebooks** and **Topics** chips, and use **Group by**
-(the menu in the top corner) to list by **Date**, **Notebook** or **Topic**;
-a recording listed by topic appears under each of its topics. Each row shows
-up to two topic chips. Open a recording to read the transcript, play the
-audio and see photos. The **People** tab lists everyone you've met with; tap
-**LinkedIn** to search for someone and paste their profile link.
+**iPhone/iPad:** the **Recordings** tab lists every recording by day, named
+from your calendar when it matches an event. Search by title, person, topic
+or anything said. Filter with the **Notebooks** chips. Open a recording to
+read the transcript, play the audio and see photos. **People**, a row at the
+top of Recordings, lists everyone you've met with and their recordings; on a
+person's page you can add their LinkedIn link.
 
 **Topics** are 1–4 short phrases naming what a recording was about ("Q4
 roadmap", "Mitosis"). On iPhone/iPad they're named by your AI when notes are
@@ -194,8 +193,8 @@ Nothing leaves the device.
   available.
 - iPhone/iPad: to switch to it, go to **Settings tab → Saved connections** and
   tap **Use Apple on-device (no key)**, or tap **Apple on-device** if it's
-  already listed. It's also offered in the **Set up AI** sheet that opens from
-  a meeting.
+  already listed. It's also offered in the **Set up AI** sheet that opens the
+  first time you tap **Make notes**, **Chat** or make a review guide.
 - Mac: **Settings → AI Engine → Saved providers → Apple on-device → Use**.
   On the Mac, Apple on-device doesn't analyze screenshots.
 
@@ -223,7 +222,7 @@ Enter them:
 
 Saving doesn't contact the server. To check it on the Mac, click **Test**
 next to it under **Saved providers**; **↻** under **Models** reloads the
-server's model list. On iPhone/iPad, try **Summarize** on a meeting.
+server's model list. On iPhone/iPad, try **Make notes** on a recording.
 
 Good to know:
 - **HTTPS for the internet.** An address on the internet must start with
@@ -259,10 +258,10 @@ AI features need **noFriction Pro** (see [Subscription](#subscription)) and
 Apple on-device or your own endpoint (see [Connect your AI](#connect-your-ai)).
 
 **iPhone/iPad**, in a recording:
-- **Summarize**: notes in the recording type's style (see
-  [Notes by type](#notes-by-type)). Owners and due dates appear only if
-  someone said them. The recording's **Topics** are named at the same time
-  (see [Find and review recordings](#find-and-review-recordings)).
+- **Make notes** (**Make again** afterwards): notes in the recording type's
+  style (see [Notes by type](#notes-by-type)). Owners and due dates appear
+  only if someone said them. The recording's **Topics** are named at the
+  same time (see [Find and review recordings](#find-and-review-recordings)).
 - **Find topics**: name the topics without redoing the notes.
 - **Follow-up email** (meetings): a draft to the attendees, recapping
   decisions and next steps.
@@ -328,7 +327,7 @@ video call are in front, and **File → Mark Moment** does the same.
 in the transcript at their time, and the **Markers** list jumps to each one.
 Filter it to show only **✎ Follow up** after a meeting, or **✎ On the test**
 before an exam. You can change a mark's type or note, delete it, or add one
-at the scrubber's time. iPhone/iPad: **Marked moments** in the recording.
+at the scrubber's time. iPhone/iPad: **Marks** in the recording.
 
 **Make a review guide** (noFriction Pro, with Apple on-device or your own AI
 endpoint). It's called a **study guide** for a class; the contents are the
@@ -379,7 +378,7 @@ regenerate them. Copies you already shared, exported or sent to an AI
 endpoint can't be recalled. On the Mac, you can't edit the screens of a
 recording that is still running.
 
-To delete a whole recording: iPhone/iPad, open it → **⋯ → Delete Meeting**; Mac,
+To delete a whole recording: iPhone/iPad, open it → **⋯ → Delete Recording**; Mac,
 the delete button next to it in **REWIND → Recordings**.
 
 ---

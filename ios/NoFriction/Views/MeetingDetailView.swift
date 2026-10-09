@@ -195,12 +195,12 @@ struct MeetingDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if meeting.aiNotes != nil && meeting.aiNotesStale {
                     HStack(spacing: 8) {
-                        Label("Made before an edit — regenerate?", systemImage: "exclamationmark.arrow.circlepath")
+                        Label("Made before an edit", systemImage: "exclamationmark.arrow.circlepath")
                             .font(.footnote)
                             .foregroundStyle(Theme.ai)
                         Spacer(minLength: 0)
-                        Button("Regenerate") { requestAI(.notes) }
-                            .accessibilityLabel("Regenerate notes")
+                        Button("Make again") { requestAI(.notes) }
+                            .accessibilityLabel("Make notes again")
                             .font(.footnote.weight(.semibold))
                             .tint(Theme.ai)
                             .disabled(aiWorking != nil)
@@ -208,12 +208,13 @@ struct MeetingDetailView: View {
                     .accessibilityIdentifier("ai-notes-stale")
                 }
                 if let md = meeting.aiNotes {
-                    Text(MarkdownText.attributed(md))
+                    // One renderer for every type: headings and bullets, not raw ## / **
+                    NotesMarkdownView(markdown: md)
                         .font(.callout)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let at = meeting.aiNotesAt {
-                        Text("AI notes · \(at.formatted(date: .abbreviated, time: .shortened))")
+                        Text("Notes · \(at.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
@@ -228,7 +229,7 @@ struct MeetingDetailView: View {
                         .font(.footnote).foregroundStyle(.orange)
                 }
                 HStack(spacing: 10) {
-                    Button(meeting.aiNotes == nil ? "Summarize" : "Redo notes", systemImage: "sparkles") {
+                    Button(meeting.aiNotes == nil ? "Make notes" : "Make again", systemImage: "sparkles") {
                         requestAI(.notes)
                     }
                     .accessibilityHint(notesHint)
@@ -284,7 +285,7 @@ struct MeetingDetailView: View {
         }
         switch action {
         case .notes:
-            runAI("Writing notes with \(endpoint.provider.name)…") {
+            runAI("Making notes with \(endpoint.provider.name)…") {
                 let text = try await MeetingAI.notes(context: MeetingAI.context(meeting), endpoint: endpoint,
                                                      kind: meeting.kind)
                 meeting.aiNotes = text

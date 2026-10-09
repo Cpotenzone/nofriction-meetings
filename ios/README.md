@@ -82,7 +82,7 @@ Pro bypass.
 | Edit / Delete / Strike from the record (spec: `docs/REDACTION.md`) | `Redaction/`, `Views/TranscriptEditing.swift` |
 | StoreKit 2 (noFriction Pro) + paywall | `Store/Store.swift`, `Views/PaywallView.swift` |
 | Settings tab, consent + recording notices | `Views/SettingsView.swift`, `Views/Sheets.swift` |
-| First-run welcome (consent, permissions in context, AI setup, Pro); Settings → Show welcome again | `Views/OnboardingView.swift` |
+| First-run welcome (two steps: welcome, permissions in context; the recording notice comes on the first Record, AI and Pro when first needed); Settings → Show welcome again | `Views/OnboardingView.swift` |
 | Privacy manifest | `PrivacyInfo.xcprivacy` (watch app: `../NoFrictionWatch/PrivacyInfo.xcprivacy`) |
 | Apple Watch recordings: WatchConnectivity, inbox, import + on-device file transcription | `Watch/` (spec: `docs/WATCH_APP.md`) |
 | Watch ↔ iPhone contract (metadata, audio format, shared notice text) | `../Shared/WatchTransfer.swift` |

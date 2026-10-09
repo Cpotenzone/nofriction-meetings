@@ -30,14 +30,14 @@ struct MeetingEndDetector {
         var snooze: TimeInterval = 600
 
         static let enabledKey = "autoStopEnabled"
+        /// Silence is fixed at 3 minutes: the on/off switch is the only
+        /// setting (a stepper under this key was removed; any stored value
+        /// is ignored).
         static let minutesKey = "autoStopSilenceMinutes"
-        static let minutesRange = 1...30
 
         static func load(_ defaults: UserDefaults = .standard) -> Config {
             var c = Config()
             if defaults.object(forKey: enabledKey) != nil { c.enabled = defaults.bool(forKey: enabledKey) }
-            let minutes = defaults.integer(forKey: minutesKey)
-            if minutesRange.contains(minutes) { c.silenceMinutes = Double(minutes) }
             return c
         }
     }
