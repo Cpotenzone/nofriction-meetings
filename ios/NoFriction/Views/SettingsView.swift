@@ -171,32 +171,41 @@ struct AIEndpointSection: View {
             Text(model.whatWillBeSent)
                 .font(.footnote).foregroundStyle(.secondary)
                 .accessibilityIdentifier("what-will-be-sent")
-            HStack(spacing: 10) {
-                Button("Paste key", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
-                    .buttonStyle(.bordered)
-                Button("Save", systemImage: "checkmark") { model.saveEndpoint(settings) }
-                    .buttonStyle(.borderedProminent)
-                    .foregroundStyle(.black)
-                    .disabled(!model.canSave)
-                    .accessibilityIdentifier("save-ai-endpoint")
-                Button {
-                    Task { await model.testConnection(settings) }
-                } label: {
-                    if model.testing { ProgressView() } else { Label("Test connection", systemImage: "antenna.radiowaves.left.and.right") }
-                }
-                .buttonStyle(.bordered)
-                .disabled(model.testing || !model.canTest(settings))
-                .accessibilityHint("Sends the word Hi with a one-token answer. No recording content.")
-                .accessibilityIdentifier("test-ai-connection")
+            // Two rows: three buttons in one wrapped "Test connection" into four lines
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) { pasteAndSave }
+                testButton
             }
             StatusLine(status: model.status)
             StatusLine(status: model.testStatus)
         } header: {
-            Text("Connect a provider")
+            Text("Connect")
         } footer: {
-            Text("Pick a provider to fill in its endpoint and a model, then paste your own API key, or enter any OpenAI-compatible endpoint. Presets are only a shortcut: no provider is active until you save, and nothing is sent until you allow it. Keys are stored only in this device's Keychain, tied to the endpoint; changing the endpoint deletes the old key. Remote endpoints need HTTPS; HTTP is allowed only on your device or private network.")
+            Text("A card fills in its endpoint and a model; paste your own API key. Or enter any OpenAI-compatible endpoint. Nothing is used until you save, and nothing is sent until you allow it. Keys stay in this device's Keychain, tied to the endpoint; changing the endpoint deletes the old key. Internet endpoints need HTTPS; HTTP works only on this device or your private network.")
         }
         .onAppear { if model.selectedCard == nil { model.loadSaved(settings) } }
+    }
+
+    @ViewBuilder private var pasteAndSave: some View {
+        Button("Paste key", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
+            .buttonStyle(.bordered)
+        Button("Save", systemImage: "checkmark") { model.saveEndpoint(settings) }
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(.black)
+            .disabled(!model.canSave)
+            .accessibilityIdentifier("save-ai-endpoint")
+    }
+
+    private var testButton: some View {
+        Button {
+            Task { await model.testConnection(settings) }
+        } label: {
+            if model.testing { ProgressView() } else { Label("Test connection", systemImage: "antenna.radiowaves.left.and.right") }
+        }
+        .buttonStyle(.bordered)
+        .disabled(model.testing || !model.canTest(settings))
+        .accessibilityHint("Sends the word Hi with a one-token answer. No recording content.")
+        .accessibilityIdentifier("test-ai-connection")
     }
 
     /// Text-only cards (no third-party logos). Apple on-device appears when available.
@@ -222,7 +231,7 @@ struct AIEndpointSection: View {
         }
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("AI provider")
+        .accessibilityLabel("AI service")
     }
 }
 
@@ -274,7 +283,7 @@ struct AISetupSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Use Apple on-device when available, pick a provider and paste your own key, or enter your own AI endpoint and model. noFriction provides no hosted models.")
+                    Text("Use Apple on-device when available, pick a card and paste your own key, or enter your own AI endpoint and model. noFriction provides no hosted models.")
                         .font(.callout)
                 }
                 AIEndpointSection(model: model)
@@ -331,6 +340,7 @@ struct SettingsView: View {
                 aboutSection
             }
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.immediately)
             .background(Theme.background)
             .navigationTitle("Settings")
             .sheet(isPresented: $showPaywall) { PaywallView() }
@@ -381,7 +391,7 @@ struct SettingsView: View {
                 Text(whatLeaves(p))
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
-                Text(settings.needsEndpointSetup ? "Configure AI: the previous provider is no longer available. Your recordings are unchanged. Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below." : "Choose Apple on-device when available, pick a provider and paste your own key, or enter your endpoint and model below to make notes, review guides and Chat answers.")
+                Text(settings.needsEndpointSetup ? "Set up AI again: the AI service chosen in an earlier version is no longer available. Your recordings are unchanged. Choose Apple on-device when available, pick a card and paste your own key, or enter your endpoint and model below." : "Choose Apple on-device when available, pick a card and paste your own key, or enter your endpoint and model below to make notes, review guides and Chat answers.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -389,7 +399,9 @@ struct SettingsView: View {
 
     @ViewBuilder private var savedSection: some View {
         let list = settings.savedProviders
-        if !list.isEmpty || AppleOnDevice.isAvailable {
+        // Offered only when it would change something (not while Apple on-device is already in use)
+        let offerApple = AppleOnDevice.isAvailable && settings.saved[AIProvider.apple.id] == nil && settings.effectiveProvider != .apple
+        if !list.isEmpty || offerApple {
             Section {
                 ForEach(list) { p in
                     Button {
@@ -408,7 +420,7 @@ struct SettingsView: View {
                         }
                     }
                     .accessibilityAddTraits(settings.effectiveProvider == p ? .isSelected : [])
-                    .accessibilityHint("Makes this the active AI provider")
+                    .accessibilityHint("Uses this connection for AI")
                     .swipeActions {
                         Button("Delete", role: .destructive) { settings.remove(p) }
                     }
@@ -416,7 +428,7 @@ struct SettingsView: View {
                         Button("Delete connection", systemImage: "trash", role: .destructive) { settings.remove(p) }
                     }
                 }
-                if AppleOnDevice.isAvailable && settings.saved[AIProvider.apple.id] == nil {
+                if offerApple {
                     Button("Use Apple on-device (no key)") { settings.useApple() }
                 }
             } header: {
@@ -437,7 +449,7 @@ struct SettingsView: View {
                     Spacer()
                     Button("Revoke", role: .destructive) { settings.revokeConsent(p) }
                         .buttonStyle(.borderless)
-                        .accessibilityLabel("Revoke sharing with \(p.name)")
+                        .accessibilityLabel("Revoke sharing with \(settings.baseURL(for: p)?.host() ?? p.name)")
                 }
             }
         } header: {

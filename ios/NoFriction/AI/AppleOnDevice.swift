@@ -57,11 +57,33 @@ enum AppleOnDevice {
                         continue
                     }
                     if case .guardrailViolation = error { throw AIError.refused }
-                    throw AIError.onDevice(error.localizedDescription)
+                    throw AIError.onDevice(message(for: error))
                 }
             }
         }
         #endif
         throw AIError.onDevice("Apple's on-device model isn't available.")
     }
+
+    #if canImport(FoundationModels)
+    /// Plain words for a generation error. `localizedDescription` alone read
+    /// "The operation couldn't be completed. (FoundationModels.
+    /// LanguageModelSession.GenerationError error -1.)".
+    @available(iOS 26, *)
+    static func message(for error: LanguageModelSession.GenerationError) -> String {
+        switch error {
+        case .assetsUnavailable:
+            return "Apple's on-device model isn't ready. Check that Apple Intelligence is on and has finished downloading, then try again."
+        case .unsupportedLanguageOrLocale:
+            return "Apple's on-device model doesn't support this recording's language yet."
+        case .rateLimited, .concurrentRequests:
+            return "Apple's on-device model is busy. Try again in a moment."
+        case .exceededContextWindowSize:
+            return "This recording is too long for Apple's on-device model in one pass. Try again, or connect another AI in Settings."
+        default:
+            if let text = error.errorDescription, !text.isEmpty, !text.contains("GenerationError") { return text }
+            return "Apple's on-device model couldn't finish. Try again, or connect another AI in Settings."
+        }
+    }
+    #endif
 }

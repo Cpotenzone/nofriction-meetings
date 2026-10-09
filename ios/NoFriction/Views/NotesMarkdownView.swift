@@ -43,6 +43,16 @@ enum NotesMarkdown {
     }
 
     private static func heading(_ line: String) -> (String, Int)? {
+        // A line that is only bold ("**Summary**", "**Action items:**") is a
+        // heading too; models write it as often as "## Summary". Joined into
+        // the next line, it read "Summary How cells turn…".
+        for mark in ["**", "__"] where line.hasPrefix(mark) && line.hasSuffix(mark) && line.count > mark.count * 2 {
+            let inner = line.dropFirst(mark.count).dropLast(mark.count)
+            guard !inner.contains(mark) else { break }
+            var text = inner.trimmingCharacters(in: .whitespaces)
+            if text.hasSuffix(":") { text = String(text.dropLast()).trimmingCharacters(in: .whitespaces) }
+            return text.isEmpty ? nil : (text, 2)
+        }
         guard line.hasPrefix("#") else { return nil }
         let hashes = line.prefix { $0 == "#" }.count
         guard hashes <= 6 else { return nil }
