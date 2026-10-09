@@ -12,6 +12,10 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=AudioToolbox");
         println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
         println!("cargo:rustc-link-lib=framework=CoreMedia");
+        // calendar_client.rs looks up EKEventStore by name through the ObjC
+        // runtime. Link EventKit explicitly instead of relying on another
+        // framework happening to load it (the binary didn't list it)
+        println!("cargo:rustc-link-lib=framework=EventKit");
 
         // Add Swift library search paths
         // The system Swift libraries are in /usr/lib/swift
