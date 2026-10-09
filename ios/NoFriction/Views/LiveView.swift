@@ -115,10 +115,13 @@ struct LiveView: View {
                     }
                 }
             }
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            // Idle: the promise below says it once; no second line here
+            if let subtitle {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             if session.isActive, let deadline = session.timeDeadline {
                 TimeLimitRow(deadline: deadline,
                              extend: { session.extendTimeLimit() },
@@ -145,9 +148,9 @@ struct LiveView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var subtitle: String {
+    private var subtitle: String? {
         switch session.phase {
-        case .idle: return "Works offline. Stays on this \(DeviceName.current)."
+        case .idle: return nil
         case .starting: return "Starting…"
         case .paused: return "Paused — nothing is being recorded"
         case .stopping: return "Saving…"
@@ -172,6 +175,8 @@ struct LiveView: View {
                 session.togglePause()
             }
             .accessibilityHint(session.phase == .paused ? "Continues recording" : "Pauses recording. Nothing is recorded while paused.")
+            .opacity(session.isActive ? 1 : 0)
+            .accessibilityHidden(!session.isActive)
             Spacer()
             RecordButton(phase: session.phase, level: session.level) {
                 if session.isActive {
@@ -184,7 +189,7 @@ struct LiveView: View {
                 }
             }
             Spacer()
-            // Snap: camera where there is one; photo library as the alternative
+            // Photo: camera where there is one; photo library as the alternative
             Menu {
                 if UIImagePickerController.isSourceTypeAvailable(.camera) {
                     Button("Take Photo", systemImage: "camera") { showCamera = true }
@@ -193,13 +198,15 @@ struct LiveView: View {
                     Label("Choose from Photos", systemImage: "photo.on.rectangle")
                 }
             } label: {
-                CircleButtonLabel(systemImage: "camera.fill", label: "Snap", enabled: session.isActive)
+                CircleButtonLabel(systemImage: "camera.fill", label: "Photo", enabled: session.isActive)
             } primaryAction: {
                 if UIImagePickerController.isSourceTypeAvailable(.camera) { showCamera = true }
             }
             .disabled(!session.isActive)
-            .accessibilityLabel("Snap")
-            .accessibilityHint(session.isActive ? "Adds a photo of a slide, whiteboard or screen to this recording" : "Available while recording")
+            .opacity(session.isActive ? 1 : 0)
+            .accessibilityHidden(!session.isActive)
+            .accessibilityLabel("Photo")
+            .accessibilityHint("Adds a photo of a slide, whiteboard or screen to this recording")
         }
         .padding(.horizontal, 36)
         .padding(.top, 14)
@@ -306,11 +313,6 @@ private struct EmptyTranscript: View {
             } else {
                 PrivacyPromise()
                     .padding(.top, 6)
-                Text("Your calendar names the recording and who was there.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 4)
             }
         }
         .padding(.horizontal, 32)
