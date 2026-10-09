@@ -355,6 +355,7 @@ const AI_PROVIDERS = [
 const AI_PRESETS = [
     { id: "openai", name: "ChatGPT (OpenAI)", base_url: "https://api.openai.com/v1", default_model: "gpt-6-luna", model_hint: "gpt-6.1-sol, gpt-6-astra", key_url: "https://platform.openai.com/api-keys", note: "Your OpenAI API key; billed by OpenAI." },
     { id: "anthropic", name: "Anthropic (Claude)", base_url: "https://api.anthropic.com/v1", default_model: "claude-sonnet-5-5", model_hint: "claude-haiku-5-5, claude-opus-5-5", key_url: "https://platform.claude.com/settings/keys", note: "Your Claude API key; billed by Anthropic." },
+    { id: "meta", name: "Muse (Meta)", base_url: "https://api.meta.ai/v1", default_model: "muse-spark-1.3", model_hint: "muse-spark-1.1", key_url: "https://dev.meta.ai", note: "Your Meta Model API key; billed by Meta." },
     { id: "xai", name: "Grok (xAI)", base_url: "https://api.x.ai/v1", default_model: "grok-4.7", model_hint: "grok-4.3", key_url: "https://console.x.ai", note: "Your xAI API key; billed by xAI." },
     { id: "mistral", name: "Mistral", base_url: "https://api.mistral.ai/v1", default_model: "mistral-large-latest", model_hint: "mistral-small-latest", key_url: "https://console.mistral.ai/api-keys", note: "Your Mistral API key; billed by Mistral." },
 ];
