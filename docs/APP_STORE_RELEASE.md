@@ -268,6 +268,23 @@ shipping code is the Castle tailnet hostname (§2).
 25. Description, keywords, support URL, marketing URL, promotional text, "What's New".
 26. Submit for App Review with the same review notes as §5.6 step 18. Choose manual or automatic release.
 
+### 5.9 Resubmitting after a rejection (API)
+
+A rejected submission sits in `UNRESOLVED_ISSUES` with its version item
+`REJECTED`. Fix the metadata, then **mark the item resolved** before
+submitting; without that step `PATCH reviewSubmissions {submitted: true}`
+answers "Version is not ready to be submitted yet, please try again later"
+indefinitely (2026-10-09: two hours of retries), and deleting the item fails
+with "Item was already submitted".
+
+```text
+PATCH /v1/reviewSubmissionItems/{item}   {"attributes": {"resolved": true}}   → READY_FOR_REVIEW
+PATCH /v1/reviewSubmissions/{submission} {"attributes": {"submitted": true}}  → WAITING_FOR_REVIEW
+```
+
+This is the API form of the web flow "Resolve → Edit → Add for Review →
+Resubmit to App Review".
+
 ---
 
 ## 6. Order of work
