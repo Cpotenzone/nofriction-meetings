@@ -1,7 +1,6 @@
-// noFriction Meetings - AI settings (bring your own key)
-// Enter your own OpenAI-compatible endpoint and model, or use Apple on-device.
-// Keys go straight to the
-// macOS Keychain; this screen only ever sees the last 4 characters.
+// Settings → AI: Apple on-device, or one OpenAI-compatible endpoint you
+// enter (a preset card only fills the URL and model). Keys go straight to
+// the macOS Keychain; this screen only ever sees the last 4 characters.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,7 +27,6 @@ import {
     whatWillBeSent,
     type EndpointForm,
 } from "../../lib/aiPresets";
-import { KnowledgeBaseSettings } from "./KnowledgeBaseSettings";
 import "./AIProviderSettings.css";
 
 type Feedback = { ok: boolean; text: string } | null;
@@ -70,9 +68,8 @@ export function AIProviderSettings() {
             <ActiveSummary status={status} onChange={refresh} />
             <SavedProviders saved={saved} onChange={refresh} />
             <ModelPickers providers={providers} byId={byId} status={status} onChange={refresh} />
-            <AutomaticAi configured={!!status?.text} />
+            <AutomaticNotes configured={!!status?.text} />
             <ConnectProvider providers={providers} onChange={refresh} />
-            <Advanced />
         </div>
     );
 }
@@ -96,21 +93,21 @@ function ActiveSummary({ status, onChange }: { status: AiStatus | null; onChange
 
     return (
         <section className="settings-section">
-            <h3>AI provider</h3>
+            <h3>Your AI</h3>
             <p className="section-desc">
-                Use Apple on-device, pick a provider preset (your own key), or enter any OpenAI-compatible
-                endpoint. No provider is active by default. Keys stay in your macOS Keychain, tied to the endpoint.
+                Apple on-device, or one endpoint you enter (a preset fills in the address; the key is yours).
+                Nothing is set up until you choose. Keys stay in your Keychain, tied to the endpoint.
             </p>
             <div className="ai-active-grid">
                 <div className="ai-active-item">
-                    <span className="ai-active-label">Notes, summaries & chat</span>
+                    <span className="ai-active-label">Notes, review guides and chat</span>
                     <span className="ai-active-value">
                         {text ? `${text.name} · ${text.model}` : "Not set up"}
                         {text && <StateBadge state={text.state} />}
                     </span>
                 </div>
                 <div className="ai-active-item">
-                    <span className="ai-active-label">Screenshots (vision)</span>
+                    <span className="ai-active-label">Screens (a model that reads images)</span>
                     <span className="ai-active-value">
                         {vision ? `${vision.name} · ${vision.model}` : "Off"}
                         {vision && <StateBadge state={vision.state} />}
@@ -168,7 +165,6 @@ function SavedProviders({ saved, onChange }: { saved: AiProviderInfo[]; onChange
     };
 
     const remove = async (p: AiProviderInfo) => {
-        if (!confirm(`Remove ${p.name}? Its key is deleted from your Keychain.`)) return;
         await ai.deleteKey(p.id);
         onChange();
     };
@@ -186,7 +182,7 @@ function SavedProviders({ saved, onChange }: { saved: AiProviderInfo[]; onChange
 
     return (
         <section className="settings-section">
-            <h3>Saved providers</h3>
+            <h3>Saved connections</h3>
             {saved.map((p) => (
                 <div className="settings-row ai-provider-row" key={p.id}>
                     <div className="settings-label">
@@ -244,8 +240,8 @@ function ModelPickers({
     return (
         <section className="settings-section">
             <h3>Models</h3>
-            <ModelPicker kind="text" label="Notes, summaries & chat" usable={usable} byId={byId} current={status?.text ?? null} onChange={onChange} />
-            <ModelPicker kind="vision" label="Screenshots (vision)" usable={usable} byId={byId} current={status?.vision ?? null} onChange={onChange} />
+            <ModelPicker kind="text" label="Notes, review guides and chat" usable={usable} byId={byId} current={status?.text ?? null} onChange={onChange} />
+            <ModelPicker kind="vision" label="Screens" usable={usable} byId={byId} current={status?.vision ?? null} onChange={onChange} />
         </section>
     );
 }
@@ -307,8 +303,8 @@ function ModelPicker({
                 <span className="label-main">{label}</span>
                 <span className="label-sub">
                     {kind === "vision"
-                        ? "Needs a model that can read images. Off = use the text model when it can."
-                        : "Used for every AI feature except screenshots."}
+                        ? "Needs a model that can read images. Off: the text model is used when it can."
+                        : "Used for every AI feature except screens."}
                 </span>
                 {error && <span className="ai-error-text">{error}</span>}
             </div>
@@ -364,12 +360,11 @@ function ModelPicker({
 // ---------------------------------------------------------------------------
 
 interface AiAutomation {
-    liveInsights: boolean;
     autoReport: boolean;
 }
 
-/** Off switches for the AI work that happens without a click. */
-function AutomaticAi({ configured }: { configured: boolean }) {
+/** The one thing AI does without a click: notes after a recording. */
+function AutomaticNotes({ configured }: { configured: boolean }) {
     const [value, setValue] = useState<AiAutomation | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -377,59 +372,43 @@ function AutomaticAi({ configured }: { configured: boolean }) {
         invoke<AiAutomation>("get_ai_automation").then(setValue).catch((e) => setError(String(e)));
     }, []);
 
-    const save = async (patch: Partial<AiAutomation>) => {
+    const save = async (autoReport: boolean) => {
         if (!value) return;
         const prev = value;
-        setValue({ ...value, ...patch });
+        setValue({ autoReport });
         setError(null);
         try {
-            setValue(await invoke<AiAutomation>("set_ai_automation", patch));
+            setValue(await invoke<AiAutomation>("set_ai_automation", { autoReport }));
         } catch (e) {
             setValue(prev);
             setError(String(e));
         }
     };
 
-    const row = (label: string, sub: string, on: boolean, patch: (v: boolean) => Partial<AiAutomation>) => (
-        <div className="settings-row">
-            <div className="settings-label">
-                <span className="label-main">{label}</span>
-                <span className="label-sub">{sub}</span>
-            </div>
-            <div
-                className={`toggle-switch ${on ? "active" : ""}`}
-                onClick={() => save(patch(!on))}
-                style={{ cursor: "pointer" }}
-                role="switch"
-                aria-checked={on}
-                aria-label={label}
-            >
-                <div className="toggle-knob"></div>
-            </div>
-        </div>
-    );
-
+    const on = value?.autoReport ?? true;
     return (
         <section className="settings-section">
-            <h3>Automatic AI</h3>
-            <p className="section-desc">
-                What happens without you clicking anything.
-                {!configured && " These take effect once an AI provider is connected."}
-            </p>
-            {value &&
-                row(
-                    "Live insights while recording",
-                    "Spot action items, decisions and risks in the live transcript while you record (runs on this Mac).",
-                    value.liveInsights,
-                    (v) => ({ liveInsights: v }),
-                )}
-            {value &&
-                row(
-                    "Write notes after each recording",
-                    "When a recording longer than 6 minutes stops, write AI notes with your AI provider. Off: generate notes yourself from Recordings → Notes.",
-                    value.autoReport,
-                    (v) => ({ autoReport: v }),
-                )}
+            <h3>Notes</h3>
+            <div className="settings-row">
+                <div className="settings-label">
+                    <span className="label-main">Make notes automatically</span>
+                    <span className="label-sub">
+                        When a recording longer than 6 minutes stops, notes are made with your AI.
+                        {!configured && " Starts once AI is set up."} Off: use Make notes on the recording.
+                    </span>
+                </div>
+                <div
+                    className={`toggle-switch ${on ? "active" : ""}`}
+                    onClick={() => save(!on)}
+                    role="switch"
+                    aria-checked={on}
+                    aria-label="Make notes automatically"
+                    tabIndex={0}
+                    onKeyDown={(e) => (e.key === " " || e.key === "Enter") && save(!on)}
+                >
+                    <div className="toggle-knob"></div>
+                </div>
+            </div>
             {error && <p className="ai-error-text">{error}</p>}
         </section>
     );
@@ -553,12 +532,12 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
 
     return (
         <section className="settings-section">
-            <h3>Connect a provider</h3>
+            <h3>Connect</h3>
             <p className="section-desc">
-                Pick a provider to fill in its endpoint and a model, then paste your own API key. Presets are
-                only a shortcut: no provider is active until you save, and nothing is sent until you allow it.
+                Pick one to fill in its endpoint and a model, then paste your own key. Nothing is active until
+                you save, and nothing is sent until you allow it.
             </p>
-            <div className="ai-preset-grid" role="radiogroup" aria-label="AI provider">
+            <div className="ai-preset-grid" role="radiogroup" aria-label="AI">
                 {cards.map((c) => (
                     <button
                         key={c.id}
@@ -646,28 +625,6 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
                     {feedback && <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</p>}
                     {testResult && <p className={testResult.ok ? "ai-ok-text" : "ai-error-text"}>{testResult.text}</p>}
                 </div>
-            )}
-        </section>
-    );
-}
-
-// ---------------------------------------------------------------------------
-
-function Advanced() {
-    const [open, setOpen] = useState(false);
-    return (
-        <section className="settings-section ai-advanced">
-            <button className="ai-advanced-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-                {open ? "▾" : "▸"} Advanced: screen analysis
-            </button>
-            {open && (
-                <>
-                    <p className="section-desc">
-                        Screenshot processing.
-                        Not required for anything else in the app.
-                    </p>
-                    <KnowledgeBaseSettings />
-                </>
             )}
         </section>
     );

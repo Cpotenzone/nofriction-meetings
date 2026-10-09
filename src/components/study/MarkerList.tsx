@@ -1,8 +1,7 @@
-// Recordings view: the recording's moment markers. A list that jumps to
-// each moment, filtered by type ("everything marked to follow up" / "for
-// the test"); markers on the scrubber; and a marker chip inline in the
-// transcript at its time. Labels follow the recording's type
-// (MarkKindContext). docs/STUDY_TOOLS.md
+// Rewind: the recording's marks. Pins on the timeline and a chip inline
+// in the transcript at each mark's time, plus a list (collapsed by
+// default) that jumps to each one, filtered by type. Labels follow the
+// recording's type (MarkKindContext). docs/STUDY_TOOLS.md
 
 import { useCallback, useEffect, useState } from "react";
 import { TrashIcon } from "../icons";
@@ -54,7 +53,7 @@ interface ListProps {
 
 export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }: ListProps) {
     const [filter, setFilter] = useState<MarkerFilter>("all");
-    const [open, setOpen] = useState(true);
+    const [open, setOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const counts = countByKind(markers);
     const shown = filterMarkers(markers, filter);
@@ -72,7 +71,7 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
     };
 
     return (
-        <section className="study-markers" aria-label="Moment markers">
+        <section className="study-markers" aria-label="Marks">
             <div className="study-markers__bar">
                 <button
                     type="button"
@@ -80,9 +79,9 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
                     aria-expanded={open}
                     onClick={() => setOpen((o) => !o)}
                 >
-                    Markers ({markers.length})
+                    {open ? "▾" : "▸"} Marks ({markers.length})
                 </button>
-                <div className="study-filter" role="group" aria-label="Show markers of type">
+                {open && <div className="study-filter" role="group" aria-label="Show marks of type">
                     <button type="button" className={`study-chip${filter === "all" ? " is-on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
                         All
                     </button>
@@ -102,8 +101,8 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
                             <MarkerGlyph kind={k} size={12} /> {counts[k]}
                         </button>
                     ))}
-                </div>
-                <button
+                </div>}
+                {open && <button
                     type="button"
                     className="rd-btn rd-btn-ghost"
                     style={{ padding: "0 6px", marginLeft: "auto" }}
@@ -111,7 +110,7 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
                     onClick={() => run(() => markersApi.add(meetingId, currentMs))}
                 >
                     Mark {clock(currentMs)}
-                </button>
+                </button>}
             </div>
             {error && (
                 <p className="rd-tip" role="alert">
@@ -126,7 +125,7 @@ export function MarkerList({ meetingId, markers, currentMs, onJump, onChanged }:
                 </ul>
             )}
             {open && markers.length > 0 && shown.length === 0 && (
-                <p className="study-muted">No {filter === "all" ? "" : meta(filter as MarkerKind).label} markers.</p>
+                <p className="study-muted">No {filter === "all" ? "" : meta(filter as MarkerKind).label} marks.</p>
             )}
         </section>
     );
@@ -153,7 +152,7 @@ function MarkerRow({ m, onJump, run }: { m: Marker; onJump: (ms: number) => void
                     value={note}
                     maxLength={280}
                     placeholder="Note"
-                    aria-label="Marker note"
+                    aria-label="Mark note"
                     onChange={(e) => setNote(e.target.value)}
                     onBlur={save}
                     onKeyDown={(e) => {
@@ -173,8 +172,8 @@ function MarkerRow({ m, onJump, run }: { m: Marker; onJump: (ms: number) => void
             <button
                 type="button"
                 className="rd-btn rd-btn-ghost study-icon-btn"
-                aria-label={`Delete the marker at ${clock(m.offset_ms)}`}
-                title="Delete marker"
+                aria-label={`Delete the mark at ${clock(m.offset_ms)}`}
+                title="Delete mark"
                 onClick={() => run(() => markersApi.remove(m.id))}
             >
                 <TrashIcon size={13} />
@@ -209,7 +208,7 @@ export function MarkerPins({ markers, pct, onJump }: { markers: Marker[]; pct: (
     const meta = useMarkerMeta();
     if (markers.length === 0) return null;
     return (
-        <div className="study-pins" aria-label="Markers on the timeline">
+        <div className="study-pins" aria-label="Marks on the timeline">
             {markers.map((m) => (
                 <button
                     key={m.id}

@@ -1,22 +1,10 @@
-// Topics in the library (docs/TOPICS_AND_CHAT.md): the "Topics: All · Q4
-// roadmap (3) · …" filter chips beside Notebooks, the "Group by" control,
-// a recording row's topic chips, and the editor on the Notes tab (rename,
-// remove, add; Find topics with the user's AI).
+// Topics on a recording's Notes view (docs/TOPICS_AND_CHAT.md): the chips,
+// and one Edit that opens rename / remove / add and "Find topics" with the
+// user's AI. Topics are also a search facet in Recordings.
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { notifyTopicsChanged, TOPICS_CHANGED_EVENT, topicsApi } from "../lib/topics";
-import {
-    cleanLabels,
-    EMPTY_INDEX,
-    GROUP_BY_KEY,
-    GROUP_BY_OPTIONS,
-    parseGroupBy,
-    topicsForRow,
-    type GroupBy,
-    type MeetingTopic,
-    type TopicIndex,
-    type TopicSummary,
-} from "../lib/topicsLogic";
+import { cleanLabels, EMPTY_INDEX, type MeetingTopic, type TopicIndex } from "../lib/topicsLogic";
 import { aiErrorClass, friendlyAiError, isNoProviderError } from "../lib/ai";
 import { AiSetupNotice, useAiStatus } from "./AiSetupNotice";
 import "./TopicChips.css";
@@ -35,105 +23,6 @@ export function useTopicIndex(refreshKey: unknown): TopicIndex {
     return index;
 }
 
-/** The remembered Group by (per user); storage can be unavailable. */
-export function useGroupBy(): [GroupBy, (g: GroupBy) => void] {
-    const [groupBy, set] = useState<GroupBy>(() => {
-        try {
-            return parseGroupBy(localStorage.getItem(GROUP_BY_KEY));
-        } catch {
-            return "date";
-        }
-    });
-    const update = (g: GroupBy) => {
-        set(g);
-        try {
-            localStorage.setItem(GROUP_BY_KEY, g);
-        } catch {
-            /* this session only */
-        }
-    };
-    return [groupBy, update];
-}
-
-/** Filter chips titled "Topics"; hidden until at least one recording has a topic. */
-export function TopicFilterChips({
-    topics,
-    value,
-    onChange,
-}: {
-    topics: TopicSummary[];
-    value: string | null;
-    onChange: (key: string | null) => void;
-}) {
-    const titleId = useId();
-    if (topics.length === 0 && !value) return null;
-    const shown = value && !topics.some((t) => t.key === value) ? [{ key: value, label: value, count: 0 }, ...topics] : topics;
-    return (
-        <div className="class-filter" role="toolbar" aria-labelledby={titleId}>
-            <span id={titleId} className="class-filter__title">Topics</span>
-            <button type="button" className={`class-chip ${value === null ? "is-on" : ""}`} aria-pressed={value === null} onClick={() => onChange(null)}>
-                All
-            </button>
-            {shown.map((t) => (
-                <button
-                    key={t.key}
-                    type="button"
-                    className={`class-chip ${value === t.key ? "is-on" : ""}`}
-                    aria-pressed={value === t.key}
-                    title={t.label}
-                    onClick={() => onChange(value === t.key ? null : t.key)}
-                >
-                    {t.label}{t.count > 0 && <span className="topic-chip__count">{t.count}</span>}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-/** "Group by: Date · Notebook · Topic". */
-export function GroupByControl({ value, onChange }: { value: GroupBy; onChange: (g: GroupBy) => void }) {
-    const id = useId();
-    return (
-        <div className="group-by" role="radiogroup" aria-labelledby={id}>
-            <span id={id} className="class-filter__title">Group by</span>
-            {GROUP_BY_OPTIONS.map((o) => (
-                <button
-                    key={o.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={value === o.value}
-                    className={`class-chip ${value === o.value ? "is-on" : ""}`}
-                    onClick={() => onChange(o.value)}
-                >
-                    {o.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-/** A row's topic chips ("Q4 roadmap · Hiring +1"). */
-export function RowTopics({ index, meetingId, onPick }: { index: TopicIndex; meetingId: string; onPick?: (key: string) => void }) {
-    const { shown, more } = topicsForRow(index, meetingId);
-    if (shown.length === 0) return null;
-    return (
-        <span className="row-topics">
-            {shown.map((t) => (
-                <span
-                    key={t.key}
-                    className="topic-tag"
-                    title={t.label}
-                    onClick={onPick ? (e) => { e.stopPropagation(); onPick(t.key); } : undefined}
-                    role={onPick ? "button" : undefined}
-                >
-                    {t.label}
-                </span>
-            ))}
-            {more > 0 && <span className="topic-tag topic-tag--more">+{more}</span>}
-        </span>
-    );
-}
-
 function aiFailure(e: unknown): string {
     switch (aiErrorClass(e)) {
         case "pro_required":
@@ -146,9 +35,9 @@ function aiFailure(e: unknown): string {
 }
 
 /**
- * The recording's topics on the Notes tab, with "edit" (rename, remove,
- * add; saved as the user's own) and "Find topics" (the AI fills the rest;
- * user topics and removed ones are respected).
+ * The recording's topics, under the notes. One Edit: rename, remove, add
+ * (saved as the user's own) and Find topics (the AI fills the rest; user
+ * topics and removed ones are respected).
  */
 export function TopicsEditor({ meetingId }: { meetingId: string }) {
     const [topics, setTopics] = useState<MeetingTopic[]>([]);
@@ -181,6 +70,7 @@ export function TopicsEditor({ meetingId }: { meetingId: string }) {
         try {
             const t = await topicsApi.find(meetingId);
             setTopics(t);
+            setDrafts(t.map((x) => x.label));
             notifyTopicsChanged(meetingId);
         } catch (e) {
             if (isNoProviderError(e)) setNeedsAi(true);
@@ -218,17 +108,10 @@ export function TopicsEditor({ meetingId }: { meetingId: string }) {
             <div className="topics-editor__head">
                 <h4>Topics</h4>
                 {!editing && (
-                    <div className="topics-editor__actions">
-                        {topics.length > 0 && (
-                            <button className="mn-btn small" onClick={startEdit}>Edit</button>
-                        )}
-                        <button className="mn-btn small" onClick={find} disabled={finding || showSetup}>
-                            {finding ? "Finding…" : topics.length > 0 ? "Find again" : "Find topics"}
-                        </button>
-                    </div>
+                    <button className="mn-btn small" onClick={startEdit}>Edit</button>
                 )}
             </div>
-            {showSetup && <AiSetupNotice feature="Topics" compact />}
+            {editing && showSetup && <AiSetupNotice feature="Finding topics" compact />}
             {error && <p className="mn-error" role="alert">{error}</p>}
             {editing ? (
                 <div className="topics-editor__form">
@@ -263,21 +146,23 @@ export function TopicsEditor({ meetingId }: { meetingId: string }) {
                     <div className="topics-editor__actions">
                         <button className="mn-btn primary small" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
                         <button className="mn-btn small" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
+                        <button className="mn-btn small" onClick={find} disabled={finding || showSetup} title="Your AI names the topics; yours are kept">
+                            {finding ? "Finding…" : topics.length > 0 ? "Find again" : "Find topics"}
+                        </button>
                     </div>
                     <p className="mn-muted topics-editor__hint">
                         Your topics are kept when topics are found again; a topic you remove doesn't come back.
                     </p>
                 </div>
             ) : topics.length === 0 ? (
-                <p className="mn-muted">No topics yet. They're found when notes are written, or now with Find topics.</p>
+                <p className="mn-muted">No topics yet. They're named when notes are made, or with Edit → Find topics.</p>
             ) : (
                 <div className="topics-editor__chips">
                     {topics.map((t) => (
-                        <span key={t.id} className={`topic-tag ${t.source === "user" ? "topic-tag--user" : ""}`} title={t.source === "user" ? "Your topic" : "Found by your AI"}>
+                        <span key={t.id} className={`topic-tag ${t.source === "user" ? "topic-tag--user" : ""}`} title={t.source === "user" ? "Your topic" : "Named by your AI"}>
                             {t.label}
                         </span>
                     ))}
-                    {topics.length > 0 && <button className="topics-editor__edit" onClick={startEdit}>edit</button>}
                 </div>
             )}
         </section>

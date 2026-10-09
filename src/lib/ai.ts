@@ -1,4 +1,4 @@
-// noFriction Meetings - AI provider API (bring your own key)
+// AI API: Apple on-device or the one endpoint the user entered
 // Thin typed wrappers over the ai_* Tauri commands, plus the consent bus
 // used to show the "Send recording content to your endpoint?" dialog whenever a
 // call comes back with CONSENT_REQUIRED:<provider>.
@@ -170,7 +170,7 @@ export function friendlyAiError(e: unknown): string {
 }
 
 /** Shown wherever an AI feature is used before any provider is set up. */
-export const NO_AI_MESSAGE = "Add an AI key in Settings → AI Engine to use this.";
+export const NO_AI_MESSAGE = "Set up AI in Settings → AI to use this.";
 
 /** True when the error means "no AI provider / key set up yet". */
 export function isNoProviderError(e: unknown): boolean {

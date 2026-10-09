@@ -347,32 +347,28 @@ pub async fn generate_meeting_report(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Automatic AI use (Settings → AI Engine toggles)
+// Automatic notes (Settings → AI → "Make notes automatically")
 // ═══════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiAutomationSettings {
-    /// Action items / decisions / risks spotted while recording
-    pub live_insights: bool,
-    /// Write AI notes when a recording (> 6 min) stops
+    /// Make notes when a recording (> 6 min) stops
     pub auto_report: bool,
 }
 
 async fn read_ai_automation(state: &AppState) -> AiAutomationSettings {
-    let live = state.settings.get(crate::live_intel_agent::SETTING_ENABLED).await.ok().flatten();
     let report = state.settings.get("auto_generate_report").await.ok().flatten();
     AiAutomationSettings {
-        live_insights: crate::live_intel_agent::parse_enabled(live.as_deref()),
         // Same rule as SettingsManager::get_all (default on)
         auto_report: report.map(|v| v == "true").unwrap_or(true),
     }
 }
 
-/// Load the live-insights switch into the agent (startup).
-pub async fn load_ai_automation(state: &AppState) {
-    let s = read_ai_automation(state).await;
-    crate::live_intel_agent::set_enabled(s.live_insights);
+/// No AI runs during a recording: the live-insights agent is off for good
+/// (its setting is no longer read; a saved value is left alone).
+pub async fn load_ai_automation(_state: &AppState) {
+    crate::live_intel_agent::set_enabled(false);
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -383,17 +379,8 @@ pub async fn get_ai_automation(state: State<'_, AppState>) -> Result<AiAutomatio
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_ai_automation(
     state: State<'_, AppState>,
-    live_insights: Option<bool>,
     auto_report: Option<bool>,
 ) -> Result<AiAutomationSettings, String> {
-    if let Some(v) = live_insights {
-        state
-            .settings
-            .set(crate::live_intel_agent::SETTING_ENABLED, if v { "true" } else { "false" })
-            .await
-            .map_err(|e| format!("Failed to save setting: {}", e))?;
-        crate::live_intel_agent::set_enabled(v);
-    }
     if let Some(v) = auto_report {
         state
             .settings

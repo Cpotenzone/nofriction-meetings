@@ -2360,7 +2360,7 @@ pub async fn clear_cache(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Export all data as JSON
 #[tauri::command(rename_all = "camelCase")]
-pub async fn export_data(state: State<'_, AppState>) -> Result<String, String> {
+pub async fn export_data(state: State<'_, AppState>, path: Option<String>) -> Result<String, String> {
     // Get all meetings
     let meetings = state
         .database
@@ -2428,8 +2428,15 @@ pub async fn export_data(state: State<'_, AppState>) -> Result<String, String> {
         .unwrap_or_default();
     export_data["activities"] = serde_json::to_value(activities).unwrap_or(serde_json::json!([]));
 
-    serde_json::to_string_pretty(&export_data)
-        .map_err(|e| format!("Failed to serialize export data: {}", e))
+    let json = serde_json::to_string_pretty(&export_data)
+        .map_err(|e| format!("Failed to serialize export data: {}", e))?;
+    // Settings → Export: written to the file the user chose (the JSON is
+    // never logged); without a path the JSON is returned.
+    if let Some(path) = path {
+        std::fs::write(&path, &json).map_err(|e| format!("Couldn't write {}: {}", path, e))?;
+        return Ok(String::new());
+    }
+    Ok(json)
 }
 
 // ============================================

@@ -93,6 +93,8 @@ pub mod study;
 // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
 pub mod chat;
 pub mod topics;
+// The one search at the top of Recordings
+pub mod search;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -895,6 +897,7 @@ pub fn run() {
             chat::commands::get_chat_thread,
             chat::commands::delete_chat_thread,
             chat::commands::chat_scope_summary,
+            search::search_recordings,
             // Build flavor / capabilities (UI hides features the build lacks)
             build_info::get_build_capabilities,
             // StoreKit (Mac App Store build; DMG returns "not available")

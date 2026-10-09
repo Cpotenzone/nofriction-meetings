@@ -1,18 +1,22 @@
-// noFriction Meetings - Recordings list (REWIND → Recordings)
-// Past recordings with selection, filtered by notebook and topic, grouped
-// by date, notebook or topic (docs/TOPICS_AND_CHAT.md)
+// The Recordings list: one search field at the top (titles, people,
+// topics, or anything said; ⌘K focuses it), the Notebooks chips, and the
+// recordings by day. Deleting a recording is undoable for a few seconds.
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import * as tauri from "../lib/tauri";
 import type { Meeting, CalendarMatchEvent } from "../lib/tauri";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
-import { CalendarIcon, TrashIcon } from "./icons";
+import { CalendarIcon, SearchIcon, TrashIcon } from "./icons";
 import { withFallback, mockMeetings } from "../lib/offline";
 import { NotebookFilterChips, useRecentNotebooks } from "./Notebook";
 import { kindLabel, parseKind } from "../lib/recordingKind";
-import { GroupByControl, RowTopics, TopicFilterChips, useGroupBy, useTopicIndex } from "./TopicChips";
-import { filterByTopic, groupRecordings } from "../lib/topicsLogic";
+import { groupByDay } from "../lib/topicsLogic";
+import { groupHits, SEARCH_PROMPT, type SearchGroup, type SearchHit } from "../lib/searchLogic";
+import { onSearchFocus, takeSearchFocus } from "../lib/navigation";
+import { useRecordPicker } from "./RecordPicker";
+import { useUndoDelete } from "./UndoToast";
 
 /** "Class" / "Personal" tag; meetings (the default) get none. */
 function KindTag({ meeting }: { meeting: Meeting }) {
@@ -23,12 +27,30 @@ function KindTag({ meeting }: { meeting: Meeting }) {
 
 interface MeetingHistoryProps {
     onSelectMeeting: (meetingId: string) => void;
+    /** A line that matched: open the recording at that moment */
+    onOpenAt: (meetingId: string, ms: number) => void;
     selectedMeetingId: string | null;
     compact?: boolean;
     refreshKey?: number; // Increment to trigger reload
 }
 
-export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = false, refreshKey = 0 }: MeetingHistoryProps) {
+const formatDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const formatTime = (dateStr: string) =>
+    new Date(dateStr).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "";
+    const mins = Math.floor(seconds / 60);
+    if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    return `${mins}m`;
+};
+const clock = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    return `${m}:${String(s % 60).padStart(2, "0")}`;
+};
+
+export function MeetingHistory({ onSelectMeeting, onOpenAt, selectedMeetingId, compact = false, refreshKey = 0 }: MeetingHistoryProps) {
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -38,14 +60,45 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     // Notebook filter (null = All); chips come from the notebooks recordings have
     const [notebookFilter, setNotebookFilter] = useState<string | null>(null);
     const notebooks = useRecentNotebooks(refreshKey);
-    // Topic filter (null = All) and the grouping; the index also gives each row its chips
-    const [topicFilter, setTopicFilter] = useState<string | null>(null);
-    const topicIndex = useTopicIndex(refreshKey);
-    const [groupBy, setGroupBy] = useGroupBy();
+    const recordPicker = useRecordPicker();
+    // The one search
+    const [query, setQuery] = useState("");
+    const [hits, setHits] = useState<SearchHit[] | null>(null);
+    const [searchError, setSearchError] = useState<string | null>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
+    // Delete: gone at once, Undo for a few seconds
+    const undoDelete = useUndoDelete((e) => setLoadError(`Couldn't delete the recording: ${String(e)}`));
 
     useEffect(() => {
         loadMeetings();
-    }, [refreshKey, notebookFilter]); // Reload when refreshKey or the filter changes
+    }, [refreshKey, notebookFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ⌘K / View → Search Recordings: the cursor lands here
+    useEffect(() => {
+        const focus = () => searchRef.current?.focus();
+        if (takeSearchFocus()) focus();
+        return onSearchFocus(focus);
+    }, []);
+
+    // Search as you type (a short pause, so every keystroke doesn't hit the database)
+    useEffect(() => {
+        const q = query.trim();
+        if (!q) {
+            setHits(null);
+            setSearchError(null);
+            return;
+        }
+        let live = true;
+        const t = window.setTimeout(() => {
+            invoke<SearchHit[]>("search_recordings", { query: q })
+                .then((h) => live && setHits(h))
+                .catch((e) => live && setSearchError(String(e)));
+        }, 160);
+        return () => {
+            live = false;
+            window.clearTimeout(t);
+        };
+    }, [query]);
 
     const loadMeetings = async () => {
         setIsLoading(true);
@@ -65,15 +118,12 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
 
     const checkCalendarOverlaps = async (recentMeetings: Meeting[]) => {
         for (const meeting of recentMeetings) {
-            // Skip if already has a calendar event linked or title doesn't look auto-generated
             if (meeting.calendar_event_id) continue;
             try {
                 const match = await tauri.matchRecordingToCalendar(meeting.id);
-                if (match) {
-                    setCalendarMatches(prev => ({ ...prev, [meeting.id]: match }));
-                }
+                if (match) setCalendarMatches((prev) => ({ ...prev, [meeting.id]: match }));
             } catch {
-                // Calendar access may not be available, silently skip
+                // Calendar access may not be available
             }
         }
     };
@@ -81,87 +131,77 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
     const handleRename = async (meetingId: string, match: CalendarMatchEvent) => {
         setRenamingId(meetingId);
         try {
-            // Build title from calendar event
-            const attendeeStr = match.attendee_names?.slice(0, 3).join(', ') || '';
-            const newTitle = attendeeStr
-                ? `${match.event_title} (${attendeeStr})`
-                : match.event_title;
+            const attendeeStr = match.attendee_names?.slice(0, 3).join(", ") || "";
+            const newTitle = attendeeStr ? `${match.event_title} (${attendeeStr})` : match.event_title;
             await tauri.updateMeetingTitle(meetingId, newTitle);
-            // Update local state
-            setMeetings(prev => prev.map(m =>
-                m.id === meetingId ? { ...m, title: newTitle, calendar_event_id: match.event_id } : m
-            ));
-            setCalendarMatches(prev => {
+            setMeetings((prev) => prev.map((m) => (m.id === meetingId ? { ...m, title: newTitle, calendar_event_id: match.event_id } : m)));
+            setCalendarMatches((prev) => {
                 const next = { ...prev };
                 delete next[meetingId];
                 return next;
             });
         } catch (err) {
-            console.error('Failed to rename meeting:', err);
+            console.error("Failed to rename meeting:", err);
         } finally {
             setRenamingId(null);
         }
     };
 
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
-    };
-
-    const formatTime = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return date.toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-        });
-    };
-
-    const formatDuration = (seconds: number | null) => {
-        if (!seconds) return "";
-        const mins = Math.floor(seconds / 60);
-        if (mins >= 60) {
-            const hrs = Math.floor(mins / 60);
-            const remainingMins = mins % 60;
-            return `${hrs}h ${remainingMins}m`;
-        }
-        return `${mins}m`;
-    };
-
-    const handleDelete = async (e: React.MouseEvent, meetingId: string) => {
+    const handleDelete = (e: React.MouseEvent, meeting: Meeting) => {
         e.stopPropagation();
-        if (confirm("Delete this recording? Its transcript, screenshots and AI notes are removed from this Mac. This can't be undone.")) {
-            try {
-                await tauri.deleteMeeting(meetingId);
-                setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
-            } catch (err) {
-                console.error("Failed to delete meeting:", err);
-            }
-        }
+        const before = meetings;
+        setMeetings((prev) => prev.filter((m) => m.id !== meeting.id));
+        undoDelete.start(
+            `Deleted "${meeting.title}"`,
+            async () => {
+                await tauri.deleteMeeting(meeting.id);
+            },
+            () => setMeetings(before),
+        );
     };
 
-    if (isLoading) {
-        if (compact) {
-            return <div className="compact-loading">Loading...</div>;
-        }
+    const byId = useMemo(() => new Map(meetings.map((m) => [m.id, m])), [meetings]);
+    const groups: SearchGroup[] | null = useMemo(
+        () => (hits ? groupHits(hits, meetings.map((m) => m.id)) : null),
+        [hits, meetings],
+    );
+
+    const searchField = (
+        <div className="rec-search">
+            <SearchIcon size={14} />
+            <input
+                ref={searchRef}
+                className="rec-search__input"
+                type="search"
+                placeholder={SEARCH_PROMPT}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                        setQuery("");
+                        (e.target as HTMLInputElement).blur();
+                    }
+                }}
+                aria-label="Search recordings"
+                spellCheck={false}
+            />
+            {!query && <kbd className="rec-search__kbd">⌘K</kbd>}
+        </div>
+    );
+
+    if (isLoading && meetings.length === 0) {
         return (
-            <div className="meeting-history">
-                <h3>Recordings</h3>
-                <div className="empty-state">
-                    <div className="empty-state-text">Loading...</div>
-                </div>
+            <div className={`meeting-history ${compact ? "is-compact" : ""}`}>
+                {searchField}
+                <div className="compact-loading">Loading…</div>
             </div>
         );
     }
 
     if (loadError && meetings.length === 0) {
         return (
-            <div className="meeting-history">
-                {!compact && <h3>Recordings</h3>}
+            <div className={`meeting-history ${compact ? "is-compact" : ""}`}>
+                {searchField}
                 <ErrorState
                     title="Couldn't load your recordings"
                     message="Your recordings are safe on this Mac. Try again; if it keeps happening, quit and reopen the app."
@@ -171,173 +211,200 @@ export function MeetingHistory({ onSelectMeeting, selectedMeetingId, compact = f
         );
     }
 
-    const filterChips = (
-        <>
-            <NotebookFilterChips notebooks={notebooks} value={notebookFilter} onChange={setNotebookFilter} />
-            <TopicFilterChips topics={topicIndex.topics} value={topicFilter} onChange={setTopicFilter} />
-            {!compact && <GroupByControl value={groupBy} onChange={setGroupBy} />}
-        </>
-    );
-    const shownMeetings = filterByTopic(meetings, topicIndex, topicFilter);
-    const topicName = topicFilter ? topicIndex.topics.find((t) => t.key === topicFilter)?.label ?? topicFilter : null;
-
-    if (shownMeetings.length === 0 && (notebookFilter || topicFilter)) {
+    // Search results replace the list while the field has text
+    if (groups) {
         return (
-            <div className="meeting-history">
-                {!compact && <h3>Recordings</h3>}
-                {filterChips}
-                <div className="empty-state">
-                    <div className="empty-state-text">
-                        No recordings {notebookFilter ? `in ${notebookFilter}` : ""}{notebookFilter && topicName ? " " : ""}{topicName ? `about ${topicName}` : ""}.
+            <div className={`meeting-history ${compact ? "is-compact" : ""}`}>
+                {searchField}
+                {searchError && <p className="rec-search__error" role="alert">{searchError}</p>}
+                {groups.length === 0 ? (
+                    <p className="rec-search__none">Nothing matches "{query.trim()}".</p>
+                ) : (
+                    <div className="meeting-list scrollable">
+                        {groups.map((g) => {
+                            const m = byId.get(g.meetingId);
+                            if (!m) return null;
+                            return (
+                                <div
+                                    key={g.meetingId}
+                                    className={`meeting-item ${selectedMeetingId === m.id ? "selected" : ""}`}
+                                    onClick={() => onSelectMeeting(m.id)}
+                                >
+                                    <div className="meeting-title">
+                                        {m.title}
+                                        <KindTag meeting={m} />
+                                        {m.class_name && <span className="class-tag" title={m.class_name}>{m.class_name}</span>}
+                                    </div>
+                                    <div className="meeting-date">
+                                        {formatDate(m.started_at)}
+                                        {g.why.length > 0 && <span> · {g.why.join(" · ")}</span>}
+                                    </div>
+                                    {g.lines.length > 0 && (
+                                        <ul className="rec-search__lines">
+                                            {g.lines.map((l, i) => (
+                                                <li key={i}>
+                                                    <button
+                                                        type="button"
+                                                        className="rec-search__line"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onOpenAt(m.id, l.ms ?? 0);
+                                                        }}
+                                                        title="Open the recording at this moment"
+                                                    >
+                                                        {l.ms !== null && <span className="rec-search__at">{clock(l.ms)}</span>}
+                                                        <span className="rec-search__text">{l.text}</span>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                            {g.moreLines > 0 && <li className="rec-search__more">and {g.moreLines} more</li>}
+                                        </ul>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-                </div>
+                )}
+                {undoDelete.toast}
+            </div>
+        );
+    }
+
+    const filterChips = <NotebookFilterChips notebooks={notebooks} value={notebookFilter} onChange={setNotebookFilter} />;
+
+    if (meetings.length === 0 && notebookFilter) {
+        return (
+            <div className={`meeting-history ${compact ? "is-compact" : ""}`}>
+                {searchField}
+                {filterChips}
+                <p className="rec-search__none">No recordings in {notebookFilter}.</p>
+                {undoDelete.toast}
             </div>
         );
     }
 
     if (meetings.length === 0) {
-        if (compact) {
-            return <div className="compact-empty">No recordings yet</div>;
-        }
         return (
-            <div className="meeting-history">
-                <h3>Recordings</h3>
+            <div className={`meeting-history ${compact ? "is-compact" : ""}`}>
+                {searchField}
                 <EmptyState
                     icon={<CalendarIcon size={44} strokeWidth={1.5} />}
                     title="No recordings yet"
-                    message="Click START CAPTURE in the top bar (or press ⌘N) for a meeting, a class or anything else. The transcript and screenshots land here, ready to rewind, edit and summarize. You pick how long it records."
+                    message="Record a meeting, a class or anything else. The transcript and screens land here, ready to rewind, edit and turn into notes."
+                    action={{ label: "Record", onClick: recordPicker.open }}
                 />
+                {undoDelete.toast}
             </div>
         );
     }
 
-    // Compact mode for sidebar
+    // Compact: the list beside an open recording
     if (compact) {
         return (
-            <div className="compact-meeting-list" style={{ overflowY: 'auto', maxHeight: '100%' }}>
+            <div className="meeting-history is-compact">
+                {searchField}
                 {filterChips}
-                {shownMeetings.map((meeting) => (
-                    <div
-                        key={meeting.id}
-                        className={`compact-meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
-                        onClick={() => onSelectMeeting(meeting.id)}
-                    >
-                        <div className="compact-meeting-title">{meeting.title}</div>
-                        <KindTag meeting={meeting} />
-                        {meeting.class_name && <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>}
-                        <RowTopics index={topicIndex} meetingId={meeting.id} />
-                        <div className="compact-meeting-date">
-                            {formatDate(meeting.started_at)}
+                <div className="compact-meeting-list scrollable">
+                    {meetings.map((meeting) => (
+                        <div
+                            key={meeting.id}
+                            className={`compact-meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
+                            onClick={() => onSelectMeeting(meeting.id)}
+                        >
+                            <div className="compact-meeting-title">{meeting.title}</div>
+                            <KindTag meeting={meeting} />
+                            {meeting.class_name && <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>}
+                            <div className="compact-meeting-date">{formatDate(meeting.started_at)}</div>
                         </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
+                {undoDelete.toast}
             </div>
         );
     }
 
-    const groups = groupRecordings(shownMeetings, topicIndex, groupBy);
-    const heading = topicName
-        ? `${topicName} (${shownMeetings.length})`
-        : notebookFilter
-            ? `${notebookFilter} (${shownMeetings.length})`
-            : `Recordings (${shownMeetings.length})`;
+    const groupsByDay = groupByDay(meetings);
 
     return (
         <div className="meeting-history">
-            <h3>{heading}</h3>
+            {searchField}
             {filterChips}
             <div className="meeting-list scrollable">
-                {groups.map((group) => (
-                <div key={group.key} className="meeting-group">
-                <div className="group-head">
-                    {group.label}
-                    <span className="group-head__count">{group.meetings.length}</span>
-                </div>
-                {group.meetings.map((meeting) => {
-                    const match = calendarMatches[meeting.id];
-                    const isDismissed = dismissedMatches.has(meeting.id);
-                    return (
-                        <div
-                            key={`${group.key}:${meeting.id}`}
-                            className={`meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
-                            onClick={() => onSelectMeeting(meeting.id)}
-                        >
-                            {/* Calendar Overlap Banner */}
-                            {match && !isDismissed && (
-                                <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                        padding: '8px 12px',
-                                        marginBottom: '8px',
-                                        borderRadius: '6px',
-                                        background: 'rgba(74, 222, 128, 0.08)',
-                                        border: '1px solid rgba(74, 222, 128, 0.2)',
-                                        fontSize: '0.75rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                    }}
-                                >
-                                    <span style={{ flex: 1 }}>
-                                        📅 This recording overlaps with <strong>{match.event_title}</strong>
-                                        {match.attendee_count > 0 && ` (${match.attendee_count} attendees)`}
-                                        {' — '}Rename?
-                                    </span>
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ fontSize: '0.7rem', padding: '3px 10px' }}
-                                        disabled={renamingId === meeting.id}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleRename(meeting.id, match);
-                                        }}
-                                    >
-                                        {renamingId === meeting.id ? '...' : '✓ Rename'}
-                                    </button>
-                                    <button
-                                        className="btn btn-ghost"
-                                        style={{ fontSize: '0.7rem', padding: '3px 8px', opacity: 0.5 }}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setDismissedMatches(prev => new Set([...prev, meeting.id]));
-                                        }}
-                                    >
-                                        ✗
-                                    </button>
-                                </div>
-                            )}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                <div>
-                                    <div className="meeting-title">
-                                        {meeting.title}
-                                        <KindTag meeting={meeting} />
-                                        {meeting.class_name && !notebookFilter && groupBy !== "notebook" && (
-                                            <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>
-                                        )}
-                                        <RowTopics index={topicIndex} meetingId={meeting.id} onPick={setTopicFilter} />
-                                    </div>
-                                    <div className="meeting-date">
-                                        {formatDate(meeting.started_at)} at {formatTime(meeting.started_at)}
-                                        {meeting.duration_seconds && (
-                                            <span> · {formatDuration(meeting.duration_seconds)}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <button
-                                    className="btn btn-ghost"
-                                    onClick={(e) => handleDelete(e, meeting.id)}
-                                    title="Delete recording"
-                                    style={{ padding: "4px 8px", fontSize: "0.75rem", opacity: 0.5 }}
-                                >
-                                    <TrashIcon size={14} />
-                                </button>
-                            </div>
+                {groupsByDay.map((group) => (
+                    <div key={group.key} className="meeting-group">
+                        <div className="group-head">
+                            {group.label}
+                            <span className="group-head__count">{group.meetings.length}</span>
                         </div>
-                    );
-                })}
-                </div>
+                        {group.meetings.map((meeting) => {
+                            const match = calendarMatches[meeting.id];
+                            const isDismissed = dismissedMatches.has(meeting.id);
+                            return (
+                                <div
+                                    key={meeting.id}
+                                    className={`meeting-item ${selectedMeetingId === meeting.id ? "selected" : ""}`}
+                                    onClick={() => onSelectMeeting(meeting.id)}
+                                >
+                                    {match && !isDismissed && (
+                                        <div className="cal-match" onClick={(e) => e.stopPropagation()}>
+                                            <CalendarIcon size={13} />
+                                            <span className="cal-match__text">
+                                                This recording overlaps with <strong>{match.event_title}</strong>
+                                                {match.attendee_count > 0 && ` (${match.attendee_count} people)`}. Name it after the event?
+                                            </span>
+                                            <button
+                                                className="btn-secondary cal-match__btn"
+                                                disabled={renamingId === meeting.id}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleRename(meeting.id, match);
+                                                }}
+                                            >
+                                                {renamingId === meeting.id ? "…" : "Rename"}
+                                            </button>
+                                            <button
+                                                className="cal-match__dismiss"
+                                                aria-label="Not now"
+                                                title="Not now"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setDismissedMatches((prev) => new Set([...prev, meeting.id]));
+                                                }}
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="meeting-item__row">
+                                        <div>
+                                            <div className="meeting-title">
+                                                {meeting.title}
+                                                <KindTag meeting={meeting} />
+                                                {meeting.class_name && !notebookFilter && (
+                                                    <span className="class-tag" title={meeting.class_name}>{meeting.class_name}</span>
+                                                )}
+                                            </div>
+                                            <div className="meeting-date">
+                                                {formatDate(meeting.started_at)} at {formatTime(meeting.started_at)}
+                                                {meeting.duration_seconds ? <span> · {formatDuration(meeting.duration_seconds)}</span> : null}
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="meeting-item__delete"
+                                            onClick={(e) => handleDelete(e, meeting)}
+                                            title="Delete recording"
+                                            aria-label={`Delete ${meeting.title}`}
+                                        >
+                                            <TrashIcon size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 ))}
             </div>
+            {undoDelete.toast}
         </div>
     );
 }

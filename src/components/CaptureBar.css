@@ -1,4 +1,4 @@
-/* Capture bar, source picker, and filmstrip. */
+/* Capture bar (while recording), the screen picker, and the Screens panel. */
 
 .cbar {
   position: relative;
@@ -329,10 +329,8 @@
 
 .film__head h3 {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-secondary, #a3a3a3);
 }
 

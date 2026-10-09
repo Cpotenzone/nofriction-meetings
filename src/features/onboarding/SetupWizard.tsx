@@ -1,47 +1,29 @@
-// noFriction Meetings - first-run setup assistant
-//
-// Welcome & consent → macOS permissions → on-device transcription model →
-// AI (Apple on-device / your own endpoint / skip) → noFriction Pro (Mac
-// App Store build only, informational) → done. Every step can be skipped,
-// and the whole assistant can be run again from Settings → General.
-// Each step shows the live state, so re-running never resets anything.
+// First run: one screen. Microphone, Screen & System Audio and Calendar
+// with one Allow each, while the speech model downloads in the background
+// (a progress line; "Smaller model" for older Macs). Continue lands on the
+// Record screen. AI and noFriction Pro come up the first time they're
+// needed (Make notes, Chat), never here.
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { AIProviderSettings } from "../settings/AIProviderSettings";
-import { PRIVACY_URL, useCapabilities } from "../../lib/build";
 import { SETUP_COMPLETE_KEY } from "../../lib/navigation";
-import { FREE_FEATURES, PRO_FEATURES } from "../../components/PaywallModal";
-import { MicIcon, SparkleIcon, WarningIcon, GearIcon, CheckIcon } from "../../components/icons";
+import { CheckIcon, WarningIcon } from "../../components/icons";
 import "./SetupWizard.css";
 
 interface SetupWizardProps {
     onComplete: () => void;
 }
 
-type StepId = "welcome" | "permissions" | "transcription" | "ai" | "pro" | "done";
-
 const RECOMMENDED_MODEL = "large-v3-turbo-q5_0";
 const LIGHT_MODEL = "base.en";
 
 export function SetupWizard({ onComplete }: SetupWizardProps) {
-    const caps = useCapabilities();
-    const steps: StepId[] = useMemo(
-        () => ["welcome", "permissions", "transcription", "ai", ...(caps?.pro_gating ? (["pro"] as StepId[]) : []), "done"],
-        [caps?.pro_gating],
-    );
-    const [index, setIndex] = useState(0);
-    const step = steps[Math.min(index, steps.length - 1)];
-
-    const next = () => setIndex((i) => Math.min(i + 1, steps.length - 1));
-    const back = () => setIndex((i) => Math.max(i - 1, 0));
     const finish = () => {
         try {
             localStorage.setItem(SETUP_COMPLETE_KEY, "true");
         } catch {
-            /* storage unavailable: the assistant shows again next launch */
+            /* storage unavailable: the screen shows again next launch */
         }
         onComplete();
     };
@@ -49,97 +31,23 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     return (
         <div className="setup-wizard">
             <div className="setup-header">
-                <h1>Welcome to noFriction</h1>
-                <p className="setup-subtitle">A few quick steps. Skip anything and change it later in Settings.</p>
-                <div className="setup-progress" aria-label={`Step ${index + 1} of ${steps.length}`}>
-                    {steps.map((s, i) => (
-                        <div key={s} className={`progress-dot ${i === index ? "active" : ""} ${i < index ? "complete" : ""}`} />
-                    ))}
-                </div>
+                <h1>Before you record</h1>
+                <p className="setup-subtitle">
+                    Recording and transcription happen on this Mac. Nothing leaves it unless you want it to.
+                </p>
             </div>
 
             <div className="setup-content">
-                {step === "welcome" && <WelcomeStep />}
-                {step === "permissions" && <PermissionsStep />}
-                {step === "transcription" && <TranscriptionStep />}
-                {step === "ai" && <AiStep />}
-                {step === "pro" && <ProStep />}
-                {step === "done" && <DoneStep />}
+                <PermissionsStep />
+                <ModelDownload />
             </div>
 
             <div className="setup-actions">
-                {index > 0 && (
-                    <button className="setup-btn secondary" onClick={back}>
-                        Back
-                    </button>
-                )}
                 <div className="spacer" />
-                {step !== "done" && step !== "welcome" && (
-                    <button className="setup-btn secondary" onClick={next}>
-                        Skip for now
-                    </button>
-                )}
-                {step === "done" ? (
-                    <button className="setup-btn primary" onClick={finish}>
-                        Start using noFriction
-                    </button>
-                ) : (
-                    <button className="setup-btn primary" onClick={next}>
-                        {step === "welcome" ? "Get Started" : "Continue"}
-                    </button>
-                )}
-            </div>
-            {step !== "done" && (
-                <button className="setup-skip-all" onClick={finish}>
-                    Skip setup — I'll do it in Settings
+                <button className="setup-btn primary" onClick={finish}>
+                    Continue
                 </button>
-            )}
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-
-function WelcomeStep() {
-    return (
-        <div className="setup-step">
-            <div className="step-icon">
-                <MicIcon size={22} />
             </div>
-            <h2>Record, transcribe and remember meetings, classes and everyday conversations</h2>
-            <p className="step-description">
-                noFriction captures your microphone, the call audio and screenshots of your screen while you record,
-                transcribes on this Mac, and keeps everything in a private library you can search, edit and delete.
-            </p>
-            <div className="setup-summary">
-                <div className="summary-item">
-                    <span className="summary-label">Where your data lives</span>
-                    <span className="summary-value">On this Mac</span>
-                </div>
-                <div className="summary-item">
-                    <span className="summary-label">Transcription</span>
-                    <span className="summary-value">On-device (no account, no internet)</span>
-                </div>
-                <div className="summary-item">
-                    <span className="summary-label">AI notes &amp; chat</span>
-                    <span className="summary-value">Your own AI provider, only after you allow it</span>
-                </div>
-                <div className="summary-item">
-                    <span className="summary-label">noFriction servers</span>
-                    <span className="summary-value">None</span>
-                </div>
-            </div>
-            <div className="warning-box consent">
-                <WarningIcon size={16} />
-                <span>
-                    <strong>Recording consent is your responsibility.</strong> Many places require everyone in a
-                    conversation to agree before it is recorded. Tell people when you record, and stop if anyone
-                    objects. Nothing is captured until you press Start.
-                </span>
-            </div>
-            <button className="get-key-link as-button" onClick={() => openUrl(PRIVACY_URL).catch(() => undefined)}>
-                Privacy policy →
-            </button>
         </div>
     );
 }
@@ -203,30 +111,21 @@ function PermissionsStep() {
 
     return (
         <div className="setup-step">
-            <div className="step-icon">
-                <GearIcon size={22} />
-            </div>
-            <h2>macOS permissions</h2>
-            <p className="step-description">
-                macOS asks you once for each. The dots turn green as you allow them. You can change any of these later
-                in System Settings → Privacy &amp; Security.
-            </p>
-
             <div className="perm-list">
                 <PermRow
                     ok={!!perms?.microphone}
                     name="Microphone"
                     hint={
                         perms?.microphone
-                            ? "Allowed — your voice will be transcribed"
+                            ? "Allowed"
                             : micDenied
-                              ? "Turned off earlier — allow it in System Settings, then come back"
-                              : "Needed to transcribe what you say"
+                              ? "Turned off earlier. Allow it in System Settings, then come back."
+                              : "To transcribe what you say"
                     }
                 >
                     {micDenied ? (
                         <button className="setup-btn secondary perm-btn" onClick={() => openPane("microphone")}>
-                            Open Settings
+                            Open System Settings
                         </button>
                     ) : (
                         <button className="setup-btn primary perm-btn" onClick={() => grant("microphone")} disabled={requesting === "microphone"}>
@@ -237,13 +136,13 @@ function PermissionsStep() {
 
                 <PermRow
                     ok={!!perms?.screen_recording}
-                    name="Screen & System Audio Recording"
+                    name="Screen & System Audio"
                     hint={
                         perms?.screen_recording
-                            ? "Allowed — call audio and screenshots are captured"
+                            ? "Allowed"
                             : askedScreen
                               ? "Turn on noFriction in System Settings. macOS may ask you to quit and reopen the app."
-                              : "Needed for the other side of Zoom/Meet/Teams calls and for screenshots"
+                              : "For the other people on a call, and the screens you capture"
                     }
                 >
                     <div style={{ display: "flex", gap: 8 }}>
@@ -254,27 +153,29 @@ function PermissionsStep() {
                         >
                             {requesting === "screen_recording" ? "Asking…" : "Allow"}
                         </button>
-                        <button className="setup-btn secondary perm-btn" onClick={() => openPane("screen_recording")}>
-                            Settings
-                        </button>
+                        {askedScreen && (
+                            <button className="setup-btn secondary perm-btn" onClick={() => openPane("screen_recording")}>
+                                System Settings
+                            </button>
+                        )}
                     </div>
                 </PermRow>
 
                 <PermRow
                     ok={calOk}
                     optional
-                    name="Calendar (optional)"
+                    name="Calendar"
                     hint={
                         calOk
-                            ? "Allowed — recordings get the meeting's title and attendees"
+                            ? "Allowed"
                             : calDenied
-                              ? "Turned off — allow it in System Settings to name recordings automatically"
-                              : "Names recordings after your calendar events and lists who attended"
+                              ? "Turned off. Allow it in System Settings to name recordings after your events."
+                              : "Names recordings after your events and lists who was there. Optional."
                     }
                 >
                     {calDenied ? (
                         <button className="setup-btn secondary perm-btn" onClick={() => openPane("calendar")}>
-                            Open Settings
+                            Open System Settings
                         </button>
                     ) : (
                         <button className="setup-btn primary perm-btn" onClick={() => grant("calendar")} disabled={requesting === "calendar"}>
@@ -284,15 +185,10 @@ function PermissionsStep() {
                 </PermRow>
             </div>
 
-            <p className="setup-footnote">
-                Notifications are requested when you start your first recording, so noFriction can tell you when a
-                recording seems to have ended.
-            </p>
-
-            {perms && !perms.microphone && (
+            {perms && !perms.microphone && micDenied && (
                 <div className="warning-box">
                     <WarningIcon size={16} />
-                    <span>Without microphone access you'd get screenshots but no transcript.</span>
+                    <span>Without the microphone you'd get screens but no transcript.</span>
                 </div>
             )}
         </div>
@@ -349,18 +245,17 @@ interface DownloadProgress {
     error: string | null;
 }
 
-function TranscriptionStep() {
+/** The speech model downloads on its own; one line says how it's going. */
+function ModelDownload() {
     const [status, setStatus] = useState<LocalSttStatus | null>(null);
-    const [provider, setProvider] = useState<string>("local");
     const [progress, setProgress] = useState<DownloadProgress | null>(null);
     const [downloading, setDownloading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [started, setStarted] = useState(false);
 
     const refresh = useCallback(async () => {
         try {
             setStatus(await invoke<LocalSttStatus>("get_local_stt_status"));
-            const s = await invoke<{ transcription_provider?: string }>("get_settings");
-            setProvider(s.transcription_provider || "local");
         } catch (e) {
             setError(String(e));
         }
@@ -383,166 +278,68 @@ function TranscriptionStep() {
         };
     }, [refresh]);
 
-    const install = async (model: string) => {
+    const install = useCallback(async (model: string) => {
         setError(null);
         setDownloading(model);
         setProgress({ model, downloaded_bytes: 0, total_bytes: null, done: false, error: null });
         try {
-            // On-device Whisper is the transcription engine from now on
             await invoke("set_active_provider", { provider: "local" });
             await invoke("set_local_whisper_model", { model });
-            setProvider("local");
             await invoke("download_whisper_model", { model });
         } catch (e) {
-            setError(`Download failed: ${String(e)}. Check your internet connection and try again.`);
+            setError(`The download failed: ${String(e)}. Check your internet connection; you can try again in Settings → Transcription.`);
         } finally {
             setDownloading(null);
             refresh();
         }
-    };
+    }, [refresh]);
 
-    const recommended = status?.models.find((m) => m.name === RECOMMENDED_MODEL);
+    // Start the recommended model on its own, once we know none is installed
+    useEffect(() => {
+        if (started || !status || status.ready) return;
+        const recommended = status.models.find((m) => m.name === RECOMMENDED_MODEL);
+        if (!recommended || recommended.installed) return;
+        setStarted(true);
+        void install(recommended.name);
+    }, [status, started, install]);
+
     const light = status?.models.find((m) => m.name === LIGHT_MODEL);
-    const installed = status?.models.filter((m) => m.installed) ?? [];
     const pct =
         progress && progress.total_bytes ? Math.min(100, Math.round((progress.downloaded_bytes / progress.total_bytes) * 100)) : null;
     const mb = (b: number) => `${Math.round(b / 1_048_576)} MB`;
 
+    if (!status) return null;
+
     return (
-        <div className="setup-step">
-            <div className="step-icon">
-                <MicIcon size={22} />
-            </div>
-            <h2>On-device transcription</h2>
-            <p className="step-description">
-                Speech is turned into text by Whisper running on this Mac: no account, no API key, and your audio
-                never leaves the device. It needs a one-time model download.
-            </p>
-
-            {status?.ready ? (
-                <div className="setup-ready">
-                    <CheckIcon size={16} />
-                    <span>
-                        Ready — using {status.resolved_model?.replace(/^ggml-|\.bin$/g, "") ?? "an installed model"}
-                        {provider !== "local" ? ` (current engine: ${provider}; switch in Settings → Transcription)` : ""}
-                    </span>
-                </div>
-            ) : (
-                <div className="mode-choice">
-                    {recommended && (
-                        <div className="mode-card selected">
-                            <div style={{ flex: 1 }}>
-                                <span className="mode-title">Recommended model · {recommended.size_mb} MB</span>
-                                <span className="mode-hint">Best accuracy at real-time speed on Apple Silicon.</span>
-                            </div>
-                            <button className="setup-btn primary perm-btn" disabled={!!downloading} onClick={() => install(recommended.name)}>
-                                {downloading === recommended.name ? "Downloading…" : "Download"}
-                            </button>
-                        </div>
-                    )}
-                    {light && (
-                        <div className="mode-card">
-                            <div style={{ flex: 1 }}>
-                                <span className="mode-title">Smaller model · {light.size_mb} MB</span>
-                                <span className="mode-hint">For older or Intel Macs, or a slow connection. Less accurate.</span>
-                            </div>
-                            <button className="setup-btn secondary perm-btn" disabled={!!downloading} onClick={() => install(light.name)}>
-                                {downloading === light.name ? "Downloading…" : "Download"}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {progress && !progress.done && (
-                <div className="setup-download" aria-live="polite">
+        <div className="setup-model" aria-live="polite">
+            {status.ready ? (
+                <p className="setup-model__line">
+                    <CheckIcon size={14} /> Speech model ready. Transcription runs on this Mac.
+                </p>
+            ) : progress && !progress.done ? (
+                <>
                     <div className="setup-download-bar">
                         <div style={{ width: `${pct ?? 5}%` }} />
                     </div>
-                    <span>
-                        {mb(progress.downloaded_bytes)}
-                        {progress.total_bytes ? ` of ${mb(progress.total_bytes)} (${pct}%)` : ""} — you can continue
-                        while it downloads.
-                    </span>
-                </div>
+                    <p className="setup-model__line">
+                        Downloading the speech model{progress.total_bytes ? `: ${mb(progress.downloaded_bytes)} of ${mb(progress.total_bytes)}` : "…"}.
+                        Transcription starts when it finishes. You can record now.
+                        {light && !light.installed && downloading !== light.name && (
+                            <>
+                                {" "}
+                                <button type="button" className="setup-link" onClick={() => install(light.name)}>
+                                    Smaller model
+                                </button>{" "}
+                                for an older or Intel Mac.
+                            </>
+                        )}
+                    </p>
+                </>
+            ) : (
+                <p className="setup-model__line">
+                    {error ?? "The speech model hasn't downloaded yet. Settings → Transcription offers it again."}
+                </p>
             )}
-
-            {error && <div className="setup-error">{error}</div>}
-
-            <p className="setup-footnote">
-                {installed.length > 0 && !status?.ready ? `Installed: ${installed.map((m) => m.name).join(", ")}. ` : ""}
-                Transcription stays on this Mac. No cloud transcription service is built in.
-            </p>
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-
-function AiStep() {
-    return (
-        <div className="setup-step">
-            <h2>Optional AI</h2>
-            <p className="step-description">Recording and transcription work without AI. Use Apple on-device,
-                or enter your own endpoint, model and optional key. noFriction supplies no remote AI service.</p>
-            <AIProviderSettings />
-        </div>
-    );
-}
-
-function ProStep() {
-    return (
-        <div className="setup-step">
-            <div className="step-icon">
-                <SparkleIcon size={22} />
-            </div>
-            <h2>noFriction Pro</h2>
-            <p className="step-description">{FREE_FEATURES}</p>
-            <div className="setup-summary">
-                {PRO_FEATURES.map((f) => (
-                    <div className="summary-item" key={f}>
-                        <span className="summary-label">{f}</span>
-                        <span className="summary-value">Pro</span>
-                    </div>
-                ))}
-            </div>
-            <p className="setup-footnote">
-                Nothing to buy now. When you first use an AI feature you'll see the plans, or open Settings →
-                Subscription any time. Pro features use Apple on-device or the endpoint and model you configure.
-            </p>
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-
-function DoneStep() {
-    return (
-        <div className="setup-step">
-            <div className="step-icon">
-                <SparkleIcon size={22} />
-            </div>
-            <h2>You're all set</h2>
-            <p className="step-description">
-                Click START CAPTURE when you're ready. You pick how long it records, and it can also stop by itself when a
-                meeting ends (you get a 30-second heads-up). The recording lands in REWIND with its transcript,
-                screenshots and notes.
-            </p>
-            <div className="quick-start">
-                <h3>Shortcuts</h3>
-                <ul>
-                    <li>
-                        <kbd>⌘N</kbd> start recording · <kbd>⌘.</kbd> stop
-                    </li>
-                    <li>
-                        <kbd>⌘K</kbd> command palette · <kbd>⌘,</kbd> settings
-                    </li>
-                    <li>
-                        <kbd>⌘2</kbd> your recordings · <kbd>⇧⌘I</kbd> chat with your recordings
-                    </li>
-                </ul>
-            </div>
-            <p className="setup-footnote">Run this assistant again from Settings → General.</p>
         </div>
     );
 }
@@ -550,7 +347,7 @@ function DoneStep() {
 // ---------------------------------------------------------------------------
 
 /**
- * Whether the setup assistant should show. `null` while unknown. Returns a
+ * Whether the first-run screen should show. `null` while unknown. Returns a
  * setter so the app can dismiss it without reloading.
  */
 export function useSetupRequired(): [boolean | null, (required: boolean) => void] {

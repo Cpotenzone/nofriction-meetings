@@ -1,3 +1,10 @@
+// Rewind: the screens next to what was said. Scrub to any moment; marks
+// sit on the timeline. Editing is one gesture: click a line (or a screen)
+// to select it, drag or Shift-click for a range, ⌘A for all, and one bar
+// offers Delete and Strike from the record… (docs/REDACTION.md). Screens
+// and transcript are always selected together by time. Double-click a
+// line to pick single words.
+
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as tauri from "../lib/tauri";
 import { friendlyAiError, isNoProviderError } from "../lib/ai";
@@ -13,17 +20,13 @@ import {
     type TimeRangePreview,
 } from "../lib/redaction";
 import {
-    EMPTY_LINKED,
     EMPTY_SELECTION,
     clickItem,
-    clockAt,
     lineSpan,
     linkSelection,
     matchesPreview,
-    orderedIds,
     plural,
     pruneSelection,
-    runSpans,
     screenSpans,
     selectAll,
     selectLastMinutes,
@@ -45,7 +48,8 @@ import { MarkerInline, MarkerList, MarkerPins, useMarkers } from "./study/Marker
 import { MarkKindContext } from "./study/MarkerBits";
 import { useRecordingKind } from "../hooks/useRecordingKind";
 import { markersInSpans, placeMarkers } from "../lib/studyLogic";
-import './RewindTab.css';
+import { ChevronDownIcon, DisplayIcon } from "./icons";
+import "./Rewind.css";
 
 /** A moment to show, asked for from outside (Links → "first said at 12:03").
  *  `n` makes each request new, so the same time can be asked for again. */
@@ -67,30 +71,14 @@ type StripItem =
 
 type Pane = "screens" | "lines";
 
-/** An exact span picked as such: Last N minutes (`minutes` set), From here
- *  to the end, Select all. */
+/** An exact span picked as such (Select time…), kept so the selection is
+ *  the span, not just the items inside it. */
 interface Hint {
     span: Span;
     minutes?: number;
 }
 
-// "Linked" (screens and transcript selected together by time) is on by
-// default and remembered per user. Storage can be unavailable: then it's on.
-const LINKED_KEY = "nf.recordings.linkedSelection";
-function readLinked(): boolean {
-    try {
-        return localStorage.getItem(LINKED_KEY) !== "0";
-    } catch {
-        return true;
-    }
-}
-function writeLinked(on: boolean) {
-    try {
-        localStorage.setItem(LINKED_KEY, on ? "1" : "0");
-    } catch {
-        /* storage unavailable: the choice lasts for this session only */
-    }
-}
+const LAST_MINUTES = [5, 15, 30] as const;
 
 export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGalleryProps) {
     const [timeline, setTimeline] = useState<tauri.SyncedTimeline | null>(null);
@@ -100,17 +88,15 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [reloadKey, setReloadKey] = useState(0);
-    // Selection (lib/timelineSelection.ts): each pane's picks, the pane the
-    // user last selected in, and whether the panes are linked by time
+    // Selection (lib/timelineSelection.ts): each pane's picks and the pane
+    // the user last selected in. The panes are linked by time.
     const [screenSel, setScreenSel] = useState<Selection>(EMPTY_SELECTION);
     const [lineSel, setLineSel] = useState<Selection>(EMPTY_SELECTION);
     const [origin, setOrigin] = useState<Pane | null>(null);
-    const [linked, setLinked] = useState(readLinked);
     const [hint, setHint] = useState<Hint | null>(null);
-    const [selectMode, setSelectMode] = useState(false);
     // Word-level editing (the token picker): double-click a line, or "Edit words"
     const [wordMode, setWordMode] = useState(false);
-    const [lastMinutes, setLastMinutes] = useState(12);
+    const [timeMenu, setTimeMenu] = useState(false);
     const [notesStale, setNotesStale] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
     const [regenError, setRegenError] = useState<string | null>(null);
@@ -119,20 +105,22 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     const galleryRef = useRef<HTMLDivElement>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
     const linesRef = useRef<HTMLDivElement>(null);
+    const timeMenuRef = useRef<HTMLDivElement>(null);
     const acting = useRef(false);
+    // Drag across lines selects a range
+    const dragAnchor = useRef<string | null>(null);
 
     const words = useWordSelection();
     const clearWords = words.clear;
     const reload = useCallback(() => setReloadKey((k) => k + 1), []);
     const redaction = useRedaction(meetingId, reload);
-    // Moment markers (docs/STUDY_TOOLS.md)
+    // Marks (docs/STUDY_TOOLS.md)
     const { markers, setMarkers, reload: reloadMarkers } = useMarkers(meetingId, reloadKey);
     // The recording's type labels the third mark (On the test / Follow up / Remember)
     const recKind = useRecordingKind(meetingId);
 
-    // Load timeline data
+    // Reset when the recording changes
     useEffect(() => {
-        // Reset state immediately when meeting changes
         setTimeline(null);
         setSelectedFrame(null);
         setFrameImage(null);
@@ -141,22 +129,18 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         setLineSel(EMPTY_SELECTION);
         setOrigin(null);
         setHint(null);
-        setSelectMode(false);
         setWordMode(false);
         clearWords();
     }, [meetingId, clearWords]);
 
     useEffect(() => {
-        if (!meetingId) {
-            return;
-        }
+        if (!meetingId) return;
 
         const loadTimeline = async () => {
             setIsLoading(true);
             try {
                 const data = await tauri.getSyncedTimeline(meetingId);
                 setTimeline(data);
-
                 // Keep the selected frame if it still exists, else the first
                 setSelectedFrame((prev) => {
                     const keep = prev && data.frames.find((f) => f.id === prev.id);
@@ -182,12 +166,9 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
 
         loadTimeline();
 
-        // Auto-refresh while recording
+        // Refresh while this recording is still running
         let interval: ReturnType<typeof setInterval> | null = null;
-        if (isRecording) {
-            interval = setInterval(loadTimeline, 3000);
-        }
-
+        if (isRecording) interval = setInterval(loadTimeline, 3000);
         return () => {
             if (interval) clearInterval(interval);
         };
@@ -198,29 +179,21 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         clearWords();
     }, [reloadKey, clearWords]);
 
-    // Load selected frame image
+    // The selected frame's picture
     useEffect(() => {
         if (!selectedFrame) {
             setFrameImage(null);
             return;
         }
-
-        const loadFrame = async () => {
-            try {
-                const base64 = await tauri.getFrameThumbnail(selectedFrame.id, false);
-                setFrameImage(base64 ? `data:image/jpeg;base64,${base64}` : null);
-            } catch (err) {
-                console.error("Failed to load frame:", err);
-            }
-        };
-
-        loadFrame();
+        tauri
+            .getFrameThumbnail(selectedFrame.id, false)
+            .then((base64) => setFrameImage(base64 ? `data:image/jpeg;base64,${base64}` : null))
+            .catch((err) => console.error("Failed to load frame:", err));
     }, [selectedFrame]);
 
-    // Load thumbnails progressively
+    // Thumbnails, progressively
     useEffect(() => {
         if (!timeline) return;
-
         const loadThumbnails = async () => {
             for (const frame of timeline.frames) {
                 if (!thumbnails.has(frame.id)) {
@@ -235,9 +208,8 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                 }
             }
         };
-
         loadThumbnails();
-    }, [timeline]);
+    }, [timeline]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const nearestFrame = useCallback(
         (ms: number) =>
@@ -249,8 +221,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         [timeline],
     );
 
-    // Jump to a moment asked for from outside (Links), once the timeline is
-    // loaded: the same as scrubbing there (the transcript scrolls to it)
+    // Jump to a moment asked for from outside, once the timeline is loaded
     const appliedSeek = useRef<number | null>(null);
     useEffect(() => {
         if (!seek || seek.meetingId !== meetingId || !timeline || appliedSeek.current === seek.n) return;
@@ -260,38 +231,44 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         if (f) setSelectedFrame(f);
     }, [seek, meetingId, timeline, nearestFrame]);
 
-    // Handle timeline scrubbing
-    const handleScrub = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const time = parseInt(e.target.value, 10);
-        setCurrentTime(time);
-        const f = nearestFrame(time);
-        if (f) setSelectedFrame(f);
-    }, [nearestFrame]);
+    const handleScrub = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const time = parseInt(e.target.value, 10);
+            setCurrentTime(time);
+            const f = nearestFrame(time);
+            if (f) setSelectedFrame(f);
+        },
+        [nearestFrame],
+    );
 
-    // Find the nearest transcript for the current time
+    // The line at the current time
     const currentTranscript = timeline?.transcripts.reduce((best: tauri.TimelineTranscript | null, t: tauri.TimelineTranscript) => {
         if (t.timestamp_ms > currentTime) return best;
         if (!best) return t;
         return Math.abs(t.timestamp_ms - currentTime) < Math.abs(best.timestamp_ms - currentTime) ? t : best;
     }, null as tauri.TimelineTranscript | null);
 
-    // Auto-scroll transcript panel to the active entry when currentTime changes
     useEffect(() => {
         if (!currentTranscript || !transcriptRef.current) return;
         const el = transcriptRef.current.querySelector(`[data-transcript-id="${currentTranscript.id}"]`);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-    }, [currentTranscript?.id]);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, [currentTranscript?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Auto-scroll thumbnail gallery to the selected frame
     useEffect(() => {
         if (!selectedFrame || !galleryRef.current) return;
         const el = galleryRef.current.querySelector(`[data-frame-id="${selectedFrame.id}"]`);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        }
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
     }, [selectedFrame?.id]);
+
+    // Close the Select time… menu on an outside click
+    useEffect(() => {
+        if (!timeMenu) return;
+        const onDown = (e: MouseEvent) => {
+            if (timeMenuRef.current && !timeMenuRef.current.contains(e.target as Node)) setTimeMenu(false);
+        };
+        document.addEventListener("mousedown", onDown);
+        return () => document.removeEventListener("mousedown", onDown);
+    }, [timeMenu]);
 
     // ── Timeline data for selection ──────────────────────────────────────
     const editable = !isRecording;
@@ -333,44 +310,22 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     const startedAt = timeline?.started_at ?? "";
     const sSpans = useMemo(() => screenSpans(frames, meetingEndMs), [frames, meetingEndMs]);
 
-    // What is selected. Linked: everything the time spans remove, in both
-    // panes. Not linked: the picks of the pane the user selected in. The
-    // counts in the bar and the ids sent are these same lists.
+    // What is selected: everything the time spans remove, in both panes.
+    // The counts in the bar and the ids sent are these same lists.
     const link = useMemo(
-        () =>
-            linked
-                ? linkSelection({ screens: frames, lines: lineItems, screenSel, lineSel, meetingEndMs, hint: hint?.span ?? null })
-                : EMPTY_LINKED,
-        [linked, frames, lineItems, screenSel, lineSel, meetingEndMs, hint],
+        () => linkSelection({ screens: frames, lines: lineItems, screenSel, lineSel, meetingEndMs, hint: hint?.span ?? null }),
+        [frames, lineItems, screenSel, lineSel, meetingEndMs, hint],
     );
-    const screenIds = useMemo(
-        () => (linked ? link.screenIds : origin === "screens" ? orderedIds(frames, screenSel) : []),
-        [linked, link, origin, frames, screenSel],
-    );
+    const screenIds = link.screenIds;
     const lineIds = useMemo(() => {
-        if (!linked) return origin === "lines" ? orderedIds(lineItems, lineSel) : [];
         const on = new Set([...link.lineIds, ...link.unplacedLineIds]);
         return lineItems.filter((l) => on.has(l.id)).map((l) => l.id);
-    }, [linked, link, origin, lineItems, lineSel]);
+    }, [link, lineItems]);
     const screenSet = useMemo(() => new Set(screenIds), [screenIds]);
     const lineSet = useMemo(() => new Set(lineIds), [lineIds]);
     const splitSet = link.splitLineIds;
-    const scope: "linked" | Pane | null = linked
-        ? link.ranges.length > 0 || link.unplacedLineIds.length > 0
-            ? "linked"
-            : null
-        : origin === "screens" && screenIds.length > 0
-          ? "screens"
-          : origin === "lines" && lineIds.length > 0
-            ? "lines"
-            : null;
-    // The selected time, for the scrubber and the bar
-    const selSpans: Span[] = useMemo(() => {
-        if (scope === "linked") return link.ranges;
-        if (scope === "screens") return runSpans(frames, screenSel.ids, (s) => sSpans.get(s.id));
-        if (scope === "lines") return runSpans(lineItems, lineSel.ids, lineSpan);
-        return [];
-    }, [scope, link, frames, screenSel, sSpans, lineItems, lineSel]);
+    const hasSelection = link.ranges.length > 0 || link.unplacedLineIds.length > 0;
+    const selSpans: Span[] = link.ranges;
 
     // ── Word editing (token picker) ──────────────────────────────────────
     const lines = useMemo(() => transcripts.map((t) => ({ id: Number(t.id), text: t.text })), [transcripts]);
@@ -407,7 +362,6 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         setLineSel(EMPTY_SELECTION);
         setOrigin(null);
         setHint(null);
-        setSelectMode(false);
     }, []);
 
     const exitWordMode = useCallback(() => {
@@ -415,9 +369,8 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         clearWords();
     }, [clearWords]);
 
-    /** Word editing over the transcript (the token picker). Starts with
-     *  word `wi` of line `li` selected, or the whole line when `wi` is null,
-     *  or nothing when `li` is null. */
+    /** Word editing over the transcript. Starts with word `wi` of line `li`
+     *  selected, or the whole line when `wi` is null. */
     const enterWordMode = (li: number | null, wi: number | null) => {
         clearSelection();
         setWordMode(true);
@@ -427,7 +380,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         else if (wi < n) words.selectWord({ li, wi });
     };
 
-    // Esc anywhere leaves word editing (a dialog's own Esc closes the dialog)
+    // Esc leaves word editing (a dialog's own Esc closes the dialog)
     useEffect(() => {
         if (!wordMode) return;
         const key = (e: KeyboardEvent) => {
@@ -437,23 +390,14 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         return () => window.removeEventListener("keydown", key);
     }, [wordMode, redaction.busy]);
 
-    const toggleLinked = () => {
-        const next = !linked;
-        setLinked(next);
-        writeLinked(next);
-        if (!next) {
-            // Actions now apply only to the pane the user selected in
-            const plain = (s: Selection): Selection => ({ ids: s.ids, anchor: s.anchor, base: s.base });
-            if (origin === "lines") {
-                setScreenSel(EMPTY_SELECTION);
-                setLineSel(plain);
-            } else {
-                setLineSel(EMPTY_SELECTION);
-                setScreenSel(plain);
-            }
-            if (!hint?.minutes) setHint(null);
-        }
-    };
+    // A drag ends anywhere
+    useEffect(() => {
+        const up = () => {
+            dragAnchor.current = null;
+        };
+        window.addEventListener("mouseup", up);
+        return () => window.removeEventListener("mouseup", up);
+    }, []);
 
     /** A new selection in one pane replaces the other pane's. */
     const pick = (pane: Pane, sel: Selection, h: Hint | null) => {
@@ -470,28 +414,26 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     };
 
     const selectAllIn = (pane: Pane) =>
-        pick(pane, selectAll(pane === "screens" ? frames : lineItems), linked ? { span: [0, meetingEndMs] } : null);
+        pick(pane, selectAll(pane === "screens" ? frames : lineItems), { span: [0, meetingEndMs] });
 
-    // "Here": the screen being viewed; in the transcript, the line last
-    // clicked, else the line at the current time
+    // "Here": the line last clicked, else the line at the current time
     const lineHere = (() => {
         const anchor = lineSel.anchor && lineItems.find((l) => l.id === lineSel.anchor);
         if (anchor) return anchor;
         const at = currentTranscript?.timestamp_ms;
         return at === undefined ? null : lineItems.find((l) => l.timestamp_ms >= at) ?? null;
     })();
-    const selectToEndIn = (pane: Pane) => {
-        const items = pane === "screens" ? frames : lineItems;
-        const from = pane === "screens" ? (selectedFrame?.id ?? screenSel.anchor) : (lineHere?.id ?? null);
+    const selectToEndFromHere = () => {
+        const from = lineHere?.id ?? null;
         if (!from) return;
-        const sel = selectToEnd(items, from);
-        const first = items.find((x) => x.id === sel.anchor);
-        pick(pane, sel, linked && first ? { span: [first.timestamp_ms, meetingEndMs] } : null);
+        const sel = selectToEnd(lineItems, from);
+        const first = lineItems.find((x) => x.id === sel.anchor);
+        pick("lines", sel, first ? { span: [first.timestamp_ms, meetingEndMs] } : null);
     };
 
-    const selectLastIn = (pane: Pane) => {
-        const { sel, range } = selectLastMinutes(pane === "screens" ? frames : lineItems, meetingEndMs, lastMinutes);
-        pick(pane, sel, { span: range, minutes: lastMinutes });
+    const selectLast = (minutes: number) => {
+        const { sel, range } = selectLastMinutes(lineItems, meetingEndMs, minutes);
+        pick("lines", sel, { span: range, minutes });
     };
 
     const viewFrame = (frame: tauri.TimelineFrame) => {
@@ -505,7 +447,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         if (f) setSelectedFrame(f);
     };
 
-    /** Jump to a moment (a marker). Study's quiz links come in through `seek`. */
+    /** Jump to a moment (a mark). Review's quiz links come in through `seek`. */
     const seekTo = useCallback(
         (ms: number) => {
             setCurrentTime(ms);
@@ -517,15 +459,14 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     const placed = useMemo(() => placeMarkers(transcripts, markers), [transcripts, markers]);
 
     const onThumbClick = (e: React.MouseEvent, frame: tauri.TimelineFrame) => {
-        // Keyboard shortcuts (⌘A, Delete) act on the grid once it's used
         galleryRef.current?.focus({ preventScroll: true });
         if (!editable) {
             viewFrame(frame);
             return;
         }
-        const mods = { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey, selectMode };
-        const current = (linked ? screenIds[0] : undefined) ?? selectedFrame?.id ?? null;
-        const r = clickItem(screenSel, frames, frame.id, mods, current, { covered: linked ? screenSet : undefined });
+        const mods = { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey, selectMode: false };
+        const current = screenIds[0] ?? selectedFrame?.id ?? null;
+        const r = clickItem(screenSel, frames, frame.id, mods, current, { covered: screenSet });
         setScreenSel(r.sel);
         if (r.view) {
             viewFrame(frame);
@@ -533,9 +474,23 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         }
         if (wordMode) exitWordMode();
         setOrigin("screens");
-        // ⌘-click adjusts a linked selection; anything else redraws it
-        if (!(linked && (mods.toggle || mods.selectMode))) setHint(null);
-        if (!linked) setLineSel(EMPTY_SELECTION);
+        // ⌘-click adjusts the selection; anything else redraws it
+        if (!mods.toggle) setHint(null);
+    };
+
+    const lineSelectable = (t: tauri.TimelineTranscript) => editable && !wordMode && (wordCounts.get(t.id) ?? 0) > 0;
+
+    const selectLineRange = (t: tauri.TimelineTranscript, mods: { shift: boolean; toggle: boolean }) => {
+        const current = lineIds[0] ?? lineHere?.id ?? null;
+        const r = clickItem(lineSel, lineItems, t.id, { ...mods, selectMode: false }, current, {
+            plain: "replace",
+            covered: lineSet,
+        });
+        setLineSel(r.sel);
+        setOrigin("lines");
+        if (!mods.toggle) setHint(null);
+        // A plain click selects only this line
+        if (r.view) setScreenSel(EMPTY_SELECTION);
     };
 
     const onLineClick = (e: React.MouseEvent, t: tauri.TimelineTranscript) => {
@@ -545,19 +500,35 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         }
         linesRef.current?.focus({ preventScroll: true });
         if (e.detail > 1) return; // the second click of a double-click
-        const mods = { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey, selectMode: false };
+        const mods = { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey };
         if (!mods.shift && !mods.toggle) seekToLine(t);
-        if (!editable || !(wordCounts.get(t.id) ?? 0)) return;
-        const current = (linked ? lineIds[0] : undefined) ?? lineHere?.id ?? null;
-        const r = clickItem(lineSel, lineItems, t.id, mods, current, {
+        if (!lineSelectable(t)) return;
+        selectLineRange(t, mods);
+    };
+
+    const onLineMouseDown = (e: React.MouseEvent, t: tauri.TimelineTranscript) => {
+        // Shift-click, drag and double-click select lines, not page text
+        if (lineSelectable(t) && (e.shiftKey || e.detail > 1)) e.preventDefault();
+        if (lineSelectable(t) && e.button === 0 && !e.shiftKey && !e.metaKey && !e.ctrlKey && e.detail === 1) {
+            dragAnchor.current = t.id;
+        }
+    };
+
+    const onLineMouseEnter = (e: React.MouseEvent, t: tauri.TimelineTranscript) => {
+        // Dragging from another line: extend the range to this one
+        if (!dragAnchor.current || dragAnchor.current === t.id || !lineSelectable(t)) return;
+        e.preventDefault();
+        window.getSelection()?.removeAllRanges();
+        const anchor = dragAnchor.current;
+        const base: Selection = lineSel.anchor === anchor ? lineSel : { ids: new Set([anchor]), anchor, base: new Set() };
+        const r = clickItem(base, lineItems, t.id, { shift: true, toggle: false, selectMode: false }, anchor, {
             plain: "replace",
-            covered: linked ? lineSet : undefined,
+            covered: lineSet,
         });
         setLineSel(r.sel);
+        setScreenSel(EMPTY_SELECTION);
         setOrigin("lines");
-        if (!(linked && mods.toggle)) setHint(null);
-        // A plain click selects only this line; unlinked, one pane at a time
-        if (!linked || r.view) setScreenSel(EMPTY_SELECTION);
+        setHint(null);
     };
 
     const onLineDoubleClick = (e: React.MouseEvent, li: number) => {
@@ -583,7 +554,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                 : tl,
         );
         setSelectedFrame((f) => (f && screens.has(f.id) ? null : f));
-        // Markers in the deleted time go with it at commit (Undo brings them back)
+        // Marks in the deleted time go with it at commit (Undo brings them back)
         if (p?.ranges?.length) {
             const spans = p.ranges.map((r) => [r.start_ms, r.end_ms] as [number, number]);
             setMarkers((ms) => {
@@ -597,83 +568,50 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
 
     const msRanges = (): MsRange[] => link.ranges.map(([a, b]) => ({ start_ms: a, end_ms: b }));
 
-    /** Linked: time-range semantics over every selected span (screens,
-     *  transcript split at the edges, screen video), one undo. Deletes
-     *  straight away when the backend's preview removes exactly what is
-     *  highlighted; otherwise shows that preview first. */
-    const deleteLinked = async () => {
-        if (!meetingId) return;
-        const ranges = msRanges();
-        const unplaced = link.unplacedLineIds.map(Number);
-        const ask = (note?: string) =>
-            redaction.openRanges({ mode: "delete", ranges, lineIds: unplaced, startedAt, note, onDeleted: hideDeleted });
-        let p: TimeRangePreview | null = null;
-        if (ranges.length > 0) {
-            try {
-                p = await redactionApi.previewTimeRanges(meetingId, ranges);
-            } catch {
-                ask();
-                return;
-            }
-            if (!matchesPreview(link, p)) {
-                ask("Deleting this time removes something other than what's highlighted. This is exactly what will be removed:");
-                return;
-            }
-            // Markers are notes the user wrote: never remove them unseen
-            if ((p.moment_markers ?? 0) > 0) {
-                ask("This time also has moment markers you placed; they go with it. This is exactly what will be removed:");
-                return;
-            }
-        }
-        if (await redaction.deleteRanges(p, unplaced, startedAt)) hideDeleted(p, unplaced);
-    };
-
-    const deleteSelectedScreens = async () => {
-        const ids = screenIds;
-        if (ids.length === 0) return;
-        if (await redaction.deleteScreens(ids)) {
-            const gone = new Set(ids);
-            setTimeline((tl) => (tl ? { ...tl, frames: tl.frames.filter((f) => !gone.has(f.id)) } : tl));
-            setSelectedFrame((f) => (f && gone.has(f.id) ? null : f));
-            clearSelection();
-        }
-    };
-
-    const deleteSelectedLines = async () => {
-        const ids = lineIds;
-        if (ids.length === 0) return;
-        if (await redaction.deleteLines(ids.map(Number))) hideDeleted(null, ids);
-    };
-
+    /** Time-range semantics over every selected span (screens, transcript
+     *  split at the edges, screen video), one undo. Deletes straight away
+     *  when the backend's preview removes exactly what is highlighted;
+     *  otherwise shows that preview first. */
     const deleteSelection = async () => {
-        if (acting.current || redaction.busy) return;
+        if (!meetingId || acting.current || redaction.busy) return;
         acting.current = true;
         try {
-            if (scope === "linked") await deleteLinked();
-            else if (scope === "screens") await deleteSelectedScreens();
-            else if (scope === "lines") await deleteSelectedLines();
+            const ranges = msRanges();
+            const unplaced = link.unplacedLineIds.map(Number);
+            const ask = (note?: string) =>
+                redaction.openRanges({ mode: "delete", ranges, lineIds: unplaced, startedAt, note, onDeleted: hideDeleted });
+            let p: TimeRangePreview | null = null;
+            if (ranges.length > 0) {
+                try {
+                    p = await redactionApi.previewTimeRanges(meetingId, ranges);
+                } catch {
+                    ask();
+                    return;
+                }
+                if (!matchesPreview(link, p)) {
+                    ask("Deleting this time removes something other than what's highlighted. This is exactly what will be removed:");
+                    return;
+                }
+                // Marks are notes the user wrote: never remove them unseen
+                if ((p.moment_markers ?? 0) > 0) {
+                    ask("This time also has marks you placed; they go with it. This is exactly what will be removed:");
+                    return;
+                }
+            }
+            if (await redaction.deleteRanges(p, unplaced, startedAt)) hideDeleted(p, unplaced);
         } finally {
             acting.current = false;
         }
     };
 
     const strikeSelection = () => {
-        if (scope === "linked") {
-            redaction.openRanges({
-                mode: "strike",
-                ranges: msRanges(),
-                lineIds: link.unplacedLineIds.map(Number),
-                startedAt,
-                onStruck: clearSelection,
-            });
-        } else if (scope === "screens") {
-            redaction.strikeScreens(screenIds);
-        } else if (scope === "lines") {
-            redaction.strikeLines(
-                lineIds.map(Number),
-                lineIds.reduce((a, id) => a + (wordCounts.get(id) ?? 0), 0),
-            );
-        }
+        redaction.openRanges({
+            mode: "strike",
+            ranges: msRanges(),
+            lineIds: link.unplacedLineIds.map(Number),
+            startedAt,
+            onStruck: clearSelection,
+        });
     };
 
     const regenerateNotes = async () => {
@@ -682,7 +620,6 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         setRegenError(null);
         setNeedsAi(false);
         try {
-            // Same prompt as Recordings → Notes (persona's meeting_report)
             await tauri.generateMeetingReport(meetingId);
             setNotesStale(false);
         } catch (e) {
@@ -693,12 +630,14 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         }
     };
 
-    // Format time as MM:SS
     const formatTime = (ms: number) => {
         const seconds = Math.floor(ms / 1000);
-        const mins = Math.floor(seconds / 60);
+        const h = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
         const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, "0")}`;
+        return h > 0
+            ? `${h}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+            : `${mins}:${String(secs).padStart(2, "0")}`;
     };
 
     // Thumbnails plus hatched cards where screens were stricken
@@ -733,10 +672,10 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
             e.preventDefault();
             selectAllIn("screens");
-        } else if ((e.key === "Delete" || e.key === "Backspace") && (scope === "screens" || scope === "linked")) {
+        } else if ((e.key === "Delete" || e.key === "Backspace") && hasSelection) {
             e.preventDefault();
-            deleteSelection();
-        } else if (e.key === "Escape" && scope) {
+            void deleteSelection();
+        } else if (e.key === "Escape" && hasSelection) {
             clearSelection();
         }
     };
@@ -750,32 +689,26 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
             e.preventDefault();
             selectAllIn("lines");
-        } else if ((e.key === "Delete" || e.key === "Backspace") && (scope === "lines" || scope === "linked")) {
+        } else if ((e.key === "Delete" || e.key === "Backspace") && hasSelection) {
             e.preventDefault();
-            deleteSelection();
-        } else if (e.key === "Escape" && scope) {
+            void deleteSelection();
+        } else if (e.key === "Escape" && hasSelection) {
             clearSelection();
         }
     };
 
-    // "17 screens · 42 lines · 10:41–10:53 · 2 groups": exactly what will be
-    // deleted (unlinked: exactly the ids that will be sent)
+    // "17 screens · 42 lines · 10:41–10:53": exactly what will be deleted
     const selectionLabel = (() => {
-        if (!scope) return "";
+        if (!hasSelection) return "";
         const parts: string[] = [];
-        if (scope !== "lines") parts.push(plural(screenIds.length, "screen", "screens"));
-        if (scope !== "screens") {
-            parts.push(`${plural(lineIds.length, "line", "lines")}${splitSet.size ? ` (${splitSet.size} split)` : ""}`);
-        }
-        const lastN = !linked && hint?.minutes !== undefined;
-        if (startedAt && lastN && hint) {
+        if (screenIds.length) parts.push(plural(screenIds.length, "screen", "screens"));
+        parts.push(`${plural(lineIds.length, "line", "lines")}${splitSet.size ? ` (${splitSet.size} split)` : ""}`);
+        if (startedAt && hint?.minutes !== undefined) {
             parts.push(`last ${hint.minutes} min (${spanLabel(startedAt, hint.span[0], hint.span[1])})`);
         } else if (startedAt && selSpans.length) {
             parts.push(spanLabel(startedAt, selSpans[0][0], selSpans[selSpans.length - 1][1]));
         }
-        if (selSpans.length > 1 && !lastN) parts.push(`${selSpans.length} groups`);
-        if (scope === "screens") parts.push("screens only");
-        if (scope === "lines") parts.push("transcript only");
+        if (selSpans.length > 1 && hint?.minutes === undefined) parts.push(`${selSpans.length} spans`);
         return parts.join(" · ");
     })();
 
@@ -785,10 +718,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     if (!meetingId) {
         return (
             <div className="rewind-empty">
-                <div className="empty-state">
-                    <div className="empty-state-icon">🎬</div>
-                    <p className="empty-state-text">Select a recording to review</p>
-                </div>
+                <p>Select a recording to rewind it.</p>
             </div>
         );
     }
@@ -796,35 +726,50 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
     if (isLoading && !timeline) {
         return (
             <div className="rewind-loading">
-                <div className="loading-spinner"></div>
-                <p>Loading the timeline...</p>
+                <div className="loading-spinner" />
+                <p>Loading the timeline…</p>
             </div>
         );
     }
 
+    const timeMenuItems = (
+        <div className="rw-menu" role="menu" ref={timeMenuRef}>
+            {LAST_MINUTES.map((m) => (
+                <button key={m} type="button" role="menuitem" className="rw-menu__item" onClick={() => { setTimeMenu(false); selectLast(m); }}>
+                    Last {m} min
+                </button>
+            ))}
+            <button type="button" role="menuitem" className="rw-menu__item" disabled={!lineHere} onClick={() => { setTimeMenu(false); selectToEndFromHere(); }}>
+                From here to the end
+            </button>
+            <button type="button" role="menuitem" className="rw-menu__item" onClick={() => { setTimeMenu(false); selectAllIn("lines"); }}>
+                Everything
+            </button>
+            <button type="button" role="menuitem" className="rw-menu__item" disabled={!startedAt} onClick={() => { setTimeMenu(false); openTimeRange(); }}>
+                Time range…
+            </button>
+        </div>
+    );
+
     return (
         <MarkKindContext.Provider value={recKind}>
         <div className="rewind-gallery">
-            {/* Top section: Frame preview + Transcripts */}
             <div className="rewind-main">
-                {/* Frame preview */}
+                {/* The screen at the current moment */}
                 <div className="rewind-frame-preview">
                     {frameImage ? (
-                        <img src={frameImage} alt="Frame preview" />
+                        <img src={frameImage} alt="The screen at this moment" />
                     ) : (
                         <div className="frame-placeholder">
-                            <span>📷</span>
-                            <p>No frame selected</p>
+                            <DisplayIcon size={36} strokeWidth={1.5} />
+                            <p>{frames.length === 0 ? "No screens were captured" : "No screen at this moment"}</p>
                         </div>
                     )}
-                    <div className="frame-timestamp">
-                        {selectedFrame && formatTime(selectedFrame.timestamp_ms)}
-                    </div>
+                    <div className="frame-timestamp">{selectedFrame && formatTime(selectedFrame.timestamp_ms)}</div>
                 </div>
 
-                {/* Transcript panel */}
+                {/* Transcript */}
                 <div className="rewind-transcripts scrollable" ref={transcriptRef}>
-                    <h3>Transcripts</h3>
                     <MarkerList
                         meetingId={meetingId}
                         markers={markers}
@@ -834,86 +779,30 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                     />
                     {notesStale && (
                         <div className="rd-stale" role="status">
-                            <span>AI notes were made before an edit.</span>
+                            <span>The notes were made before an edit.</span>
                             <button className="rd-btn" onClick={regenerateNotes} disabled={regenerating}>
-                                {regenerating ? "Regenerating…" : "Regenerate"}
+                                {regenerating ? "Making notes…" : "Make again"}
                             </button>
                         </div>
                     )}
-                    {needsAi && <AiSetupNotice feature="AI notes" compact />}
-                    {regenError && <p className="rd-tip" role="alert">Couldn't regenerate the notes: {regenError}</p>}
-                    {editable && transcripts.length > 0 && (
-                        <div className="rd-selectbar rd-lines-toolbar">
-                            {wordMode ? (
-                                <>
-                                    <span className="rd-hint">
-                                        Editing words: click a word, Shift-click or drag to select more.
-                                    </span>
-                                    <button className="rd-btn rd-btn-ghost" style={{ padding: "0 6px" }} onClick={exitWordMode} title="Esc">
-                                        Done
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    <button
-                                        className="rd-btn rd-btn-ghost"
-                                        style={{ padding: "0 6px" }}
-                                        onClick={() => selectAllIn("lines")}
-                                        title="⌘A in the transcript"
-                                    >
-                                        Select all
-                                    </button>
-                                    <button
-                                        className="rd-btn rd-btn-ghost"
-                                        style={{ padding: "0 6px" }}
-                                        onClick={() => selectToEndIn("lines")}
-                                        disabled={!lineHere}
-                                        title={
-                                            lineHere
-                                                ? `From the line at ${startedAt ? clockAt(startedAt, lineHere.timestamp_ms) : formatTime(lineHere.timestamp_ms)} to the end of the recording`
-                                                : "Click a line first"
-                                        }
-                                    >
-                                        From here to the end
-                                    </button>
-                                    <label className="rd-hint" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                        Last
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            max={600}
-                                            value={lastMinutes}
-                                            onChange={(e) => setLastMinutes(Math.max(1, Math.min(600, Number(e.target.value) || 1)))}
-                                            aria-label="Minutes"
-                                        />
-                                        min
-                                    </label>
-                                    <button className="rd-btn rd-btn-ghost" style={{ padding: "0 6px" }} onClick={() => selectLastIn("lines")}>
-                                        Select
-                                    </button>
-                                    <button
-                                        className="rd-btn rd-btn-ghost"
-                                        style={{ padding: "0 6px" }}
-                                        onClick={() => enterWordMode(oneLineIndex >= 0 ? oneLineIndex : null, null)}
-                                        title="Pick single words to delete or strike (or double-click a line)"
-                                    >
-                                        Edit words
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                    {needsAi && <AiSetupNotice feature="Notes" compact />}
+                    {regenError && <p className="rd-tip" role="alert">Couldn't make the notes: {regenError}</p>}
+                    {editable && transcripts.length > 0 && !wordMode && !hasSelection && (
+                        <p className="rd-tip">Click a line to select it, drag or Shift-click for a range, ⌘A for all. Double-click a line to edit its words.</p>
                     )}
-                    {editable && transcripts.length > 0 && !wordMode && !scope && (
-                        <p className="rd-tip">
-                            Click a line to select it. Shift-click selects a range, ⌘-click adds or removes a line.
-                            Double-click a line to edit its words.
-                        </p>
+                    {editable && wordMode && (
+                        <div className="rd-selectbar rd-lines-toolbar">
+                            <span className="rd-hint">Editing words: click a word, Shift-click or drag to select more.</span>
+                            <button className="rd-btn rd-btn-ghost" style={{ padding: "0 6px" }} onClick={exitWordMode} title="Esc">
+                                Done
+                            </button>
+                        </div>
                     )}
                     {placed.before.map((m) => (
                         <MarkerInline key={m.id} m={m} onJump={seekTo} />
                     ))}
                     {transcripts.length === 0 ? (
-                        <p className="no-transcripts">No transcripts yet</p>
+                        <p className="no-transcripts">Nothing was said yet.</p>
                     ) : (
                         <div
                             className="transcript-entries"
@@ -922,12 +811,12 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                             onKeyDown={onLinesKey}
                             role="listbox"
                             aria-multiselectable={editable && !wordMode}
-                            aria-label="Transcript. Click a line to select it, Shift-click to select a range, ⌘-click to add or remove one, ⌘A to select all, Delete to delete, double-click to edit words"
+                            aria-label="Transcript. Click a line to select it, drag or Shift-click for a range, ⌘A for all, Delete to delete, double-click to edit words"
                         >
                             {transcripts.map((t: tauri.TimelineTranscript, li: number) => {
                                 const sel = lineSet.has(t.id);
                                 const split = splitSet.has(t.id);
-                                const selectable = editable && !wordMode && (wordCounts.get(t.id) ?? 0) > 0;
+                                const selectable = lineSelectable(t);
                                 return (
                                     <div
                                         key={t.id}
@@ -943,15 +832,9 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                                         ]
                                             .filter(Boolean)
                                             .join(" ")}
-                                        title={
-                                            split
-                                                ? "Partly inside the selected time: only the words spoken inside it are removed"
-                                                : undefined
-                                        }
-                                        onMouseDown={(e) => {
-                                            // Shift-click and double-click select lines/words, not page text
-                                            if (selectable && (e.shiftKey || e.detail > 1)) e.preventDefault();
-                                        }}
+                                        title={split ? "Partly inside the selected time: only the words spoken inside it are removed" : undefined}
+                                        onMouseDown={(e) => onLineMouseDown(e, t)}
+                                        onMouseEnter={(e) => onLineMouseEnter(e, t)}
                                         onClick={(e) => onLineClick(e, t)}
                                         onDoubleClick={(e) => selectable && onLineDoubleClick(e, li)}
                                     >
@@ -1011,7 +894,7 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                 </div>
             </div>
 
-            {/* Timeline scrubber */}
+            {/* Timeline scrubber, with the marks as pins */}
             <div className="rewind-timeline">
                 <span className="timeline-time">{formatTime(0)}</span>
                 <div className="timeline-track">
@@ -1022,10 +905,9 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                         value={currentTime}
                         onChange={handleScrub}
                         className="timeline-slider"
+                        aria-label="Moment in the recording"
                     />
                     <MarkerPins markers={markers} pct={pct} onJump={seekTo} />
-                    {/* Selected time spans, and selected screens/lines in
-                        yellow, so a pick scrolled out of view is still visible */}
                     <div className="timeline-markers">
                         {selSpans.map(([a, b], i) => (
                             <div
@@ -1040,10 +922,9 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                                 key={f.id}
                                 className={`timeline-marker frame-marker${screenSet.has(f.id) ? " rd-marker-selected" : ""}`}
                                 style={{ left: `${pct(f.timestamp_ms)}%` }}
-                                title={`Frame at ${formatTime(f.timestamp_ms)}${screenSet.has(f.id) ? " (selected)" : ""}`}
+                                title={`Screen at ${formatTime(f.timestamp_ms)}${screenSet.has(f.id) ? " (selected)" : ""}`}
                             />
                         ))}
-                        {/* Transcript markers */}
                         {transcripts.filter((t: tauri.TimelineTranscript) => t.is_final).map((t: tauri.TimelineTranscript) => (
                             <div
                                 key={t.id}
@@ -1057,150 +938,83 @@ export function RewindGallery({ meetingId, isRecording, seek = null }: RewindGal
                 <span className="timeline-time">{formatTime(maxTime)}</span>
             </div>
 
-            {/* Thumbnail gallery (focusable: ⌘A selects all, Delete deletes) */}
-            <div
-                className="rewind-thumbnails scrollable"
-                ref={galleryRef}
-                tabIndex={0}
-                onKeyDown={onGridKey}
-                aria-label="Screens. Click to view, ⌘-click to pick, Shift-click to pick a range, ⌘A to pick all, Delete to delete"
-                aria-multiselectable={editable}
-                role="listbox"
-            >
-                {strip.map((item) =>
-                    item.kind === "stricken" ? (
-                        <ScreenStrickenCard key={`s-${item.record.id}`} record={item.record} className="thumbnail" />
-                    ) : (
-                        <div
-                            key={item.frame.id}
-                            data-frame-id={item.frame.id}
-                            role="option"
-                            className={`thumbnail ${item.frame.id === selectedFrame?.id ? "selected" : ""} ${screenSet.has(item.frame.id) ? "rd-selected" : ""}`}
-                            aria-selected={screenSet.has(item.frame.id)}
-                            onMouseDown={(e) => {
-                                // Shift-click selects screens, not page text
-                                if (e.shiftKey) e.preventDefault();
-                            }}
-                            onClick={(e) => onThumbClick(e, item.frame)}
-                        >
-                            {thumbnails.has(item.frame.id) ? (
-                                <img src={thumbnails.get(item.frame.id)} alt={`Frame ${item.frame.frame_number}`} />
-                            ) : (
-                                <div className="thumbnail-loading">
-                                    <span>🖼️</span>
-                                </div>
-                            )}
-                            {screenSet.has(item.frame.id) && <span className="rd-check">✓</span>}
-                            <span className="thumbnail-time">{formatTime(item.frame.timestamp_ms)}</span>
-                        </div>
-                    )
-                )}
-            </div>
+            {/* Screens (focusable: ⌘A selects all, Delete deletes) */}
+            {strip.length > 0 && (
+                <div
+                    className="rewind-thumbnails scrollable"
+                    ref={galleryRef}
+                    tabIndex={0}
+                    onKeyDown={onGridKey}
+                    aria-label="Screens. Click to view, ⌘-click to pick, Shift-click to pick a range, ⌘A to pick all, Delete to delete"
+                    aria-multiselectable={editable}
+                    role="listbox"
+                >
+                    {strip.map((item) =>
+                        item.kind === "stricken" ? (
+                            <ScreenStrickenCard key={`s-${item.record.id}`} record={item.record} className="thumbnail" />
+                        ) : (
+                            <div
+                                key={item.frame.id}
+                                data-frame-id={item.frame.id}
+                                role="option"
+                                className={`thumbnail ${item.frame.id === selectedFrame?.id ? "selected" : ""} ${screenSet.has(item.frame.id) ? "rd-selected" : ""}`}
+                                aria-selected={screenSet.has(item.frame.id)}
+                                onMouseDown={(e) => {
+                                    if (e.shiftKey) e.preventDefault();
+                                }}
+                                onClick={(e) => onThumbClick(e, item.frame)}
+                            >
+                                {thumbnails.has(item.frame.id) ? (
+                                    <img src={thumbnails.get(item.frame.id)} alt={`Screen ${item.frame.frame_number}`} />
+                                ) : (
+                                    <div className="thumbnail-loading" />
+                                )}
+                                {screenSet.has(item.frame.id) && <span className="rd-check">✓</span>}
+                                <span className="thumbnail-time">{formatTime(item.frame.timestamp_ms)}</span>
+                            </div>
+                        )
+                    )}
+                </div>
+            )}
 
-            {editable && scope && (
-                <div style={{ padding: "0 12px 8px" }}>
+            {/* One bar: Delete · Strike from the record…, with Edit words and Select time… */}
+            {editable && hasSelection && (
+                <div className="rewind-actionbar">
                     <RedactionActionBar
                         label={selectionLabel}
                         busy={redaction.busy}
                         extra={
                             <>
-                                <button
-                                    className={`rd-btn rd-btn-ghost rd-link-toggle${linked ? " rd-on" : ""}`}
-                                    aria-pressed={linked}
-                                    onClick={toggleLinked}
-                                    title={
-                                        linked
-                                            ? "Linked: screens and transcript are selected together by time, and Delete/Strike removes everything in the selected time. Click to act on one pane only."
-                                            : "Not linked: Delete/Strike acts only on the pane you selected in. Click to select screens and transcript together by time."
-                                    }
-                                >
-                                    {linked ? "Linked ✓" : "Linked"}
-                                </button>
                                 {oneLineIndex >= 0 && (
-                                    <button
-                                        className="rd-btn rd-btn-ghost"
-                                        onClick={() => enterWordMode(oneLineIndex, null)}
-                                        title="Pick single words in this line (or double-click it)"
-                                    >
+                                    <button className="rd-btn rd-btn-ghost" onClick={() => enterWordMode(oneLineIndex, null)} title="Pick single words in this line (or double-click it)">
                                         Edit words
                                     </button>
                                 )}
-                                <button
-                                    className="rd-btn rd-btn-ghost"
-                                    onClick={openTimeRange}
-                                    disabled={!startedAt}
-                                    title="Type a start and end time: everything in it (screens, screen text, transcript and screen video)"
-                                >
-                                    Time range…
-                                </button>
+                                <span className="rw-menu-anchor">
+                                    <button className="rd-btn rd-btn-ghost" onClick={() => setTimeMenu((v) => !v)} aria-haspopup="menu" aria-expanded={timeMenu}>
+                                        Select time… <ChevronDownIcon size={12} />
+                                    </button>
+                                    {timeMenu && timeMenuItems}
+                                </span>
                             </>
                         }
-                        onDelete={deleteSelection}
+                        onDelete={() => void deleteSelection()}
                         onStrike={strikeSelection}
                         onClear={clearSelection}
                     />
                 </div>
             )}
 
-            {/* Stats bar */}
-            <div className="rewind-stats-bar">
-                <span>📷 {frames.length} frames</span>
-                <span>💬 {transcripts.length} transcripts</span>
-                <span>⏱️ {formatTime(maxTime)} duration</span>
-                {editable && frames.length > 0 && (
-                    <span className="rd-selectbar" style={{ marginLeft: "auto" }}>
-                        <button
-                            className="rd-btn rd-btn-ghost"
-                            style={{ padding: "0 6px" }}
-                            onClick={() => {
-                                if (selectMode) clearSelection();
-                                else setSelectMode(true);
-                            }}
-                            title="Or ⌘-click thumbnails; Shift-click picks a range"
-                        >
-                            {selectMode ? "Done selecting" : "Select screens"}
+            <div className="rewind-status">
+                <span>
+                    {plural(frames.length, "screen", "screens")} · {plural(transcripts.length, "line", "lines")} · {formatTime(maxTime)}
+                </span>
+                {editable && !hasSelection && !wordMode && transcripts.length > 0 && (
+                    <span className="rw-menu-anchor">
+                        <button className="rd-btn rd-btn-ghost" onClick={() => setTimeMenu((v) => !v)} aria-haspopup="menu" aria-expanded={timeMenu}>
+                            Select time… <ChevronDownIcon size={12} />
                         </button>
-                        <button
-                            className="rd-btn rd-btn-ghost"
-                            style={{ padding: "0 6px" }}
-                            onClick={() => selectAllIn("screens")}
-                            title="⌘A in the screen strip"
-                        >
-                            Select all
-                        </button>
-                        <button
-                            className="rd-btn rd-btn-ghost"
-                            style={{ padding: "0 6px" }}
-                            onClick={() => selectToEndIn("screens")}
-                            disabled={!selectedFrame && !screenSel.anchor}
-                            title="From the screen you're viewing to the end of the recording"
-                        >
-                            From here to the end
-                        </button>
-                        <label className="rd-hint" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            Last
-                            <input
-                                type="number"
-                                min={1}
-                                max={600}
-                                value={lastMinutes}
-                                onChange={(e) => setLastMinutes(Math.max(1, Math.min(600, Number(e.target.value) || 1)))}
-                                aria-label="Minutes"
-                            />
-                            min
-                        </label>
-                        <button className="rd-btn rd-btn-ghost" style={{ padding: "0 6px" }} onClick={() => selectLastIn("screens")}>
-                            Select
-                        </button>
-                        <button
-                            className="rd-btn rd-btn-ghost"
-                            style={{ padding: "0 6px" }}
-                            onClick={openTimeRange}
-                            disabled={!startedAt}
-                            title="Delete or strike a block of time (picks its start and end)"
-                        >
-                            Time range…
-                        </button>
+                        {timeMenu && timeMenuItems}
                     </span>
                 )}
             </div>
