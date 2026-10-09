@@ -523,15 +523,6 @@ pub fn run() {
 
                                     log::info!("State managed, emitting app-ready...");
                                     let _ = handle_clone.emit("app-ready", ());
-                                    // Tray checkbox mirrors the auto-stop setting
-                                    {
-                                        let h = handle_clone.clone();
-                                        tauri::async_runtime::spawn(async move {
-                                            if let Ok(s) = meeting_end::get_auto_stop_settings(h.clone()).await {
-                                                tray_builder::set_auto_stop_checked(&h, s.enabled);
-                                            }
-                                        });
-                                    }
                                     commands::people::spawn_startup_sync(&handle_clone);
                                     // Tray "Start Recording (60 min)" shows the remembered length
                                     {

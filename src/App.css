@@ -179,8 +179,8 @@ img.logo-icon {
   font-size: 14px;
   font-weight: 800;
   color: var(--hazard-yellow);
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  text-transform: none;
+  letter-spacing: 0;
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -203,8 +203,8 @@ img.logo-icon {
   color: #737373;
   font-size: 13px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
   transition: all var(--transition-fast);
   outline: none;
@@ -266,8 +266,8 @@ img.logo-icon {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
   transition: all var(--transition-smooth);
 }
@@ -362,16 +362,16 @@ img.logo-icon {
   font-size: 24px;
   font-weight: 800;
   color: var(--hazard-yellow);
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  text-transform: none;
+  letter-spacing: 0;
   margin-bottom: 8px;
 }
 
 .content-subtitle {
   font-size: 12px;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .content-body {
@@ -543,8 +543,8 @@ img.logo-icon {
   color: var(--text-primary);
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
   transition: all var(--transition-fast);
 }
 
@@ -928,8 +928,8 @@ img.logo-icon {
   font-size: 10px;
   font-weight: 700;
   color: var(--hazard-yellow);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
   position: relative;
   overflow: hidden;
 }
@@ -1135,8 +1135,8 @@ img.logo-icon {
   font-size: 12px;
   font-weight: 600;
   color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .prompt-meta-grid span {
@@ -2583,8 +2583,8 @@ img.logo-icon {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .metric-value {
@@ -2756,8 +2756,8 @@ img.logo-icon {
 .storage-stat-card .stat-label {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 /* Library Toolbar */
@@ -3140,7 +3140,7 @@ img.logo-icon {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .audit-table td {
@@ -3564,7 +3564,7 @@ img.logo-icon {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .data-table td {
@@ -3871,7 +3871,7 @@ img.logo-icon {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .job-table td {
@@ -4085,8 +4085,8 @@ img.logo-icon {
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .always-on-modes-grid {
@@ -4137,8 +4137,8 @@ img.logo-icon {
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .always-on-detection-grid {
@@ -4214,8 +4214,8 @@ img.logo-icon {
   display: block;
   font-size: 0.7rem;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
   margin-bottom: 4px;
 }
 
@@ -4362,8 +4362,8 @@ img.logo-icon {
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .ambient-loading {
@@ -5012,8 +5012,8 @@ img.logo-icon {
   font-family: 'JetBrains Mono', monospace;
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .genie-restore-btn:hover {

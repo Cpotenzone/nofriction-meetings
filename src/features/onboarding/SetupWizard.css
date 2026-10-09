@@ -160,8 +160,8 @@
 .api-key-section label {
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--text-secondary, #a3a3a3);
 }
 
@@ -336,8 +336,8 @@
 .quick-start h3 {
     font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--text-secondary, #a3a3a3);
     margin: 0 0 10px;
 }

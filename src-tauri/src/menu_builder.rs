@@ -1,5 +1,5 @@
-// noFriction Meetings - Native macOS Menu Builder
-// Creates native menu bar following Apple Human Interface Guidelines
+// noFriction - native macOS menu bar. Same names as the window:
+// Record · Recordings · Chat, Settings, Help.
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
@@ -15,13 +15,11 @@ pub mod menu_ids {
     /// ★ the current moment of the recording (markers.rs)
     pub const MARK_MOMENT: &str = "mark_moment";
 
-    pub const ASK_AI: &str = "ask_ai";
-
-    pub const VIEW_LIVE: &str = "view_live";
-    pub const VIEW_REWIND: &str = "view_rewind";
+    pub const VIEW_RECORD: &str = "view_record";
+    pub const VIEW_RECORDINGS: &str = "view_recordings";
+    pub const VIEW_CHAT: &str = "view_chat";
     pub const VIEW_SETTINGS: &str = "view_settings";
-    pub const VIEW_PROMPTS: &str = "view_prompts";
-    pub const COMMAND_PALETTE: &str = "command_palette";
+    pub const SEARCH: &str = "search";
 
     pub const HELP: &str = "help";
     pub const CONTACT_SUPPORT: &str = "contact_support";
@@ -40,7 +38,7 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )?)
         .separator()
         .item(
-            &MenuItemBuilder::with_id(menu_ids::VIEW_SETTINGS, "Settings...")
+            &MenuItemBuilder::with_id(menu_ids::VIEW_SETTINGS, "Settings…")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?,
         )
@@ -57,18 +55,18 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // File menu
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(
-            &MenuItemBuilder::with_id(menu_ids::NEW_RECORDING, "New Recording")
+            &MenuItemBuilder::with_id(menu_ids::NEW_RECORDING, "Record")
                 .accelerator("CmdOrCtrl+N")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(menu_ids::STOP_RECORDING, "Stop Recording")
+            &MenuItemBuilder::with_id(menu_ids::STOP_RECORDING, "Stop")
                 .accelerator("CmdOrCtrl+.")
                 .build(app)?,
         )
-        .item(&MenuItemBuilder::with_id(menu_ids::PAUSE_RECORDING, "Pause Recording").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::PAUSE_RECORDING, "Pause").build(app)?)
         .item(
-            &MenuItemBuilder::with_id(menu_ids::MARK_MOMENT, "Mark Moment")
+            &MenuItemBuilder::with_id(menu_ids::MARK_MOMENT, "Mark")
                 .accelerator(crate::markers::MENU_ACCELERATOR)
                 .build(app)?,
         )
@@ -90,28 +88,23 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // View menu
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(
-            &MenuItemBuilder::with_id(menu_ids::VIEW_LIVE, "Live")
+            &MenuItemBuilder::with_id(menu_ids::VIEW_RECORD, "Record")
                 .accelerator("CmdOrCtrl+1")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(menu_ids::VIEW_REWIND, "Recordings")
+            &MenuItemBuilder::with_id(menu_ids::VIEW_RECORDINGS, "Recordings")
                 .accelerator("CmdOrCtrl+2")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(menu_ids::ASK_AI, "Chat with Your Recordings")
+            &MenuItemBuilder::with_id(menu_ids::VIEW_CHAT, "Chat")
                 .accelerator("CmdOrCtrl+Shift+I")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id(menu_ids::VIEW_PROMPTS, "Prompts")
-                .accelerator("CmdOrCtrl+Shift+P")
                 .build(app)?,
         )
         .separator()
         .item(
-            &MenuItemBuilder::with_id(menu_ids::COMMAND_PALETTE, "Command Palette...")
+            &MenuItemBuilder::with_id(menu_ids::SEARCH, "Search Recordings")
                 .accelerator("CmdOrCtrl+K")
                 .build(app)?,
         )
@@ -131,7 +124,7 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let help_menu = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id(menu_ids::HELP, "noFriction Help").build(app)?)
         .separator()
-        .item(&MenuItemBuilder::with_id(menu_ids::CONTACT_SUPPORT, "Contact Support...").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::CONTACT_SUPPORT, "Contact Support…").build(app)?)
         .build()?;
 
     // Build the complete menu bar
@@ -150,17 +143,16 @@ pub fn handle_menu_event(app: &AppHandle<Wry>, event_id: &str) {
     let event = match event_id {
         menu_ids::NEW_RECORDING => "menu:new_recording",
         menu_ids::STOP_RECORDING => "menu:stop_recording",
-        menu_ids::PAUSE_RECORDING => "menu:mode_pause",
+        menu_ids::PAUSE_RECORDING => "menu:pause_recording",
         menu_ids::MARK_MOMENT => {
             crate::markers::commands::mark_from_shortcut(app);
             return;
         }
-        menu_ids::ASK_AI => "menu:ask_ai",
-        menu_ids::VIEW_LIVE => "menu:view_live",
-        menu_ids::VIEW_REWIND => "menu:view_rewind",
+        menu_ids::VIEW_RECORD => "menu:view_record",
+        menu_ids::VIEW_RECORDINGS => "menu:view_recordings",
+        menu_ids::VIEW_CHAT => "menu:view_chat",
         menu_ids::VIEW_SETTINGS => "menu:view_settings",
-        menu_ids::VIEW_PROMPTS => "menu:view_prompts",
-        menu_ids::COMMAND_PALETTE => "menu:command_palette",
+        menu_ids::SEARCH => "menu:search",
         menu_ids::HELP => "menu:help",
         menu_ids::CONTACT_SUPPORT => {
             use tauri_plugin_opener::OpenerExt;

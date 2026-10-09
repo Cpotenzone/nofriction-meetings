@@ -89,8 +89,8 @@
 .person__tag {
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--hazard-yellow, #facc15);
 }
 

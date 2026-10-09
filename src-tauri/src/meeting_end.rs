@@ -577,7 +577,6 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
         detector: Mutex::new(Detector::new(DetectorConfig::default(), Utc::now(), calendar)),
     });
     *CURRENT.lock() = Some(monitor.clone());
-    crate::tray_builder::set_auto_stop_status(&app, "Auto-stop: watching for meeting end", false);
     // The countdown notification needs permission: ask at the first
     // recording (macOS prompts only once), never at launch.
     crate::notifications::request_permission_once();
@@ -620,13 +619,11 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
                     let _ = app.emit("meeting-end-cancelled", serde_json::json!({ "reason": "auto-stop paused" }));
                 }
                 if !enabled && was_enabled {
-                    crate::tray_builder::set_auto_stop_status(&app, "Auto-stop: off", false);
                 }
                 was_enabled = enabled;
                 continue;
             }
             if !was_enabled {
-                crate::tray_builder::set_auto_stop_status(&app, "Auto-stop: watching for meeting end", false);
                 was_enabled = true;
             }
 
@@ -662,17 +659,11 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
                         (p.deadline - now).num_seconds()
                     );
                     let _ = app.emit("meeting-end-detected", DetectedPayload::new(&meeting_id, &p, now));
-                    crate::tray_builder::set_auto_stop_status(
-                        &app,
-                        &format!("Ended? Stopping in {}s…", (p.deadline - now).num_seconds()),
-                        true,
-                    );
                     request_attention(&app, &p.reason, (p.deadline - now).num_seconds());
                 }
                 Action::Cancelled(why) => {
                     log::info!("🛑 Meeting-end countdown cancelled: {}", why);
                     let _ = app.emit("meeting-end-cancelled", serde_json::json!({ "reason": why }));
-                    crate::tray_builder::set_auto_stop_status(&app, "Auto-stop: watching for meeting end", false);
                 }
                 Action::AutoStop(p) => {
                     log::info!("🛑 Auto-stopping recording {} (signal: {:?})", meeting_id, p.kind);
@@ -686,7 +677,6 @@ pub fn start_monitor(app: AppHandle, meeting_id: String, calendar: Option<(DateT
                             "end_at": p.end_at.to_rfc3339(),
                         }),
                     );
-                    crate::tray_builder::set_auto_stop_status(&app, "Auto-stop: stopping recording…", false);
                     // The UI stops through the user's Stop path (video, AX
                     // unlink, notes). If it hasn't within a few seconds (window
                     // closed / webview asleep), stop from the backend.
@@ -783,7 +773,6 @@ pub fn keep_recording(app: &AppHandle) -> bool {
     let was_pending = m.detector.lock().snooze(Utc::now());
     log::info!("🛑 Meeting-end detection snoozed by user (countdown was running: {})", was_pending);
     let _ = app.emit("meeting-end-cancelled", serde_json::json!({ "reason": "kept recording" }));
-    crate::tray_builder::set_auto_stop_status(app, "Auto-stop: snoozed 10 min", false);
     was_pending
 }
 
@@ -841,7 +830,6 @@ pub async fn set_auto_stop_settings(
     if let Some(m) = CURRENT.lock().clone() {
         m.detector.lock().set_silence_minutes(silence_minutes);
     }
-    crate::tray_builder::set_auto_stop_checked(&app, enabled);
     let _ = app.emit("auto-stop-settings-changed", AutoStopSettings { enabled, silence_minutes });
     Ok(AutoStopSettings { enabled, silence_minutes })
 }

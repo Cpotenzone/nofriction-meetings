@@ -27,8 +27,8 @@
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-secondary, rgba(255, 255, 255, 0.6));
 }
 
@@ -194,8 +194,8 @@
   border-radius: 999px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   border: 1px solid currentColor;
 }
 
