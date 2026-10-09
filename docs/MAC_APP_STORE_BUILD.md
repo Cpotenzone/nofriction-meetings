@@ -110,7 +110,7 @@ architecture, which the App Store accepts because the minimum macOS is 12.3.
 | m5 `.env` / dotenv | **Gated**: `EnvConfig::load()` returns defaults and `secrets::migrate_home_env()` doesn't exist in `mas`. |
 | m6 Obsidian vault path | **Fixed (both)**: `set_vault_path` stores an app-scoped security bookmark (`bookmarks.rs`, setting `obsidian_vault_bookmark`); startup resolves it and calls `startAccessingSecurityScopedResource`. The DMG build falls back to the plain path. Entitlements: `files.user-selected.read-write` + `files.bookmarks.app-scope`. Existing DMG installs get the bookmark the next time the vault folder is picked. |
 | m7 shell plugin | **Removed (both)**: `tauri-plugin-shell` dropped from Cargo, `lib.rs`, `capabilities/default.json`. System Settings links open through the opener plugin (NSWorkspace) instead of `/usr/bin/open`. |
-| m8 entitlements | `entitlements.mas.plist`: app-sandbox, application-identifier, team-identifier, network.client, device.audio-input, personal-information.calendars, files.user-selected.read-write, files.bookmarks.app-scope, files.downloads.read-write. No JIT / unsigned memory / library-validation exceptions (WKWebView JIT runs out of process; verified by a sandboxed launch). |
+| m8 entitlements | `entitlements.mas.plist`: app-sandbox, application-identifier, team-identifier, network.client, device.audio-input, personal-information.calendars, files.user-selected.read-write, files.bookmarks.app-scope. (`files.downloads.read-write` was removed in 3.7.0: every export goes through a save panel, which `user-selected` covers.) No JIT / unsigned memory / library-validation exceptions (WKWebView JIT runs out of process; verified by a sandboxed launch). |
 | m9 identifier | `tauri.conf.json` identifier is `com.nofriction.meetings`. The DMG build moves `~/Library/Application Support/ai.nofriction.meetings` to `…/com.nofriction.meetings` once at startup (`paths.rs`; only if the new folder is missing or empty; never deletes; logs the result). |
 | m10 Info.plist | `ITSAppUsesNonExemptEncryption=false`, `LSApplicationCategoryType=public.app-category.productivity`. Hardcoded `CFBundleVersion` removed so each upload can set its own build number. |
 | m11 StoreKit | Swift bridge (below). |
@@ -162,7 +162,8 @@ signed with a development profile and sign in with a Sandbox Apple ID
 - **Data doesn't carry over** from the DMG build to the App Store build:
   the sandboxed app starts with an empty container. (Moving the SQLite DB,
   `models/` and `frames/` into the container by hand works while the app is
-  quit.) An in-app export/import is not built yet.
+  quit.) Settings → Recording → Export everything as JSON saves a copy;
+  there is no import.
 - **Owner's DMG build after this change**: the bundle id changed, so macOS
   treats it as a new app. Quit the old app before the first launch (the data
   folder is moved at startup), then re-grant Microphone, Screen Recording,
