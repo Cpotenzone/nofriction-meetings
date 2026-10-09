@@ -94,7 +94,7 @@ struct MeetingDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                ShareLink(item: MeetingExport.markdown(meeting), subject: Text(meeting.title)) {
+                ShareLink(item: MeetingExport.markdown(meeting), subject: Text(meeting.title), preview: SharePreview(meeting.title)) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Share recording")
@@ -239,7 +239,7 @@ struct MeetingDetailView: View {
                         Button("Follow-up email", systemImage: "envelope") {
                             requestAI(.email)
                         }
-                        .accessibilityHint("Drafts a follow-up email with your AI provider")
+                        .accessibilityHint("Drafts a follow-up email with your AI")
                         .accessibilityIdentifier("ai-email")
                     }
                 }
@@ -258,9 +258,9 @@ struct MeetingDetailView: View {
     /// The notes style follows the type: meeting notes, lecture notes, personal notes.
     private var notesHint: String {
         switch meeting.kind {
-        case .meeting: "Writes a summary, decisions and action items with your AI provider"
-        case .class: "Writes lecture notes (concepts, definitions, announcements) with your AI provider"
-        case .personal: "Writes a summary, key points and to-dos with your AI provider"
+        case .meeting: "Writes a summary, decisions and action items with your AI"
+        case .class: "Writes lecture notes (concepts, definitions, announcements) with your AI"
+        case .personal: "Writes a summary, key points and to-dos with your AI"
         }
     }
 
@@ -285,7 +285,7 @@ struct MeetingDetailView: View {
         }
         switch action {
         case .notes:
-            runAI("Making notes with \(endpoint.provider.name)…") {
+            runAI("Making notes with \(aiName(endpoint))…") {
                 let text = try await MeetingAI.notes(context: MeetingAI.context(meeting), endpoint: endpoint,
                                                      kind: meeting.kind)
                 meeting.aiNotes = text
@@ -296,14 +296,24 @@ struct MeetingDetailView: View {
                 await findTopics(endpoint)
             }
         case .topics:
-            runAI("Finding topics with \(endpoint.provider.name)…") { await findTopics(endpoint) }
+            runAI("Finding topics with \(aiName(endpoint))…") { await findTopics(endpoint) }
         case .email:
-            runAI("Drafting email with \(endpoint.provider.name)…") {
+            runAI("Drafting email with \(aiName(endpoint))…") {
                 email = try await MeetingAI.followUpEmail(context: MeetingAI.context(meeting), endpoint: endpoint)
             }
         case .study:
             runStudy(endpoint)
         }
+    }
+
+    /// Who is working, in the words Settings uses: "Apple on-device", a
+    /// preset's name ("Anthropic (Claude)") or the endpoint's host. Never
+    /// "Your AI endpoint", the internal name of the one custom connection.
+    private func aiName(_ endpoint: AIEndpoint) -> String {
+        if endpoint.provider == .apple { return AIProvider.apple.name }
+        let name = aiSettings.displayName(for: endpoint.provider)
+        if name != endpoint.provider.name { return name }
+        return aiSettings.baseURL(for: endpoint.provider)?.host() ?? "your AI"
     }
 
     /// Review (study) guide: every part, saved only if the transcript was not edited meanwhile.
@@ -313,7 +323,7 @@ struct MeetingDetailView: View {
         studyFailures = []
         studyProgress = nil
         studyRunning = true
-        runAI("Making the \(meeting.kind.guideTitle.lowercased()) with \(endpoint.provider.name)…") {
+        runAI("Making the \(meeting.kind.guideTitle.lowercased()) with \(aiName(endpoint))…") {
             defer { studyProgress = nil; studyRunning = false }
             do {
                 let results = try await MeetingAI.studyGuide(input, contextTokens: endpoint.contextTokens,
@@ -655,10 +665,10 @@ struct SectionBlock<Content: View, Accessory: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title.uppercased())
-                    .font(.caption.weight(.semibold))
-                    .tracking(0.8)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 accessory
             }
@@ -719,7 +729,7 @@ private struct SnapshotViewer: View {
                     .scaleEffect(scale)
                     .gesture(MagnifyGesture().onChanged { scale = max(1, $0.magnification) }.onEnded { _ in withAnimation { scale = 1 } })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                ShareLink(item: Image(uiImage: image), preview: SharePreview("Snapshot", image: Image(uiImage: image))) {
+                ShareLink(item: Image(uiImage: image), preview: SharePreview("Photo", image: Image(uiImage: image))) {
                     Image(systemName: "square.and.arrow.up").padding(12).background(.ultraThinMaterial, in: Circle())
                 }
                 .accessibilityLabel("Share photo")

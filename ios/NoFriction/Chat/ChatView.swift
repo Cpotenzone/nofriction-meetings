@@ -197,7 +197,7 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 12) {
             if saved.isEmpty {
                 ContentUnavailableView("Nothing to ask about yet", systemImage: "bubble.left.and.text.bubble.right",
-                                       description: Text("Record something first. Chat answers from your transcripts, notes and marked moments, and cites the moment."))
+                                       description: Text("Record something first. Chat answers from your transcripts, notes and marks, and cites the moment."))
             } else {
                 Text("Ask about what was said, decided or assigned. Answers come only from the recordings in the scope above and cite the moment.")
                     .font(.footnote).foregroundStyle(.secondary)
