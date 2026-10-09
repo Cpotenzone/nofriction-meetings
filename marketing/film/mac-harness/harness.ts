@@ -6,6 +6,9 @@
 //   ?clock=10:14   the page's local time of day (default 10:14, a weekday morning)
 //   ?film=1        slow-motion support for filming (time.ts)
 //   ?cursor=1      keep the mouse cursor and scrollbars (for poking around)
+//   ?setup=1       first run: show the setup screen
+//   ?pro=0         not subscribed: AI actions open the paywall (mock/backend.ts)
+//   ?ai=none       no AI set up yet (mock/backend.ts)
 
 // 1. The clock first (imports run in order): the demo data reads it
 import { setSlow } from "./time";
@@ -16,7 +19,7 @@ const params = new URLSearchParams(location.search);
 // 2. First run is done (no setup wizard); remembered UI choices start fresh
 try {
     localStorage.clear();
-    localStorage.setItem("nofriction_setup_complete", "true");
+    if (params.get("setup") !== "1") localStorage.setItem("nofriction_setup_complete", "true");
 } catch {
     /* storage unavailable */
 }
