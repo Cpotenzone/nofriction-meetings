@@ -52,7 +52,7 @@ asked once). Choose what it is and how long (see below), and tap **Record**.
 The transcript appears as people talk. Recording continues with the screen
 locked. Tap **Stop** when you're done.
 
-**Mac:** click **Record**, choose what it is and how long, and start. For a meeting, the bar shows the matched calendar
+**Mac:** click **Record**, choose what it is and how long, and start. When you stop, the new recording opens in **Recordings**. For a meeting, the bar shows the matched calendar
 event and how many people are invited. Stop when you're done.
 
 > Tell people you're recording. In many places everyone must agree to be
