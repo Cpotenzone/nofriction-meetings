@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import * as tauri from '../lib/tauri';
 import type { MeetingEndDetected } from '../lib/tauri';
+import { StopCircleIcon } from './icons';
 
 interface MeetingEndBannerProps {
     isRecording: boolean;
@@ -46,9 +47,9 @@ export const MeetingEndBanner: React.FC<MeetingEndBannerProps> = ({ isRecording,
     const secondsLeft = Math.max(0, Math.ceil((pending.deadline - now) / 1000));
 
     return (
-        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 120 }}>
+        <div className="meeting-end-banner">
             <div className="meeting-detection-banner sliding-in" role="alertdialog" aria-live="assertive">
-                <div className="mdb-icon">⏹</div>
+                <div className="mdb-icon" aria-hidden><StopCircleIcon size={26} strokeWidth={1.75} /></div>
                 <div className="mdb-content">
                     <div className="mdb-title">This seems to have ended</div>
                     <div className="mdb-subtitle">
@@ -72,9 +73,9 @@ export const MeetingEndBanner: React.FC<MeetingEndBannerProps> = ({ isRecording,
                             setPending(null);
                             await onStopNow();
                         }}
-                        aria-label="Stop recording now"
+                        aria-label="Stop recording"
                     >
-                        Stop now
+                        Stop
                     </button>
                 </div>
             </div>

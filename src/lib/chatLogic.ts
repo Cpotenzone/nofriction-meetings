@@ -64,14 +64,14 @@ export function suggestedQuestions(scope: Scope, summary: ScopeSummary | null): 
         if (out.length < 4 && !out.includes(q)) out.push(q);
     };
     if (!summary || summary.count === 0) {
-        return scope.kind === "all" ? ["Summarize my week", "What did we decide recently?", "What's still open?"] : [];
+        return scope.kind === "all" ? ["What happened this week?", "What did we decide recently?", "What's still open?"] : [];
     }
     const hasClass = summary.kinds.includes("class");
     const hasMeeting = summary.kinds.includes("meeting");
     const topics = summary.topics.filter(Boolean);
     const title = summary.recent_titles[0];
     if (scope.kind === "meeting") {
-        add("Summarize this recording");
+        add("What were the main points?");
         if (topics[0]) add(`What was said about ${topics[0]}?`);
         if (hasClass) add("What's likely to be on the test?");
         else add("What was decided, and what's still open?");
@@ -83,22 +83,25 @@ export function suggestedQuestions(scope: Scope, summary: ScopeSummary | null): 
         if (hasClass) add(`What's on the test for ${nb}?`);
         else add(`What did we decide in ${nb}?`);
         if (topics[0]) add(`What was said about ${topics[0]}?`);
-        add(`Summarize the latest ${nb} recording`);
+        add(`What happened in the latest ${nb} recording?`);
         add("What's still open?");
         return out;
     }
     if (scope.kind === "topic") {
         const t = topics[0] ?? scope.value ?? "this topic";
         add(`What did we decide about ${t}?`);
-        add(`Summarize everything about ${t}`);
+        add(`What do my recordings say about ${t}?`);
         add(`What questions are still open about ${t}?`);
         if (title) add(`What was said about ${t} in ${clipTitle(title)}?`);
         return out;
     }
-    add("Summarize my week");
+    add("What happened this week?");
     if (topics[0]) add(`What did we decide about ${topics[0]}?`);
     if (hasClass) {
-        const nb = summary.notebooks[0];
+        // Name a notebook only when every recording is a class: with meetings
+        // in the scope, the first notebook may be a meeting's ("on the test
+        // for Acme project")
+        const nb = summary.kinds.every((k) => k === "class") ? summary.notebooks[0] : undefined;
         add(nb ? `What's on the test for ${nb}?` : "What's likely to be on the test?");
     }
     if (hasMeeting) add("What action items are still open?");

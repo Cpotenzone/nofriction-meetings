@@ -52,7 +52,13 @@ export function RecordView({ recording, transcripts }: RecordViewProps) {
 
     return (
         <div className="record-view is-live">
-            <CaptureBar isRecording sttStatus={sttStatus} audioWarning={recording.audioWarning} />
+            <CaptureBar
+                isRecording
+                isPaused={recording.isPaused}
+                onResume={() => void recording.resumeRecording()}
+                sttStatus={sttStatus}
+                audioWarning={recording.audioWarning}
+            />
             <div className="record-view__body">
                 <div className="record-view__transcript">
                     <LiveTranscriptView isRecording transcripts={transcripts.liveTranscripts} />

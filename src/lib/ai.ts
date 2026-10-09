@@ -152,15 +152,15 @@ export function friendlyAiError(e: unknown): string {
     const labels: Record<string, string> = {
         wrong_key: "Wrong key",
         no_credit: "No credit / rate-limited",
-        unreachable: "Can't reach the provider",
+        unreachable: "Can't reach the endpoint",
         bad_url: "Check the URL",
-        no_provider: "No AI provider set up",
+        no_provider: "AI isn't set up",
         no_key: "No key saved",
         vision_unavailable: "No vision model",
         truncated: "Answer cut off",
         consent_required: "Needs your permission",
         pro_required: "noFriction Pro",
-        unknown_provider: "Unknown provider",
+        unknown_provider: "Unknown AI connection",
     };
     const cls = aiErrorClass(s);
     if (cls === "no_provider" || cls === "no_key") return NO_AI_MESSAGE;

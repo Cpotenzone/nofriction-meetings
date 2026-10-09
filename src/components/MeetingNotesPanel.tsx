@@ -54,7 +54,7 @@ function aiFailure(e: unknown, what: string): string {
         case "pro_required":
             return `${what} are part of noFriction Pro.`;
         case "consent_required":
-            return `${what} need your permission to send this recording to your AI provider. Try again and choose Allow.`;
+            return `${what} need your permission to send this recording to your AI endpoint. Try again and choose Allow.`;
         default:
             return friendlyAiError(e);
     }
@@ -172,8 +172,9 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
                 <div className="mn-empty">
                     <h3>No notes yet</h3>
                     <p>
-                        Notes are made from the transcript by the AI you set up{proNote}, on their own when a recording
+                        Notes are made from the transcript by the AI you set up, on their own when a recording
                         longer than 6 minutes stops (Settings → AI). {notesStyleHint(kind)}
+                        {caps?.pro_gating ? " Part of noFriction Pro." : ""}
                     </p>
                     {actions}
                 </div>
@@ -189,7 +190,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
                     )}
                     <NotesBody notes={notes} />
                     <p className="mn-meta">
-                        Made {new Date(notes.generated_at).toLocaleString()}
+                        Made {new Date(notes.generated_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
                     </p>
                     {actions}
                 </div>

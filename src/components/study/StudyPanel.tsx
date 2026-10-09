@@ -211,8 +211,9 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                         Turn this {kind === "class" ? "lecture" : "recording"} into notes, key terms, flashcards, a
                         practice quiz and questions to ask
                         {testMarks > 0 ? `, with extra weight on the ${testMarks} moment${testMarks === 1 ? "" : "s"} you marked ✎ ${third}` : ""}
-                        {proNote}. {kind === "class" ? "It's for studying" : kind === "meeting" ? "It's for remembering and following up" : "It's for remembering"};
+                        . {kind === "class" ? "It's for studying" : kind === "meeting" ? "It's for remembering and following up" : "It's for remembering"};
                         it's made from the transcript by the AI you set up, and deleted or stricken text is never sent.
+                        {proNote ? " Part of noFriction Pro." : ""}
                     </p>
                     <div className="mn-actions">
                         <button className="mn-btn primary" onClick={() => generate()} disabled={busy || showSetup || !guide.has_transcript}>
@@ -225,9 +226,9 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                 <>
                     {stale && (
                         <div className="rd-stale" role="status">
-                            <span>Made from an earlier version of the transcript. Remake it?</span>
+                            <span>Made from an earlier version of the transcript.</span>
                             <button className="rd-btn" onClick={() => generate()} disabled={busy || showSetup}>
-                                Remake
+                                Make again
                             </button>
                         </div>
                     )}
@@ -261,7 +262,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                         {tab !== "marks" && (
                             <div className="mn-actions">
                                 <button className="mn-btn" onClick={() => generate([tab])} disabled={busy || showSetup}>
-                                    {has(tab) ? "Remake this part" : "Make this part"}
+                                    {has(tab) ? "Make this part again" : "Make this part"}
                                 </button>
                             </div>
                         )}
@@ -283,7 +284,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
                             Export {title.toLowerCase()} (Markdown)
                         </button>
                         <button className="mn-btn" onClick={() => generate()} disabled={busy || showSetup}>
-                            Remake all
+                            Make all again
                         </button>
                     </div>
                     <p className="mn-meta">
