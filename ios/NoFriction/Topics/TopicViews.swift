@@ -23,9 +23,8 @@ struct TopicsEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(Topic.filterTitle.uppercased())
-                    .font(.caption2.weight(.semibold))
-                    .tracking(0.8)
+                Text(Topic.filterTitle)
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Button(meeting.topics.isEmpty ? "Find topics" : "Find again", systemImage: "sparkles", action: onFind)
