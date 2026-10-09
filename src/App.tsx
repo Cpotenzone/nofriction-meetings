@@ -37,6 +37,18 @@ function App() {
     if (recording.isRecording) setRecordPickerOpen(false);
   }, [recording.isRecording]);
 
+  // After the user stops, show the recording they just made (Recordings,
+  // opened on it) instead of an empty Record screen. Automatic stops (time
+  // limit, meeting end) leave the view alone.
+  const openFinished = (id: string | null) => {
+    if (!id) return;
+    setSelectedMeetingId(id);
+    transcriptsRef.current.loadTranscripts(id);
+    setActiveMode("recordings");
+  };
+  const openFinishedRef = useRef(openFinished);
+  openFinishedRef.current = openFinished;
+
   // Latest hook values for the (register-once) native event handlers below
   const recordingRef = useRef(recording);
   recordingRef.current = recording;
@@ -82,8 +94,10 @@ function App() {
       }));
       add(await listen("menu:stop_recording", async () => {
         if (recording.isRecording) {
+          const id = recording.meetingId;
           await recording.stopRecording();
           setMeetingListRefreshKey((k) => k + 1);
+          openFinishedRef.current(id);
         }
       }));
       add(await listen("menu:pause_recording", async () => {
@@ -101,8 +115,10 @@ function App() {
       }));
       add(await listen("tray:stop_recording", async () => {
         if (recording.isRecording) {
+          const id = recording.meetingId;
           await recording.stopRecording();
           setMeetingListRefreshKey((k) => k + 1);
+          openFinishedRef.current(id);
         }
       }));
       add(await listen("tray:pause_recording", async () => {
@@ -239,8 +255,10 @@ function App() {
 
   const stopRecording = async () => {
     try {
+      const id = recording.meetingId;
       await recording.stopRecording();
       setMeetingListRefreshKey((k) => k + 1);
+      openFinished(id);
     } catch (err) {
       console.error("Recording error:", err);
     }
