@@ -38,7 +38,7 @@ changes labels and prompts. User-facing copy is in
 | Backfill | Once, when the column is added, in the same transaction: rows with a non-blank `class_name` become `'class'`; the others stay NULL. A notebook set later never makes a recording a class, even when the migrations run again at the next launch (`schema_drift_tests.rs`) |
 | Remembered | Setting `recording_default_kind` ("meeting" until the sheet picks one) |
 | Keys | **M / C / P** pick the type, but only when focus isn't in the Notebook field (so "Acme" can be typed) |
-| Change later | REWIND → the recording's **Type** menu (`set_meeting_recording_kind`). New notes and guides use the new type; saved notes keep the layout of the prompt that wrote them until regenerated |
+| Change later | Recordings → the type row under the recording's title (`set_meeting_recording_kind`). New notes and guides use the new type; saved notes keep the layout of the prompt that wrote them until regenerated |
 | Library | Class and Personal recordings show a small type tag; meetings (the default) show none |
 
 Starts that skip the sheet (⌘N, the tray, the command palette, the capture
@@ -62,12 +62,9 @@ Only a click or tap on a Record button shows it. Every other start uses the reme
 
 | Mac start path | Sheet? |
 |---|---|
-| START CAPTURE (navbar), LIVE "Start recording", Zen START | Yes |
-| ⌘N (File → New Recording). The Mac app has no global record hotkey; this is the shortcut | No: remembered |
+| **Record** on the Record screen, **Record** in an empty Recordings list | Yes |
+| ⌘N (File → Record). The Mac app has no global record hotkey; this is the shortcut | No: remembered |
 | Tray **Start Recording (Meeting, 60 min)** | No: remembered |
-| Tray **Start Recording For ▸ 15/30/60/90/No Limit** | No: that length (and remembers it), remembered type |
-| Tray Capture Mode ▸ Ambient / Meeting | No: remembered |
-| Command palette "Start Recording" | No: remembered |
 | "Start New Segment" (75-minute prompt) | No: keeps the type, the notebook and the time that was left |
 | Meeting auto-detect | Doesn't exist (`auto_start_recording` is never read). Anything added later goes through `start_recording` and gets the remembered type and length |
 
@@ -97,8 +94,8 @@ The backend applies the rule, so no path can bypass it. On the Mac, `start_recor
   - iOS: `Meeting.courseName` (the notebook) and `Meeting.plannedMinutes`, optional, so stores from older builds migrate without a schema version. The attribute isn't called `className` because Core Data resolves that key to NSObject's `className`.
 - **Names.** Trimmed, whitespace collapsed, ≤ 80 characters. A name that matches an existing notebook ignoring case uses the existing spelling ("bio 101" joins "BIO 101").
 - **Recent notebooks.** Derived from the recordings that have one, most recent first. No separate list is stored.
-- **Set it** in the Record sheet. Edit or clear it later on the recording: Mac REWIND → the recording's Notebook field (next to Type).
-- **Filter.** Mac REWIND → Recordings: **Notebooks** chips **All · BIO 101 · …**. `get_meetings(limit, notebook)` filters in SQL, ignoring case.
+- **Set it** in the Record sheet. Edit or clear it later on the recording: Mac Recordings → the notebook row under the recording's title (next to the type).
+- **Filter.** Mac Recordings: **Notebooks** chips **All · BIO 101 · …**. `get_meetings(limit, notebook)` filters in SQL, ignoring case.
 - **A notebook doesn't change how notes are written.** Only the type does.
 
 ## Notes by type
@@ -110,7 +107,7 @@ Notes view relabels by `meeting_notes.model_used`.
 
 | Type | Prompt (Mac) | `model_used` | Notes view |
 |---|---|---|---|
-| Meeting | The user's `meeting_report` prompt (PROMPTS) or the default | `auto-report` / `default` | Summary · Key topics · Decisions · Action items, and **Follow-up email** |
+| Meeting | A `meeting_report` prompt saved by an older version (there is no editor since the Ive pass), or the default | `auto-report` / `default` | Summary · Key topics · Decisions · Action items, and **Follow-up email** |
 | Class | `recording_kind::lecture_notes_prompt`: `key_topics` holds concepts, `decisions` definitions with the example in `context`, `action_items` the announcements and deadlines the instructor stated. Never action items for attendees | `lecture-notes` | Lecture summary · Key concepts · Definitions and examples · Announcements and deadlines |
 | Personal | `recording_kind::personal_notes_prompt`: `key_topics` holds key points, `action_items` the to-dos and reminders that were said. `decisions` and `participants` stay empty: no minutes, no attendees, no owners | `personal-notes` | Summary · Key points · To-dos and reminders |
 

@@ -76,13 +76,17 @@ guardrails and (in `mas`) `entitlement::require_pro()`.
 
 ### Frontend (`src/`)
 
-`App.tsx` hosts `components/agency/AgencyLayout.tsx`. Main views
-(`AgencyNavbar.tsx`): **Live** (recording, live transcript), **Rewind**
-(meeting history, timeline of transcript + screenshots, notes), **Intel**,
-**Chat** (ask questions across meetings, answered from local search results),
-plus **Vault**, **Zen**, **Prompts** and **Help** under "More views".
-Settings (`features/settings/FullSettings.tsx`): General, Transcription,
-Obsidian, AI Engine, Subscription (`mas` only), Data. Consent and paywall:
+`App.tsx` hosts `components/Shell.tsx`: `TopBar.tsx` (**Record** ·
+**Recordings** · **Chat**, Stop while recording, the Settings gear), one
+banner slot (meeting-end and time-limit banners), and one view:
+`views/RecordView.tsx` (idle: the promise and one Record button; recording:
+the capture bar, live transcript and screens; no AI), `views/RecordingsView.tsx`
+(`MeetingHistory.tsx` with the one search field backed by `search.rs`, and the
+open recording: title block, Rewind · Notes · Links · Review guide) and
+`chat/RecordingsChat.tsx`. Settings (`features/settings/Settings.tsx` in
+`SettingsWindow.tsx`): Recording, Transcription, AI, Subscription (`mas`
+only), About. Help (`HelpWindow.tsx`) renders `docs/USER_GUIDE.md`. Design
+rationale: `docs/design/FADELL_AUDIT.md`. Consent and paywall:
 `AiConsentModal.tsx`, `PaywallModal.tsx`, `withAiConsent()` in `lib/ai.ts`.
 Editing UI: `components/redaction/Redaction.tsx`.
 
