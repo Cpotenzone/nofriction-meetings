@@ -1,4 +1,4 @@
-// Settings: one window, five sections (Recording, Transcription, AI,
+// Settings: one window, six sections (Recording, Transcription, AI, Sync,
 // Subscription, About). Opened from the gear, ⌘, and the menu bar.
 
 import { useEffect, useState } from "react";

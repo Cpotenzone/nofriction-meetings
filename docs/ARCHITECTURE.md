@@ -84,8 +84,9 @@ the capture bar, live transcript and screens; no AI), `views/RecordingsView.tsx`
 (`MeetingHistory.tsx` with the one search field backed by `search.rs`, and the
 open recording: title block, Rewind · Notes · Links · Review guide) and
 `chat/RecordingsChat.tsx`. Settings (`features/settings/Settings.tsx` in
-`SettingsWindow.tsx`): Recording, Transcription, AI, Subscription (`mas`
-only), About. Help (`HelpWindow.tsx`) renders `docs/USER_GUIDE.md`. Design
+`SettingsWindow.tsx`): Recording, Transcription, AI, Sync, Subscription
+(`mas` only), About. Sync with your iPhone: `src-tauri/src/sync/` and
+`ios/NoFriction/Sync/` ([SYNC.md](SYNC.md)). Help (`HelpWindow.tsx`) renders `docs/USER_GUIDE.md`. Design
 rationale: `docs/design/FADELL_AUDIT.md`. Consent and paywall:
 `AiConsentModal.tsx`, `PaywallModal.tsx`, `withAiConsent()` in `lib/ai.ts`.
 Editing UI: `components/redaction/Redaction.tsx`.

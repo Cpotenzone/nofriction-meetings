@@ -8,7 +8,7 @@ certificate, and authenticate each other with a secret only they hold.
 
 Sync is part of **noFriction Pro**. It runs only while Pro is active on the
 iPhone (`store.isPro`) and, in the Mac App Store build, while
-`entitlement::require_pro_feature()` passes (the Developer ID build has no
+`entitlement::require_pro_feature(ProFeature::Sync)` passes (the Developer ID build has no
 gate). Free users see **Sync with your Mac** in Settings with a short
 explanation and the paywall (feature key `sync`).
 
@@ -139,7 +139,9 @@ done {}                             →
   list of what it has sent (ids and hashes of the non-transcript records;
   ids only for lines) and sends what is new or different.
 - Batches hold at most 500 items. A session that fails part-way is safe to
-  repeat: every item is idempotent.
+  repeat: every item is idempotent. `applied {retry}` lists ids the Mac
+  couldn't apply yet (for example a recording it is still recording); the
+  iPhone sends them again next time.
 
 ## Items
 
@@ -148,7 +150,7 @@ Each item has `"k"`. Times are integer milliseconds since 1970.
 | `k` | Fields |
 |-----|--------|
 | `recording` | `id`, `title`, `started`, `ended?`, `kind` (`meeting`/`class`/`personal`), `notebook?`, `planned?` (minutes), `cal?` {`event?`, `start?`, `end?`, `location?`, `url?`, `notes?`}, `people` [{`email`, `name?`, `role`}], `mod` |
-| `line` | `id`, `rec`, `text`, `at`, `dur?` (ms), `speaker?` |
+| `line` | `id`, `rec`, `text`, `at`, `dur?` (ms), `speaker?`, `src?` (`screen`: heard from what was playing during iPhone screen capture, `Segment.source`; the Mac keeps it in `transcripts.source`) |
 | `edit` | `id`, `rec`, `keep` (see below) |
 | `strike` | `id`, `rec`, `target` (`words`/`line`), `from?`, `to?`, `created`, `reason?`, `line?` (id of the line holding the marker) |
 | `notes` | `rec`, `md` (Markdown), `made`, `stale`, `mod` |
@@ -240,13 +242,64 @@ gone is removed. `gone` for a line removes the whole line the same way, and
 - Wall-clock last-writer-wins; the iPhone wins concurrent edits of the same
   record (above).
 - Photos, screens, audio, chats and review guides don't sync (above).
-- A transcript line whose words differ by Unicode normalization between
-  devices can't be matched word for word; such a word is left in place, never
-  removed by mistake.
+- Topics: new topics and removed topics sync; renaming a topic doesn't
+  (yet). AI topics are deleted by each device's own purge after an edit.
+- Notes made on the iPhone replace the Mac's when they are newer, and the
+  Mac shows them as Markdown until **Make again** there.
 
 ## Reserved for photos and screens (not in v1)
 
+iPhone photos and screen-capture screens (`Snapshot`, with `source` =
+`screen` for a captured screen, nil for a photo) and Mac screens (`frames`,
+`screen_states`) will travel as files:
 `blob_offer {id, rec, kind: photo|screen, source?, at, size, sha256}`,
 `blob_want {ids}`, `blob_chunk {id, offset, data}` (256 KiB, base64),
 `blob_done {id}`; the receiver checks the SHA-256 before saving the file.
 A deleted or stricken photo/screen travels as `gone {entity: "screen"}`.
+
+## Code
+
+- Mac: `src-tauri/src/sync/` — `protocol.rs` (messages, canonical JSON,
+  framing, ids, markers, word hashes, proofs), `merge.rs` (line-edit merge),
+  `store.rs` (schema, triggers, backfill, outgoing items, applying),
+  `pairing.rs` (certificate, codes, secrets, QR), `server.rs` (listener and
+  session), `bonjour.rs`, `mod.rs` (start/stop and the Tauri commands
+  `sync_status`, `sync_set_enabled`, `sync_pair_start`, `sync_pair_cancel`,
+  `sync_forget`). Incoming line edits go through
+  `redaction::edit_line_synced`. UI: `src/features/settings/SyncSettings.tsx`,
+  `src/lib/syncLogic.ts`.
+- iPhone: `ios/NoFriction/Sync/` — `SyncProtocol.swift`, `SyncMerge.swift`,
+  `SyncState.swift` (per-Mac state files and the ledger in Application
+  Support/Sync, Keychain), `SyncEngine.swift`, `SyncClient.swift`
+  (NWConnection, NWBrowser, the session), `SyncCenter.swift` (status and
+  triggers), `SyncView.swift`. Incoming removals go through
+  `RedactionEngine+Sync.swift`; Delete recording is `RecordingDeletion`.
+  `RedactionEngine` reports line edits to the ledger (ids only).
+
+## Testing
+
+- `cargo test --lib sync::` (protocol, auth, pairing codes, merge rules,
+  tombstones through the purge, a loopback session over TLS, golden
+  fixtures). `NF_WRITE_SYNC_FIXTURES=1 cargo test --lib sync::tests::golden`
+  rewrites `ios/NoFrictionTests/SyncFixtures/` after a deliberate protocol
+  change.
+- `SyncWireTests` and `SyncEngineTests` (iOS): the fixtures byte for byte,
+  the auth vectors, the shared merge cases, and the engine on an in-memory
+  store.
+- End to end, iOS Simulator against a Mac server built from the branch
+  (temp directory, in-memory secrets; nothing of the app's data or
+  Keychain is touched):
+
+  ```sh
+  cd src-tauri && cargo run --example sync_test_server -- /tmp/nf-sync-e2e &
+  cd ios && TEST_RUNNER_NF_SYNC_LINK_FILE=/tmp/nf-sync-e2e/link.txt xcodebuild test \
+    -project NoFriction.xcodeproj -scheme NoFriction \
+    -only-testing:NoFrictionTests/SyncEndToEndTests -destination 'id=<simulator>'
+  ```
+
+  It pairs, checks a wrong pin is refused, syncs both ways, then strikes on
+  the iPhone and deletes on the Mac and checks both removals crossed and
+  were purged from search and notes on both sides.
+- On real devices: pair from **Settings → Sync** on both and check the same
+  things by hand; Bonjour and Local Network permission can only be checked
+  on hardware.
