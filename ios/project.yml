@@ -24,6 +24,7 @@ targets:
     sources:
       - NoFriction
       - Shared                                 # watch transfer contract (also in the watch app)
+      - ScreenCaptureShared                    # screen-capture contract (also in the broadcast extension)
     dependencies:
       # Single-target watchOS app, embedded at noFriction.app/Watch/NoFrictionWatch.app
       # ("Embed Watch Content"). It ships inside the iPhone app; no separate app record.
@@ -33,6 +34,16 @@ targets:
         copy:
           destination: productsDirectory
           subpath: "$(CONTENTS_FOLDER_PATH)/Watch"
+      # Screen capture (docs/SCREEN_CAPTURE_IOS.md): ReplayKit broadcast upload
+      # extension, embedded at noFriction.app/PlugIns/NoFrictionBroadcast.appex
+      - target: NoFrictionBroadcast
+        embed: true
+        codeSign: true
+    # The App Group the broadcast extension leaves screens and app audio in
+    entitlements:
+      path: NoFriction/NoFriction.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.nofriction.meetings]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nofriction.meetings   # same ID as the Mac app (Universal Purchase)
@@ -70,6 +81,41 @@ targets:
         NSAppTransportSecurity:
           # http:// only to local hosts (IPs, .local, unqualified names). Never NSAllowsArbitraryLoads.
           NSAllowsLocalNetworking: true
+  # Screen capture (docs/SCREEN_CAPTURE_IOS.md): keeps a screen when it
+  # changes (≤ 1/s) and, for Pro with "Transcribe what's playing", the app
+  # audio, in the App Group container. No network, no microphone.
+  NoFrictionBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - NoFrictionBroadcast
+      - ScreenCaptureShared
+    entitlements:
+      path: NoFrictionBroadcast/NoFrictionBroadcast.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.nofriction.meetings]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nofriction.meetings.broadcast
+        PRODUCT_NAME: NoFrictionBroadcast
+        INFOPLIST_KEY_CFBundleDisplayName: noFriction
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES                      # archived inside the iPhone app, not on its own
+        APPLICATION_EXTENSION_API_ONLY: YES
+        PROVISIONING_PROFILE_SPECIFIER: "$(NF_BROADCAST_PROFILE_SPECIFIER)"
+    info:
+      path: NoFrictionBroadcast/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleDisplayName: noFriction
+        ITSAppUsesNonExemptEncryption: false
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SampleHandler"
+          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+
   # Apple Watch app (docs/WATCH_APP.md): records on the watch, sends the
   # file to the iPhone, which imports and transcribes it on-device.
   NoFrictionWatch:
