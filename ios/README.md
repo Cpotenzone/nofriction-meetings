@@ -29,6 +29,7 @@ bumped by the release script.
 |---|---|
 | `NoFriction` | iPhone/iPad app (`NoFriction/` + `Shared/`) |
 | `NoFrictionWatch` | Apple Watch app (`NoFrictionWatch/` + `Shared/`), scheme `NoFrictionWatch` |
+| `NoFrictionBroadcast` | Screen-capture broadcast extension (`NoFrictionBroadcast/` + `ScreenCaptureShared/`), embedded in the app |
 | `NoFrictionTests`, `NoFrictionUITests` | iPhone unit / UI tests |
 | `NoFrictionWatchTests` | watch unit tests (run on a watch simulator) |
 
@@ -43,9 +44,11 @@ ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=~/keys/AuthKey_….p8 \
 
 Export settings live in `ExportOptions.plist`. The API key is read from the
 environment only; never commit it. The archive and IPA must contain the watch
-app; the script checks it (same version/build, signed) and the credential scan
-covers it. Manual signing needs a second profile for the watch app
-(`NF_WATCH_PROFILE_UUID`; see the script header and docs/WATCH_APP.md).
+app and the screen-capture extension; the script checks both (same
+version/build, signed, the extension with the App Group) and the credential
+scan covers them. Manual signing needs profiles for the watch app
+(`NF_WATCH_PROFILE_UUID`) and the extension (`NF_BROADCAST_PROFILE_UUID`);
+see the script header, docs/WATCH_APP.md and docs/SCREEN_CAPTURE_IOS.md.
 
 ## App Store screenshots
 
@@ -85,6 +88,7 @@ Pro bypass.
 | First-run welcome (two steps: welcome, permissions in context; the recording notice comes on the first Record, AI and Pro when first needed); Settings → Show welcome again | `Views/OnboardingView.swift` |
 | Privacy manifest | `PrivacyInfo.xcprivacy` (watch app: `../NoFrictionWatch/PrivacyInfo.xcprivacy`) |
 | Apple Watch recordings: WatchConnectivity, inbox, import + on-device file transcription | `Watch/` (spec: `docs/WATCH_APP.md`) |
+| Screen capture: status, import of screens and app audio, Transcribe what's playing (Pro) | `ScreenCapture/` + `../ScreenCaptureShared/` + `../NoFrictionBroadcast/` (spec: `docs/SCREEN_CAPTURE_IOS.md`) |
 | Watch ↔ iPhone contract (metadata, audio format, shared notice text) | `../Shared/WatchTransfer.swift` |
 | Watch app: recorder, transfer queue, UI | `../NoFrictionWatch/` |
 
@@ -110,9 +114,14 @@ transcription on a device. Apple Watch recordings are transcribed from the
 file with the same two engines (`Watch/FileTranscription.swift`), in chunks,
 resumable, through the same `TranscriptFilter`.
 
-**Screens**: iOS doesn't let one app capture another app's screen, so the
-phone/iPad version takes photos (slides, whiteboards, a laptop screen) or
-imports screenshots from Photos into the meeting timeline.
+**Screens**: photos (slides, whiteboards, a laptop screen) or screenshots
+from Photos go into the recording, and **screen capture** keeps a picture of
+the screen when it changes, through a ReplayKit broadcast upload extension
+(`NoFrictionBroadcast/`, `com.nofriction.meetings.broadcast`, embedded at
+`noFriction.app/PlugIns/`, App Group `group.com.nofriction.meetings`). With
+Pro, "Transcribe what's playing" turns the app audio into On screen lines on
+the device. No network in the extension (policy guard). Design, limits and
+the real-device test plan: [docs/SCREEN_CAPTURE_IOS.md](../docs/SCREEN_CAPTURE_IOS.md).
 
 ## Tests
 
@@ -129,6 +138,10 @@ xcodebuild test -project NoFriction.xcodeproj -scheme NoFrictionWatch \
   chunked transcription with a scripted transcriber, resume from checkpoint, Strike on watch audio.
 - `NoFrictionWatchTests` — watch recorder state machine, transfer queue (delete on delivery,
   keep and retry on error), crash recovery.
+- `NoFrictionTests/ScreenCaptureTests` — screen change detector and throttle, near-black (hidden video)
+  detector, Pro gate for app audio, import (order, screen source, On screen lines interleaved with the
+  mic), purge of screens / waiting app audio / App Group leftovers, migration. Broadcasts need a device:
+  see the test plan in docs/SCREEN_CAPTURE_IOS.md.
 - `NoFrictionTests/RedactionTests` — word splicing, strike markers, AI-notes redaction, export/prompt
   placeholders, audio silencing (decoded zeros, same length), photo purge, store files free of struck text.
 - `NoFrictionUITests/ScreensTests` — walks every screen with sample data

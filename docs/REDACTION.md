@@ -477,6 +477,23 @@ purge pipeline, `RedactionCenter` undo window + purge queue, `AudioSilencer`,
   names only, latest list wins) are derived from the iPhone's recordings,
   so deleting the last recording in a notebook sends a list without it.
   No transcript or screen text is stored on the watch.
+- **Screen capture** ([SCREEN_CAPTURE_IOS.md](SCREEN_CAPTURE_IOS.md)).
+  Screens kept by the broadcast extension are `Snapshot` rows with
+  `source = "screen"` and files in `Documents/Snapshots`, so Delete / Strike
+  of a screen and Delete Recording remove them exactly like photos (a struck
+  screen leaves the usual marker). Lines from "Transcribe what's playing" are
+  `Segment` rows with `source = "screen"` ("On screen"): Delete / Strike
+  splice their text like any line; they have no audio in the recording's
+  file (the app audio is deleted once transcribed), so nothing is silenced
+  for them and the microphone audio is never touched. App audio still
+  waiting to be transcribed (`Documents/Audio/screen-*.m4a`, listed in
+  `Meeting.screenAudioJSON`) and any broadcast folder linked to the recording
+  in the App Group container are deleted by Delete Recording
+  (`ScreenCaptureImporter.purge`); at launch, app audio no recording waits
+  for and folders of deleted recordings are removed (`removeLeftovers`).
+  Broadcast files are moved out of the App Group container on import, and
+  screens captured more than 10 s after the recording stopped are deleted,
+  not imported. Tests: `ios/NoFrictionTests/ScreenCaptureTests.swift`.
 - **Links.** "Said" links are derived from `Segment.text` each time the
   meeting is shown (`MeetingLinks.items`), so Delete and Strike remove them
   with the words. `MeetingReference` rows cascade with their `Meeting`.

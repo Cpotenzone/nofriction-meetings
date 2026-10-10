@@ -559,14 +559,14 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3988 / 4000 characters**
+**3963 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
 
 RECORD AND TRANSCRIBE
 1. Open Record and tap Record. After the one-time recording notice, keep Meeting (the default) in What is it?, pick a length in How long? (No limit is fine) and tap Record.
-2. Allow Microphone and Speech Recognition (Calendar enables calendar matching). On a physical device, speak for a minute and check the live transcript. The Simulator can't test speech recognition.
+2. Allow Microphone and Speech Recognition (Calendar enables calendar matching). On a physical device, speak and check the live transcript (the Simulator can't test speech).
 3. Optionally add a photo. Stop, then open it in Recordings.
 
 PRO AND RESTORE
@@ -576,24 +576,27 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup sheet or Settings → Connect, choose Apple on-device, then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
-Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
+Alternatively, enter your own local OpenAI-compatible model server and model in Settings. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
-6. Tap Record. In What is it?, choose Class. How long? offers 15 to 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
+6. Tap Record. In What is it?, choose Class. How long? offers 15 to 90 min or No limit, and an optional Notebook (type BIO 101). The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
 7. While recording, tap Mark this moment, then ? Question, ✎ On the test or Note within six seconds. On a physical device, say a web address such as "example dot com".
-8. Stop. Recordings shows Notebook chips that filter the list. In the recording, Marks lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched. People, a row at the top of Recordings, lists everyone from calendar invites.
-Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9).
+8. Stop. Recordings shows Notebook chips that filter the list. In the recording, Marks lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched.
+Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type.
 
 REVIEW (Pro)
-9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Notes follow the type: meeting notes, lecture notes for a Class, or summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Make notes.
+9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Review uses the same AI, Pro paywall and consent prompt as Make notes.
+
+SCREEN CAPTURE (physical device only)
+10. On the Record sheet, turn on Capture screen and tap Record. Apple's broadcast sheet opens with noFriction selected; tap Start Broadcast and open another app. noFriction keeps a picture of the screen when it changes. Record then shows Capturing your screen and a count. Stop ends both; the screens appear in the recording. Free. With Pro, Transcribe what's playing also transcribes the sound playing, on the device.
 
 APPLE WATCH
-The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the recording appears in Recordings. Delivery and transcription require a physical iPhone and Apple Watch.
+The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Tap Record, then Stop on the watch; the recording appears in Recordings. Delivery and transcription require a physical iPhone and Apple Watch.
 
 EDITING
 Open a recording and select transcript text. Delete offers a brief undo. Strike from the record is permanent and leaves a marker.
 
-The local-model path needs its setup and compatible hardware; it is not a hosted fallback. Reviewer contact details will be supplied separately in App Store Connect.
+Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 ### macOS

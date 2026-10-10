@@ -134,6 +134,46 @@ The first time you record a **Class**, noFriction shows this once:
 or whiteboard, or touch and hold it and choose **Choose from Photos** to add
 screenshots. They appear in the recording.
 
+### Capture your screen (iPhone and iPad)
+
+noFriction can keep a picture of what's on your screen each time it changes
+(at most one a second) while you record, the way the Mac does: a class
+video, slides in a call, a page you're reading. They appear in the recording
+as **Screens**, next to the transcript.
+
+1. Tap **Record**, turn on **Capture screen**, and tap **Record**.
+2. The system sheet opens with noFriction selected. Tap **Start Broadcast**,
+   then use any app. The status bar turns red while your screen is captured.
+3. Back in noFriction, Record shows **Capturing your screen** and how many
+   screens it has kept. **Stop** there ends the screen capture; the
+   recording goes on until you stop it.
+4. Stop the recording. The screens are in the recording, at the times they
+   were captured.
+
+You can also start or stop it in Control Center: touch and hold **Screen
+Recording**, pick **noFriction**, and tap **Start Broadcast**. If you're
+recording, the screens join that recording. If you aren't, a recording
+starts when you next open noFriction (the type and notebook you used last,
+no time limit), or, if you stopped before that, the screens become a
+recording of their own.
+
+**Transcribe what's playing** (noFriction Pro): under Capture screen, this
+also turns the sound of what's playing on your iPhone or iPad into text,
+marked **On screen** and placed in time with what your microphone heard. It
+runs on the device, and the sound itself isn't kept. It's on by default with
+Pro; without Pro, turning it on shows what Pro includes.
+
+Good to know:
+- Some apps hide their video from screen capture (protected films and
+  shows); those parts come out black and are skipped. noFriction tells you
+  once.
+- Locking your iPhone ends the screen capture. Pause in noFriction pauses it too.
+- Screens and On screen lines can be deleted or stricken from the record
+  like photos and lines; deleting the recording removes them all.
+- With AirPods or other Bluetooth headphones, a recording with Capture
+  screen keeps them in full-quality sound and records with the iPhone's
+  microphone.
+
 **Mac:** noFriction saves a screenshot of the chosen screens when they change
 (about once a second at most) while you record.
 - Choose what's captured: **Change** in the bar while recording, then pick any screens or
