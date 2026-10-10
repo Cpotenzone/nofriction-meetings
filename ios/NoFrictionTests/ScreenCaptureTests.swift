@@ -207,8 +207,10 @@ final class ScreenAudioGateTests: XCTestCase {
     }
 
     func testPaywallFeatureKey() {
-        XCTAssertEqual(ProFeature.transcribeWhatsPlaying.rawValue, "transcribe-whats-playing")
-        XCTAssertEqual(ProFeature.transcribeWhatsPlaying.paywallLine, "Transcribe what's playing is part of noFriction Pro.")
+        // docs/PRO.md: the paywall opened from the switch names this feature
+        XCTAssertEqual(ScreenAudioPolicy.feature, .transcribePlaying)
+        XCTAssertEqual(ScreenAudioPolicy.feature.rawValue, "transcribe_playing")
+        XCTAssertEqual(ProCopy.headline(ScreenAudioPolicy.feature), "Transcribe what's playing is part of noFriction Pro")
     }
 
     func testRememberedNotebookIsNormalized() throws {
