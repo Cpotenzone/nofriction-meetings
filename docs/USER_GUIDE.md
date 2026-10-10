@@ -14,6 +14,7 @@ up yourself. It works on iPhone, iPad and Mac. There's no account to create.
 - [Mark moments and review](#mark-moments-and-review)
 - [Delete or strike something](#delete-or-strike-something)
 - [Export your recordings](#export-your-recordings)
+- [Sync your iPhone and Mac](#sync-your-iphone-and-mac)
 - [Subscription](#subscription)
 - [Privacy](#privacy)
 - [Troubleshooting](#troubleshooting)
@@ -425,9 +426,54 @@ the bin next to it in **Recordings** (you get 5 seconds to **Undo**).
   same place, picks your vault folder; the switch beside it exports each
   recording as Markdown when it stops.
 
-Each device keeps what it recorded. With noFriction Pro, **Sync with your
-Mac** moves recordings between your iPhone and Mac (see
-[Subscription](#subscription)).
+Each device keeps what it recorded. With noFriction Pro, **Sync** keeps
+your iPhone and Mac in step (see [Sync your iPhone and Mac](#sync-your-iphone-and-mac)).
+
+---
+
+## Sync your iPhone and Mac
+
+With noFriction Pro, your iPhone (or iPad) and your Mac keep the same
+recordings. They talk directly over your own Wi-Fi, encrypted. There is no
+noFriction server, no iCloud and no relay in between, and noFriction
+receives nothing.
+
+**Pair once**
+
+1. On the Mac: **Settings → Sync**, turn on **Sync on this Mac**, then
+   **Pair a device**. A code appears; it works once, for 5 minutes.
+2. On the iPhone: **Settings → Sync with your Mac → Pair with your Mac** and
+   scan the code. Allow **Local Network** when asked. No camera, or scanning
+   on an iPad? Click **Copy pairing link** on the Mac and tap **Paste pairing
+   link** on the iPhone (Universal Clipboard).
+
+Both devices then list each other. **Forget** (Mac: next to the device;
+iPhone: swipe the Mac) unpairs them; recordings already copied stay.
+
+**When it syncs.** The iPhone starts every sync: when you open noFriction,
+when a recording stops, and when you tap **Sync now**. iOS doesn't let apps
+listen in the background, so the Mac can't send to a closed iPhone app. Both
+devices must be on the same network, with noFriction open on the Mac and
+Sync turned on. **Last synced** on both shows when it last happened.
+
+**What syncs**
+
+- Recordings: title, type (Meeting · Class · Personal), notebook, planned
+  length, and the calendar details and people.
+- Transcripts, Notes, Marks, Links you added, and Topics.
+- **Delete** and **Strike from the record**. What you delete or strike on
+  one device is removed on the other at the next sync, through the same
+  clean-up as an edit made there: search, notes, review guide, AI topics,
+  chat answers, and on the iPhone the audio. A strike leaves the same marker
+  on both. The removed words are never sent, and something deleted on either
+  device never comes back.
+
+**What doesn't (yet):** photos and screens, audio (it stays on the iPhone
+that recorded it), chats and review guides (each device makes its own).
+
+**If both changed the same thing** (say, the title) between two syncs, the
+iPhone's version wins. Notes made on the iPhone show on the Mac as written
+there.
 
 ---
 
@@ -444,7 +490,7 @@ decision 2026-10-10).
 | On-device microphone transcription (Mac: also the call's audio) | **Follow-up email** and **Topics** |
 | Screens: Mac screenshots, iPhone screen snapshots, photos | **Review guides** (study guides for a class) with flashcards, a practice quiz and CSV/Markdown export |
 | Marks, Rewind, search, Links, calendar and people | **Chat** with your recordings |
-| Edit, Delete and Strike from the record | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code |
+| Edit, Delete and Strike from the record | **Sync with your Mac**: recordings, transcripts, notes, marks and links move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code ([details](#sync-your-iphone-and-mac)) |
 | Share a recording as text; export everything as JSON (Mac) | **Transcribe what's playing** (iPhone): while you capture the screen, noFriction also transcribes the audio of the video or call you're watching |
 | | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault |
 
@@ -478,6 +524,8 @@ is part of noFriction Pro").
   internet. On the Mac, once AI is set up (and approved, for an internet
   endpoint), the automatic notes use it. Turn that off in
   **Settings → AI → Make notes automatically**. No AI runs while you record.
+- Sync (Pro) goes only to your own paired iPhone or Mac, directly over your
+  local network and encrypted; nothing passes through a server.
 - No accounts, no analytics, no tracking, no noFriction servers.
 
 Full policy: [nofriction.io/privacy](https://nofriction.io/privacy).
@@ -497,6 +545,8 @@ Full policy: [nofriction.io/privacy](https://nofriction.io/privacy).
 | "Wrong key" | Enter the endpoint's key again in full; check it hasn't been revoked. |
 | "No credit" or rate-limited | Your endpoint refused the request for billing or rate limits; check with its operator. |
 | Model not found or no answer | Check the model ID is exactly what your server lists. On the Mac, **↻** under **Models** reloads the list. |
+| Sync can't find the Mac | Both on the same Wi-Fi; noFriction open on the Mac with **Settings → Sync → Sync on this Mac** turned on; on the iPhone, Settings → Privacy & Security → Local Network → noFriction on. Networks that isolate devices (some guest or school Wi-Fi) block it. |
+| "Pair again" | The Mac forgot this iPhone, or was reinstalled. Pair again from **Settings → Sync** on both. |
 | Can't reach a local server | Check the address and that the server is running. Plain `http://` only works for this device, your local network or Tailscale. On iPhone/iPad, allow Local Network access, and use the computer's network address, not `localhost`. |
 | Recording stopped by itself | That's the time limit you chose or automatic stop; see [What is it, how long, and notebook](#what-is-it-how-long-and-notebook) and [Automatic stop](#automatic-stop). |
 | Notes are in the wrong style | Change the recording's type (Mac: the type row under the recording's title), then **Make again** on the notes. |

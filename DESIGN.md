@@ -210,7 +210,7 @@ Every async operation MUST have an error state that includes:
 | **Chat** | Ask your recordings, scoped to all, a notebook, a topic or one recording, with citations. |
 
 Right side of the bar: **Stop** while recording, and the Settings gear.
-Settings has five sections: Recording, Transcription, AI, Subscription
+Settings has six sections: Recording, Transcription, AI, Sync, Subscription
 (`mas` only), About. Help is one document, `docs/USER_GUIDE.md`.
 
 ### Rules

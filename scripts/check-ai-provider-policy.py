@@ -13,6 +13,12 @@ iOS), and still fails on:
 - retired cloud transcription modules, compile-time credential injection,
   bundled environment files, network/speech APIs in the watch app, and network
   APIs in the iPhone screen-capture broadcast extension
+- Sync with your iPhone (docs/SYNC.md) reaching anything but the paired device
+  on the local network: the sync code may hold no URL, HTTP client or AI call;
+  the Mac listener starts only through `sync::start` (gated on Pro and on sync
+  being turned on), refuses non-local addresses and advertises only
+  `_nofriction._tcp`; the iPhone only connects (NWConnection, pinned TLS) and
+  never syncs from app startup code
 
 Model-download URLs are intentionally allowed; they install local transcription
 models and are not AI inference endpoints. Runtime tests remain the behavioral
@@ -177,6 +183,44 @@ def audit(root):
     for fn in ('func choose(', 'func chooseCustom(', 'func loadSaved('):
         body = body_after(settings_view, re.escape(fn))
         need(body is not None and not re.search(r'testConnection|URLSession|AIClient|saveEndpoint|settings\.save\(', body), f'iOS {fn} must only fill the form')
+
+    # --- Sync is device to device on the local network (docs/SYNC.md) -------
+    sync_dir = root / 'src-tauri/src/sync'
+    need(sync_dir.is_dir(), 'Mac sync module missing (src-tauri/src/sync)')
+    for path in sorted(sync_dir.rglob('*.rs')):
+        rel = path.relative_to(root)
+        text = path.read_text()
+        # Everything but inline test modules (`#[cfg(test)] mod x { … }`) and tests.rs
+        code = re.split(r'#\[cfg\(test\)\]\s*mod \w+\s*\{', text, maxsplit=1)[0] if path.name != 'tests.rs' else ''
+        need(not re.search(r'https?://', code), f'Sync code must not hold a URL: {rel}')
+        need(not re.search(r'\b(?:reqwest|ureq|hyper|tokio_tungstenite)\b', code), f'Sync code must not use an HTTP client: {rel}')
+        need(not re.search(r'\b(?:crate::ai|ai_client|ai::client|vlm_client)\b', code), f'Sync code must not call AI: {rel}')
+    sync_mod = (sync_dir / 'mod.rs').read_text()
+    start_body = body_after(sync_mod, r'pub async fn start\(')
+    need(start_body is not None and start_body.find('require_pro_feature(ProFeature::Sync)') != -1
+         and start_body.find('require_pro_feature(ProFeature::Sync)') < start_body.find('TcpListener::bind'),
+         'Mac sync::start must check Pro before it binds the listener')
+    enabled_body = body_after(sync_mod, r'pub fn start_if_enabled\(')
+    need(enabled_body is not None and '"enabled"' in enabled_body, 'Mac sync::start_if_enabled must check that sync is turned on')
+    for path in (root / 'src-tauri/src').rglob('*.rs'):
+        if sync_dir in path.parents:
+            continue
+        text = re.split(r'#\[cfg\(test\)\]\s*mod \w+\s*\{', path.read_text(), maxsplit=1)[0]
+        need(not re.search(r'\bsync::start\(|TcpListener::bind|DNSServiceRegister', text),
+             f'Only the sync module may listen or advertise: {path.relative_to(root)}')
+    need('sync::start_if_enabled(' in lib_rs, 'Mac startup may start sync only through sync::start_if_enabled')
+    server_rs = (sync_dir / 'server.rs').read_text()
+    need(re.search(r'if !is_local_addr\(&addr\.ip\(\)\)', server_rs), 'Mac sync listener must refuse non-local addresses')
+    need(re.search(r'SERVICE_TYPE: &str = "_nofriction\._tcp"', (sync_dir / 'bonjour.rs').read_text()), 'Mac must advertise only _nofriction._tcp')
+    ios_sync = sorted((root / 'ios/NoFriction/Sync').glob('*.swift'))
+    need(ios_sync, 'iOS sync sources missing (ios/NoFriction/Sync)')
+    for path in ios_sync:
+        text = path.read_text()
+        rel = path.relative_to(root)
+        need(not re.search(r'https?://', text), f'iOS sync code must not hold a URL: {rel}')
+        need(not re.search(r'\b(?:URLSession|URLRequest|AIClient|NWListener)\b', text), f'iOS sync code must only connect to the paired Mac: {rel}')
+    need(not re.search(r'syncNow\(|SyncSession\.run', app_swift), 'iOS app startup must not sync (only foreground, recording stop and Sync now)')
+    need('_nofriction._tcp' in (root / 'ios/project.yml').read_text(), 'iOS must declare NSBonjourServices _nofriction._tcp')
 
     # --- Transcription stays local -----------------------------------------
     trans = (root / 'src-tauri/src/transcription/mod.rs').read_text()

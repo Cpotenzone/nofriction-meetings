@@ -78,6 +78,16 @@ tauri-plugin-notification = "~2.3"
 # pull the whole app (and its JS API pairing) up to it.
 tauri-plugin-global-shortcut = "=2.3.1"
 
+# Sync with your iPhone (docs/SYNC.md): device to device on the local
+# network. TLS with a self-signed certificate the iPhone pins, a QR code
+# for pairing, HMAC challenge-response. No server, no relay.
+rustls = "0.23"
+tokio-rustls = "0.26"
+rcgen = "0.13"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+hmac = "0.12"
+libc = "0.2"
+
 # macOS native frameworks
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

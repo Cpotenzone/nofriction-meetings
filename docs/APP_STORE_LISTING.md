@@ -459,7 +459,7 @@ meeting,notes,transcription,recorder,slides,lecture,class,minutes,action items,f
 
 Not shown for the first macOS version either; use it for TestFlight.
 
-**887 / 4000 characters**
+**892 / 4000 characters**
 
 ```text
 Simpler, calmer noFriction.
@@ -469,7 +469,7 @@ Simpler, calmer noFriction.
 • No AI runs while you record. Notes are made when you stop
 • Edit a transcript with one bar: Delete or Strike from the record, and Select time… for ranges
 • Delete a recording with 5 seconds to undo
-• Settings in five places: Recording, Transcription, AI, Subscription, About
+• Settings in six places: Recording, Transcription, AI, Sync, Subscription, About
 • The menu-bar icon: Start Recording, Stop, Pause, Resume, Mark
 • AI settings offer provider cards that fill in the endpoint; you paste your own key
 • New in noFriction Pro: Sync with your iPhone over your Wi-Fi, with no server, and automatic Markdown export to a notes folder
@@ -559,7 +559,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3963 / 4000 characters**
+**3998 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -576,32 +576,34 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup sheet or Settings → Connect, choose Apple on-device, then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
-Alternatively, enter your own local OpenAI-compatible model server and model in Settings. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
+Alternatively, enter your own local OpenAI-compatible model server and model in Settings. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15 to 90 min or No limit, and an optional Notebook (type BIO 101). The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
 7. While recording, tap Mark this moment, then ? Question, ✎ On the test or Note within six seconds. On a physical device, say a web address such as "example dot com".
 8. Stop. Recordings shows Notebook chips that filter the list. In the recording, Marks lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched.
-Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type.
 
 REVIEW (Pro)
 9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Review uses the same AI, Pro paywall and consent prompt as Make notes.
 
 SCREEN CAPTURE (physical device only)
-10. On the Record sheet, turn on Capture screen and tap Record. Apple's broadcast sheet opens with noFriction selected; tap Start Broadcast and open another app. noFriction keeps a picture of the screen when it changes. Record then shows Capturing your screen and a count. Stop ends both; the screens appear in the recording. Free. With Pro, Transcribe what's playing also transcribes the sound playing, on the device.
+10. On the Record sheet, turn on Capture screen and tap Record. Apple's broadcast sheet opens with noFriction selected; tap Start Broadcast and open another app. Record shows Capturing your screen and a count. Stop ends both; the screens appear in the recording. Free. With Pro, Transcribe what's playing also transcribes the sound playing, on the device.
 
 APPLE WATCH
-The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Tap Record, then Stop on the watch; the recording appears in Recordings. Delivery and transcription require a physical iPhone and Apple Watch.
+The watch app records and sends the audio to the iPhone, which transcribes it on the device. Tap Record, then Stop on the watch; the recording appears in Recordings. Needs a physical iPhone and Apple Watch.
 
 EDITING
 Open a recording and select transcript text. Delete offers a brief undo. Strike from the record is permanent and leaves a marker.
+
+SYNC WITH YOUR MAC (Pro; a Mac with noFriction on the same Wi-Fi)
+Mac: Settings → Sync → Pair a device. iPhone: Settings → Sync with your Mac → Pair with your Mac; scan the code, allow Local Network. Recordings, transcripts, notes, marks and links sync both ways, directly; no server.
 
 Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 ### macOS
 
-**3946 / 4000 characters**
+**3980 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -617,7 +619,7 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible Mac running macOS 26 or later, with Apple Intelligence enabled and its model download complete. With no text provider configured, the app uses the available Apple on-device model automatically. No cloud account or API key is required for that path.
 
-Alternatively enter a local OpenAI-compatible model server and model in Settings → AI → Custom endpoint. A model on another computer requires a reachable local network.
+Alternatively enter a local OpenAI-compatible model server and model in Settings → AI → Custom endpoint.
 
 Open Chat and ask What did we decide? Or Recordings → select a recording → Notes → Make notes / Follow-up email. No AI runs during a recording. Apple on-device is text-only; screenshot capture and review do not require image analysis.
 
@@ -626,12 +628,14 @@ RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS, LINKS AND SEARCH (free)
 6. While recording, click Mark in the bar, or press ⌃⌥⌘M with another app in front (File → Mark and the menu-bar icon also work). Choose ? Question or ✎ On the test and add a note. Say a web address such as "example dot com".
 7. Stop. Recordings shows Notebook chips that filter the list, and marks on the Rewind timeline and in the transcript. Select the recording → Links lists the address as Said; use Add reference to add one. Links are never fetched.
 8. Type a word you said into the search field at the top of Recordings (⌘K); click a matching line to open the recording at that moment.
-Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type.
 
 REVIEW (Pro)
-9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Review uses the same AI, Pro check and consent prompt as notes.
+9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Review uses the same AI, Pro check and consent prompt as notes.
 
-The ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
+SYNC (Pro)
+Settings → Sync → Pair a device shows a code to scan in noFriction on an iPhone (Settings → Sync with your Mac). Recordings, transcripts, notes, marks and links sync both ways over the local network; no server. The network.server entitlement is for this listener, which runs only while Sync is on.
+
+The ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Make notes

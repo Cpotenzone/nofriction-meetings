@@ -4,7 +4,7 @@
 // "Set up AI" notices open Settings → AI), open Help, or focus the one
 // search field, without prop drilling. The shell listens.
 
-export type SettingsCategory = "recording" | "transcription" | "ai" | "subscription" | "about";
+export type SettingsCategory = "recording" | "transcription" | "ai" | "sync" | "subscription" | "about";
 
 const OPEN_SETTINGS_EVENT = "nf:open-settings";
 

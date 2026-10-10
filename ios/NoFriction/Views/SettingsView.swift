@@ -335,6 +335,7 @@ struct SettingsView: View {
                 savedSection
                 recordingSection
                 AppleWatchSection()
+                SyncSection()
                 privacySection
                 subscriptionSection
                 aboutSection

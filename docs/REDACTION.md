@@ -200,6 +200,11 @@ exist on the platform:
      iOS) are the user's own words, like comments: a Delete or Strike of
      transcript words never rewrites them.
 
+10. **The other device** (Sync with your iPhone, [docs/SYNC.md](SYNC.md)).
+   A Delete or Strike becomes a tombstone that syncs both ways, and the
+   receiving device runs **its own** purge for it (this checklist, steps
+   1–9), never a shortcut. See [Tombstones](#tombstones-sync).
+
 **Deleting a whole meeting** removes, besides its transcript, screens and AI
 outputs: its browser-address rows (`text_snapshots.meeting_id` cascade), its
 added references and its hidden-link hashes (Mac: deleted explicitly in
@@ -227,6 +232,49 @@ recordings, never stored separately, so a deleted recording's notebook
 disappears with it. Notes of every type (meeting, lecture, personal) are
 ordinary AI notes (step 5). See
 [TIMED_RECORDING_AND_NOTEBOOKS.md](TIMED_RECORDING_AND_NOTEBOOKS.md#purge).
+
+## Tombstones (sync)
+
+When two devices are paired ([SYNC.md](SYNC.md)), what one removes is
+removed on the other at the next sync, through the receiver's own purge:
+
+- **Words and lines.** A line edited by Delete or Strike travels as an
+  `edit`: the line as it now is, with each remaining word replaced by a
+  keyed hash (`HMAC-SHA256`, first 8 bytes) and each strike marker by its
+  id. The removed words are never sent, in any message. The receiver hashes
+  its own copy, finds the words missing from the sender's list, and removes
+  each run of them as a local Delete (words close up) or, where the sender's
+  list has a new marker, a local Strike with that marker id. Both devices end
+  with the union of their removals. A line removed whole travels as
+  `gone {line}` and goes the same way (markers in it stay).
+- **Strike records** travel as `strike` (id, recording, the times covered,
+  when, reason, the line holding the marker; never content) and are
+  immutable on both sides. Screen strikes don't sync in v1 (screens don't).
+- **Whole recordings** travel as `gone {recording}`; the receiver runs its
+  Delete recording path (Mac: `DatabaseManager::delete_meeting` and the
+  recording's folders; iPhone: `RecordingDeletion.delete`: audio, photos,
+  watch inbox copy, screen-capture files, chat answers, the row).
+- **Removals first.** In a session the iPhone sends its removals, then the
+  Mac sends its removals and changes, then the iPhone sends its changes. So
+  content one device removed is never sent back to it.
+- **Never re-imported.** A tombstone is kept as an id for good (Mac
+  `sync_meta.deleted`, iPhone sync ledger). A late copy of a deleted record
+  is dropped. Lines never change except by removal, so an older copy of a
+  line can't bring words back.
+- **Delete's undo window.** The iPhone commits any pending Delete before a
+  session; on the Mac, applying an incoming edit to a line first commits the
+  line's pending deletes (as any edit does).
+- **AI outputs.** Each device rewrites its own notes (distinctive words
+  only) and flags them, and deletes its own review guide, AI topics and chat
+  answers that cited the recording, exactly as for a local edit.
+- **Search, backups, logs, freed space** (Mac) and the store scrub (iPhone)
+  run as for a local edit.
+
+Tests: Mac `src-tauri/src/sync/tests.rs` (a strike from the iPhone purges
+search, notes, the review guide and AI topics; a deleted line and recording
+never come back), iOS `SyncTests.swift` (a Mac strike through
+`RedactionEngine`), and `SyncEndToEndTests.swift` (both directions over the
+network against `examples/sync_test_server`).
 
 ## Rendering the marker
 

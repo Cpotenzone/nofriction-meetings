@@ -12,6 +12,7 @@ import { aiErrorClass, friendlyAiError, isNoProviderError, withAiConsent } from 
 import { useCapabilities } from "../lib/build";
 import { AiSetupNotice, useAiStatus } from "./AiSetupNotice";
 import { notesLayout, notesStyleHint } from "../lib/recordingKind";
+import { SYNCED_NOTES_MODEL, syncedNotesSections } from "../lib/syncLogic";
 import { useRecordingKind } from "../hooks/useRecordingKind";
 import ErrorState from "./ErrorState";
 import { TopicsEditor } from "./TopicChips";
@@ -205,6 +206,9 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
 /** The layout follows the prompt that wrote the notes (`model_used`), so
  *  notes written before a type change keep their headings until regenerated. */
 function NotesBody({ notes }: { notes: SavedNotes }) {
+    if (notes.model_used === SYNCED_NOTES_MODEL) {
+        return <SyncedNotesBody markdown={notes.summary ?? ""} />;
+    }
     const topics = parseList<string>(notes.key_topics);
     const decisions = parseList<Decision>(notes.decisions);
     const actions = parseList<ActionItem>(notes.action_items);
@@ -265,6 +269,32 @@ function NotesBody({ notes }: { notes: SavedNotes }) {
                     </ul>
                 )}
             </section>
+        </>
+    );
+}
+
+/** Notes made on the iPhone and synced here (docs/SYNC.md): its Markdown,
+ *  bold headings and bullets. */
+function SyncedNotesBody({ markdown }: { markdown: string }) {
+    const sections = syncedNotesSections(markdown);
+    if (sections.length === 0) return <p className="mn-muted">No summary.</p>;
+    return (
+        <>
+            {sections.map((s, i) => (
+                <section className="mn-section" key={i}>
+                    {s.heading && <h4>{s.heading}</h4>}
+                    {s.paragraphs.map((t, j) => (
+                        <p key={j}>{t}</p>
+                    ))}
+                    {s.bullets.length > 0 && (
+                        <ul>
+                            {s.bullets.map((t, j) => (
+                                <li key={j}>{t}</li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+            ))}
         </>
     );
 }

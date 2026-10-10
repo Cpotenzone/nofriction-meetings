@@ -135,6 +135,11 @@ these rules apply.
   must pass; both release scripts run it and then scan the signed artifact for
   credentials and retired service hosts (the four preset hosts are
   inventoried, not failed). Spec: `docs/AI_PROVIDERS.md`.
+- **Sync is device to device** (`docs/SYNC.md`): iPhone ↔ Mac directly on
+  the local network, TLS pinned to the Mac's certificate, Pro only. Never
+  add a relay, iCloud or any server to it, never send removed (deleted or
+  struck) text in a sync message, and keep removals crossing before content.
+  The policy guard checks the sync code has no URL, HTTP client or AI call.
 - **Transcription is on-device only:** local Whisper on the Mac, Apple speech
   on iOS. The cloud transcription modules (Deepgram, Gladia, Google, Gemini)
   were removed from the source; don't bring them back.

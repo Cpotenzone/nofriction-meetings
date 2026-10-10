@@ -2185,6 +2185,155 @@ pub async fn strike_screens(
     apply_screens_locked(pool, env, meeting_id, ids, Action::Strike, reason, &new_id()).await
 }
 
+// ── Sync with your iPhone (docs/SYNC.md) ──────────────────────────────────
+
+/// One change another device made to a line, in this Mac's UTF-16 offsets
+/// (planned by `sync::merge` from the line's current text).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyncedOp {
+    /// Remove the words in `[start16, end16)`. `marker` (32-hex record id):
+    /// put that strike marker where they were. `strike`: AI outputs get the
+    /// stricken placeholder; else the delete placeholder.
+    Remove { start16: usize, end16: usize, marker: Option<String>, strike: bool },
+    /// Insert strike markers whose words were already gone here
+    Insert { at16: usize, markers: Vec<String> },
+}
+
+/// Apply another device's removals to one line through the same purge as a
+/// local Delete/Strike (text and search index, AI outputs, review guide,
+/// AI topics and chat answers, app backups and logs, links, WAL). `plan` gets
+/// the line's current text *inside* the redaction lock, after pending
+/// deletes on the line were committed, and returns ops from the end of the
+/// line backwards. `src` = (device id, time): the change is logged as coming
+/// from that device, so it isn't sent back to it. Returns whether anything
+/// changed. The removed words exist only in this call's locals.
+pub async fn edit_line_synced<F>(
+    pool: &Pool<Sqlite>,
+    env: &RedactionEnv,
+    meeting_id: &str,
+    transcript_id: i64,
+    src: Option<(&str, i64)>,
+    plan: F,
+) -> Result<bool, String>
+where
+    F: FnOnce(&str) -> Vec<SyncedOp>,
+{
+    let _g = LOCK.lock().await;
+    flush_overlapping_locked(pool, env, meeting_id, Scope::Line(transcript_id)).await?;
+    let mut tx = pool.begin().await.map_err(err("Database busy"))?;
+    let line = match load_line(&mut tx, meeting_id, transcript_id).await {
+        Ok(l) => l,
+        Err(_) => return Ok(false),
+    };
+    let ops = plan(&line.text);
+    if ops.is_empty() {
+        return Ok(false);
+    }
+    let mut text = line.text.clone();
+    let mut timings = line.timings.clone();
+    // (removed words, struck?)
+    let mut removed: Vec<(String, bool)> = Vec::new();
+    for op in ops {
+        match op {
+            SyncedOp::Remove { start16, end16, marker, strike } => {
+                let token = marker.as_deref().map(marker_token);
+                match apply_word_edit(&text, timings.as_deref(), start16, end16, token.as_deref()) {
+                    Ok(edit) => {
+                        removed.push((edit.removed_plain, strike));
+                        text = edit.new_text;
+                        timings = edit.new_timings;
+                    }
+                    // Already gone here (or only markers left): nothing to remove
+                    Err(_) => {}
+                }
+            }
+            SyncedOp::Insert { at16, markers } => {
+                let tokens: Vec<String> = markers
+                    .iter()
+                    .filter(|m| !text.contains(&marker_token(m)))
+                    .map(|m| marker_token(m))
+                    .collect();
+                if tokens.is_empty() {
+                    continue;
+                }
+                let before16 = utf16_len(&text);
+                let new_text = crate::sync::merge::insert_markers(&text, at16, &tokens);
+                let delta = utf16_len(&new_text) as i64 - before16 as i64;
+                if let Some(list) = timings.as_deref().and_then(|j| serde_json::from_str::<Vec<WordTiming>>(j).ok()) {
+                    let shifted: Vec<WordTiming> = list
+                        .into_iter()
+                        .map(|w| {
+                            if w.s >= at16 {
+                                WordTiming { s: (w.s as i64 + delta).max(0) as usize, e: (w.e as i64 + delta).max(0) as usize, ..w }
+                            } else {
+                                w
+                            }
+                        })
+                        .collect();
+                    timings = serde_json::to_string(&shifted).ok();
+                }
+                text = new_text;
+            }
+        }
+    }
+    if text == line.text {
+        return Ok(false);
+    }
+    if let Some((device, at)) = src {
+        sqlx::query("INSERT OR REPLACE INTO sync_apply (key, value) VALUES ('src', ?), ('at', ?)")
+            .bind(device)
+            .bind(at.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(err("Database busy"))?;
+    }
+    let edit = TextEdit {
+        new_text: text.clone(),
+        removed_plain: String::new(),
+        new_timings: timings,
+        removed_ms: None,
+        whole_line: false,
+    };
+    // Text + search index (and the row goes if no text is left)
+    write_line_edit(&mut tx, meeting_id, transcript_id, &edit, DELETED_PLACEHOLDER).await?;
+    for (words, strike) in &removed {
+        let replacement = if *strike { STRICKEN_PLACEHOLDER } else { DELETED_PLACEHOLDER };
+        redact_ai_outputs(&mut tx, meeting_id, words, replacement)
+            .await
+            .map_err(err("Failed to redact AI outputs"))?;
+    }
+    if src.is_some() {
+        sqlx::query("DELETE FROM sync_apply").execute(&mut *tx).await.map_err(err("Database busy"))?;
+    }
+    tx.commit().await.map_err(err("Failed to save the edit"))?;
+
+    let any_strike = removed.iter().any(|r| r.1);
+    let changes: Vec<LineChange> = removed
+        .into_iter()
+        .map(|(words, _)| LineChange {
+            transcript_id,
+            original: line.text.clone(),
+            new_text: text.clone(),
+            removed: words,
+        })
+        .collect();
+    let mut out = ActionOutcome::default();
+    post_commit_purge(
+        pool,
+        env,
+        meeting_id,
+        &changes,
+        Vec::new(),
+        if any_strike { STRICKEN_PLACEHOLDER } else { DELETED_PLACEHOLDER },
+        &mut out,
+    )
+    .await;
+    for w in out.warnings {
+        log::warn!("Sync edit purge: {}", w);
+    }
+    Ok(true)
+}
+
 /// Exactly what a Strike will destroy, for the confirmation dialog. Counts
 /// only; the selected words are shown by the UI that selected them.
 pub async fn preview_words(pool: &Pool<Sqlite>, env: &RedactionEnv, target: &WordTarget) -> Result<Vec<String>, String> {
@@ -2391,7 +2540,7 @@ pub mod commands {
         RedactionEnv { recording_meetings: recording_meetings(state), ..RedactionEnv::for_app() }
     }
 
-    fn env_from(app: &AppHandle) -> RedactionEnv {
+    pub(crate) fn env_from(app: &AppHandle) -> RedactionEnv {
         match app.try_state::<AppState>() {
             Some(st) => env_for(&st),
             None => RedactionEnv::for_app(),

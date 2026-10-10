@@ -64,7 +64,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "noFriction records your meetings so it can transcribe them. The audio is stored and transcribed on this device and never uploaded."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "noFriction turns your recordings into text with speech recognition on this device. Audio never leaves it; transcript text goes only to the AI provider you choose, when you use an AI feature."
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "noFriction reads your calendar to name each recording and list who attended. It never changes your calendar."
-        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of slides, whiteboards or screens during a meeting. Photos stay on this device."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of slides, whiteboards or screens during a meeting, and scan the code on your Mac to pair Sync. Photos stay on this device."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Add screenshots or photos from your library to a meeting. They stay on this device."
     info:
       path: NoFriction/Info.plist
@@ -77,7 +77,9 @@ targets:
         UILaunchScreen:
           UIColorName: LaunchBackground
         # Optional: AI on the user's explicitly configured server on the LAN
-        NSLocalNetworkUsageDescription: "noFriction connects to your AI endpoint on the local network only if you enter its address in Settings."
+        NSLocalNetworkUsageDescription: "noFriction syncs your recordings directly with noFriction on your Mac over your local network, and connects to your AI endpoint on it if you enter one. Nothing goes through a server."
+        # Sync with your Mac (docs/SYNC.md): finds the paired Mac with Bonjour
+        NSBonjourServices: [_nofriction._tcp]
         NSAppTransportSecurity:
           # http:// only to local hosts (IPs, .local, unqualified names). Never NSAllowsArbitraryLoads.
           NSAllowsLocalNetworking: true
