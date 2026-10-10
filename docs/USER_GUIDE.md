@@ -461,15 +461,19 @@ Sync turned on. **Last synced** on both shows when it last happened.
 - Recordings: title, type (Meeting · Class · Personal), notebook, planned
   length, and the calendar details and people.
 - Transcripts, Notes, Marks, Links you added, and Topics.
+- Photos and screens: the iPhone's photos and the screens from its screen
+  capture, and the Mac's screens, each at the moment it was taken, in
+  Rewind on both. They're copied as they are (no lower quality).
 - **Delete** and **Strike from the record**. What you delete or strike on
   one device is removed on the other at the next sync, through the same
   clean-up as an edit made there: search, notes, review guide, AI topics,
-  chat answers, and on the iPhone the audio. A strike leaves the same marker
-  on both. The removed words are never sent, and something deleted on either
+  chat answers, and on the iPhone the audio; for a photo or screen, the
+  picture (and on the Mac the screen video at that moment). A strike leaves
+  the same marker on both. The removed words are never sent, and something deleted on either
   device never comes back.
 
-**What doesn't (yet):** photos and screens, audio (it stays on the iPhone
-that recorded it), chats and review guides (each device makes its own).
+**What doesn't:** audio (it stays on the iPhone that recorded it), chats
+and review guides (each device makes its own).
 
 **If both changed the same thing** (say, the title) between two syncs, the
 iPhone's version wins. Notes made on the iPhone show on the Mac as written
@@ -490,7 +494,7 @@ decision 2026-10-10).
 | On-device microphone transcription (Mac: also the call's audio) | **Follow-up email** and **Topics** |
 | Screens: Mac screenshots, iPhone screen snapshots, photos | **Review guides** (study guides for a class) with flashcards, a practice quiz and CSV/Markdown export |
 | Marks, Rewind, search, Links, calendar and people | **Chat** with your recordings |
-| Edit, Delete and Strike from the record | **Sync with your Mac**: recordings, transcripts, notes, marks and links move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code ([details](#sync-your-iphone-and-mac)) |
+| Edit, Delete and Strike from the record | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code ([details](#sync-your-iphone-and-mac)) |
 | Share a recording as text; export everything as JSON (Mac) | **Transcribe what's playing** (iPhone): while you capture the screen, noFriction also transcribes the audio of the video or call you're watching |
 | | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault |
 

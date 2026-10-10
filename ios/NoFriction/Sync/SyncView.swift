@@ -93,7 +93,7 @@ struct SyncView: View {
 
             Section("How it works") {
                 Text("Your iPhone and Mac talk directly on the same Wi-Fi, encrypted and pinned to the Mac you paired. noFriction receives nothing. iOS doesn't let apps sync in the background, so this iPhone syncs when you open noFriction, when a recording stops, and when you tap Sync now. Keep noFriction open on your Mac.")
-                Text("Recordings, transcripts, notes, marks, links and topics sync. Delete and Strike from the record apply on both devices. Photos, screens, audio, chats and review guides stay on the device that made them.")
+                Text("Recordings, transcripts, notes, marks, links, topics, photos and screens sync. Delete and Strike from the record apply on both devices. Audio, chats and review guides stay on the device that made them.")
             }
             .font(.footnote)
             .foregroundStyle(.secondary)

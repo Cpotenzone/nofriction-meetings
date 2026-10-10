@@ -12,29 +12,30 @@ iPhone (`store.isPro`) and, in the Mac App Store build, while
 gate). Free users see **Sync with your Mac** in Settings with a short
 explanation and the paywall (feature key `sync`).
 
-## What syncs (v1)
+## What syncs
 
 | Mac | iPhone | Wire item |
 |-----|--------|-----------|
 | `meetings` + `meeting_details` + `meeting_attendees` | `Meeting` + `Attendance`/`Person` | `recording` |
 | `transcripts` (`sync_id`) | `Segment` (`syncID`) | `line`, `edit` |
-| `redactions` (strikes of words and lines) | `Redaction` (strike, words/line) | `strike` |
+| `redactions` (strikes of words, lines and screens) | `Redaction` (strike) | `strike` |
 | `meeting_notes` (latest) | `Meeting.aiNotes` | `notes` |
 | `meeting_markers` | `MomentMarker` | `mark` |
 | `meeting_references` | `MeetingReference` | `ref` |
 | `meeting_topics` | `MeetingTopic` | `topic` |
+| `screen_states` with a picture, and legacy `frames` (`sync_id`) | `Snapshot` (`syncID`, `source`) | `screen` + its file (`want` / `blob`) |
 | deletions of any of the above | | `gone` |
 
 A recording's fields: title, start and end, type (Meeting · Class ·
 Personal), notebook, planned length, and the calendar fields (event, planned
 start and end, location, meeting link, invite notes, people with their role).
 
-**Not in v1:**
+**Photos and screens** (since the follow-up to v1): iPhone photos and
+screen-capture screens ↔ Mac screens, as files. See
+[Photos and screens](#photos-and-screens).
 
-- **Photos and screens.** iPhone photos and Mac screens stay on the device
-  that took them. A strike of a screen therefore doesn't sync either (there
-  is nothing on the other device to remove). The protocol reserves `blob`
-  messages for them (below).
+**Not synced:**
+
 - **Audio.** Phone audio stays on the phone; the Mac never had any.
 - **Chats and review/study guides.** Each device makes its own from the
   synced transcript; they are AI outputs and are purged locally as before.
@@ -112,8 +113,13 @@ batch {phase:"removals", items, last} →  (repeated until last)
                                     ←    applied {}
 pull {since}                        →
                                     ←    batch {phase:"changes", items, last, upto}  (repeated)
+want {ids}                          →    (photos/screens it doesn't have; may be skipped)
+                                    ←    blob {id, off, data, last} … blobs_end {missing}
 batch {phase:"changes", items, last} →   (repeated until last)
-                                    ←    applied {}
+                                    ←    applied {retry, want}
+blob {id, off, data, last} …        →    (the files the Mac asked for, if any)
+blobs_end {missing}                 →
+                                    ←    applied {retry}
 done {}                             →
 ```
 
@@ -152,12 +158,13 @@ Each item has `"k"`. Times are integer milliseconds since 1970.
 | `recording` | `id`, `title`, `started`, `ended?`, `kind` (`meeting`/`class`/`personal`), `notebook?`, `planned?` (minutes), `cal?` {`event?`, `start?`, `end?`, `location?`, `url?`, `notes?`}, `people` [{`email`, `name?`, `role`}], `mod` |
 | `line` | `id`, `rec`, `text`, `at`, `dur?` (ms), `speaker?`, `src?` (`screen`: heard from what was playing during iPhone screen capture, `Segment.source`; the Mac keeps it in `transcripts.source`) |
 | `edit` | `id`, `rec`, `keep` (see below) |
-| `strike` | `id`, `rec`, `target` (`words`/`line`), `from?`, `to?`, `created`, `reason?`, `line?` (id of the line holding the marker) |
+| `strike` | `id`, `rec`, `target` (`words`/`line`/`screen`), `from?`, `to?`, `created`, `reason?`, `line?` (id of the line holding the marker), `count?` (screens it removed) |
 | `notes` | `rec`, `md` (Markdown), `made`, `stale`, `mod` |
 | `mark` | `id`, `rec`, `at`, `kind` (`important`/`question`/`test`), `note?`, `created`, `mod` |
 | `ref` | `id`, `rec`, `url`, `title?`, `note?`, `created`, `mod` |
 | `topic` | `id`, `rec`, `label`, `key`, `conf` (0–1000), `source` (`ai`/`user`), `created` |
-| `gone` | `entity` (`recording`/`line`/`mark`/`ref`/`topic`/`notes`), `id`, `rec?` |
+| `screen` | `id`, `rec`, `at` (when it was taken), `end?` (until when it was on screen, Mac), `src` (`photo`/`screen`), `ext` (`jpg`/`png`), `size`, `sha` (SHA-256, hex) |
+| `gone` | `entity` (`recording`/`line`/`mark`/`ref`/`topic`/`notes`/`screen`), `id`, `rec?` |
 
 Strike markers inside line text use one canonical form on the wire,
 `⟦stricken:<uuid>⟧`; the Mac stores `⟦strickenid<32 hex>⟧` and the iPhone
@@ -241,22 +248,50 @@ gone is removed. `gone` for a line removes the whole line the same way, and
   several Macs.
 - Wall-clock last-writer-wins; the iPhone wins concurrent edits of the same
   record (above).
-- Photos, screens, audio, chats and review guides don't sync (above).
+- Audio, chats and review guides don't sync (above). Photos and screens
+  are sent as stored (no re-encoding), JPEG or PNG only, at most 16 MiB
+  each; a file is all or nothing (an interrupted one is asked for again
+  next session, not resumed mid-file).
 - Topics: new topics and removed topics sync; renaming a topic doesn't
   (yet). AI topics are deleted by each device's own purge after an edit.
 - Notes made on the iPhone replace the Mac's when they are newer, and the
   Mac shows them as Markdown until **Make again** there.
 
-## Reserved for photos and screens (not in v1)
+## Photos and screens
 
-iPhone photos and screen-capture screens (`Snapshot`, with `source` =
-`screen` for a captured screen, nil for a photo) and Mac screens (`frames`,
-`screen_states`) will travel as files:
-`blob_offer {id, rec, kind: photo|screen, source?, at, size, sha256}`,
-`blob_want {ids}`, `blob_chunk {id, offset, data}` (256 KiB, base64),
-`blob_done {id}`; the receiver checks the SHA-256 before saving the file.
-A deleted or stricken photo/screen travels as `gone {entity: "screen"}`.
+What moves: every iPhone `Snapshot` (a photo, `source` nil, travels as
+`src: photo`; a screen from screen capture, `source` = `screen`, as `src:
+screen`), and every Mac screen: a screen state with a picture (stateful
+capture, **Capture screen**) or a legacy frame, as `src: screen`. On the
+Mac, photos and screens from the iPhone become screen states (`state_type`
+= the source, `source_key` = `sync`) next to the recording's screens, in
+`frames/<recording>/sync_<id>.<jpg|png>`; on the iPhone, the Mac's screens
+become `Snapshot`s with `source` = `screen`, in `Snapshots/sync-<id>.<ext>`.
 
+- **Timing.** `at` is the wall-clock time it was taken (Mac `start_ts`,
+  iPhone `takenAt`), so it appears at the same moment in Rewind on both;
+  `end` keeps how long a Mac screen was on screen. The Mac's Rewind shows
+  frames and screen states together, in time order.
+- **Files.** A `screen` item carries the file's size and SHA-256, not the
+  file. The receiver asks for the files it doesn't have (`want` after a
+  pull; `applied.want` after the iPhone's changes), and the sender sends
+  each as base64 chunks of 256 KiB (`blob {id, off, data, last}`) in order,
+  then `blobs_end {missing}`. The receiver checks order, size, checksum and
+  that it is a JPEG or PNG, writes it to a temporary name and renames it
+  into place only then. Nothing is re-encoded or downscaled. Limit: 16 MiB a
+  file on both sides; larger files and other formats are never sent.
+- **Idempotent.** Screens never change once taken. One that is already
+  here, or deleted for good, isn't asked for. A file that fails or doesn't
+  arrive is asked for again next session: on the iPhone the Mac's cursor
+  doesn't move past it; on the Mac its id goes back in `applied.retry`.
+- **Delete and Strike.** A deleted photo or screen travels as `gone
+  {screen}`; a strike also sends its marker record (`strike`, target
+  `screen`, with `count`). The receiver runs its own screen purge: on the
+  Mac `redaction::delete_screens_synced` (rows, derived rows, files, and on
+  the DMG build the screen video blanking job for that moment; refused, and
+  asked for again, while that recording is still recording), on the iPhone
+  `RedactionEngine.applySyncedScreenDelete` (file, row, store scrub).
+  Screen-only edits keep notes and review guides, as locally.
 ## Code
 
 - Mac: `src-tauri/src/sync/` — `protocol.rs` (messages, canonical JSON,
@@ -297,9 +332,11 @@ A deleted or stricken photo/screen travels as `gone {entity: "screen"}`.
     -only-testing:NoFrictionTests/SyncEndToEndTests -destination 'id=<simulator>'
   ```
 
-  It pairs, checks a wrong pin is refused, syncs both ways, then strikes on
-  the iPhone and deletes on the Mac and checks both removals crossed and
-  were purged from search and notes on both sides.
+  It pairs, checks a wrong pin is refused, syncs both ways (a photo and a
+  captured screen from the iPhone, a screen from the Mac), then strikes
+  words and the Mac's screen on the iPhone and deletes a word and strikes
+  the iPhone's screen on the Mac, and checks every removal crossed and was
+  purged on both sides (search, notes, files, markers).
 - On real devices: pair from **Settings → Sync** on both and check the same
   things by hand; Bonjour and Local Network permission can only be checked
   on hardware.

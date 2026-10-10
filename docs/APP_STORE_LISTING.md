@@ -559,7 +559,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3998 / 4000 characters**
+**3990 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -596,14 +596,14 @@ EDITING
 Open a recording and select transcript text. Delete offers a brief undo. Strike from the record is permanent and leaves a marker.
 
 SYNC WITH YOUR MAC (Pro; a Mac with noFriction on the same Wi-Fi)
-Mac: Settings → Sync → Pair a device. iPhone: Settings → Sync with your Mac → Pair with your Mac; scan the code, allow Local Network. Recordings, transcripts, notes, marks and links sync both ways, directly; no server.
+Mac: Settings → Sync → Pair a device. iPhone: Settings → Sync with your Mac → Pair with your Mac; scan the code, allow Local Network. Recordings, transcripts, notes, marks and screens sync both ways; no server.
 
 Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 ### macOS
 
-**3980 / 4000 characters**
+**3982 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -633,7 +633,7 @@ REVIEW (Pro)
 9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Review uses the same AI, Pro check and consent prompt as notes.
 
 SYNC (Pro)
-Settings → Sync → Pair a device shows a code to scan in noFriction on an iPhone (Settings → Sync with your Mac). Recordings, transcripts, notes, marks and links sync both ways over the local network; no server. The network.server entitlement is for this listener, which runs only while Sync is on.
+Settings → Sync → Pair a device shows a code to scan in noFriction on an iPhone (Settings → Sync with your Mac). Recordings, transcripts, notes, marks and screens sync both ways over the local network; no server. The network.server entitlement is for this listener, which runs only while Sync is on.
 
 The ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
 ```

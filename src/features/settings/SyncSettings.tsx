@@ -248,9 +248,9 @@ export function SyncSettings() {
             <section className="settings-section">
                 <h3>What syncs</h3>
                 <p className="section-desc">
-                    Recordings (title, type, notebook, calendar details), transcripts, notes, marks, links and topics. Delete and
-                    Strike from the record apply on both devices. Photos, screens, audio, chats and review guides stay on the device
-                    that made them.
+                    Recordings (title, type, notebook, calendar details), transcripts, notes, marks, links, topics, photos and
+                    screens. Delete and Strike from the record apply on both devices. Audio, chats and review guides stay on the
+                    device that made them.
                 </p>
             </section>
             {error && <p className="ai-error-text">{error}</p>}
