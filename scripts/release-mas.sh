@@ -231,6 +231,9 @@ verify() {
         || log_error "com.apple.security.app-sandbox is missing"
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' "$ents" 2>/dev/null)" == "true" ]] \
         || log_error "com.apple.security.network.client is missing"
+    # Sync with your iPhone listens on the local network (docs/SYNC.md)
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.server' "$ents" 2>/dev/null)" == "true" ]] \
+        || log_error "com.apple.security.network.server is missing (Sync)"
     for forbidden in com.apple.security.cs.disable-library-validation com.apple.security.cs.allow-jit \
                      com.apple.security.cs.allow-unsigned-executable-memory; do
         if /usr/libexec/PlistBuddy -c "Print :$forbidden" "$ents" >/dev/null 2>&1; then

@@ -1,5 +1,5 @@
-// Settings: Recording, Transcription, AI, Subscription (Mac App Store
-// build), About. Decisions the app can make for the user are not here:
+// Settings: Recording, Transcription, AI, Sync, Subscription (Mac App
+// Store build), About. Decisions the app can make for the user are not here:
 // the silence that ends a recording is 3 minutes, what is captured follows
 // the permissions, notes are made automatically once AI is set up.
 
@@ -12,6 +12,7 @@ import type { AudioDevice } from "../../lib/tauri";
 import { AIProviderSettings } from "./AIProviderSettings";
 import { TranscriptionSettings } from "./TranscriptionSettings";
 import { SubscriptionSettings } from "./SubscriptionSettings";
+import { SyncSettings } from "./SyncSettings";
 import { isProRequiredError, useCapabilities, withPro, PRIVACY_URL, SUPPORT_EMAIL, SUPPORT_URL, TERMS_URL } from "../../lib/build";
 import { openHelp, type SettingsCategory } from "../../lib/navigation";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -42,6 +43,7 @@ export function Settings({ initialCategory = "recording" }: SettingsProps) {
         { id: "recording", label: "Recording" },
         { id: "transcription", label: "Transcription" },
         { id: "ai", label: "AI" },
+        { id: "sync", label: "Sync" },
         ...(caps?.storekit ? [{ id: "subscription" as const, label: "Subscription" }] : []),
         { id: "about", label: "About" },
     ];
@@ -72,6 +74,7 @@ export function Settings({ initialCategory = "recording" }: SettingsProps) {
                 {shown === "recording" && <RecordingSettings showToast={showToast} />}
                 {shown === "transcription" && <TranscriptionSettings />}
                 {shown === "ai" && <AIProviderSettings />}
+                {shown === "sync" && <SyncSettings />}
                 {shown === "subscription" && <SubscriptionSettings />}
                 {shown === "about" && <About />}
             </div>

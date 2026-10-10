@@ -42,6 +42,14 @@
     
     <!-- Privacy Permission Descriptions (required by macOS) -->
     
+    <!-- Sync with your iPhone (docs/SYNC.md): device to device on the local network -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>noFriction syncs your recordings with noFriction on your iPhone directly over your local network when you turn on Sync. Nothing goes through a server.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_nofriction._tcp</string>
+    </array>
+
     <!-- Microphone - for transcription -->
     <key>NSMicrophoneUsageDescription</key>
     <string>noFriction needs microphone access to transcribe what is said while you record.</string>
