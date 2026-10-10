@@ -24,11 +24,15 @@ struct SyncEngine {
 
     private func meetings() -> [Meeting] { (try? context.fetch(FetchDescriptor<Meeting>())) ?? [] }
 
-    /// Every line gets its cross-device id the first time sync sees it.
+    /// Every line, photo and screen gets its cross-device id the first time sync sees it.
     func assignLineIDs() {
         var changed = false
         for m in meetings() {
             for s in m.segments where s.syncID == nil {
+                s.syncID = UUID()
+                changed = true
+            }
+            for s in m.snapshots where s.syncID == nil {
                 s.syncID = UUID()
                 changed = true
             }
@@ -91,11 +95,31 @@ struct SyncEngine {
     }
 
     func strikeItem(_ r: Redaction, in m: Meeting) -> SyncItem? {
-        guard r.isStrike, r.kind == Redaction.Kind.words.rawValue || r.kind == Redaction.Kind.line.rawValue else { return nil }
+        guard r.isStrike, let kind = Redaction.Kind(rawValue: r.kind) else { return nil }
         let token = RedactionText.markerToken(r.id)
-        let line = m.orderedSegments.first { $0.text.contains(token) }?.syncID.map(SyncIDs.wire)
+        let line = kind == .screen ? nil : m.orderedSegments.first { $0.text.contains(token) }?.syncID.map(SyncIDs.wire)
         return .strike(StrikeItem(id: SyncIDs.wire(r.id), rec: SyncIDs.wire(m.id), target: r.kind, from: r.coveredFrom.map(SyncIDs.ms),
-                                  to: r.coveredTo.map(SyncIDs.ms), created: SyncIDs.ms(r.createdAt), reason: r.reason, line: line))
+                                  to: r.coveredTo.map(SyncIDs.ms), created: SyncIDs.ms(r.createdAt), reason: r.reason, line: line,
+                                  count: kind == .screen ? 1 : nil))
+    }
+
+    /// A photo or screen as an item, with its file's size and checksum. nil
+    /// when the file is missing, too large or not a JPEG/PNG (never sent).
+    func screenItem(_ s: Snapshot, in m: Meeting) -> (SyncItem, Data)? {
+        guard let id = s.syncID, let data = try? Data(contentsOf: s.fileURL), data.count <= SyncWire.maxBlob,
+              let ext = SyncBlob.imageExt(data) else { return nil }
+        let item = ScreenItem(id: SyncIDs.wire(id), rec: SyncIDs.wire(m.id), at: SyncIDs.ms(s.takenAt), end: nil,
+                              src: s.isScreen ? Snapshot.Source.screen : "photo", ext: ext, size: Int64(data.count),
+                              sha: SyncCrypto.sha256Hex(data))
+        return (.screen(item), data)
+    }
+
+    /// The file of a photo or screen the Mac asked for (`want`)
+    func screenFile(_ wireID: String) -> Data? {
+        guard let id = SyncIDs.uuid(wireID),
+              let s = (try? context.fetch(FetchDescriptor<Snapshot>(predicate: #Predicate { $0.syncID == id })))?.first,
+              let data = try? Data(contentsOf: s.fileURL), data.count <= SyncWire.maxBlob, SyncBlob.imageExt(data) != nil else { return nil }
+        return data
     }
 
     // MARK: Outgoing
@@ -117,6 +141,10 @@ struct SyncEngine {
                 if state.lines.contains(id), edits != (state.sentEdits[id] ?? 0) {
                     out.append(.edit(EditItem(id: id, rec: rec, keep: SyncCrypto.keepList(tokenKey: tokenKey, wireText: SyncText.toWire(s.text)))))
                 }
+            }
+            let screens = Set(m.snapshots.compactMap { $0.syncID.map(SyncIDs.wire) })
+            for (id, _) in state.known["screen"] ?? [:] where !screens.contains(id) && recOf("screen", id, state) == rec {
+                out.append(.gone(GoneItem(entity: "screen", id: id, rec: rec)))
             }
             let marks = Set(m.markers.map { SyncIDs.wire($0.id) })
             let refs = Set(m.references.map { SyncIDs.wire($0.id) })
@@ -183,6 +211,10 @@ struct SyncEngine {
                 let item = topicItem(t, in: m)
                 if state.hash("topic", SyncIDs.wire(t.id)) == nil { out.append(item) }
             }
+            for s in m.orderedSnapshots {
+                guard let id = s.syncID.map(SyncIDs.wire), state.hash("screen", id) == nil, let (item, _) = screenItem(s, in: m) else { continue }
+                out.append(item)
+            }
         }
         return out.sorted { $0.order < $1.order }
     }
@@ -216,6 +248,7 @@ struct SyncEngine {
         case .mark(let k): state.setHash("mark", k.id, Self.hash(item)); state.setHash("markRec", k.id, k.rec)
         case .ref(let r): state.setHash("ref", r.id, Self.hash(item)); state.setHash("refRec", r.id, r.rec)
         case .topic(let t): state.setHash("topic", t.id, Self.hash(item)); state.setHash("topicRec", t.id, t.rec)
+        case .screen(let x): state.setHash("screen", x.id, x.sha); state.setHash("screenRec", x.id, x.rec)
         case .gone(let g):
             switch g.entity {
             case "line":
@@ -223,7 +256,7 @@ struct SyncEngine {
             case "recording":
                 state.setHash("recording", g.id, nil)
                 state.setHash("notes", g.id, nil)
-                for entity in ["mark", "ref", "topic"] {
+                for entity in ["mark", "ref", "topic", "screen"] {
                     for (id, rec) in state.known["\(entity)Rec"] ?? [:] where rec == g.id {
                         state.setHash(entity, id, nil); state.setHash("\(entity)Rec", id, nil)
                     }
@@ -243,6 +276,8 @@ struct SyncEngine {
         var applied = 0
         var skipped = 0
         var errors: [String] = []
+        /// Photos and screens whose files to ask the Mac for
+        var want: [ScreenItem] = []
     }
 
     private func meeting(_ wireID: String) -> Meeting? {
@@ -260,6 +295,10 @@ struct SyncEngine {
         var report = ApplyReport()
         var ledger = SyncLedger.load()
         for item in items.sorted(by: { $0.applyOrder < $1.applyOrder }) {
+            if case .screen(let x) = item {
+                if screenWanted(x, ledger: ledger) { report.want.append(x) } else { report.skipped += 1 }
+                continue
+            }
             do {
                 if try await applyOne(item, state: &state, ledger: &ledger) { report.applied += 1 } else { report.skipped += 1 }
             } catch {
@@ -280,7 +319,7 @@ struct SyncEngine {
         switch item {
         case .strike(let s):
             guard let m = meeting(s.rec), let id = SyncIDs.uuid(s.id), m.redaction(id: id) == nil,
-                  let kind = Redaction.Kind(rawValue: s.target), kind != .screen else { return false }
+                  let kind = Redaction.Kind(rawValue: s.target) else { return false }
             let from = s.from.map(SyncIDs.date), to = s.to.map(SyncIDs.date)
             let start = max(0, (from ?? m.startedAt).timeIntervalSince(m.startedAt))
             let end = max(start, (to ?? from ?? m.startedAt).timeIntervalSince(m.startedAt))
@@ -323,6 +362,11 @@ struct SyncEngine {
             case "topic":
                 guard let id = SyncIDs.uuid(g.id), let t = try? context.fetch(FetchDescriptor<MeetingTopic>(predicate: #Predicate { $0.id == id })).first else { return false }
                 context.delete(t); return true
+            case "screen":
+                guard let id = SyncIDs.uuid(g.id),
+                      let snap = try? context.fetch(FetchDescriptor<Snapshot>(predicate: #Predicate { $0.syncID == id })).first,
+                      let m = snap.meeting else { return false }
+                return try RedactionEngine.applySyncedScreenDelete(snap, meeting: m, context: context)
             case "notes":
                 guard let m = meeting(g.id), m.aiNotes != nil else { return false }
                 m.aiNotes = nil; m.aiNotesAt = nil; m.aiNotesStale = false
@@ -434,7 +478,35 @@ struct SyncEngine {
             state.setHash("topic", t.id, Self.hash(topicItem(topic, in: m)))
             state.setHash("topicRec", t.id, t.rec)
             return true
+
+        case .screen:
+            return false   // its file comes first (`want`, then `addScreen`)
         }
+    }
+
+    /// Ask for this photo or screen's file? Not if it is here or gone for good.
+    func screenWanted(_ x: ScreenItem, ledger: SyncLedgerData) -> Bool {
+        guard !isGone("screen", x.id, ledger), let id = SyncIDs.uuid(x.id), meeting(x.rec) != nil,
+              ["photo", "screen"].contains(x.src), ["jpg", "png"].contains(x.ext), x.size <= Int64(SyncWire.maxBlob) else { return false }
+        return ((try? context.fetchCount(FetchDescriptor<Snapshot>(predicate: #Predicate { $0.syncID == id }))) ?? 0) == 0
+    }
+
+    /// A photo or screen whose file arrived (already checked): saved with
+    /// the recording's photos, at its time, with its source.
+    func addScreen(_ x: ScreenItem, data: Data, state: inout SyncMacState) throws -> Bool {
+        guard screenWanted(x, ledger: SyncLedger.load()), let id = SyncIDs.uuid(x.id), let m = meeting(x.rec) else { return false }
+        try FileManager.default.createDirectory(at: Storage.snapshots, withIntermediateDirectories: true)
+        let name = "sync-\(id.uuidString).\(x.ext)"
+        try data.write(to: Storage.snapshots.appending(path: name), options: [.atomic, .completeFileProtection])
+        let s = Snapshot(fileName: name, takenAt: SyncIDs.date(x.at))
+        s.source = x.src == Snapshot.Source.screen ? Snapshot.Source.screen : nil
+        s.syncID = id
+        context.insert(s)
+        s.meeting = m
+        try context.save()
+        state.setHash("screen", x.id, x.sha)
+        state.setHash("screenRec", x.id, x.rec)
+        return true
     }
 
     /// The Mac's edit rewrote these notes here the way it rewrote its own

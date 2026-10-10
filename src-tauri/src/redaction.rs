@@ -2187,6 +2187,22 @@ pub async fn strike_screens(
 
 // ── Sync with your iPhone (docs/SYNC.md) ──────────────────────────────────
 
+/// Another device deleted or struck these screens (`ids` as the timeline
+/// names them: a `frames` id or a `screen_states` id): the same purge as a
+/// local Delete of screens (rows, derived rows, files, and on the DMG build
+/// a screen video blanking job), with no marker of its own (a strike's
+/// marker arrives as its own record). Refused while the recording runs.
+pub async fn delete_screens_synced(
+    pool: &Pool<Sqlite>,
+    env: &RedactionEnv,
+    meeting_id: &str,
+    ids: &[String],
+) -> Result<ActionOutcome, String> {
+    let _g = LOCK.lock().await;
+    flush_overlapping_locked(pool, env, meeting_id, Scope::Screens).await?;
+    apply_screens_locked(pool, env, meeting_id, ids, Action::Delete, None, &new_id()).await
+}
+
 /// One change another device made to a line, in this Mac's UTF-16 offsets
 /// (planned by `sync::merge` from the line's current text).
 #[derive(Debug, Clone, PartialEq, Eq)]

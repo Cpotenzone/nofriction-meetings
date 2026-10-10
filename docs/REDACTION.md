@@ -248,8 +248,13 @@ removed on the other at the next sync, through the receiver's own purge:
   with the union of their removals. A line removed whole travels as
   `gone {line}` and goes the same way (markers in it stay).
 - **Strike records** travel as `strike` (id, recording, the times covered,
-  when, reason, the line holding the marker; never content) and are
-  immutable on both sides. Screen strikes don't sync in v1 (screens don't).
+  when, reason, the line holding the marker or the number of screens; never
+  content) and are immutable on both sides.
+- **Photos and screens** travel as `gone {screen}` (plus the strike record
+  for a strike). The receiver runs its own screen purge: Mac
+  `redaction::delete_screens_synced` (rows, derived rows, files, and the
+  screen video blanking job on the DMG build), iPhone
+  `RedactionEngine.applySyncedScreenDelete` (file, row, store scrub).
 - **Whole recordings** travel as `gone {recording}`; the receiver runs its
   Delete recording path (Mac: `DatabaseManager::delete_meeting` and the
   recording's folders; iPhone: `RecordingDeletion.delete`: audio, photos,

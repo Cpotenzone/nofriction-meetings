@@ -68,6 +68,18 @@ extension RedactionEngine {
         return true
     }
 
+    /// The Mac deleted or struck this photo or screen: the file and the row
+    /// go, and freed space is scrubbed, as for a Delete made here (a strike's
+    /// marker arrives as its own record). Screen-only edits keep notes and guides.
+    @discardableResult
+    static func applySyncedScreenDelete(_ snapshot: Snapshot, meeting: Meeting, context: ModelContext) throws -> Bool {
+        try removeFile(snapshot.fileURL)
+        context.delete(snapshot)
+        try context.save()
+        _ = StoreHygiene.scrub(context)
+        return true
+    }
+
     /// The Mac deleted the whole line: every word goes (strike markers in it stay).
     @discardableResult
     static func applySyncedLineDelete(_ segment: Segment, meeting: Meeting, context: ModelContext) async throws -> Bool {

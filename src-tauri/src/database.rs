@@ -2693,40 +2693,28 @@ impl DatabaseManager {
             meeting_id
         );
 
-        let timeline_frames: Vec<TimelineFrame> = if !legacy_frames.is_empty() {
-            // Use legacy frames table
-            eprintln!("✅ Using {} legacy frames", legacy_frames.len());
-            legacy_frames
+        // Both sources, in time order: legacy frames, and screen states with
+        // a picture (stateful capture, Capture screen, and photos and
+        // screens synced from the iPhone, docs/SYNC.md)
+        let mut timeline_frames: Vec<TimelineFrame> = legacy_frames
+            .into_iter()
+            .map(|f| {
+                let ms = (f.timestamp - start_time).num_milliseconds();
+                TimelineFrame {
+                    id: f.id.to_string(),
+                    frame_number: f.frame_number,
+                    timestamp_ms: ms.max(0),
+                    thumbnail_path: f.file_path,
+                    end_ms: None,
+                }
+            })
+            .collect();
+        let screen_states = self.get_screen_states(meeting_id, 10000).await?;
+        timeline_frames.extend(
+            screen_states
                 .into_iter()
-                .map(|f| {
-                    let ms = (f.timestamp - start_time).num_milliseconds();
-                    TimelineFrame {
-                        id: f.id.to_string(),
-                        frame_number: f.frame_number,
-                        timestamp_ms: ms.max(0),
-                        thumbnail_path: f.file_path,
-                        end_ms: None,
-                    }
-                })
-                .collect()
-        } else {
-            // Fallback to screen_states table (stateful capture)
-            log::info!(
-                "No legacy frames for meeting {}, checking screen_states",
-                meeting_id
-            );
-            let screen_states = self.get_screen_states(meeting_id, 10000).await?;
-            log::info!(
-                "Found {} screen_states for meeting {}",
-                screen_states.len(),
-                meeting_id
-            );
-            let frames: Vec<TimelineFrame> = screen_states
-                .into_iter()
-                .enumerate()
-                .filter(|(_, s)| s.keyframe_path.is_some()) // Only use states with keyframes
-                .map(|(idx, s)| {
-                    // Parse start_ts to calculate timestamp_ms
+                .filter(|s| s.keyframe_path.is_some()) // Only use states with keyframes
+                .map(|s| {
                     let state_ts = DateTime::parse_from_rfc3339(&s.start_ts)
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or(start_time);
@@ -2738,19 +2726,17 @@ impl DatabaseManager {
                         .map(|e| (e.with_timezone(&Utc) - start_time).num_milliseconds().max(ms.max(0)));
                     TimelineFrame {
                         id: s.state_id,
-                        frame_number: idx as i64,
+                        frame_number: 0,
                         timestamp_ms: ms.max(0),
                         thumbnail_path: s.keyframe_path,
                         end_ms,
                     }
-                })
-                .collect();
-            log::info!(
-                "Returning {} timeline frames from screen_states",
-                frames.len()
-            );
-            frames
-        };
+                }),
+        );
+        timeline_frames.sort_by_key(|f| f.timestamp_ms);
+        for (i, f) in timeline_frames.iter_mut().enumerate() {
+            f.frame_number = i as i64;
+        }
 
         // Get transcripts (UI view: keep strike-marker tokens for the bar)
         let transcripts = self.get_transcripts_marked(meeting_id).await?;
