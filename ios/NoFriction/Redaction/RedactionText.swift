@@ -269,7 +269,8 @@ enum RedactionText {
             } else {
                 lastMarker = nil
             }
-            items.append((s.start, 0, plain(s.text)))
+            // A line heard from what was playing (screen capture) says so in exports and prompts
+            items.append((s.start, 0, s.isFromScreen ? ScreenSpeaker.prefix + plain(s.text) : plain(s.text)))
         }
         for r in m.screenStrikes {
             items.append((r.coveredFrom ?? r.createdAt, 1, screenPlaceholder))

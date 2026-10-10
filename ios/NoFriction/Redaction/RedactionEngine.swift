@@ -51,7 +51,12 @@ enum RedactionEngine {
         var snapshots: [Snapshot] = []
 
         var changes: [SegmentChange] { groups.flatMap { $0 } }
-        var audioRanges: [ClosedRange<Double>] { AudioSilencer.normalized(changes.map(\.audio)) }
+        /// Audio to silence in the recording's file. Lines heard from what was
+        /// playing (screen capture) have none there: that audio is deleted
+        /// once transcribed (docs/SCREEN_CAPTURE_IOS.md).
+        var audioRanges: [ClosedRange<Double>] {
+            AudioSilencer.normalized(changes.filter { !$0.segment.isFromScreen }.map(\.audio))
+        }
         var phrases: [String] { changes.flatMap(\.phrases) }
         var isEmpty: Bool { changes.isEmpty && snapshots.isEmpty }
     }
@@ -347,7 +352,9 @@ enum RedactionEngine {
 
     static func label(for plan: Plan) -> String {
         if !plan.snapshots.isEmpty {
-            return plan.snapshots.count == 1 ? "Photo deleted" : "\(plan.snapshots.count) photos deleted"
+            let screens = plan.snapshots.allSatisfy(\.isScreen)
+            if plan.snapshots.count == 1 { return screens ? "Screen deleted" : "Photo deleted" }
+            return "\(plan.snapshots.count) \(screens ? "screens" : "photos") deleted"
         }
         let lines = plan.changes.count
         if plan.kind == .words, let c = plan.changes.first, let r = c.ranges.first {

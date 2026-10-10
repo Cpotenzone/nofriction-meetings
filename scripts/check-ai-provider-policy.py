@@ -11,7 +11,8 @@ iOS), and still fails on:
 - a provider or AI-service host anywhere other than the two preset tables
 - network calls at startup or on save (only the explicit test/refresh commands may probe)
 - retired cloud transcription modules, compile-time credential injection,
-  bundled environment files, and network/speech APIs in the watch app
+  bundled environment files, network/speech APIs in the watch app, and network
+  APIs in the iPhone screen-capture broadcast extension
 
 Model-download URLs are intentionally allowed; they install local transcription
 models and are not AI inference endpoints. Runtime tests remain the behavioral
@@ -49,6 +50,14 @@ KEY_SHAPES = re.compile(
 NAMED_LITERAL = re.compile(r'''(?i)\b(?:api_?key|apikey|secret|access_?token|auth_?token|bearer_?token|password|credential)\w*["']?\s*[:=]\s*(?:Some\()?\s*["']([^"'\r\n]{24,})["']''')
 AUTH_LITERAL = re.compile(r'''(?i)(?:Authorization|x-api-key)["']?\s*[,=:]\s*["']((?:Bearer |Token |Basic )?[A-Za-z0-9_+./=-]{24,})["']''')
 PLACEHOLDER = re.compile(r'(?i)fixture|synthetic|stub|placeholder|example|test|dummy|canary|changeme|your[_-]|redacted|<|\.\.\.|\{\}')
+
+# Network APIs the broadcast extension may never touch (URL loading, sockets,
+# Network.framework, streams, web views, multipeer, CloudKit, uploads).
+BROADCAST_NETWORK = re.compile(
+    r'\b(?:URLSession\w*|URLRequest|NSURLConnection|NWConnection|NWListener|NWPathMonitor|NWEndpoint|NWBrowser'
+    r'|CFSocket\w*|CFStreamCreate\w*|InputStream|OutputStream|Stream\.getStreamsToHost|WKWebView|MCSession|CKContainer'
+    r'|sendBroadcast|uploadTask|dataTask|socket\(|connect\(|getaddrinfo|SCNetworkReachability\w*)\b'
+    r'|^\s*import\s+(?:Network|WebKit|MultipeerConnectivity|CloudKit|CFNetwork)\b', re.M)
 
 def table_block(root, spec):
     path, start, end = spec
@@ -178,7 +187,8 @@ def audit(root):
 
     # --- Hosts only in the tables; no credential literals; no env! keys ----
     paths = []
-    for folder in ('src', 'src-tauri/src', 'ios/NoFriction', 'ios/Shared', 'ios/NoFrictionWatch', 'ios/NoFrictionTests'):
+    for folder in ('src', 'src-tauri/src', 'ios/NoFriction', 'ios/Shared', 'ios/NoFrictionWatch', 'ios/NoFrictionTests',
+                   'ios/NoFrictionBroadcast', 'ios/ScreenCaptureShared'):
         paths.extend(p for p in (root / folder).rglob('*') if p.is_file() and p.suffix in {'.rs', '.ts', '.tsx', '.swift'})
     paths.extend(root / 'src-tauri' / name for name in ('tauri.conf.json', 'tauri.mas.conf.json', 'build.rs'))
     tables = {str(root / MAC_TABLE[0]): MAC_TABLE, str(root / IOS_TABLE[0]): IOS_TABLE}
@@ -221,6 +231,18 @@ def audit(root):
     for path in (root / 'ios/NoFrictionWatch').rglob('*.swift'):
         text = path.read_text()
         need(not re.search(r'\b(?:URLSession|URLRequest|NWConnection|SFSpeechRecognizer|SpeechAnalyzer)\b', text), f'Watch app must not make network or speech requests: {path.relative_to(root)}')
+    # The screen-capture broadcast extension (docs/SCREEN_CAPTURE_IOS.md) sees
+    # everything on screen: it writes to the App Group container and nothing
+    # else. No network API of any kind, in its code or the code it shares.
+    broadcast_files = [p for folder in ('ios/NoFrictionBroadcast', 'ios/ScreenCaptureShared')
+                       for p in (root / folder).rglob('*.swift')]
+    need(broadcast_files, 'Broadcast extension sources missing (ios/NoFrictionBroadcast)')
+    for path in broadcast_files:
+        text = path.read_text()
+        need(not BROADCAST_NETWORK.search(text), f'Broadcast extension must not use network APIs: {path.relative_to(root)}')
+    need(re.search(r'NoFrictionBroadcast:\s*\n\s*type:\s*app-extension', project), 'iOS project must define the NoFrictionBroadcast extension')
+    ext_block = project.split('NoFrictionBroadcast:\n', 1)[-1].split('\n\n', 1)[0]
+    need(not re.search(r'com\.apple\.developer\.networking|network', ext_block, re.I), 'Broadcast extension must not request network entitlements')
     return errors
 
 def main():

@@ -126,6 +126,13 @@ struct EditableTranscriptRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             VStack(alignment: .leading, spacing: 8) {
+                if segment.isFromScreen {
+                    // Heard from what was playing (screen capture), not the microphone
+                    Label(ScreenSpeaker.label, systemImage: "rectangle.dashed.badge.record")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("transcript-on-screen")
+                }
                 ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
                     switch piece {
                     case .text(let t):
@@ -450,7 +457,8 @@ struct StrikeSummary {
             }
         case .screens(let snaps):
             let times = snaps.map(\.takenAt).sorted().map(time).joined(separator: ", ")
-            destroyed.append(snaps.count == 1 ? "The photo taken at \(times), and its file" : "\(snaps.count) photos (\(times)) and their files")
+            let noun = snaps.allSatisfy(\.isScreen) ? ("screen", "screens") : snaps.contains(where: \.isScreen) ? ("item", "photos and screens") : ("photo", "photos")
+            destroyed.append(snaps.count == 1 ? "The \(noun.0) taken at \(times), and its file" : "\(snaps.count) \(noun.1) (\(times)) and their files")
         }
 
         let ranges = plan.audioRanges
@@ -462,7 +470,7 @@ struct StrikeSummary {
                 let total = ranges.reduce(0) { $0 + ($1.upperBound - $1.lowerBound) }
                 destroyed.append("\(ranges.count) stretches of the recording (\(total.clock) total), overwritten with silence")
             }
-            if plan.changes.contains(where: { $0.segment.audioOffset == nil }) {
+            if plan.changes.contains(where: { $0.segment.audioOffset == nil && !$0.segment.isFromScreen }) {
                 destroyed.append("This recording predates word timings, so the whole line plus a second either side is silenced")
             } else if plan.changes.contains(where: { $0.segment.wordTimings.isEmpty }) {
                 destroyed.append("No word timings for this line, so the whole line is silenced")

@@ -6,7 +6,7 @@ import UIKit
 struct NoFrictionApp: App {
     @State private var session: RecordingSession
     /// Created at launch so the StoreKit Transaction.updates listener starts immediately.
-    @State private var store = Store()
+    @State private var store: Store
     @State private var aiSettings = AISettings()
     /// Delete's undo window + the purge queue (docs/REDACTION.md)
     @State private var redactions = RedactionCenter()
@@ -14,6 +14,8 @@ struct NoFrictionApp: App {
     private let container: ModelContainer
     /// Apple Watch recordings → meetings (docs/WATCH_APP.md)
     @State private var watchImporter: WatchImporter
+    /// Screen capture: screens and app audio from the broadcast extension (docs/SCREEN_CAPTURE_IOS.md)
+    @State private var screenCapture: ScreenCaptureCenter
 
     init() {
         Storage.prepare()
@@ -22,6 +24,13 @@ struct NoFrictionApp: App {
         let session = RecordingSession()
         let container = Storage.makeContainer()
         let importer = WatchImporter(context: container.mainContext, env: .live(session: session))
+        let store = Store()
+        let screenCapture = ScreenCaptureCenter(
+            importer: ScreenCaptureImporter(context: container.mainContext, env: .live(store: store)),
+            session: session, isPro: { [weak store] in store?.isPro ?? false })
+        session.screenCapture = screenCapture
+        _store = State(initialValue: store)
+        _screenCapture = State(initialValue: screenCapture)
         _session = State(initialValue: session)
         _watchImporter = State(initialValue: importer)
         self.container = container
@@ -33,6 +42,8 @@ struct NoFrictionApp: App {
         PhoneWatchLink.shared.importer = importer
         PhoneWatchLink.shared.activate()
         importer.resume()
+        // A capture that ended while the app was closed is imported; leftovers go
+        screenCapture.activate()
         #if DEBUG
         // UI tests: -NFResetOnboarding starts from a first launch;
         // demo / auto-record runs skip the welcome
@@ -57,6 +68,8 @@ struct NoFrictionApp: App {
                 .environment(redactions)
                 .environment(watchImporter)
                 .environment(PhoneWatchLink.shared)
+                .environment(screenCapture)
+                .modifier(ScreenCaptureSync(center: screenCapture, store: store))
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

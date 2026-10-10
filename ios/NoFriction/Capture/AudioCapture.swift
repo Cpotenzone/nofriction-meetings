@@ -14,6 +14,8 @@ final class AudioCapture: @unchecked Sendable {
     var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     /// Input level 0…1, for the live meter.
     private(set) var level: Float = 0
+    /// Screen capture is on: keep Bluetooth headphones in high-quality playback (A2DP, not HFP)
+    var keepsPlaybackQuality = false
 
     var inputFormat: AVAudioFormat {
         #if DEBUG
@@ -33,14 +35,28 @@ final class AudioCapture: @unchecked Sendable {
         let session = AVAudioSession.sharedInstance()
         // .spokenAudio + voice processing off: meetings are far-field speech,
         // and echo cancellation would suppress the other side on speaker
+        let options = Self.categoryOptions(keepsPlaybackQuality: keepsPlaybackQuality)
+        try session.setCategory(.playAndRecord, mode: .spokenAudio, options: options)
+        try session.setActive(true, options: [])
+    }
+
+    /// .mixWithOthers: another app's audio (a video watched while the screen
+    /// is captured) keeps playing; noFriction never interrupts or ducks it
+    /// (no .duckOthers). .defaultToSpeaker keeps that audio on the speaker,
+    /// not the earpiece. docs/SCREEN_CAPTURE_IOS.md "Audio session".
+    static func categoryOptions(keepsPlaybackQuality: Bool) -> AVAudioSession.CategoryOptions {
         var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .mixWithOthers]
-        if #available(iOS 26.0, *) {
+        if keepsPlaybackQuality {
+            // Capturing the screen: Bluetooth headphones stay in high-quality
+            // playback (A2DP); the hands-free profile would turn the video's
+            // sound into call quality. The iPhone's own mic records.
+            options.insert(.allowBluetoothA2DP)
+        } else if #available(iOS 26.0, *) {
             options.insert(.allowBluetoothHFP)
         } else {
             options.insert(.allowBluetooth)
         }
-        try session.setCategory(.playAndRecord, mode: .spokenAudio, options: options)
-        try session.setActive(true, options: [])
+        return options
     }
 
     func start(recordingTo url: URL) throws {

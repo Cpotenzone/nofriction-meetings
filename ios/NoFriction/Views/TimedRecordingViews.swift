@@ -13,6 +13,8 @@ struct RecordPlanSheet: View {
     @State private var kind: RecordingKind = RecordingKindStore.remembered()
     @State private var choice: RecordingLimit = RecordingLimitStore.remembered()
     @State private var notebook = ""
+    /// Screen capture (docs/SCREEN_CAPTURE_IOS.md), remembered like the type and length
+    @State private var captureScreen = ScreenCapturePrefs.captureOnRecord()
     @Query(filter: #Predicate<Meeting> { $0.courseName != nil }, sort: \Meeting.startedAt, order: .reverse)
     private var notebookMeetings: [Meeting]
 
@@ -57,6 +59,7 @@ struct RecordPlanSheet: View {
                             notebook = $0
                         }
                     }
+                    CaptureScreenOptions(captureScreen: $captureScreen)
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,7 +88,9 @@ struct RecordPlanSheet: View {
     private func start() {
         RecordingLimitStore.remember(choice)
         RecordingKindStore.remember(kind)
+        ScreenCapturePrefs.setCaptureOnRecord(captureScreen)
         let name = Notebook.canonical(notebook, existing: recents)
+        ScreenCapturePrefs.rememberNotebook(name)
         dismiss()
         onStart(choice, kind, name)
     }

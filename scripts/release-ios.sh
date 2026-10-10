@@ -25,14 +25,18 @@
 # NF_IOS_BUILD_ROOT / NF_IOS_DERIVED_DATA override the build locations.
 # DerivedData stays beside this checkout by default (no internal Xcode cache).
 # The build number is recorded only after a successful archive.
-# NF_IOS_PROFILE_UUID + NF_WATCH_PROFILE_UUID + NF_IOS_SIGNING_IDENTITY select
-# installed manual App Store profiles (com.nofriction.meetings and
-# com.nofriction.meetings.watchkitapp) and the distribution certificate,
-# without portal provisioning changes. Automatic signing creates both profiles.
+# NF_IOS_PROFILE_UUID + NF_WATCH_PROFILE_UUID + NF_BROADCAST_PROFILE_UUID +
+# NF_IOS_SIGNING_IDENTITY select installed manual App Store profiles
+# (com.nofriction.meetings, com.nofriction.meetings.watchkitapp and
+# com.nofriction.meetings.broadcast) and the distribution certificate,
+# without portal provisioning changes. Automatic signing creates all three
+# profiles, and registers the App Group group.com.nofriction.meetings.
 #
-# The Apple Watch app (Watch/NoFrictionWatch.app) is built, signed and
-# exported inside the iPhone app; the script checks it is embedded with the
-# same version/build and that the credential scan covered it.
+# The Apple Watch app (Watch/NoFrictionWatch.app) and the screen-capture
+# broadcast extension (PlugIns/NoFrictionBroadcast.appex) are built, signed
+# and exported inside the iPhone app; the script checks each is embedded
+# with the same version/build (the extension also with the App Group) and
+# that the credential scan covered it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -48,6 +52,9 @@ TEAM_ID="C7GCEESE2V"
 BUNDLE_ID="com.nofriction.meetings"
 WATCH_BUNDLE_ID="com.nofriction.meetings.watchkitapp"
 WATCH_APP_PATH="Watch/NoFrictionWatch.app"
+BROADCAST_BUNDLE_ID="com.nofriction.meetings.broadcast"
+BROADCAST_PATH="PlugIns/NoFrictionBroadcast.appex"
+APP_GROUP="group.com.nofriction.meetings"
 AUDIT_PYTHON="${NF_AUDIT_PYTHON:-python3}"
 
 MODE="export"
@@ -55,7 +62,7 @@ for arg in "$@"; do
   case "$arg" in
     --check) MODE="check" ;;
     --upload) [[ $MODE == check ]] || MODE="upload" ;;
-    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,39p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -81,6 +88,10 @@ has_id() { grep -Eq "$1: ${2//./\\.}([[:space:]]|\$)" "$PROJECT_YML"; }
 has_id PRODUCT_BUNDLE_IDENTIFIER "$BUNDLE_ID" && ok "bundle id $BUNDLE_ID" || err "project.yml: bundle id is not $BUNDLE_ID"
 has_id PRODUCT_BUNDLE_IDENTIFIER "$WATCH_BUNDLE_ID" && ok "watch app bundle id $WATCH_BUNDLE_ID" || err "project.yml: watch app bundle id is not $WATCH_BUNDLE_ID"
 has_id WKCompanionAppBundleIdentifier "$BUNDLE_ID" && ok "watch companion $BUNDLE_ID" || err "project.yml: WKCompanionAppBundleIdentifier is not $BUNDLE_ID"
+has_id PRODUCT_BUNDLE_IDENTIFIER "$BROADCAST_BUNDLE_ID" && ok "broadcast extension bundle id $BROADCAST_BUNDLE_ID" || err "project.yml: broadcast extension bundle id is not $BROADCAST_BUNDLE_ID"
+# Screen capture: the app and the extension share the App Group (docs/SCREEN_CAPTURE_IOS.md)
+[[ "$(grep -c "com.apple.security.application-groups: \[$APP_GROUP\]" "$PROJECT_YML")" -eq 2 ]] \
+  && ok "App Group $APP_GROUP on the app and the broadcast extension" || err "project.yml: $APP_GROUP must be on both the app and the broadcast extension"
 grep -q "CODE_SIGN_STYLE: Automatic" "$PROJECT_YML" && ok "automatic signing" || err "project.yml: CODE_SIGN_STYLE is not Automatic"
 VERSION="$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\}.*/\1/p' "$PROJECT_YML" | head -1)"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] && ok "version $VERSION" || err "project.yml: can't read MARKETING_VERSION"
@@ -149,9 +160,12 @@ if [[ -n "${NF_IOS_PROFILE_UUID:-}" ]]; then
   [[ -n "${NF_IOS_SIGNING_IDENTITY:-}" ]] || { echo "NF_IOS_SIGNING_IDENTITY required with NF_IOS_PROFILE_UUID" >&2; exit 1; }
   # The watch app needs its own App Store profile (App ID $WATCH_BUNDLE_ID)
   [[ -n "${NF_WATCH_PROFILE_UUID:-}" ]] || { echo "NF_WATCH_PROFILE_UUID required with NF_IOS_PROFILE_UUID (App Store profile for $WATCH_BUNDLE_ID)" >&2; exit 1; }
+  # The broadcast extension too (App ID $BROADCAST_BUNDLE_ID with the App Group $APP_GROUP)
+  [[ -n "${NF_BROADCAST_PROFILE_UUID:-}" ]] || { echo "NF_BROADCAST_PROFILE_UUID required with NF_IOS_PROFILE_UUID (App Store profile for $BROADCAST_BUNDLE_ID)" >&2; exit 1; }
   # Per-target profiles: project.yml maps these to each target's PROVISIONING_PROFILE_SPECIFIER
   SIGNING=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM_ID" NF_IOS_PROFILE_SPECIFIER="$NF_IOS_PROFILE_UUID"
-           NF_WATCH_PROFILE_SPECIFIER="$NF_WATCH_PROFILE_UUID" CODE_SIGN_IDENTITY="$NF_IOS_SIGNING_IDENTITY")
+           NF_WATCH_PROFILE_SPECIFIER="$NF_WATCH_PROFILE_UUID" NF_BROADCAST_PROFILE_SPECIFIER="$NF_BROADCAST_PROFILE_UUID"
+           CODE_SIGN_IDENTITY="$NF_IOS_SIGNING_IDENTITY")
 fi
 if [[ $have_asc == 1 ]]; then
   AUTH=(-authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
@@ -198,12 +212,30 @@ wpb() { /usr/libexec/PlistBuddy -c "Print :$1" "$WATCH_APP/Info.plist" 2>/dev/nu
 codesign --verify --strict "$WATCH_APP" || { echo "==> Watch app signature check failed" >&2; exit 1; }
 ok "watch app embedded: $WATCH_APP_PATH ($WATCH_BUNDLE_ID $VERSION ($NEXT_BUILD)), signed"
 
+# The screen-capture broadcast extension: embedded (not a separate product),
+# same version/build, a ReplayKit upload extension, signed with the App Group
+BROADCAST="$APP/$BROADCAST_PATH"
+[[ -d "$BROADCAST" ]] || { echo "==> Broadcast extension missing from the archive: $BROADCAST_PATH" >&2; exit 1; }
+bpb() { /usr/libexec/PlistBuddy -c "Print :$1" "$BROADCAST/Info.plist" 2>/dev/null || true; }
+[[ "$(bpb CFBundleIdentifier)" == "$BROADCAST_BUNDLE_ID" ]] || { echo "==> Broadcast extension bundle id is $(bpb CFBundleIdentifier)" >&2; exit 1; }
+[[ "$(bpb NSExtension:NSExtensionPointIdentifier)" == "com.apple.broadcast-services-upload" ]] \
+  || { echo "==> Broadcast extension point is $(bpb NSExtension:NSExtensionPointIdentifier)" >&2; exit 1; }
+[[ "$(bpb CFBundleShortVersionString)" == "$VERSION" && "$(bpb CFBundleVersion)" == "$NEXT_BUILD" ]] \
+  || { echo "==> Broadcast extension version $(bpb CFBundleShortVersionString) ($(bpb CFBundleVersion)) != $VERSION ($NEXT_BUILD)" >&2; exit 1; }
+codesign --verify --strict "$BROADCAST" || { echo "==> Broadcast extension signature check failed" >&2; exit 1; }
+for bundle in "$APP" "$BROADCAST"; do
+  codesign -d --entitlements - --xml "$bundle" 2>/dev/null | grep -q "$APP_GROUP" \
+    || { echo "==> $(basename "$bundle") is not signed with the App Group $APP_GROUP" >&2; exit 1; }
+done
+ok "broadcast extension embedded: $BROADCAST_PATH ($BROADCAST_BUNDLE_ID $VERSION ($NEXT_BUILD)), signed with $APP_GROUP"
+
 # Inspect the actual signed app (watch app included) before any export or
 # upload. The scan prints only redacted findings and fails closed on
 # incomplete inspection, including a missing or misidentified watch app.
 "$AUDIT_PYTHON" "$ROOT/scripts/scan-release-credentials.py" \
   --artifact "$APP" \
   --require-embedded "$WATCH_APP_PATH=$WATCH_BUNDLE_ID" \
+  --require-embedded "$BROADCAST_PATH=$BROADCAST_BUNDLE_ID" \
   --receipt "$OUT/credential-audit-$NEXT_BUILD.json" --reject-retired-services
 
 # The archive carries this build number now: record it (monotonic), keep project.yml in step
@@ -221,6 +253,7 @@ if [[ -n "${NF_IOS_PROFILE_UUID:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$OPTIONS"
   /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$BUNDLE_ID string $NF_IOS_PROFILE_UUID" "$OPTIONS"
   /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$WATCH_BUNDLE_ID string $NF_WATCH_PROFILE_UUID" "$OPTIONS"
+  /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$BROADCAST_BUNDLE_ID string $NF_BROADCAST_PROFILE_UUID" "$OPTIONS"
   /usr/libexec/PlistBuddy -c "Add :signingCertificate string $NF_IOS_SIGNING_IDENTITY" "$OPTIONS"
   EXPORT_PROVISIONING=()
 fi
@@ -245,6 +278,7 @@ if [[ $DEST != upload ]]; then
   "$AUDIT_PYTHON" "$ROOT/scripts/scan-release-credentials.py" \
     --artifact "$EXPORT_DIR/noFriction.ipa" \
     --require-embedded "$WATCH_APP_PATH=$WATCH_BUNDLE_ID" \
+    --require-embedded "$BROADCAST_PATH=$BROADCAST_BUNDLE_ID" \
     --receipt "$OUT/credential-audit-ipa-$NEXT_BUILD.json" --reject-retired-services
 fi
 
