@@ -1277,8 +1277,8 @@ async fn apply_mark(tx: &mut SqliteConnection, peer: &str, m: &p::MarkItem) -> R
 
 async fn apply_ref(tx: &mut SqliteConnection, peer: &str, r: &p::RefItem) -> Result<bool, String> {
     let (Some(id), Some(rec)) = (p::simple_id(&r.id), p::wire_id(&r.rec)) else { return Ok(false) };
-    let lower = r.url.to_ascii_lowercase();
-    if !(lower.starts_with("https://") || lower.starts_with("http://")) || !meeting_exists(tx, &rec).await? {
+    let web = url::Url::parse(&r.url).map(|u| matches!(u.scheme(), "http" | "https")).unwrap_or(false);
+    if !web || !meeting_exists(tx, &rec).await? {
         return Ok(false); // http(s) links only, like a link added by hand
     }
     if newer(tx, "ref", &id, r.modified).await? != Some(true) {

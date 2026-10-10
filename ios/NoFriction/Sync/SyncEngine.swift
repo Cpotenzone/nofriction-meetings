@@ -406,8 +406,8 @@ struct SyncEngine {
 
         case .ref(let r):
             guard !isGone("ref", r.id, ledger), let m = meeting(r.rec), let id = SyncIDs.uuid(r.id) else { return false }
-            let lower = r.url.lowercased()
-            guard lower.hasPrefix("https://") || lower.hasPrefix("http://") else { return false }
+            // Web links only, like a link added by hand
+            guard let scheme = URL(string: r.url)?.scheme?.lowercased(), ["http", "https"].contains(scheme) else { return false }
             let existing = m.references.first { $0.id == id }
             if let e = existing, let known = state.hash("ref", r.id), known != Self.hash(refItem(e, in: m, modified: 0)) { return false }
             let ref = existing ?? {
