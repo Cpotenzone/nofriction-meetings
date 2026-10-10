@@ -208,6 +208,55 @@ impl Server {
         }
     }
 
+    /// Read `blob` messages until `blobs_end`; save each complete, checked
+    /// file. Returns the ids that didn't arrive or didn't check out.
+    async fn receive_blobs<S: AsyncRead + AsyncWrite + Unpin>(
+        &self,
+        s: &mut S,
+        device: &str,
+        asked: &[p::ScreenItem],
+        sum: &mut SessionSummary,
+    ) -> Result<Vec<String>, SessionError> {
+        let mut assembler = p::BlobAssembler::default();
+        let mut done: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut failed: Vec<String> = Vec::new();
+        loop {
+            match read(s).await? {
+                Msg::Blob { id, off, data, last } => {
+                    let item = asked.iter().find(|w| w.id == id);
+                    match assembler.feed(&id, off, &data, last, item) {
+                        Ok(None) => {}
+                        Ok(Some(bytes)) => {
+                            let env = (self.env)();
+                            match store::add_screen(&self.pool, &env, device, item.expect("checked"), &bytes).await {
+                                Ok(_) => {
+                                    sum.received += 1;
+                                    done.insert(id);
+                                }
+                                Err(e) => {
+                                    log::warn!("Sync: couldn't save a screen: {}", e);
+                                    failed.push(id);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Sync: a screen's file was refused: {}", e);
+                            failed.push(id);
+                        }
+                    }
+                }
+                Msg::BlobsEnd { .. } => break,
+                _ => return Err(SessionError::new(codes::PROTOCOL, "expected blobs")),
+            }
+        }
+        for w in asked {
+            if !done.contains(&w.id) && !failed.contains(&w.id) {
+                failed.push(w.id.clone());
+            }
+        }
+        Ok(failed)
+    }
+
     async fn sync_loop<S: AsyncRead + AsyncWrite + Unpin>(
         &self,
         s: &mut S,
@@ -216,6 +265,7 @@ impl Server {
         sum: &mut SessionSummary,
     ) -> Result<(), SessionError> {
         let mut retry: Vec<String> = Vec::new();
+        let mut want: Vec<p::ScreenItem> = Vec::new();
         loop {
             match read(s).await? {
                 Msg::Batch { phase, items, last, .. } => {
@@ -232,8 +282,16 @@ impl Server {
                         log::warn!("Sync: couldn't apply an item: {}", e);
                     }
                     retry.extend(report.retry);
+                    want.extend(report.want);
                     if last {
-                        send(s, &Msg::Applied { retry: std::mem::take(&mut retry) }).await?;
+                        let asked: Vec<p::ScreenItem> = std::mem::take(&mut want);
+                        let ids = asked.iter().map(|w| w.id.clone()).collect();
+                        send(s, &Msg::Applied { retry: std::mem::take(&mut retry), want: ids }).await?;
+                        if !asked.is_empty() {
+                            // The files of the photos and screens we asked for
+                            let failed = self.receive_blobs(s, device, &asked, sum).await?;
+                            send(s, &Msg::applied(failed)).await?;
+                        }
                         if let Some(n) = &self.notify {
                             n();
                         }
@@ -250,6 +308,20 @@ impl Server {
                         let last = i + 1 == n;
                         send(s, &Msg::Batch { phase: Phase::Changes, items: chunk, last, upto: last.then_some(upto) }).await?;
                     }
+                }
+                Msg::Want { ids } => {
+                    let mut missing = Vec::new();
+                    for id in ids {
+                        match store::screen_file(&self.pool, &id).await {
+                            Some(bytes) => {
+                                for chunk in p::blob_chunks(&id, &bytes) {
+                                    send(s, &chunk).await?;
+                                }
+                            }
+                            None => missing.push(id),
+                        }
+                    }
+                    send(s, &Msg::BlobsEnd { missing }).await?;
                 }
                 Msg::Done {} => return Ok(()),
                 Msg::Error { code, message } => {

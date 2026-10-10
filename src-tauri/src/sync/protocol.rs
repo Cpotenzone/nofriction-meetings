@@ -16,6 +16,10 @@ pub const VERSION: u32 = 1;
 pub const MAX_FRAME: usize = 16 << 20;
 /// Items per batch
 pub const BATCH_MAX: usize = 500;
+/// Largest photo or screen either side sends or accepts
+pub const MAX_BLOB: usize = 16 << 20;
+/// Bytes per `blob` message
+pub const BLOB_CHUNK: usize = 256 << 10;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Messages
@@ -49,16 +53,32 @@ pub enum Msg {
     },
     Pull { since: i64 },
     /// After the last batch of a phase. `retry`: ids the sender should send
-    /// again next time (they couldn't be applied now)
+    /// again next time (they couldn't be applied now). `want`: photos and
+    /// screens whose files the receiver needs (`blob` messages follow).
     Applied {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         retry: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        want: Vec<String>,
+    },
+    /// iPhone → Mac after a pull: the files of these screens, please
+    Want { ids: Vec<String> },
+    /// One chunk of a photo/screen file (base64), in order
+    Blob { id: String, off: i64, data: String, last: bool },
+    /// After the blobs asked for; `missing`: ids that couldn't be sent
+    BlobsEnd {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        missing: Vec<String>,
     },
     Done {},
     Error { code: String, message: String },
 }
 
 impl Msg {
+    pub fn applied(retry: Vec<String>) -> Msg {
+        Msg::Applied { retry, want: Vec::new() }
+    }
+
     pub fn error(code: &str, message: &str) -> Msg {
         Msg::Error { code: code.into(), message: message.into() }
     }
@@ -92,6 +112,7 @@ pub enum Item {
     #[serde(rename = "ref")]
     Ref(RefItem),
     Topic(TopicItem),
+    Screen(ScreenItem),
     Gone(GoneItem),
 }
 
@@ -114,6 +135,7 @@ impl Item {
             Item::Mark(_) => 6,
             Item::Ref(_) => 7,
             Item::Topic(_) => 8,
+            Item::Screen(_) => 9,
         }
     }
 }
@@ -212,6 +234,28 @@ pub struct StrikeItem {
     /// The line that holds the marker
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<String>,
+    /// Screens it removed (target `screen`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
+}
+
+/// A photo or screen. Its file travels separately (`want` / `blob`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScreenItem {
+    pub id: String,
+    pub rec: String,
+    /// When it was taken (wall clock), where Rewind shows it
+    pub at: i64,
+    /// Until when it was on screen (Mac screens), if known
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<i64>,
+    /// photo | screen (`Snapshot.source`; every Mac screen is `screen`)
+    pub src: String,
+    /// jpg | png
+    pub ext: String,
+    pub size: i64,
+    /// SHA-256 of the file, lowercase hex
+    pub sha: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -601,4 +645,75 @@ pub fn parse_time_ms(s: &str) -> Option<i64> {
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f"))
         .ok()
         .map(|n| n.and_utc().timestamp_millis())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Photo / screen files
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// "jpg" or "png" from the file's first bytes; None for anything else
+/// (never accepted, never sent).
+pub fn image_ext(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else {
+        None
+    }
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes).iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// A file as `blob` messages of at most [`BLOB_CHUNK`] bytes (one empty
+/// message for an empty file).
+pub fn blob_chunks(id: &str, bytes: &[u8]) -> Vec<Msg> {
+    if bytes.is_empty() {
+        return vec![Msg::Blob { id: id.into(), off: 0, data: String::new(), last: true }];
+    }
+    let n = bytes.len().div_ceil(BLOB_CHUNK);
+    bytes
+        .chunks(BLOB_CHUNK)
+        .enumerate()
+        .map(|(i, c)| Msg::Blob { id: id.into(), off: (i * BLOB_CHUNK) as i64, data: b64(c), last: i + 1 == n })
+        .collect()
+}
+
+/// Reassembles one file from its chunks; checks order, size and checksum.
+#[derive(Debug, Default)]
+pub struct BlobAssembler {
+    bufs: std::collections::HashMap<String, Vec<u8>>,
+}
+
+impl BlobAssembler {
+    /// Feed one chunk. `Ok(Some(bytes))` when the file is complete and
+    /// matches `expected` (size, sha256, JPEG/PNG); `Err` drops the file.
+    pub fn feed(&mut self, id: &str, off: i64, data: &str, last: bool, expected: Option<&ScreenItem>) -> Result<Option<Vec<u8>>, String> {
+        let chunk = unb64(data).ok_or("bad chunk")?;
+        let buf = self.bufs.entry(id.to_string()).or_default();
+        if off < 0 || off as usize != buf.len() {
+            self.bufs.remove(id);
+            return Err("chunk out of order".into());
+        }
+        buf.extend_from_slice(&chunk);
+        if buf.len() > MAX_BLOB {
+            self.bufs.remove(id);
+            return Err("file too large".into());
+        }
+        if !last {
+            return Ok(None);
+        }
+        let bytes = self.bufs.remove(id).unwrap_or_default();
+        let Some(item) = expected else { return Err("a file nobody asked for".into()) };
+        if bytes.len() as i64 != item.size || sha256_hex(&bytes) != item.sha {
+            return Err("checksum mismatch".into());
+        }
+        if image_ext(&bytes) != Some(item.ext.as_str()) {
+            return Err("not a JPEG or PNG image".into());
+        }
+        Ok(Some(bytes))
+    }
 }

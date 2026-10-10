@@ -46,7 +46,13 @@ const TRACKED: &[Tracked] = &[
     Tracked { table: "meeting_markers", entity: "mark", record_id: "{row}.id", rec: "{row}.meeting_id", update_of: None, delete_is_gone: true, insert_when: None, delete_when: None },
     Tracked { table: "meeting_references", entity: "ref", record_id: "{row}.id", rec: "{row}.meeting_id", update_of: None, delete_is_gone: true, insert_when: None, delete_when: None },
     Tracked { table: "meeting_topics", entity: "topic", record_id: "{row}.id", rec: "{row}.meeting_id", update_of: None, delete_is_gone: true, insert_when: None, delete_when: None },
+    // Photos and screens: screen states with a picture, and legacy frames
+    Tracked { table: "screen_states", entity: "screen", record_id: "{row}.state_id", rec: "{row}.meeting_id", update_of: Some("keyframe_path"), delete_is_gone: true, insert_when: Some("NEW.keyframe_path IS NOT NULL"), delete_when: None },
+    Tracked { table: "frames", entity: "screen", record_id: "(SELECT sync_id FROM frames WHERE id = {row}.id)", rec: "{row}.meeting_id", update_of: Some("file_path"), delete_is_gone: true, insert_when: None, delete_when: None },
 ];
+
+/// Tables whose rows get a random `sync_id` (they have integer ids)
+const SYNC_ID_TABLES: &[&str] = &["transcripts", "frames"];
 
 /// The statements a trigger runs for one change.
 fn touch_sql(entity: &str, record_id: &str, rec: &str, deleted: bool) -> String {
@@ -112,6 +118,11 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
     sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_sync_id ON transcripts(sync_id)")
         .execute(&mut *conn)
         .await?;
+    // Stable cross-device id for legacy screen frames
+    crate::database::ensure_columns(conn, "frames", &[("sync_id", "TEXT")]).await?;
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_frames_sync_id ON frames(sync_id)")
+        .execute(&mut *conn)
+        .await?;
 
     // A crash mid-apply can't leave the flag behind (it is only ever
     // written inside a transaction), but clear it anyway
@@ -121,14 +132,14 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
         let ins = touch_sql(t.entity, &t.record_id.replace("{row}", "NEW"), &t.rec.replace("{row}", "NEW"), false);
         let upd = ins.clone();
         let del = touch_sql(t.entity, &t.record_id.replace("{row}", "OLD"), &t.rec.replace("{row}", "OLD"), t.delete_is_gone);
-        let line_id = if t.table == "transcripts" {
-            "UPDATE transcripts SET sync_id = lower(hex(randomblob(16))) WHERE id = NEW.id AND sync_id IS NULL; "
+        let line_id = if SYNC_ID_TABLES.contains(&t.table) {
+            format!("UPDATE {tb} SET sync_id = lower(hex(randomblob(16))) WHERE id = NEW.id AND sync_id IS NULL; ", tb = t.table)
         } else {
-            ""
+            String::new()
         };
         let when = |w: Option<&str>| w.map(|w| format!(" WHEN {}", w)).unwrap_or_default();
         // Deleting a line: the trigger reads OLD.sync_id directly (the row is gone)
-        let del = if t.table == "transcripts" { touch_sql(t.entity, "OLD.sync_id", "OLD.meeting_id", true) } else { del };
+        let del = if SYNC_ID_TABLES.contains(&t.table) { touch_sql(t.entity, "OLD.sync_id", "OLD.meeting_id", true) } else { del };
         let stmts = [
             format!(
                 "CREATE TRIGGER IF NOT EXISTS sync_{tb}_ai AFTER INSERT ON {tb}{w} BEGIN {line_id}{body} END",
@@ -185,6 +196,31 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
             .await?;
         }
         sqlx::query("INSERT OR REPLACE INTO sync_kv (key, value) VALUES ('backfilled', '1')")
+            .execute(&mut *conn)
+            .await?;
+    }
+    // Photos and screens joined later: their own one-time backfill
+    let done: Option<String> = sqlx::query_scalar("SELECT value FROM sync_kv WHERE key = 'backfilled_screens'")
+        .fetch_optional(&mut *conn)
+        .await?;
+    if done.is_none() {
+        sqlx::query("UPDATE frames SET sync_id = lower(hex(randomblob(16))) WHERE sync_id IS NULL")
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query("UPDATE sync_counter SET n = n + 1 WHERE id = 1").execute(&mut *conn).await?;
+        for sql in [
+            "SELECT state_id AS r, meeting_id AS m FROM screen_states WHERE keyframe_path IS NOT NULL",
+            "SELECT sync_id AS r, meeting_id AS m FROM frames WHERE sync_id IS NOT NULL",
+        ] {
+            sqlx::query(&format!(
+                "INSERT OR IGNORE INTO sync_meta (entity, record_id, rec, origin, created_seq, seq, modified_at, last_src, deleted) \
+                 SELECT 'screen', s.r, s.m, NULL, c.n, c.n, 0, NULL, 0 FROM ({}) s, sync_counter c WHERE c.id = 1",
+                sql
+            ))
+            .execute(&mut *conn)
+            .await?;
+        }
+        sqlx::query("INSERT OR REPLACE INTO sync_kv (key, value) VALUES ('backfilled_screens', '1')")
             .execute(&mut *conn)
             .await?;
     }
@@ -376,6 +412,12 @@ pub async fn collect(pool: &Pool<Sqlite>, peer: &str, since: i64, token_key: &[u
             "mark" => mark_item(&mut conn, &row.record_id, row.modified_at).await?.map(Item::Mark),
             "ref" => ref_item(&mut conn, &row.record_id, row.modified_at).await?.map(Item::Ref),
             "topic" => topic_item(&mut conn, &row.record_id).await?.map(Item::Topic),
+            "screen" => match screen_item(&mut conn, &row.record_id).await? {
+                ScreenOut::Item(s) => Some(Item::Screen(s)),
+                // Still here but not sendable (no picture yet, too large, not an image)
+                ScreenOut::Skip => continue,
+                ScreenOut::Missing => None,
+            },
             _ => None,
         };
         match built {
@@ -396,7 +438,7 @@ pub async fn collect(pool: &Pool<Sqlite>, peer: &str, since: i64, token_key: &[u
 fn gone_item(row: &MetaRow) -> Option<p::GoneItem> {
     let id = p::wire_id(&row.record_id)?;
     let entity = match row.entity.as_str() {
-        "recording" | "line" | "mark" | "ref" | "topic" | "notes" => row.entity.clone(),
+        "recording" | "line" | "mark" | "ref" | "topic" | "notes" | "screen" => row.entity.clone(),
         _ => return None,
     };
     Some(p::GoneItem { entity, id, rec: row.rec.as_deref().and_then(p::wire_id) })
@@ -493,9 +535,9 @@ async fn line_item(conn: &mut SqliteConnection, sync_id: &str, peer_has_it: bool
 
 async fn strike_item(conn: &mut SqliteConnection, id: &str) -> Result<Option<p::StrikeItem>, String> {
     let Some(r) = sqlx::query(
-        "SELECT r.id, r.meeting_id, r.kind, r.media_start, r.media_end, r.created_at, r.reason, t.sync_id AS line \
+        "SELECT r.id, r.meeting_id, r.kind, r.media_start, r.media_end, r.created_at, r.reason, r.item_count, t.sync_id AS line \
          FROM redactions r LEFT JOIN transcripts t ON t.id = r.transcript_id \
-         WHERE r.id = ? AND r.action = 'strike' AND r.kind IN ('words', 'line')",
+         WHERE r.id = ? AND r.action = 'strike' AND r.kind IN ('words', 'line', 'screen')",
     )
     .bind(id)
     .fetch_optional(&mut *conn)
@@ -514,7 +556,65 @@ async fn strike_item(conn: &mut SqliteConnection, id: &str) -> Result<Option<p::
         created: opt_ms(r.get("created_at")).unwrap_or(0),
         reason: r.get("reason"),
         line: r.get::<Option<String>, _>("line").as_deref().and_then(p::wire_id),
+        count: (r.get::<String, _>("kind") == "screen").then(|| r.get::<i64, _>("item_count")),
     }))
+}
+
+enum ScreenOut {
+    Item(p::ScreenItem),
+    Skip,
+    Missing,
+}
+
+/// A screen's row: (meeting, file, start, end, state_type). `record_id` is a
+/// screen state id, or a frame's `sync_id`.
+async fn screen_row(conn: &mut SqliteConnection, record_id: &str) -> Result<Option<(String, Option<String>, String, Option<String>, Option<String>)>, String> {
+    if let Some(r) = sqlx::query("SELECT meeting_id, keyframe_path, start_ts, end_ts, state_type FROM screen_states WHERE state_id = ?")
+        .bind(record_id)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(err("Couldn't read a screen"))?
+    {
+        return Ok(Some((r.get("meeting_id"), r.get("keyframe_path"), r.get("start_ts"), r.get("end_ts"), r.get("state_type"))));
+    }
+    let simple = p::simple_id(record_id).unwrap_or_else(|| record_id.to_string());
+    Ok(sqlx::query("SELECT meeting_id, file_path, timestamp FROM frames WHERE sync_id = ?")
+        .bind(&simple)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(err("Couldn't read a screen"))?
+        .map(|r| (r.get("meeting_id"), r.get("file_path"), r.get("timestamp"), None, None)))
+}
+
+async fn screen_item(conn: &mut SqliteConnection, record_id: &str) -> Result<ScreenOut, String> {
+    let Some((meeting, file, start, end, state_type)) = screen_row(conn, record_id).await? else { return Ok(ScreenOut::Missing) };
+    let (Some(id), Some(rec), Some(at)) = (p::wire_id(record_id), p::wire_id(&meeting), p::parse_time_ms(&start)) else {
+        return Ok(ScreenOut::Skip);
+    };
+    let Some(path) = file.filter(|f| !f.is_empty()) else { return Ok(ScreenOut::Skip) };
+    let Ok(bytes) = std::fs::read(&path) else { return Ok(ScreenOut::Skip) };
+    let Some(ext) = p::image_ext(&bytes) else { return Ok(ScreenOut::Skip) };
+    if bytes.len() > p::MAX_BLOB {
+        return Ok(ScreenOut::Skip);
+    }
+    Ok(ScreenOut::Item(p::ScreenItem {
+        id,
+        rec,
+        at,
+        end: end.as_deref().and_then(p::parse_time_ms).filter(|e| *e > at),
+        src: if state_type.as_deref() == Some("photo") { "photo".into() } else { "screen".into() },
+        ext: ext.into(),
+        size: bytes.len() as i64,
+        sha: p::sha256_hex(&bytes),
+    }))
+}
+
+/// The file of a screen this Mac has (to send it), checked against its item
+pub async fn screen_file(pool: &Pool<Sqlite>, wire: &str) -> Option<Vec<u8>> {
+    let mut conn = pool.acquire().await.ok()?;
+    let (_, file, ..) = screen_row(&mut conn, wire).await.ok()??;
+    let bytes = std::fs::read(file?).ok()?;
+    (bytes.len() <= p::MAX_BLOB && p::image_ext(&bytes).is_some()).then_some(bytes)
 }
 
 async fn notes_item(conn: &mut SqliteConnection, meeting_id: &str, modified: i64) -> Result<Option<p::NotesItem>, String> {
@@ -699,6 +799,8 @@ pub struct ApplyReport {
     pub retry: Vec<String>,
     /// Problems (no content), for the device's last error
     pub errors: Vec<String>,
+    /// Photos and screens to ask the peer's files for (`want`)
+    pub want: Vec<p::ScreenItem>,
 }
 
 async fn set_apply(conn: &mut SqliteConnection, src: &str, at: i64) -> Result<(), String> {
@@ -774,6 +876,7 @@ pub async fn apply(
     // Mac doesn't have yet is asked for again next time)
     let (removals, content): (Vec<Item>, Vec<Item>) = items.into_iter().partition(|i| i.is_removal());
     let (strikes, removals): (Vec<Item>, Vec<Item>) = removals.into_iter().partition(|i| matches!(i, Item::Strike(_)));
+    let (screens, content): (Vec<Item>, Vec<Item>) = content.into_iter().partition(|i| matches!(i, Item::Screen(_)));
     for item in removals {
         let id = item_id(&item);
         match apply_removal(pool, env, peer, token_key, &item).await {
@@ -791,6 +894,18 @@ pub async fn apply(
         if let Err(e) = apply_content(pool, peer, &content, &mut report).await {
             report.errors.push(e);
             report.retry.extend(content.iter().filter_map(item_id));
+        }
+    }
+    for item in screens {
+        let Item::Screen(s) = item else { continue };
+        match screen_wanted(pool, &s).await {
+            Ok(Some(true)) => report.want.push(s),
+            Ok(Some(false)) => report.skipped += 1,
+            Ok(None) => report.retry.push(s.id.clone()),
+            Err(e) => {
+                report.errors.push(e);
+                report.retry.push(s.id.clone());
+            }
         }
     }
     for item in strikes {
@@ -816,8 +931,62 @@ fn item_id(item: &Item) -> Option<String> {
         Item::Mark(x) => x.id.clone(),
         Item::Ref(x) => x.id.clone(),
         Item::Topic(x) => x.id.clone(),
+        Item::Screen(x) => x.id.clone(),
         Item::Gone(x) => x.id.clone(),
     })
+}
+
+/// Some(true): ask for its file. Some(false): already here, or deleted for
+/// good. None: its recording isn't here yet (send it again next time).
+async fn screen_wanted(pool: &Pool<Sqlite>, s: &p::ScreenItem) -> Result<Option<bool>, String> {
+    let (Some(id), Some(rec)) = (p::wire_id(&s.id), p::wire_id(&s.rec)) else { return Ok(Some(false)) };
+    if !["photo", "screen"].contains(&s.src.as_str()) || !["jpg", "png"].contains(&s.ext.as_str()) || s.size as usize > p::MAX_BLOB {
+        return Ok(Some(false));
+    }
+    let mut conn = pool.acquire().await.map_err(err("Database busy"))?;
+    if is_gone(&mut conn, "screen", &id).await? || screen_row(&mut conn, &id).await?.is_some() {
+        return Ok(Some(false));
+    }
+    if !meeting_exists(&mut conn, &rec).await? {
+        return Ok(if is_gone(&mut conn, "recording", &rec).await? { Some(false) } else { None });
+    }
+    Ok(Some(true))
+}
+
+/// A photo or screen whose file arrived (already checked against its
+/// item): saved next to the recording's screens and added to its Rewind.
+pub async fn add_screen(pool: &Pool<Sqlite>, env: &RedactionEnv, peer: &str, s: &p::ScreenItem, bytes: &[u8]) -> Result<bool, String> {
+    if screen_wanted(pool, s).await? != Some(true) {
+        return Ok(false);
+    }
+    let (Some(id), Some(rec), Some(simple)) = (p::wire_id(&s.id), p::wire_id(&s.rec), p::simple_id(&s.id)) else { return Ok(false) };
+    if crate::commands::meeting_file_dirs(&env.app_data_dir, &env.cache_dir, &rec).is_empty() {
+        return Ok(false);
+    }
+    let dir = env.app_data_dir.join("frames").join(&rec);
+    std::fs::create_dir_all(&dir).map_err(err("Couldn't save a screen"))?;
+    let path = dir.join(format!("sync_{}.{}", simple, s.ext));
+    let tmp = dir.join(format!(".sync_{}.part", simple));
+    std::fs::write(&tmp, bytes).map_err(err("Couldn't save a screen"))?;
+    std::fs::rename(&tmp, &path).map_err(err("Couldn't save a screen"))?;
+    let mut tx = pool.begin().await.map_err(err("Database busy"))?;
+    set_apply(&mut tx, peer, p::ms(chrono::Utc::now())).await?;
+    sqlx::query(
+        "INSERT INTO screen_states (state_id, meeting_id, start_ts, end_ts, phash, delta_score, keyframe_path, state_type, flags, source_key) \
+         VALUES (?, ?, ?, ?, '', 0.0, ?, ?, '{}', 'sync')",
+    )
+    .bind(&id)
+    .bind(&rec)
+    .bind(p::from_ms(s.at).to_rfc3339())
+    .bind(p::from_ms(s.end.unwrap_or(s.at)).to_rfc3339())
+    .bind(path.to_string_lossy().to_string())
+    .bind(&s.src)
+    .execute(&mut *tx)
+    .await
+    .map_err(err("Couldn't add a screen"))?;
+    clear_apply(&mut tx).await?;
+    tx.commit().await.map_err(err("Couldn't add a screen"))?;
+    Ok(true)
 }
 
 /// Ok(true) applied, Ok(false) nothing to do, Err → retry later
@@ -832,7 +1001,7 @@ async fn apply_removal(
     match item {
         Item::Strike(s) => {
             let (Some(id), Some(rec)) = (p::simple_id(&s.id), p::wire_id(&s.rec)) else { return Ok(false) };
-            if s.target != "words" && s.target != "line" {
+            if !["words", "line", "screen"].contains(&s.target.as_str()) {
                 return Ok(false);
             }
             let mut tx = pool.begin().await.map_err(err("Database busy"))?;
@@ -862,7 +1031,7 @@ async fn apply_removal(
             set_apply(&mut tx, peer, now).await?;
             sqlx::query(
                 "INSERT INTO redactions (id, meeting_id, kind, action, media_start, media_end, created_at, reason, transcript_id, item_count) \
-                 VALUES (?, ?, ?, 'strike', ?, ?, ?, ?, ?, 1)",
+                 VALUES (?, ?, ?, 'strike', ?, ?, ?, ?, ?, ?)",
             )
             .bind(&id)
             .bind(&rec)
@@ -872,6 +1041,7 @@ async fn apply_removal(
             .bind(p::from_ms(s.created).to_rfc3339())
             .bind(&s.reason)
             .bind(line_local)
+            .bind(s.count.unwrap_or(1).max(1))
             .execute(&mut *tx)
             .await
             .map_err(err("Couldn't save a strike"))?;
@@ -978,6 +1148,33 @@ async fn apply_gone(pool: &Pool<Sqlite>, env: &RedactionEnv, peer: &str, g: &p::
                 ops
             })
             .await
+        }
+        "screen" => {
+            let Some(id) = p::wire_id(&g.id) else { return Ok(false) };
+            let mut conn = pool.acquire().await.map_err(err("Database busy"))?;
+            let row = screen_row(&mut conn, &id).await?;
+            // The timeline's id for it: a state id, or a frame's integer id
+            let local: Option<(String, String)> = match &row {
+                Some((meeting, ..)) => {
+                    let simple = p::simple_id(&id).unwrap_or_default();
+                    let frame: Option<i64> = sqlx::query_scalar("SELECT id FROM frames WHERE sync_id = ?")
+                        .bind(&simple)
+                        .fetch_optional(&mut *conn)
+                        .await
+                        .map_err(err("Database busy"))?;
+                    Some((meeting.clone(), frame.map(|f| f.to_string()).unwrap_or_else(|| id.clone())))
+                }
+                None => None,
+            };
+            let Some((meeting, local_id)) = local else {
+                remember_gone(&mut conn, "screen", &id, g.rec.as_deref().and_then(p::wire_id).as_deref(), peer).await?;
+                return Ok(false);
+            };
+            drop(conn);
+            redaction::delete_screens_synced(pool, env, &meeting, &[local_id]).await?;
+            let mut conn = pool.acquire().await.map_err(err("Database busy"))?;
+            remember_gone(&mut conn, "screen", &id, Some(&meeting), peer).await?;
+            Ok(true)
         }
         "mark" | "ref" | "topic" | "notes" => {
             let (table, key) = match g.entity.as_str() {

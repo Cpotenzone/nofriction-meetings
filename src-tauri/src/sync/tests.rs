@@ -506,7 +506,7 @@ async fn a_strike_from_the_phone_purges_everywhere_on_the_mac() {
     let marker = uid(0x20);
     let phone_text = format!("We acquire ⟦stricken:{}⟧ next quarter", marker);
     let items = vec![
-        Item::Strike(p::StrikeItem { id: marker.clone(), rec: REC.into(), target: "words".into(), from: Some(1_760_000_001_000), to: Some(1_760_000_002_000), created: 1_760_000_900_000, reason: Some("privileged".into()), line: Some(line_id.clone()) }),
+        Item::Strike(p::StrikeItem { id: marker.clone(), rec: REC.into(), target: "words".into(), from: Some(1_760_000_001_000), to: Some(1_760_000_002_000), created: 1_760_000_900_000, reason: Some("privileged".into()), line: Some(line_id.clone()), count: None }),
         Item::Edit(p::EditItem { id: line_id.clone(), rec: REC.into(), keep: p::keep_list(&tk(), &phone_text) }),
     ];
     let r = store::apply(f.pool(), &f.env, PHONE, &tk(), items).await;
@@ -786,7 +786,7 @@ async fn loopback_pair_then_full_sync_session() {
     let m = uid(0x70);
     let struck = format!("The ⟦stricken:{}⟧ makes ATP", m);
     let removals = vec![
-        Item::Strike(p::StrikeItem { id: m.clone(), rec: REC.into(), target: "words".into(), from: None, to: None, created: 5, reason: None, line: Some(mac_line.clone()) }),
+        Item::Strike(p::StrikeItem { id: m.clone(), rec: REC.into(), target: "words".into(), from: None, to: None, created: 5, reason: None, line: Some(mac_line.clone()), count: None }),
         Item::Edit(p::EditItem { id: mac_line.clone(), rec: REC.into(), keep: p::keep_list(&p::token_key(&secret), &struck) }),
     ];
     let phone_tid: i64 = sqlx::query_scalar("SELECT id FROM transcripts WHERE sync_id = ?")
@@ -871,8 +871,27 @@ fn golden_messages() -> Vec<(&'static str, Msg)> {
         ("auth", Msg::Auth { proof: p::b64(&p::phone_proof(&SECRET, &[2u8; 32], &[1u8; 32])) }),
         ("welcome", Msg::Welcome { device_id: uid(0xee), name: "Casey's Mac".into() }),
         ("pull", Msg::Pull { since: 1234 }),
-        ("applied", Msg::Applied { retry: vec![] }),
-        ("applied_retry", Msg::Applied { retry: vec![REC.into()] }),
+        ("applied", Msg::applied(vec![])),
+        ("applied_retry", Msg::applied(vec![REC.into()])),
+        ("applied_want", Msg::Applied { retry: vec![], want: vec![uid(0x40), uid(0x41)] }),
+        ("want", Msg::Want { ids: vec![uid(0x40)] }),
+        ("blob", Msg::Blob { id: uid(0x40), off: 262144, data: p::b64(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 16, b'J', b'F']), last: true }),
+        ("blobs_end", Msg::BlobsEnd { missing: vec![] }),
+        ("blobs_end_missing", Msg::BlobsEnd { missing: vec![uid(0x41)] }),
+        (
+            "batch_screens",
+            Msg::Batch {
+                phase: Phase::Changes,
+                items: vec![
+                    Item::Strike(p::StrikeItem { id: uid(0x42), rec: REC.into(), target: "screen".into(), from: Some(1_760_000_050_000), to: Some(1_760_000_051_000), created: 1_760_000_900_000, reason: Some("private".into()), line: None, count: Some(2) }),
+                    Item::Gone(p::GoneItem { entity: "screen".into(), id: uid(0x43), rec: Some(REC.into()) }),
+                    Item::Screen(p::ScreenItem { id: uid(0x40), rec: REC.into(), at: 1_760_000_060_000, end: Some(1_760_000_065_500), src: "screen".into(), ext: "jpg".into(), size: 48213, sha: "ab".repeat(32) }),
+                    Item::Screen(p::ScreenItem { id: uid(0x41), rec: REC.into(), at: 1_760_000_070_000, end: None, src: "photo".into(), ext: "png".into(), size: 1024, sha: "cd".repeat(32) }),
+                ],
+                last: true,
+                upto: Some(91),
+            },
+        ),
         ("done", Msg::Done {}),
         ("error", Msg::error("bad_proof", "Authentication failed. Pair again.")),
         (
@@ -880,7 +899,7 @@ fn golden_messages() -> Vec<(&'static str, Msg)> {
             Msg::Batch {
                 phase: Phase::Removals,
                 items: vec![
-                    Item::Strike(p::StrikeItem { id: m.clone(), rec: REC.into(), target: "words".into(), from: Some(1_760_000_001_000), to: Some(1_760_000_002_000), created: 1_760_000_900_000, reason: Some("privileged".into()), line: Some(uid(0x10)) }),
+                    Item::Strike(p::StrikeItem { id: m.clone(), rec: REC.into(), target: "words".into(), from: Some(1_760_000_001_000), to: Some(1_760_000_002_000), created: 1_760_000_900_000, reason: Some("privileged".into()), line: Some(uid(0x10)), count: None }),
                     Item::Edit(p::EditItem { id: uid(0x10), rec: REC.into(), keep: p::keep_list(&tk(), &format!("We acquire ⟦stricken:{}⟧ next quarter.", m)) }),
                     Item::Gone(p::GoneItem { entity: "line".into(), id: uid(0x11), rec: Some(REC.into()) }),
                     Item::Gone(p::GoneItem { entity: "recording".into(), id: uid(0x12), rec: None }),
@@ -932,6 +951,7 @@ fn golden_fixtures_match() {
         "mac_proof": p::b64(&p::mac_proof(&SECRET, &[1u8; 32], &[2u8; 32])),
         "phone_proof": p::b64(&p::phone_proof(&SECRET, &[2u8; 32], &[1u8; 32])),
         "words": words.iter().map(|w| serde_json::json!({"word": w, "hash": p::word_hash(&key, w)})).collect::<Vec<_>>(),
+        "blob_sha": p::sha256_hex(b"noFriction screen"),
     });
     files.push(("vectors.json".into(), format!("{}\n", serde_json::to_string_pretty(&vectors).unwrap()).into_bytes()));
 
@@ -970,14 +990,14 @@ async fn migration_is_idempotent_and_backfills_old_rows_once() {
     let null_ids: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transcripts WHERE sync_id IS NULL").fetch_one(f.pool()).await.unwrap();
     assert_eq!(null_ids, 0);
     let r = sqlx::query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync_%'").fetch_one(f.pool()).await.unwrap();
-    assert_eq!(r.get::<i64, _>("n"), 27);
+    assert_eq!(r.get::<i64, _>("n"), 33);
 }
 
 #[tokio::test]
 async fn a_strike_waits_for_its_recording() {
     let f = setup().await;
     let marker = uid(0x31);
-    let strike = Item::Strike(p::StrikeItem { id: marker.clone(), rec: REC.into(), target: "line".into(), from: None, to: None, created: 1, reason: None, line: None });
+    let strike = Item::Strike(p::StrikeItem { id: marker.clone(), rec: REC.into(), target: "line".into(), from: None, to: None, created: 1, reason: None, line: None, count: None });
     // Before the recording: asked for again
     let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![strike.clone()]).await;
     assert_eq!(r.retry, vec![marker.clone()]);
@@ -985,4 +1005,230 @@ async fn a_strike_waits_for_its_recording() {
     let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![strike, Item::Recording(rec_item(REC, "R", 1))]).await;
     assert!(r.retry.is_empty(), "{:?}", r);
     assert_eq!(crate::redaction::list_strikes(f.pool(), REC).await.unwrap().len(), 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Photos and screens
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A real (tiny) JPEG
+fn jpeg(shade: u8) -> Vec<u8> {
+    let img = image::RgbImage::from_pixel(8, 8, image::Rgb([shade, shade, shade]));
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img).write_to(&mut out, image::ImageFormat::Jpeg).unwrap();
+    out.into_inner()
+}
+
+fn screen_item(id: &str, at: i64, src: &str, bytes: &[u8]) -> p::ScreenItem {
+    p::ScreenItem { id: id.into(), rec: REC.into(), at, end: None, src: src.into(), ext: "jpg".into(), size: bytes.len() as i64, sha: p::sha256_hex(bytes) }
+}
+
+/// A Mac screen as stateful capture saves it
+async fn mac_screen(f: &Fx, state_id: &str, at: chrono::DateTime<chrono::Utc>, bytes: &[u8]) -> PathBuf {
+    let dir = f.env.app_data_dir.join("frames").join(REC);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("state_{}.jpg", state_id));
+    std::fs::write(&path, bytes).unwrap();
+    f.db.add_screen_state(state_id, REC, at, Some(at + chrono::Duration::seconds(4)), "", 0.0, Some(path.to_str().unwrap()), "other", "{}")
+        .await
+        .unwrap();
+    path
+}
+
+#[test]
+fn blobs_chunk_and_reassemble_with_checks() {
+    let bytes: Vec<u8> = [0xFF, 0xD8, 0xFF].iter().copied().chain((0..(p::BLOB_CHUNK * 2 + 17)).map(|i| (i % 251) as u8)).collect();
+    let item = screen_item(&uid(1), 1, "photo", &bytes);
+    let chunks = p::blob_chunks(&item.id, &bytes);
+    assert_eq!(chunks.len(), 3);
+    let mut a = p::BlobAssembler::default();
+    let mut out = None;
+    for c in &chunks {
+        let Msg::Blob { id, off, data, last } = c else { panic!() };
+        out = a.feed(id, *off, data, *last, Some(&item)).unwrap();
+    }
+    assert_eq!(out.unwrap(), bytes);
+    // Out of order, wrong checksum, not an image, nobody asked
+    let mut a = p::BlobAssembler::default();
+    let Msg::Blob { id, data, .. } = &chunks[1] else { panic!() };
+    assert!(a.feed(id, 5, data, false, Some(&item)).is_err());
+    let mut wrong = item.clone();
+    wrong.sha = "00".repeat(32);
+    let mut a = p::BlobAssembler::default();
+    assert!(chunks.iter().map(|c| match c { Msg::Blob { id, off, data, last } => a.feed(id, *off, data, *last, Some(&wrong)), _ => unreachable!() }).last().unwrap().is_err());
+    let text = b"not an image at all";
+    let t_item = p::ScreenItem { ext: "jpg".into(), ..screen_item(&uid(2), 1, "photo", text) };
+    let mut a = p::BlobAssembler::default();
+    assert!(a.feed(&t_item.id, 0, &p::b64(text), true, Some(&t_item)).is_err());
+    assert!(a.feed(&uid(3), 0, &p::b64(&jpeg(1)), true, None).is_err());
+    assert_eq!(p::image_ext(&jpeg(9)), Some("jpg"));
+}
+
+#[tokio::test]
+async fn mac_screens_go_out_with_checksums_and_their_deletion_and_strike() {
+    let f = setup().await;
+    f.db.create_meeting(REC, "R").await.unwrap();
+    let t0 = chrono::Utc::now();
+    let a = jpeg(10);
+    let b = jpeg(200);
+    let sa = uuid::Uuid::new_v4().to_string();
+    let sb = uuid::Uuid::new_v4().to_string();
+    mac_screen(&f, &sa, t0, &a).await;
+    let path_b = mac_screen(&f, &sb, t0 + chrono::Duration::seconds(10), &b).await;
+    let (items, upto) = store::collect(f.pool(), PHONE, 0, &tk()).await.unwrap();
+    let screens: Vec<&p::ScreenItem> = items.iter().filter_map(|i| if let Item::Screen(s) = i { Some(s) } else { None }).collect();
+    assert_eq!(screens.len(), 2);
+    assert_eq!(screens[0].sha, p::sha256_hex(&a));
+    assert_eq!(screens[0].src, "screen");
+    assert_eq!(screens[0].at, t0.timestamp_millis());
+    assert_eq!(screens[0].end, Some((t0 + chrono::Duration::seconds(4)).timestamp_millis()));
+    assert_eq!(store::screen_file(f.pool(), &sb).await.unwrap(), b);
+
+    // Strike one: the strike record (with its count) and a gone; the file is gone here
+    crate::redaction::strike_screens(f.pool(), &f.env, REC, &[sb.clone()], Some("private")).await.unwrap();
+    assert!(!path_b.exists());
+    let (items, _) = store::collect(f.pool(), PHONE, upto, &tk()).await.unwrap();
+    assert!(items.iter().any(|i| matches!(i, Item::Strike(s) if s.target == "screen" && s.count == Some(1) && s.reason.as_deref() == Some("private"))), "{:?}", items);
+    assert!(items.iter().any(|i| matches!(i, Item::Gone(g) if g.entity == "screen" && g.id == sb)), "{:?}", items);
+}
+
+#[tokio::test]
+async fn phone_photos_and_screens_arrive_in_rewind_and_go_away_with_a_gone() {
+    let f = setup().await;
+    store::apply(f.pool(), &f.env, PHONE, &tk(), vec![Item::Recording(rec_item(REC, "R", 1))]).await;
+    let photo = jpeg(30);
+    let screen = jpeg(90);
+    let ph = screen_item(&uid(0x50), 1_760_000_100_000, "photo", &photo);
+    let sc = screen_item(&uid(0x51), 1_760_000_200_000, "screen", &screen);
+    let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![Item::Screen(ph.clone()), Item::Screen(sc.clone())]).await;
+    assert_eq!(r.want.iter().map(|w| w.id.clone()).collect::<Vec<_>>(), vec![ph.id.clone(), sc.id.clone()]);
+    assert!(store::add_screen(f.pool(), &f.env, PHONE, &ph, &photo).await.unwrap());
+    assert!(store::add_screen(f.pool(), &f.env, PHONE, &sc, &screen).await.unwrap());
+    // Once here, not asked for again; not sent back to the phone
+    let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![Item::Screen(ph.clone())]).await;
+    assert!(r.want.is_empty());
+    let (back, _) = store::collect(f.pool(), PHONE, 0, &tk()).await.unwrap();
+    assert!(!back.iter().any(|i| matches!(i, Item::Screen(_))), "{:?}", back);
+    // Another device gets them, source kept
+    let (other, _) = store::collect(f.pool(), &uid(0x77), 0, &tk()).await.unwrap();
+    assert!(other.iter().any(|i| matches!(i, Item::Screen(s) if s.id == ph.id && s.src == "photo" && s.sha == ph.sha)));
+    // In Rewind at the right moment (the recording started at 1_760_000_000_000)
+    let tl = f.db.get_synced_timeline(REC).await.unwrap().unwrap();
+    assert_eq!(tl.frames.iter().map(|x| x.timestamp_ms).collect::<Vec<_>>(), vec![100_000, 200_000]);
+    assert_eq!(tl.frames[0].id, ph.id);
+
+    // The phone struck the screen: marker record + gone through the screen purge
+    let file: String = sqlx::query_scalar("SELECT keyframe_path FROM screen_states WHERE state_id = ?").bind(&sc.id).fetch_one(f.pool()).await.unwrap();
+    let r = store::apply(
+        f.pool(),
+        &f.env,
+        PHONE,
+        &tk(),
+        vec![
+            Item::Strike(p::StrikeItem { id: uid(0x52), rec: REC.into(), target: "screen".into(), from: Some(sc.at), to: Some(sc.at), created: 2, reason: None, line: None, count: Some(1) }),
+            Item::Gone(p::GoneItem { entity: "screen".into(), id: sc.id.clone(), rec: Some(REC.into()) }),
+        ],
+    )
+    .await;
+    assert_eq!(r.applied, 2, "{:?}", r);
+    assert!(!std::path::Path::new(&file).exists());
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM screen_states WHERE meeting_id = ?").bind(REC).fetch_one(f.pool()).await.unwrap();
+    assert_eq!(left, 1);
+    let strikes = crate::redaction::list_strikes(f.pool(), REC).await.unwrap();
+    assert_eq!(strikes[0].kind, "screen");
+    // A late copy never comes back
+    let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![Item::Screen(sc.clone())]).await;
+    assert!(r.want.is_empty());
+}
+
+#[tokio::test]
+async fn a_screen_of_a_recording_still_recording_waits() {
+    let mut f = setup().await;
+    f.db.create_meeting(REC, "Live").await.unwrap();
+    let sid = uuid::Uuid::new_v4().to_string();
+    mac_screen(&f, &sid, chrono::Utc::now(), &jpeg(5)).await;
+    f.env.recording_meetings = vec![REC.into()];
+    let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![Item::Gone(p::GoneItem { entity: "screen".into(), id: sid.clone(), rec: Some(REC.into()) })]).await;
+    assert_eq!(r.retry, vec![sid]);
+}
+
+#[tokio::test]
+async fn timeline_shows_frames_and_screen_states_together() {
+    let f = setup().await;
+    f.db.create_meeting(REC, "Mixed").await.unwrap();
+    let start = f.db.get_meeting(REC).await.unwrap().unwrap().started_at;
+    f.db.add_frame(REC, start + chrono::Duration::seconds(20), Some("/tmp/x.jpg"), None).await.unwrap();
+    f.db.add_screen_state(&uuid::Uuid::new_v4().to_string(), REC, start + chrono::Duration::seconds(5), None, "", 0.0, Some("/tmp/y.jpg"), "photo", "{}").await.unwrap();
+    let tl = f.db.get_synced_timeline(REC).await.unwrap().unwrap();
+    assert_eq!(tl.frames.iter().map(|x| (x.timestamp_ms, x.frame_number)).collect::<Vec<_>>(), vec![(5000, 0), (20000, 1)]);
+}
+
+#[tokio::test]
+async fn loopback_photos_and_screens_both_ways() {
+    let l = start_server(true).await;
+    let device = uid(0x91);
+    *l.server.pairing.lock() = Some(PendingPair::new());
+    let code = l.server.pairing.lock().as_ref().unwrap().code.clone();
+    let Msg::Paired { secret, .. } = pair(&l, &code, &device).await else { panic!() };
+    let secret = p::unb64(&secret).unwrap();
+    l.f.db.create_meeting(REC, "R").await.unwrap();
+    let mac_bytes = jpeg(120);
+    let sid = uuid::Uuid::new_v4().to_string();
+    mac_screen(&l.f, &sid, chrono::Utc::now(), &mac_bytes).await;
+
+    let mut s = connect(l.port, &l.fingerprint).await.unwrap();
+    let nonce_p = [4u8; 32];
+    p::write_msg(&mut s, &Msg::Hello { device_id: device.clone(), nonce: p::b64(&nonce_p) }).await.unwrap();
+    let Msg::Challenge { nonce, .. } = p::read_msg(&mut s).await.unwrap() else { panic!() };
+    let nonce_m = p::unb64(&nonce).unwrap();
+    p::write_msg(&mut s, &Msg::Auth { proof: p::b64(&p::phone_proof(&secret, &nonce_m, &nonce_p)) }).await.unwrap();
+    assert!(matches!(p::read_msg(&mut s).await.unwrap(), Msg::Welcome { .. }));
+    p::write_msg(&mut s, &Msg::Batch { phase: Phase::Removals, items: vec![], last: true, upto: None }).await.unwrap();
+    assert!(matches!(p::read_msg(&mut s).await.unwrap(), Msg::Applied { .. }));
+
+    // Pull: the Mac's screen arrives as an item, its file on request
+    p::write_msg(&mut s, &Msg::Pull { since: 0 }).await.unwrap();
+    let mut items = Vec::new();
+    loop {
+        let Msg::Batch { items: got, last, .. } = p::read_msg(&mut s).await.unwrap() else { panic!() };
+        items.extend(got);
+        if last {
+            break;
+        }
+    }
+    let item = items.iter().find_map(|i| if let Item::Screen(x) = i { Some(x.clone()) } else { None }).unwrap();
+    p::write_msg(&mut s, &Msg::Want { ids: vec![item.id.clone(), uid(0x99)] }).await.unwrap();
+    let mut a = p::BlobAssembler::default();
+    let mut got = None;
+    loop {
+        match p::read_msg(&mut s).await.unwrap() {
+            Msg::Blob { id, off, data, last } => {
+                if let Some(b) = a.feed(&id, off, &data, last, Some(&item)).unwrap() {
+                    got = Some(b);
+                }
+            }
+            Msg::BlobsEnd { missing } => {
+                assert_eq!(missing, vec![uid(0x99)]);
+                break;
+            }
+            other => panic!("{:?}", other),
+        }
+    }
+    assert_eq!(got.unwrap(), mac_bytes);
+
+    // Push: a photo from the phone; the Mac asks for its file
+    let photo = jpeg(60);
+    let ph = screen_item(&uid(0x92), chrono::Utc::now().timestamp_millis(), "photo", &photo);
+    p::write_msg(&mut s, &Msg::Batch { phase: Phase::Changes, items: vec![Item::Screen(ph.clone())], last: true, upto: None }).await.unwrap();
+    let Msg::Applied { want, .. } = p::read_msg(&mut s).await.unwrap() else { panic!() };
+    assert_eq!(want, vec![ph.id.clone()]);
+    for c in p::blob_chunks(&ph.id, &photo) {
+        p::write_msg(&mut s, &c).await.unwrap();
+    }
+    p::write_msg(&mut s, &Msg::BlobsEnd { missing: vec![] }).await.unwrap();
+    let Msg::Applied { retry, .. } = p::read_msg(&mut s).await.unwrap() else { panic!() };
+    assert!(retry.is_empty());
+    p::write_msg(&mut s, &Msg::Done {}).await.unwrap();
+    let file: String = sqlx::query_scalar("SELECT keyframe_path FROM screen_states WHERE state_id = ?").bind(&ph.id).fetch_one(l.f.pool()).await.unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), photo);
 }
