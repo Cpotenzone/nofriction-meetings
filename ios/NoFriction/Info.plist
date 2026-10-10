@@ -25,8 +25,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_nofriction._tcp</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>noFriction connects to your AI endpoint on the local network only if you enter its address in Settings.</string>
+	<string>noFriction syncs your recordings directly with noFriction on your Mac over your local network, and connects to your AI endpoint on it if you enter one. Nothing goes through a server.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

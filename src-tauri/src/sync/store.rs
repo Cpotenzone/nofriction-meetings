@@ -105,6 +105,10 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
     }
     // Stable cross-device id for transcript lines
     crate::database::ensure_columns(conn, "transcripts", &[("sync_id", "TEXT")]).await?;
+    // Where a synced line was heard ("screen" = what was playing during
+    // iPhone screen capture); NULL = the microphone. Kept so the line
+    // reaches other devices as it was.
+    crate::database::ensure_columns(conn, "transcripts", &[("source", "TEXT")]).await?;
     sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_sync_id ON transcripts(sync_id)")
         .execute(&mut *conn)
         .await?;
@@ -462,7 +466,7 @@ async fn recording_item(conn: &mut SqliteConnection, id: &str, modified: i64) ->
 
 async fn line_item(conn: &mut SqliteConnection, sync_id: &str, peer_has_it: bool, token_key: &[u8]) -> Result<Option<Item>, String> {
     let Some(id) = p::wire_id(sync_id) else { return Ok(None) };
-    let Some(r) = sqlx::query("SELECT meeting_id, text, speaker, timestamp FROM transcripts WHERE sync_id = ?")
+    let Some(r) = sqlx::query("SELECT meeting_id, text, speaker, timestamp, source FROM transcripts WHERE sync_id = ?")
         .bind(sync_id)
         .fetch_optional(&mut *conn)
         .await
@@ -476,7 +480,15 @@ async fn line_item(conn: &mut SqliteConnection, sync_id: &str, peer_has_it: bool
         return Ok(Some(Item::Edit(p::EditItem { id, rec, keep: p::keep_list(token_key, &wire_text) })));
     }
     let Some(at) = p::parse_time_ms(&r.get::<String, _>("timestamp")) else { return Ok(None) };
-    Ok(Some(Item::Line(p::LineItem { id, rec, text: wire_text, at, dur: None, speaker: r.get("speaker") })))
+    Ok(Some(Item::Line(p::LineItem {
+        id,
+        rec,
+        text: wire_text,
+        at,
+        dur: None,
+        speaker: r.get("speaker"),
+        src: r.get::<Option<String>, _>("source").filter(|s| s == "screen"),
+    })))
 }
 
 async fn strike_item(conn: &mut SqliteConnection, id: &str) -> Result<Option<p::StrikeItem>, String> {
@@ -1186,8 +1198,8 @@ async fn apply_line(tx: &mut SqliteConnection, peer: &str, l: &p::LineItem) -> R
     }
     set_apply(tx, peer, p::ms(chrono::Utc::now())).await?;
     sqlx::query(
-        "INSERT INTO transcripts (meeting_id, text, speaker, timestamp, is_final, confidence, text_hash, sync_id) \
-         VALUES (?, ?, ?, ?, 1, 0.0, ?, ?)",
+        "INSERT INTO transcripts (meeting_id, text, speaker, timestamp, is_final, confidence, text_hash, sync_id, source) \
+         VALUES (?, ?, ?, ?, 1, 0.0, ?, ?, ?)",
     )
     .bind(&rec)
     .bind(&text)
@@ -1195,6 +1207,7 @@ async fn apply_line(tx: &mut SqliteConnection, peer: &str, l: &p::LineItem) -> R
     .bind(p::from_ms(l.at).to_rfc3339())
     .bind(crate::database::transcript_text_hash(&text))
     .bind(&sid)
+    .bind(l.src.as_deref().filter(|s| *s == "screen"))
     .execute(&mut *tx)
     .await
     .map_err(err("Couldn't add a line"))?;

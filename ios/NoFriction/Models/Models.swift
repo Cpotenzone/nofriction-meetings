@@ -161,6 +161,10 @@ final class Segment {
     /// screen capture (shown as "On screen"); nil = the microphone. Such a
     /// line has no audio in the recording's file. Optional (no schema version).
     var source: String?
+    /// Stable id across devices (Sync with your Mac, docs/SYNC.md): given the
+    /// first time the line syncs, or the Mac's id for a line from the Mac.
+    /// Optional, so older stores migrate without a schema version.
+    var syncID: UUID?
 
     init(text: String, start: Date, duration: TimeInterval, audioOffset: Double? = nil, wordTimings: [WordTiming] = []) {
         self.text = text

@@ -80,7 +80,7 @@ fn rec_item(id: &str, title: &str, modified: i64) -> p::RecordingItem {
 }
 
 fn line_item(id: &str, text: &str, at: i64) -> p::LineItem {
-    p::LineItem { id: id.into(), rec: REC.into(), text: text.into(), at, dur: Some(3000), speaker: None }
+    p::LineItem { id: id.into(), rec: REC.into(), text: text.into(), at, dur: Some(3000), speaker: None, src: None }
 }
 
 fn uid(n: u8) -> String {
@@ -375,7 +375,9 @@ async fn existing_data_is_backfilled_and_edited_lines_travel_as_edits() {
 #[tokio::test]
 async fn changes_from_a_device_are_not_sent_back_to_it() {
     let f = setup().await;
-    let items = vec![Item::Recording(rec_item(REC, "From phone", 10)), Item::Line(line_item(&uid(1), "Hello from the phone", 1_760_000_001_000))];
+    let mut screen_line = line_item(&uid(1), "Hello from the phone", 1_760_000_001_000);
+    screen_line.src = Some("screen".into());
+    let items = vec![Item::Recording(rec_item(REC, "From phone", 10)), Item::Line(screen_line)];
     let r = store::apply(f.pool(), &f.env, PHONE, &tk(), items).await;
     assert_eq!(r.applied, 2, "{:?}", r);
     let (back, _) = store::collect(f.pool(), PHONE, 0, &tk()).await.unwrap();
@@ -383,6 +385,7 @@ async fn changes_from_a_device_are_not_sent_back_to_it() {
     // Another device gets them
     let (other, _) = store::collect(f.pool(), &uid(77), 0, &tk()).await.unwrap();
     assert_eq!(other.len(), 2);
+    assert!(matches!(&other[1], Item::Line(l) if l.src.as_deref() == Some("screen")), "the line's source travels on");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -893,7 +896,7 @@ fn golden_messages() -> Vec<(&'static str, Msg)> {
                 items: vec![
                     Item::Recording(rec_item(REC, "Lecture — \"Cells\" / 1", 1_760_000_999_000)),
                     Item::Recording(p::RecordingItem { id: uid(0x13), title: "Untitled".into(), started: 1, ended: None, kind: "meeting".into(), notebook: None, planned: None, cal: None, people: vec![], modified: 2 }),
-                    Item::Line(p::LineItem { id: uid(0x14), rec: REC.into(), text: "Café ünïcödé 日本語 \"quoted\"\ttab".into(), at: 1_760_000_001_000, dur: Some(2500), speaker: Some("Ana".into()) }),
+                    Item::Line(p::LineItem { id: uid(0x14), rec: REC.into(), text: "Café ünïcödé 日本語 \"quoted\"\ttab".into(), at: 1_760_000_001_000, dur: Some(2500), speaker: Some("Ana".into()), src: Some("screen".into()) }),
                     Item::Notes(p::NotesItem { rec: REC.into(), md: "**Summary**\nCells divide.\n\n**Action items**\n• Read ch. 4".into(), made: 1_760_000_700_000, stale: true, modified: 1_760_000_700_001 }),
                     Item::Mark(p::MarkItem { id: uid(0x15), rec: REC.into(), at: 1_760_000_100_000, kind: "test".into(), note: Some("on the exam".into()), created: 1_760_000_100_001, modified: 1_760_000_100_002 }),
                     Item::Ref(p::RefItem { id: uid(0x16), rec: REC.into(), url: "https://example.com/a?b=1&c=2".into(), title: Some("Syllabus".into()), note: None, created: 3, modified: 4 }),

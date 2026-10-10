@@ -181,6 +181,10 @@ pub struct LineItem {
     pub dur: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
+    /// "screen": heard from what was playing on screen (iPhone screen
+    /// capture, `Segment.source`); absent = the microphone
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub src: Option<String>,
 }
 
 /// A line as it now is on the sender, without its words: `w:<hash>` per

@@ -9,13 +9,15 @@ struct NoFrictionApp: App {
     @State private var store: Store
     @State private var aiSettings = AISettings()
     /// Delete's undo window + the purge queue (docs/REDACTION.md)
-    @State private var redactions = RedactionCenter()
+    @State private var redactions: RedactionCenter
     /// Opened here, not by a view: Apple Watch recordings can arrive with no UI
     private let container: ModelContainer
     /// Apple Watch recordings → meetings (docs/WATCH_APP.md)
     @State private var watchImporter: WatchImporter
     /// Screen capture: screens and app audio from the broadcast extension (docs/SCREEN_CAPTURE_IOS.md)
     @State private var screenCapture: ScreenCaptureCenter
+    /// Sync with your Mac, device to device on the local network (docs/SYNC.md)
+    @State private var sync: SyncCenter
 
     init() {
         Storage.prepare()
@@ -29,6 +31,10 @@ struct NoFrictionApp: App {
             importer: ScreenCaptureImporter(context: container.mainContext, env: .live(store: store)),
             session: session, isPro: { [weak store] in store?.isPro ?? false })
         session.screenCapture = screenCapture
+        let redactions = RedactionCenter()
+        _redactions = State(initialValue: redactions)
+        _sync = State(initialValue: SyncCenter(context: container.mainContext, isPro: { [weak store] in store?.isPro ?? false },
+                                               redactions: redactions, screenCapture: screenCapture))
         _store = State(initialValue: store)
         _screenCapture = State(initialValue: screenCapture)
         _session = State(initialValue: session)
@@ -70,6 +76,8 @@ struct NoFrictionApp: App {
                 .environment(PhoneWatchLink.shared)
                 .environment(screenCapture)
                 .modifier(ScreenCaptureSync(center: screenCapture, store: store))
+                .environment(sync)
+                .modifier(SyncTriggers(center: sync, session: session))
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

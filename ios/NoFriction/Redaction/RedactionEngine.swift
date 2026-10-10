@@ -164,6 +164,7 @@ enum RedactionEngine {
                 let out = RedactionText.splice(s.text, timings: s.wordTimings, removingTokenRanges: change.ranges, inserting: token)
                 s.text = out.text
                 s.wordTimings = out.timings
+                SyncLedger.lineEdited(s)
             }
         }
         for snap in plan.snapshots {
@@ -229,6 +230,7 @@ enum RedactionEngine {
                 states.append(before)
                 s.text = out.text
                 s.wordTimings = out.timings
+                SyncLedger.lineEdited(s)
             }
         }
         let snaps = plan.snapshots.map { (fileName: $0.fileName, takenAt: $0.takenAt) }
@@ -256,6 +258,7 @@ enum RedactionEngine {
                 s.duration = st.duration
                 s.audioOffset = st.audioOffset
                 s.wordTimingsJSON = st.wordTimingsJSON
+                SyncLedger.lineEdited(s)
             } else {
                 let s = Segment(text: st.text, start: st.start, duration: st.duration, audioOffset: st.audioOffset)
                 s.wordTimingsJSON = st.wordTimingsJSON
@@ -344,8 +347,10 @@ enum RedactionEngine {
     /// Saved AI notes: redact the removed text and flag them as made before an edit.
     static func redactAIOutputs(_ meeting: Meeting, phrases: [String], replacement: String) {
         guard let notes = meeting.aiNotes else { return }
+        let before = SyncEngine.notesHash(meeting)
         meeting.aiNotes = RedactionText.redact(notes, phrases: phrases, replacement: replacement)
         meeting.aiNotesStale = true
+        SyncLedger.notesRewritten(meeting.id, before: before, after: SyncEngine.notesHash(meeting))
     }
 
     // MARK: Helpers
