@@ -95,6 +95,8 @@ pub mod chat;
 pub mod topics;
 // The one search at the top of Recordings
 pub mod search;
+// Sync with your iPhone, device to device on the local network (docs/SYNC.md)
+pub mod sync;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -524,6 +526,8 @@ pub fn run() {
                                     log::info!("State managed, emitting app-ready...");
                                     let _ = handle_clone.emit("app-ready", ());
                                     commands::people::spawn_startup_sync(&handle_clone);
+                                    // Sync listener + Bonjour, only if the user turned sync on and Pro is active
+                                    sync::start_if_enabled(&handle_clone);
                                     // Tray "Start Recording (60 min)" shows the remembered length
                                     {
                                         let h = handle_clone.clone();
@@ -837,6 +841,11 @@ pub fn run() {
             commands::generate_meeting_notes,
             commands::get_meeting_notes,
             // Editing + "Strike from the record"
+            sync::commands::sync_status,
+            sync::commands::sync_set_enabled,
+            sync::commands::sync_pair_start,
+            sync::commands::sync_pair_cancel,
+            sync::commands::sync_forget,
             redaction::commands::delete_transcript_words,
             redaction::commands::strike_transcript_words,
             redaction::commands::delete_transcript_line,

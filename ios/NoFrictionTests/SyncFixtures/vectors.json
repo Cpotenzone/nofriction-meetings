@@ -1,0 +1,38 @@
+{
+  "mac_proof": "lt6g97U51SzJhZxhgdlf7R/J8HOtUFyTvZwzdRf28Zc=",
+  "nonce_mac": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+  "nonce_phone": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+  "phone_proof": "5s/xQsxeVhi47cfSw1BjDK5eYtz3O2rrQI1cNJ/Qri4=",
+  "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "token_key": "1160ed0024dd5d27fa8bb2bcc899293ef8311d7efb8d6584475a0575cfe564e2",
+  "words": [
+    {
+      "hash": "3bd2704e383b8e69",
+      "word": "We"
+    },
+    {
+      "hash": "9f1c4fcc92f2f476",
+      "word": "acquire"
+    },
+    {
+      "hash": "353f3e3b6874adc5",
+      "word": "next"
+    },
+    {
+      "hash": "c2bf6c242e4cca7f",
+      "word": "quarter."
+    },
+    {
+      "hash": "f6d012574d14f31f",
+      "word": "Café"
+    },
+    {
+      "hash": "dd8033be0343e4eb",
+      "word": "日本語"
+    },
+    {
+      "hash": "ae888e9aa259fccc",
+      "word": "\"quoted\""
+    }
+  ]
+}

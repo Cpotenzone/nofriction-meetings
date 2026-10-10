@@ -1,0 +1,104 @@
+[
+  {
+    "expected": "we acquire next quarter",
+    "keep": [
+      "w:f717db8b40e44c12",
+      "w:9f1c4fcc92f2f476",
+      "w:353f3e3b6874adc5",
+      "w:42174dc4284bdc36"
+    ],
+    "local": "we acquire Zenith Labs next quarter",
+    "name": "delete in the middle"
+  },
+  {
+    "expected": "we acquire ⟦stricken:00000000-0000-4000-8000-0000000000a1⟧ next quarter",
+    "keep": [
+      "w:f717db8b40e44c12",
+      "w:9f1c4fcc92f2f476",
+      "m:00000000-0000-4000-8000-0000000000a1",
+      "w:353f3e3b6874adc5",
+      "w:42174dc4284bdc36"
+    ],
+    "local": "we acquire Zenith Labs next quarter",
+    "name": "strike with marker"
+  },
+  {
+    "expected": "one three five",
+    "keep": [
+      "w:877bc11884a43ec7",
+      "w:ae864c82fdf3a9c2",
+      "w:943c328b4ea985cc",
+      "w:2d6a3413a7602ae6"
+    ],
+    "local": "one two three five",
+    "name": "both sides removed different words: union"
+  },
+  {
+    "expected": "alpha ⟦stricken:00000000-0000-4000-8000-0000000000a2⟧ gamma",
+    "keep": [
+      "w:c7581e7bc16d84a2",
+      "w:bec114de8a0e5d6d",
+      "w:0c4ac3a139608276"
+    ],
+    "local": "alpha ⟦stricken:00000000-0000-4000-8000-0000000000a2⟧ gamma delta",
+    "name": "receiver's own strike stays"
+  },
+  {
+    "expected": "alpha ⟦stricken:00000000-0000-4000-8000-0000000000a1⟧ gamma",
+    "keep": [
+      "w:c7581e7bc16d84a2",
+      "m:00000000-0000-4000-8000-0000000000a1",
+      "w:0c4ac3a139608276"
+    ],
+    "local": "alpha gamma",
+    "name": "marker for words already gone here"
+  },
+  {
+    "expected": "⟦stricken:00000000-0000-4000-8000-0000000000a1⟧",
+    "keep": [
+      "m:00000000-0000-4000-8000-0000000000a1"
+    ],
+    "local": "secret plan here",
+    "name": "whole line struck"
+  },
+  {
+    "expected": "yes no yes",
+    "keep": [
+      "w:88abaadbca90388a",
+      "w:21dfb93d94d90a78",
+      "w:88abaadbca90388a"
+    ],
+    "local": "yes yes no yes",
+    "name": "repeated words"
+  },
+  {
+    "expected": "café 語",
+    "keep": [
+      "w:c4964b46bf3f11b5",
+      "w:cabc5ad949131986"
+    ],
+    "local": "café ünïcödé 日本 語",
+    "name": "unicode"
+  },
+  {
+    "expected": "same words here",
+    "keep": [
+      "w:3e4fb3ec65c7d81f",
+      "w:e5027d5be87c129e",
+      "w:1b480443f6cce325"
+    ],
+    "local": "same words here",
+    "name": "nothing changed"
+  },
+  {
+    "expected": "a ⟦stricken:00000000-0000-4000-8000-0000000000a1⟧ ⟦stricken:00000000-0000-4000-8000-0000000000a2⟧ d",
+    "keep": [
+      "w:e5a6b02d9b464e18",
+      "m:00000000-0000-4000-8000-0000000000a1",
+      "m:00000000-0000-4000-8000-0000000000a2",
+      "w:fc03418962229714"
+    ],
+    "local": "a b c d",
+    "name": "two strikes in one gap"
+  }
+]

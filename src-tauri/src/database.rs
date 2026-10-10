@@ -254,6 +254,12 @@ impl DatabaseManager {
         std::sync::Arc::new(self.pool.clone())
     }
 
+    /// A manager over an existing pool (sync applies a deleted recording
+    /// through `delete_meeting`)
+    pub fn from_pool(pool: Pool<Sqlite>) -> Self {
+        Self { pool }
+    }
+
     /// Borrow the pool (redaction runs its own transactions on it)
     pub fn pool(&self) -> &Pool<Sqlite> {
         &self.pool
@@ -1074,6 +1080,9 @@ impl DatabaseManager {
         // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
         crate::topics::ensure_schema(&mut conn).await?;
         crate::chat::ensure_schema(&mut conn).await?;
+        // Sync change tracking: triggers on every synced table, so it runs
+        // after all of them exist (docs/SYNC.md)
+        crate::sync::store::ensure_schema(&mut conn).await?;
 
         log::info!("Database migrations completed (v3.0 - Calendar Integration)");
         Ok(())
