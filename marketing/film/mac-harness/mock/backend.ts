@@ -815,6 +815,9 @@ function handle(cmd: string, args: Args): unknown {
         case "plugin:dialog|message":
         case "plugin:opener|open_url":
             return null;
+        case "plugin:dialog|open":
+            // A fictional folder (Settings → Export to Obsidian → Choose folder)
+            return "/Users/demo/Documents/Vault";
     }
     console.warn("[mock] unhandled", cmd, args);
     return null;

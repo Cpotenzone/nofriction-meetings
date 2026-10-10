@@ -17,7 +17,8 @@ struct MeetingDetailView: View {
     @State private var email: String?
     @Environment(Store.self) private var store
     @Environment(AISettings.self) private var aiSettings
-    @State private var showPaywall = false
+    /// The paywall, named for the action that opened it (item-based so it never shows a stale feature)
+    @State private var paywallFor: ProFeature?
     @State private var showAISetup = false
     @State private var consentFor: AIProvider?
     @State private var pendingAI: AIAction?
@@ -39,6 +40,16 @@ struct MeetingDetailView: View {
     @State private var topicsError: String?
 
     enum AIAction { case notes, email, study, topics }
+
+    /// The paywall names the action that opened it.
+    private func proFeature(_ action: AIAction) -> ProFeature {
+        switch action {
+        case .notes: .notes
+        case .email: .followUp
+        case .study: .reviewGuide
+        case .topics: .topics
+        }
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -116,7 +127,7 @@ struct MeetingDetailView: View {
         .sheet(item: Binding(get: { email.map(DraftText.init) }, set: { email = $0?.text })) { draft in
             EmailDraftSheet(text: draft.text)
         }
-        .sheet(isPresented: $showPaywall, onDismiss: { resumePending(if: store.isPro) }) { PaywallView() }
+        .sheet(item: $paywallFor, onDismiss: { resumePending(if: store.isPro) }) { feature in PaywallView(feature: feature) }
         .sheet(isPresented: $showAISetup, onDismiss: { resumePending(if: aiSettings.endpoint() != nil) }) { AISetupSheet() }
         .sheet(item: $consentFor, onDismiss: { resumePending(if: aiSettings.endpoint()?.consentGranted == true) }) { p in
             AIConsentSheet(provider: p) { aiSettings.grantConsent(p) }
@@ -270,7 +281,7 @@ struct MeetingDetailView: View {
         pendingAI = nil
         guard store.isPro else {
             pendingAI = action
-            showPaywall = true
+            paywallFor = proFeature(action)
             return
         }
         guard let endpoint = aiSettings.endpoint() else {

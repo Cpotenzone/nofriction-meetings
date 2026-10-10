@@ -1,12 +1,20 @@
 import StoreKit
 import SwiftUI
 
-/// Guideline 3.1.2: price, billing period, trial terms, Restore, Terms + Privacy.
+/// noFriction Pro paywall. Lists Free vs Pro (docs/PRO.md, `ProFeature.swift`)
+/// and, for guideline 3.1.2: price per period, trial terms, auto-renewal,
+/// Restore, Manage, Terms (Apple standard EULA) and Privacy.
+///
+/// `PaywallView(feature: .sync)` names the feature that opened it ("Sync is
+/// part of noFriction Pro") and highlights its group.
 struct PaywallView: View {
+    var feature: ProFeature? = nil
+
     @Environment(Store.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var purchasing: String?
     @State private var restoring = false
+    @State private var showManage = false
     @State private var message: String?
     @State private var trialEligible: [String: Bool] = [:]
 
@@ -17,7 +25,11 @@ struct PaywallView: View {
                     header
                     features
                     plans
-                    restore
+                    VStack(spacing: 12) {
+                        restore
+                        manage
+                    }
+                    .frame(maxWidth: .infinity)
                     finePrint
                 }
                 .padding(24)
@@ -42,26 +54,48 @@ struct PaywallView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 38))
-                .foregroundStyle(Theme.ai)
-            Text("noFriction Pro").font(.largeTitle.weight(.bold))
-            Text("Notes, a review guide and answers for every recording, with the AI you choose.")
+            Text(ProCopy.headline(feature))
+                .font(feature == nil ? .largeTitle.weight(.bold) : .title.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("paywall-headline")
+                .accessibilityAddTraits(.isHeader)
+            Text(ProCopy.value)
                 .foregroundStyle(.secondary)
         }
     }
 
     private var features: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Notes", systemImage: "list.bullet.rectangle")
-            Label("Review guide", systemImage: "text.book.closed")
-            Label("Chat", systemImage: "bubble.left.and.text.bubble.right")
-            Label("Follow-up email", systemImage: "envelope")
-            Text("Apple on-device or your own AI endpoint. Recording, transcription, calendar and people stay free.")
+            ForEach(ProGroup.allCases) { group in
+                groupRow(group, active: group == feature?.group)
+            }
+            Text(ProCopy.free)
                 .font(.footnote).foregroundStyle(.secondary)
                 .padding(.top, 4)
         }
-        .font(.callout)
+    }
+
+    private func groupRow(_ group: ProGroup, active: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: group.systemImage)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title).font(.callout.weight(.semibold))
+                    .foregroundStyle(active ? Theme.accent : .primary)
+                Text(group.detail).font(.footnote).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(active ? Theme.card : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(alignment: .leading) {
+            Rectangle().fill(active ? Theme.accent : Theme.hairline).frame(width: 2)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pro-group-\(group.rawValue)")
     }
 
     @ViewBuilder private var plans: some View {
@@ -99,8 +133,9 @@ struct PaywallView: View {
                 }
                 Text(priceLine(product)).font(.subheadline.weight(.medium))
                 if let trial = trialLine(product) {
-                    Text(trial).font(.footnote).foregroundStyle(Theme.ai)
+                    Text(trial).font(.footnote).foregroundStyle(Theme.accent)
                 }
+                Text("Renews automatically. Cancel anytime.").font(.caption).foregroundStyle(.secondary)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -135,10 +170,16 @@ struct PaywallView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var manage: some View {
+        Button("Manage Subscription") { showManage = true }
+            .font(.footnote.weight(.medium))
+            .manageSubscriptionsSheet(isPresented: $showManage)
+    }
+
     private var finePrint: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Payment is charged to your Apple Account when you confirm. The subscription renews automatically at the price shown unless you cancel at least 24 hours before the end of the current period. Any unused part of a free trial ends when you subscribe. Manage or cancel in Settings → your name → Subscriptions.")
-            Text("Local and Apple on-device models support offline AI after setup. If you choose a remote AI endpoint, transcript text is sent directly to that endpoint under its operator's terms. noFriction offers no hosted models and receives none of this content.")
+            Text("Payment is charged to your Apple Account when you confirm, or when the free trial ends. The subscription renews automatically at the price and period shown unless you cancel at least 24 hours before the end of the current period. Any unused part of a free trial ends when you subscribe. Manage or cancel in Settings → your name → Subscriptions.")
+            Text("\(ProCopy.aiNote) If you choose a remote AI endpoint, transcript text is sent directly to that endpoint under its operator's terms. noFriction receives none of this content.")
             HStack(spacing: 16) {
                 Link("Terms of Use (EULA)", destination: AppLinks.terms)
                 Link("Privacy Policy", destination: AppLinks.privacyPolicy)

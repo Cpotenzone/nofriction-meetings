@@ -49,6 +49,8 @@ final class ScreensTests: XCTestCase {
         if summarize.waitForExistence(timeout: 3) {
             summarize.tap()
             XCTAssertTrue(app.buttons["Restore Purchases"].firstMatch.waitForExistence(timeout: 5), "paywall didn't open")
+            // The paywall names the feature that opened it (docs/PRO.md)
+            XCTAssertTrue(app.staticTexts["Notes are part of noFriction Pro"].firstMatch.exists, "paywall should name Notes")
             saveShot("\(device)-3b-paywall")
             app.buttons["Close"].firstMatch.tap()
             sleep(1)
