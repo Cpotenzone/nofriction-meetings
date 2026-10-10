@@ -252,6 +252,9 @@ final class Snapshot {
     /// "screen" when kept by screen capture; nil = a photo. Optional, so
     /// older stores migrate without a schema version.
     var source: String?
+    /// Stable id across devices (Sync with your Mac, docs/SYNC.md): given the
+    /// first time it syncs, or the Mac's id for a screen from the Mac. Optional.
+    var syncID: UUID?
 
     init(fileName: String, takenAt: Date = .now) {
         self.fileName = fileName

@@ -12,6 +12,10 @@ enum SyncWire {
     static let version = 1
     static let maxFrame = 16 << 20
     static let batchMax = 500
+    /// Largest photo or screen either side sends or accepts
+    static let maxBlob = 16 << 20
+    /// Bytes per `blob` message
+    static let blobChunk = 256 << 10
     static let serviceType = "_nofriction._tcp"
 }
 
@@ -209,6 +213,22 @@ struct StrikeItem: Equatable, Sendable {
     var created: Int64
     var reason: String?
     var line: String?
+    /// Screens it removed (target `screen`)
+    var count: Int64? = nil
+}
+
+/// A photo or screen; its file travels as `blob` messages on request.
+struct ScreenItem: Equatable, Sendable {
+    var id: String
+    var rec: String
+    var at: Int64
+    var end: Int64?
+    /// photo | screen
+    var src: String
+    /// jpg | png
+    var ext: String
+    var size: Int64
+    var sha: String
 }
 
 struct NotesItem: Equatable, Sendable {
@@ -264,6 +284,7 @@ enum SyncItem: Equatable, Sendable {
     case mark(MarkItem)
     case ref(RefItem)
     case topic(TopicItem)
+    case screen(ScreenItem)
     case gone(GoneItem)
 
     var isRemoval: Bool {
@@ -285,6 +306,7 @@ enum SyncItem: Equatable, Sendable {
         case .mark: 6
         case .ref: 7
         case .topic: 8
+        case .screen: 9
         }
     }
 
@@ -311,6 +333,7 @@ enum SyncItem: Equatable, Sendable {
         case .mark(let x): x.id
         case .ref(let x): x.id
         case .topic(let x): x.id
+        case .screen(let x): x.id
         case .gone(let x): x.id
         }
     }
@@ -336,6 +359,7 @@ enum SyncItem: Equatable, Sendable {
         case .strike(let s):
             o.set("k", "strike"); o.set("id", s.id); o.set("rec", s.rec); o.set("target", s.target)
             o.set("from", s.from); o.set("to", s.to); o.set("created", s.created); o.set("reason", s.reason); o.set("line", s.line)
+            o.set("count", s.count)
         case .notes(let n):
             o.set("k", "notes"); o.set("rec", n.rec); o.set("md", n.md); o.set("made", n.made); o.set("stale", n.stale); o.set("mod", n.modified)
         case .mark(let m):
@@ -347,6 +371,9 @@ enum SyncItem: Equatable, Sendable {
         case .topic(let t):
             o.set("k", "topic"); o.set("id", t.id); o.set("rec", t.rec); o.set("label", t.label); o.set("key", t.key)
             o.set("conf", t.conf); o.set("source", t.source); o.set("created", t.created)
+        case .screen(let x):
+            o.set("k", "screen"); o.set("id", x.id); o.set("rec", x.rec); o.set("at", x.at); o.set("end", x.end)
+            o.set("src", x.src); o.set("ext", x.ext); o.set("size", x.size); o.set("sha", x.sha)
         case .gone(let g):
             o.set("k", "gone"); o.set("entity", g.entity); o.set("id", g.id); o.set("rec", g.rec)
         }
@@ -371,7 +398,7 @@ enum SyncItem: Equatable, Sendable {
             self = .edit(EditItem(id: try s("id"), rec: try s("rec"), keep: try req(j["keep"]?.array, "keep").map { try req($0.string, "keep") }))
         case "strike":
             self = .strike(StrikeItem(id: try s("id"), rec: try s("rec"), target: try s("target"), from: j["from"]?.int, to: j["to"]?.int,
-                                      created: try i("created"), reason: j["reason"]?.string, line: j["line"]?.string))
+                                      created: try i("created"), reason: j["reason"]?.string, line: j["line"]?.string, count: j["count"]?.int))
         case "notes":
             self = .notes(NotesItem(rec: try s("rec"), md: try s("md"), made: try i("made"), stale: try req(j["stale"]?.bool, "stale"), modified: try i("mod")))
         case "mark":
@@ -383,6 +410,9 @@ enum SyncItem: Equatable, Sendable {
         case "topic":
             self = .topic(TopicItem(id: try s("id"), rec: try s("rec"), label: try s("label"), key: try s("key"), conf: try i("conf"),
                                     source: try s("source"), created: try i("created")))
+        case "screen":
+            self = .screen(ScreenItem(id: try s("id"), rec: try s("rec"), at: try i("at"), end: j["end"]?.int, src: try s("src"),
+                                      ext: try s("ext"), size: try i("size"), sha: try s("sha")))
         case "gone":
             self = .gone(GoneItem(entity: try s("entity"), id: try s("id"), rec: j["rec"]?.string))
         case let other:
@@ -404,7 +434,10 @@ enum SyncMessage: Equatable, Sendable {
     case welcome(deviceID: String, name: String)
     case batch(phase: SyncPhase, items: [SyncItem], last: Bool, upto: Int64?)
     case pull(since: Int64)
-    case applied(retry: [String])
+    case applied(retry: [String], want: [String] = [])
+    case want(ids: [String])
+    case blob(id: String, off: Int64, data: String, last: Bool)
+    case blobsEnd(missing: [String])
     case done
     case error(code: String, message: String)
 
@@ -429,9 +462,17 @@ enum SyncMessage: Equatable, Sendable {
             o.set("last", last); o.set("upto", upto)
         case .pull(let since):
             o.set("t", "pull"); o.set("since", since)
-        case .applied(let retry):
+        case .applied(let retry, let want):
             o.set("t", "applied")
             if !retry.isEmpty { o.set("retry", .array(retry.map { .string($0) })) }
+            if !want.isEmpty { o.set("want", .array(want.map { .string($0) })) }
+        case .want(let ids):
+            o.set("t", "want"); o.set("ids", .array(ids.map { .string($0) }))
+        case .blob(let id, let off, let data, let last):
+            o.set("t", "blob"); o.set("id", id); o.set("off", off); o.set("data", data); o.set("last", last)
+        case .blobsEnd(let missing):
+            o.set("t", "blobs_end")
+            if !missing.isEmpty { o.set("missing", .array(missing.map { .string($0) })) }
         case .done:
             o.set("t", "done")
         case .error(let code, let message):
@@ -467,7 +508,10 @@ enum SyncMessage: Equatable, Sendable {
             return .batch(phase: phase, items: try req(j["items"]?.array, "items").map(SyncItem.init(json:)),
                           last: try req(j["last"]?.bool, "last"), upto: j["upto"]?.int)
         case "pull": return .pull(since: try req(j["since"]?.int, "since"))
-        case "applied": return .applied(retry: (j["retry"]?.array ?? []).compactMap(\.string))
+        case "applied": return .applied(retry: (j["retry"]?.array ?? []).compactMap(\.string), want: (j["want"]?.array ?? []).compactMap(\.string))
+        case "want": return .want(ids: try req(j["ids"]?.array, "ids").compactMap(\.string))
+        case "blob": return .blob(id: try s("id"), off: try req(j["off"]?.int, "off"), data: try s("data"), last: try req(j["last"]?.bool, "last"))
+        case "blobs_end": return .blobsEnd(missing: (j["missing"]?.array ?? []).compactMap(\.string))
         case "done": return .done
         case "error": return .error(code: try s("code"), message: try s("message"))
         case let t: throw SyncWireError.malformed("message \(t)")
@@ -650,5 +694,52 @@ struct PairingLink: Equatable, Sendable {
         hosts = (q["h"] ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
         self.port = port
         self.code = code
+    }
+}
+
+// MARK: - Photo and screen files
+
+enum SyncBlob {
+    /// "jpg" or "png" from the first bytes; nil for anything else (never sent or accepted)
+    static func imageExt(_ d: Data) -> String? {
+        let b = [UInt8](d.prefix(8))
+        if b.count >= 3, b[0] == 0xFF, b[1] == 0xD8, b[2] == 0xFF { return "jpg" }
+        if b == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] { return "png" }
+        return nil
+    }
+
+    /// A file as `blob` messages of at most 256 KiB (one empty message for an empty file)
+    static func chunks(id: String, _ data: Data) -> [SyncMessage] {
+        guard !data.isEmpty else { return [.blob(id: id, off: 0, data: "", last: true)] }
+        var out: [SyncMessage] = []
+        var off = 0
+        while off < data.count {
+            let end = min(off + SyncWire.blobChunk, data.count)
+            out.append(.blob(id: id, off: Int64(off), data: data.subdata(in: off..<end).base64EncodedString(), last: end == data.count))
+            off = end
+        }
+        return out
+    }
+
+    /// Reassembles files from chunks; checks order, size, checksum and type.
+    struct Assembler {
+        private var bufs: [String: Data] = [:]
+
+        enum Failure: Error, Equatable { case badChunk, outOfOrder, tooLarge, mismatch, notImage, unexpected }
+
+        /// The file when complete and matching `expected`; nil while incomplete.
+        mutating func feed(id: String, off: Int64, data: String, last: Bool, expected: ScreenItem?) throws -> Data? {
+            guard let chunk = Data(base64Encoded: data) else { bufs[id] = nil; throw Failure.badChunk }
+            var buf = bufs[id] ?? Data()
+            guard off == Int64(buf.count) else { bufs[id] = nil; throw Failure.outOfOrder }
+            buf.append(chunk)
+            guard buf.count <= SyncWire.maxBlob else { bufs[id] = nil; throw Failure.tooLarge }
+            guard last else { bufs[id] = buf; return nil }
+            bufs[id] = nil
+            guard let item = expected else { throw Failure.unexpected }
+            guard Int64(buf.count) == item.size, SyncCrypto.sha256Hex(buf) == item.sha else { throw Failure.mismatch }
+            guard imageExt(buf) == item.ext else { throw Failure.notImage }
+            return buf
+        }
     }
 }

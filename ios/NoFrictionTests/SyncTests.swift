@@ -15,6 +15,7 @@ private func fixture(_ name: String) throws -> Data {
 
 final class SyncWireTests: XCTestCase {
     static let messages = ["pair", "paired", "hello", "challenge", "auth", "welcome", "pull", "applied", "applied_retry",
+                           "applied_want", "want", "blob", "blobs_end", "blobs_end_missing", "batch_screens",
                            "done", "error", "batch_removals", "batch_changes"]
 
     func testGoldenMessagesDecodeAndReencodeByteForByte() throws {
@@ -56,8 +57,56 @@ final class SyncWireTests: XCTestCase {
         XCTAssertEqual(SyncMessage.batches(items).map(\.count), [500, 500, 1])
     }
 
+    func testGoldenScreenBatch() throws {
+        guard case .batch(_, let items, _, let upto) = try SyncMessage.decode(try fixture("batch_screens")) else { return XCTFail() }
+        XCTAssertEqual(upto, 91)
+        guard case .strike(let st) = items[0], case .gone(let g) = items[1], case .screen(let a) = items[2], case .screen(let b) = items[3] else {
+            return XCTFail("\(items)")
+        }
+        XCTAssertEqual(st.target, "screen")
+        XCTAssertEqual(st.count, 2)
+        XCTAssertEqual(g.entity, "screen")
+        XCTAssertEqual(a.src, "screen")
+        XCTAssertEqual(a.end, 1_760_000_065_500)
+        XCTAssertEqual(b.src, "photo")
+        XCTAssertEqual(b.ext, "png")
+        XCTAssertNil(b.end)
+    }
+
+    func testBlobsChunkAndReassembleWithChecks() throws {
+        var bytes = Data([0xFF, 0xD8, 0xFF])
+        bytes.append(Data((0..<(SyncWire.blobChunk * 2 + 17)).map { UInt8($0 % 251) }))
+        let item = ScreenItem(id: "a", rec: "r", at: 1, end: nil, src: "photo", ext: "jpg", size: Int64(bytes.count), sha: SyncCrypto.sha256Hex(bytes))
+        let chunks = SyncBlob.chunks(id: "a", bytes)
+        XCTAssertEqual(chunks.count, 3)
+        var asm = SyncBlob.Assembler()
+        var out: Data?
+        for case .blob(let id, let off, let data, let last) in chunks {
+            out = try asm.feed(id: id, off: off, data: data, last: last, expected: item)
+        }
+        XCTAssertEqual(out, bytes)
+        // Out of order, wrong checksum, not an image, unexpected
+        var a2 = SyncBlob.Assembler()
+        guard case .blob(_, _, let mid, _) = chunks[1] else { return XCTFail() }
+        XCTAssertThrowsError(try a2.feed(id: "a", off: 7, data: mid, last: false, expected: item))
+        var wrong = item; wrong.sha = String(repeating: "0", count: 64)
+        var a3 = SyncBlob.Assembler()
+        var threw = false
+        for case .blob(let id, let off, let data, let last) in chunks {
+            do { _ = try a3.feed(id: id, off: off, data: data, last: last, expected: wrong) } catch { threw = true }
+        }
+        XCTAssertTrue(threw)
+        let text = Data("not an image".utf8)
+        var a4 = SyncBlob.Assembler()
+        let t = ScreenItem(id: "t", rec: "r", at: 1, end: nil, src: "photo", ext: "jpg", size: Int64(text.count), sha: SyncCrypto.sha256Hex(text))
+        XCTAssertThrowsError(try a4.feed(id: "t", off: 0, data: text.base64EncodedString(), last: true, expected: t))
+        XCTAssertThrowsError(try a4.feed(id: "u", off: 0, data: bytes.base64EncodedString(), last: true, expected: nil))
+        XCTAssertEqual(SyncBlob.imageExt(Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0])), "png")
+    }
+
     func testVectorsMatchTheMac() throws {
         let v = try JSONValue.parse(try fixture("vectors"))
+        XCTAssertEqual(SyncCrypto.sha256Hex(Data("noFriction screen".utf8)), v["blob_sha"]?.string)
         let secret = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(v["secret"]?.string)))
         let key = SyncCrypto.tokenKey(secret: secret)
         XCTAssertEqual(key.map { String(format: "%02x", $0) }.joined(), v["token_key"]?.string)
@@ -306,5 +355,112 @@ final class SyncEngineTests: XCTestCase {
         var other = item; other.title = "Theirs"; other.modified = 30
         _ = await engine.apply([.recording(other)], state: &state)
         XCTAssertEqual(m.title, "Mine")
+    }
+}
+
+@MainActor
+final class SyncScreenTests: XCTestCase {
+    private var container: ModelContainer!
+    private var context: ModelContext { container.mainContext }
+    private var dir: URL!
+    private var files: [URL] = []
+    private let key = SyncCrypto.tokenKey(secret: Data((0..<32).map { UInt8($0) }))
+
+    override func setUp() async throws {
+        container = try ModelContainer(for: Schema(Storage.modelTypes), configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        dir = FileManager.default.temporaryDirectory.appending(path: "nf-sync-\(UUID().uuidString)")
+        SyncLedger.directory = dir
+        try FileManager.default.createDirectory(at: Storage.snapshots, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() async throws {
+        for f in files { try? FileManager.default.removeItem(at: f) }
+        try? FileManager.default.removeItem(at: dir)
+        container = nil
+    }
+
+    private var engine: SyncEngine { SyncEngine(context: context, tokenKey: key) }
+    private func newState() -> SyncMacState {
+        SyncMacState(macID: "00000000-0000-4000-8000-0000000000ee", name: "Mac", fingerprint: String(repeating: "0", count: 64), hosts: [], port: 1)
+    }
+
+    static func jpeg(_ white: CGFloat) -> Data {
+        UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).jpegData(withCompressionQuality: 0.8) { ctx in
+            UIColor(white: white, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+    }
+
+    private func snapshot(in m: Meeting, at: Date, screen: Bool, data: Data) throws -> Snapshot {
+        let name = "test-\(UUID().uuidString).jpg"
+        let url = Storage.snapshots.appending(path: name)
+        try data.write(to: url)
+        files.append(url)
+        let s = Snapshot(fileName: name, takenAt: at)
+        s.source = screen ? Snapshot.Source.screen : nil
+        context.insert(s)
+        s.meeting = m
+        try context.save()
+        return s
+    }
+
+    func testPhotosAndScreensGoOutWithSourceTimeAndChecksum() async throws {
+        var state = newState()
+        let m = Meeting(title: "R", startedAt: Date(timeIntervalSince1970: 1_760_000_000))
+        context.insert(m)
+        let photo = Self.jpeg(0.2), screen = Self.jpeg(0.8)
+        _ = try snapshot(in: m, at: m.startedAt.addingTimeInterval(30), screen: false, data: photo)
+        let sc = try snapshot(in: m, at: m.startedAt.addingTimeInterval(60), screen: true, data: screen)
+        engine.assignLineIDs()
+        let items = engine.changes(for: state).compactMap { item -> ScreenItem? in if case .screen(let x) = item { return x }; return nil }
+        XCTAssertEqual(items.map(\.src), ["photo", "screen"])
+        XCTAssertEqual(items.map(\.at), [1_760_000_030_000, 1_760_000_060_000])
+        XCTAssertEqual(items[1].sha, SyncCrypto.sha256Hex(screen))
+        XCTAssertEqual(engine.screenFile(items[1].id), screen)
+        engine.confirmSent(engine.changes(for: state), retry: [], state: &state)
+        XCTAssertTrue(engine.changes(for: state).isEmpty)
+
+        // Struck here: a screen strike record and a gone
+        let before = sc.syncID.map(SyncIDs.wire)!
+        try await RedactionEngine.strike(.screens([sc]), reason: nil, meeting: m, context: context)
+        let removals = engine.removals(for: state)
+        XCTAssertTrue(removals.contains { if case .strike(let s) = $0 { return s.target == "screen" && s.count == 1 }; return false })
+        XCTAssertTrue(removals.contains(.gone(GoneItem(entity: "screen", id: before, rec: SyncIDs.wire(m.id)))))
+    }
+
+    func testMacScreensArriveAtTheirMomentAndAStrikeRemovesThem() async throws {
+        var state = newState()
+        let m = Meeting(title: "Mac recording", startedAt: Date(timeIntervalSince1970: 1_760_000_000))
+        context.insert(m)
+        try context.save()
+        let bytes = Self.jpeg(0.5)
+        let item = ScreenItem(id: "00000000-0000-4000-8000-000000000071", rec: SyncIDs.wire(m.id), at: 1_760_000_045_000, end: 1_760_000_050_000,
+                              src: "screen", ext: "jpg", size: Int64(bytes.count), sha: SyncCrypto.sha256Hex(bytes))
+        let report = await engine.apply([.screen(item)], state: &state)
+        XCTAssertEqual(report.want, [item])
+        XCTAssertTrue(try engine.addScreen(item, data: bytes, state: &state))
+        let snap = try XCTUnwrap(m.snapshots.first)
+        files.append(snap.fileURL)
+        XCTAssertTrue(snap.isScreen)
+        XCTAssertEqual(snap.takenAt, Date(timeIntervalSince1970: 1_760_000_045))
+        XCTAssertEqual(try Data(contentsOf: snap.fileURL), bytes)
+        XCTAssertFalse(engine.changes(for: state).contains { if case .screen = $0 { return true }; return false }, "not sent back")
+        let again = await engine.apply([.screen(item)], state: &state)
+        XCTAssertTrue(again.want.isEmpty)
+
+        // The Mac struck it: marker record + gone through the screen purge
+        let url = snap.fileURL
+        let r = await engine.apply([
+            .strike(StrikeItem(id: "00000000-0000-4000-8000-000000000072", rec: SyncIDs.wire(m.id), target: "screen", from: item.at, to: item.at,
+                               created: 1, reason: "private", line: nil, count: 1)),
+            .gone(GoneItem(entity: "screen", id: item.id, rec: SyncIDs.wire(m.id))),
+        ], state: &state)
+        XCTAssertEqual(r.applied, 2, "\(r)")
+        XCTAssertTrue(m.snapshots.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path(percentEncoded: false)))
+        XCTAssertEqual(m.screenStrikes.first?.reason, "private")
+        XCTAssertEqual(m.screenStrikes.first?.coveredFrom, Date(timeIntervalSince1970: 1_760_000_045))
+        let late = await engine.apply([.screen(item)], state: &state)
+        XCTAssertTrue(late.want.isEmpty, "a deleted screen never comes back")
     }
 }

@@ -266,12 +266,18 @@ enum SyncSession {
         let report = await engine.apply(incoming, state: &state)
         summary.received = report.applied
         summary.errors += report.errors
-        if report.errors.isEmpty, let upto { state.since = max(state.since, upto) }
+        // The files of the Mac's photos and screens we don't have
+        if !report.want.isEmpty {
+            let (added, failed) = try await fetchBlobs(report.want, over: c, engine: engine, state: &state)
+            summary.received += added
+            if failed > 0 { summary.errors.append("\(failed) photo\(failed == 1 ? "" : "s") or screen\(failed == 1 ? "" : "s") didn't arrive; trying again next time.") }
+        }
+        if summary.errors.isEmpty, let upto { state.since = max(state.since, upto) }
         SyncStore.save(state)
 
         // 3. Our changes
         let changes = engine.changes(for: state)
-        let retry2 = try await push(changes, phase: .changes, over: c)
+        let retry2 = try await push(changes, phase: .changes, over: c, files: { engine.screenFile($0) })
         engine.confirmSent(changes, retry: retry2, state: &state)
         summary.sent += changes.count - retry2.count
         try? await c.send(.done)
@@ -281,15 +287,57 @@ enum SyncSession {
         return summary
     }
 
-    private static func push(_ items: [SyncItem], phase: SyncPhase, over c: SyncConnection) async throws -> Set<String> {
+    /// Send items; if the Mac asks for photo/screen files, send them too.
+    /// Returns the ids to send again next time.
+    private static func push(_ items: [SyncItem], phase: SyncPhase, over c: SyncConnection,
+                             files: (String) -> Data? = { _ in nil }) async throws -> Set<String> {
         let chunks = SyncMessage.batches(items)
         for (i, chunk) in chunks.enumerated() {
             try await c.send(.batch(phase: phase, items: chunk, last: i == chunks.count - 1, upto: nil))
         }
+        var retry: Set<String>
+        var want: [String]
         switch try await c.receive() {
-        case .applied(let retry): return Set(retry)
+        case .applied(let r, let w): (retry, want) = (Set(r), w)
         case .error(let code, let message): throw SyncError.refused(code: code, message: message)
         default: throw SyncError.protocolError("expected applied")
         }
+        guard !want.isEmpty else { return retry }
+        var missing: [String] = []
+        for id in want {
+            guard let data = files(id) else { missing.append(id); continue }
+            for m in SyncBlob.chunks(id: id, data) { try await c.send(m) }
+        }
+        try await c.send(.blobsEnd(missing: missing))
+        switch try await c.receive() {
+        case .applied(let r, _): retry.formUnion(r)
+        case .error(let code, let message): throw SyncError.refused(code: code, message: message)
+        default: throw SyncError.protocolError("expected applied")
+        }
+        retry.formUnion(missing)
+        want = []
+        return retry
+    }
+
+    /// Ask the Mac for these files and save each one that checks out.
+    /// Returns (saved, failed).
+    private static func fetchBlobs(_ wanted: [ScreenItem], over c: SyncConnection, engine: SyncEngine,
+                                   state: inout SyncMacState) async throws -> (Int, Int) {
+        try await c.send(.want(ids: wanted.map(\.id)))
+        var assembler = SyncBlob.Assembler()
+        var saved = Set<String>()
+        loop: while true {
+            switch try await c.receive() {
+            case .blob(let id, let off, let data, let last):
+                let item = wanted.first { $0.id == id }
+                if let bytes = try? assembler.feed(id: id, off: off, data: data, last: last, expected: item), let item {
+                    if (try? engine.addScreen(item, data: bytes, state: &state)) == true { saved.insert(id) }
+                }
+            case .blobsEnd: break loop
+            case .error(let code, let message): throw SyncError.refused(code: code, message: message)
+            default: throw SyncError.protocolError("expected blobs")
+            }
+        }
+        return (saved.count, wanted.count - saved.count)
     }
 }
