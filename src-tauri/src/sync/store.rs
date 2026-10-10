@@ -769,7 +769,11 @@ pub async fn apply(
 ) -> ApplyReport {
     items.sort_by_key(|i| i.order());
     let mut report = ApplyReport::default();
+    // Edits and gones first; then content; strike records last, so the
+    // recording they belong to has arrived (a strike for a recording this
+    // Mac doesn't have yet is asked for again next time)
     let (removals, content): (Vec<Item>, Vec<Item>) = items.into_iter().partition(|i| i.is_removal());
+    let (strikes, removals): (Vec<Item>, Vec<Item>) = removals.into_iter().partition(|i| matches!(i, Item::Strike(_)));
     for item in removals {
         let id = item_id(&item);
         match apply_removal(pool, env, peer, token_key, &item).await {
@@ -787,6 +791,16 @@ pub async fn apply(
         if let Err(e) = apply_content(pool, peer, &content, &mut report).await {
             report.errors.push(e);
             report.retry.extend(content.iter().filter_map(item_id));
+        }
+    }
+    for item in strikes {
+        match apply_removal(pool, env, peer, token_key, &item).await {
+            Ok(true) => report.applied += 1,
+            Ok(false) => report.skipped += 1,
+            Err(e) => {
+                report.errors.push(e);
+                report.retry.extend(item_id(&item));
+            }
         }
     }
     report
@@ -823,7 +837,10 @@ async fn apply_removal(
             }
             let mut tx = pool.begin().await.map_err(err("Database busy"))?;
             if !meeting_exists(&mut tx, &rec).await? {
-                return Ok(false);
+                if is_gone(&mut tx, "recording", &rec).await? {
+                    return Ok(false);
+                }
+                return Err("The recording of a strike isn't on this Mac yet".into());
             }
             let exists = sqlx::query("SELECT 1 FROM redactions WHERE id = ?")
                 .bind(&id)

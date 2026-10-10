@@ -288,6 +288,18 @@ enum SyncItem: Equatable, Sendable {
         }
     }
 
+    /// Order for applying a peer's items: edits and gones, then recordings,
+    /// then strike records (their recording is there by then), then the rest
+    var applyOrder: Int {
+        switch self {
+        case .edit: 0
+        case .gone: 1
+        case .recording: 2
+        case .strike: 3
+        default: order
+        }
+    }
+
     /// The id the peer asks for again (`applied.retry`)
     var retryID: String {
         switch self {

@@ -259,7 +259,7 @@ struct SyncEngine {
     func apply(_ items: [SyncItem], state: inout SyncMacState) async -> ApplyReport {
         var report = ApplyReport()
         var ledger = SyncLedger.load()
-        for item in items.sorted(by: { $0.order < $1.order }) {
+        for item in items.sorted(by: { $0.applyOrder < $1.applyOrder }) {
             do {
                 if try await applyOne(item, state: &state, ledger: &ledger) { report.applied += 1 } else { report.skipped += 1 }
             } catch {

@@ -972,3 +972,17 @@ async fn migration_is_idempotent_and_backfills_old_rows_once() {
     let r = sqlx::query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync_%'").fetch_one(f.pool()).await.unwrap();
     assert_eq!(r.get::<i64, _>("n"), 27);
 }
+
+#[tokio::test]
+async fn a_strike_waits_for_its_recording() {
+    let f = setup().await;
+    let marker = uid(0x31);
+    let strike = Item::Strike(p::StrikeItem { id: marker.clone(), rec: REC.into(), target: "line".into(), from: None, to: None, created: 1, reason: None, line: None });
+    // Before the recording: asked for again
+    let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![strike.clone()]).await;
+    assert_eq!(r.retry, vec![marker.clone()]);
+    // In the same batch as its recording: applied after it
+    let r = store::apply(f.pool(), &f.env, PHONE, &tk(), vec![strike, Item::Recording(rec_item(REC, "R", 1))]).await;
+    assert!(r.retry.is_empty(), "{:?}", r);
+    assert_eq!(crate::redaction::list_strikes(f.pool(), REC).await.unwrap().len(), 1);
+}
