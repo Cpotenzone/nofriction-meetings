@@ -39,6 +39,20 @@ final class SyncEndToEndTests: XCTestCase {
         context.insert(mark)
         mark.meeting = m
         m.aiNotes = "**Summary**\nExam on Tuesday."
+        // A photo, and a screen from screen capture
+        try FileManager.default.createDirectory(at: Storage.snapshots, withIntermediateDirectories: true)
+        var made: [URL] = []
+        for (i, screen) in [false, true].enumerated() {
+            let name = "e2e-\(UUID().uuidString).jpg"
+            let url = Storage.snapshots.appending(path: name)
+            try SyncScreenTests.jpeg(screen ? 0.9 : 0.1).write(to: url)
+            made.append(url)
+            let s = Snapshot(fileName: name, takenAt: m.startedAt.addingTimeInterval(Double(10 + i * 10)))
+            s.source = screen ? Snapshot.Source.screen : nil
+            context.insert(s)
+            s.meeting = m
+        }
+        defer { for u in made { try? FileManager.default.removeItem(at: u) } }
         try context.save()
 
         let connect: (SyncMacState) async throws -> SyncConnection = { state in
@@ -65,11 +79,19 @@ final class SyncEndToEndTests: XCTestCase {
         let mac = try XCTUnwrap(try context.fetch(FetchDescriptor<Meeting>()).first { $0.title == "Mac planning meeting" })
         XCTAssertEqual(mac.segments.count, 2)
         XCTAssertEqual(mac.aiNotes, "**Summary**\nPlan: acquire Zenith Labs.")
+        // The Mac's screen, at its moment, as a screen
+        let macShot = try XCTUnwrap(mac.snapshots.first)
+        XCTAssertTrue(macShot.isScreen)
+        XCTAssertEqual(macShot.takenAt.timeIntervalSince(mac.startedAt), 42, accuracy: 0.01)
+        XCTAssertNotNil(SyncBlob.imageExt(try Data(contentsOf: macShot.fileURL)))
 
         // Here: strike "Zenith Labs" in the Mac's line, delete our second line
         try await Task.sleep(for: .seconds(2))   // the server deletes "Tuesday" after session 1
         let zenith = try XCTUnwrap(mac.segments.first { $0.text.contains("Zenith") })
         try await RedactionEngine.strike(.words(zenith, 2...3), reason: "privileged", meeting: mac, context: context)
+        // Strike the Mac's screen here
+        let macShotURL = macShot.fileURL
+        try await RedactionEngine.strike(.screens([macShot]), reason: "private", meeting: mac, context: context)
         let gone = try XCTUnwrap(m.segments.first { $0.text.contains("delete me") })
         let pending = try RedactionEngine.delete(.lines([gone]), meeting: m, context: context)
         try await RedactionEngine.commit(pending, context: context)
@@ -81,6 +103,12 @@ final class SyncEndToEndTests: XCTestCase {
         XCTAssertEqual(m.segments.map(\.text), ["The exam is on at nine"], "the Mac's Delete reached the iPhone")
         XCTAssertFalse(m.aiNotes?.contains("Tuesday") ?? true, "and was purged from the notes here")
         XCTAssertFalse(mac.aiNotes?.contains("Zenith") ?? true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: macShotURL.path(percentEncoded: false)))
+        // The Mac struck our captured screen: gone here too, with its marker; the photo stays
+        XCTAssertEqual(m.snapshots.count, 1)
+        XCTAssertFalse(m.snapshots[0].isScreen)
+        XCTAssertEqual(m.screenStrikes.count, 1)
+        XCTAssertEqual(m.screenStrikes.first?.reason, "private")
 
         // What the Mac ended with (the server writes it after session 2)
         let resultURL = URL(filePath: path).deletingLastPathComponent().appending(path: "result.json")
@@ -92,9 +120,15 @@ final class SyncEndToEndTests: XCTestCase {
         let r = try XCTUnwrap(result, "the server's result")
         XCTAssertEqual(r["zenith_in_search"]?.int, 0, "struck on the iPhone: gone from the Mac's search index")
         XCTAssertEqual(r["zenith_in_notes"]?.int, 0, "and from its notes")
-        XCTAssertEqual(r["strikes"]?.int, 1)
+        XCTAssertEqual(r["strikes"]?.int, 3, "one in the transcript, two screens")
         XCTAssertEqual(r["deleted_phone_line_present"]?.int, 0, "deleted on the iPhone: gone on the Mac")
         XCTAssertEqual(r["phone_notes"]?.int, 1, "the Mac kept its own notes for its recording")
         XCTAssertEqual(r["marks"]?.int, 1)
+        XCTAssertEqual(r["phone_photos"]?.int, 1, "our photo reached the Mac")
+        XCTAssertEqual(r["phone_screens"]?.int, 0, "our screen reached the Mac, then the Mac struck it")
+        XCTAssertEqual(r["mac_screens"]?.int, 0, "the Mac's screen, struck here, is gone there")
+        XCTAssertEqual(r["mac_screen_file"]?.bool, false)
+        XCTAssertEqual(r["screen_strikes"]?.int, 2)
+        XCTAssertEqual(r["synced_files"]?.int, 1, "only the photo's file is left from sync")
     }
 }
