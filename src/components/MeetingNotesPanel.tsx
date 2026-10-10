@@ -118,7 +118,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
         setActionError(null);
         setNeedsAi(false);
         try {
-            setEmail(await withAiConsent(() => invoke<FollowUpEmail>("draft_followup_email", { meetingId })));
+            setEmail(await withAiConsent(() => invoke<FollowUpEmail>("draft_followup_email", { meetingId }), "follow_up"));
         } catch (e) {
             if (isNoProviderError(e)) setNeedsAi(true);
             else setActionError(aiFailure(e, "Follow-up emails"));

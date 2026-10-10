@@ -539,6 +539,16 @@ function handle(cmd: string, args: Args): unknown {
             return { configured: false, path: null, valid: false, topicCount: 0, totalFiles: 0 };
         case "get_setting":
             return null;
+        // Export to Obsidian is Pro (entitlement::require_pro_feature)
+        case "set_vault_path":
+        case "export_meeting_to_vault":
+            if (!isPro) throw "PRO_REQUIRED:obsidian: Export to Obsidian is part of noFriction Pro.";
+            return null;
+        case "set_setting":
+            if (a.key === "obsidian_auto_export" && a.value === "true" && !isPro) {
+                throw "PRO_REQUIRED:obsidian: Export to Obsidian is part of noFriction Pro.";
+            }
+            return null;
         case "get_ai_automation":
             return { autoReport: true };
         case "set_ai_automation":
@@ -805,6 +815,9 @@ function handle(cmd: string, args: Args): unknown {
         case "plugin:dialog|message":
         case "plugin:opener|open_url":
             return null;
+        case "plugin:dialog|open":
+            // A fictional folder (Settings → Export to Obsidian → Choose folder)
+            return "/Users/demo/Documents/Vault";
     }
     console.warn("[mock] unhandled", cmd, args);
     return null;

@@ -76,7 +76,7 @@ struct ChatView: View {
                     ChatStore.delete(t, context: context)
                 })
             }
-            .sheet(isPresented: $showPaywall, onDismiss: { resumePending(if: store.isPro) }) { PaywallView() }
+            .sheet(isPresented: $showPaywall, onDismiss: { resumePending(if: store.isPro) }) { PaywallView(feature: .chat) }
             .sheet(isPresented: $showAISetup, onDismiss: { resumePending(if: aiSettings.endpoint() != nil) }) { AISetupSheet() }
             .sheet(item: $consentFor, onDismiss: { resumePending(if: aiSettings.endpoint()?.consentGranted == true) }) { p in
                 AIConsentSheet(provider: p) { aiSettings.grantConsent(p) }

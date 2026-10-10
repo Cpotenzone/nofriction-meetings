@@ -1,11 +1,20 @@
 //! noFriction Pro entitlement (Mac App Store build).
 //!
-//! Free: recording, transcription, calendar/people, screenshots, export.
-//! Pro: every LLM call (notes, summaries, action items, emails, chat,
-//! briefings, live intel, catch-up), user-invoked or background.
+//! The Free/Pro list is `docs/PRO.md` (owner decision 2026-10-10).
+//! Free: recording, microphone transcription, screens, marks, notebooks,
+//! Rewind, search, Links, calendar/people, Delete/Strike, JSON export.
+//! Pro: every LLM call (notes, follow-up email, review guides, chat, topics,
+//! automatic notes), plus the non-AI Pro features in [`ProFeature`]
+//! (Sync with your iPhone, Export to Obsidian).
 //!
-//! [`require_pro`] is checked once, in `ai::client::complete`, which every AI
-//! call goes through. The state comes from StoreKit 2
+//! Two gates, one rule (gated only in the `mas` build):
+//! - [`require_pro`] is the single AI gate, checked once in
+//!   `ai::client::complete`, which every AI call goes through.
+//! - [`require_pro_feature`] is for non-AI Pro features. Its error is
+//!   `PRO_REQUIRED:<key>: …`, so the frontend opens the paywall naming that
+//!   feature (`src/lib/pro.ts`).
+//!
+//! The state comes from StoreKit 2
 //! (`Transaction.currentEntitlements`, verified on-device; no server) via
 //! `crate::store`, and is refreshed by the `Transaction.updates` listener.
 //!
@@ -71,6 +80,88 @@ pub async fn require_pro() -> Result<(), crate::ai::AiError> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Non-AI Pro features
+// ---------------------------------------------------------------------------
+
+/// true in the Mac App Store build, where Pro is enforced.
+pub const GATED: bool = cfg!(feature = "mas");
+
+/// A Pro feature that isn't an AI call. The key is shared with the frontend
+/// paywall (`src/lib/pro.ts` → `ProFeature`) and iOS (`ProFeature.swift`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProFeature {
+    /// iPhone ↔ Mac sync over the local network
+    Sync,
+    /// Export to Obsidian (manual and automatic export to a vault folder)
+    Obsidian,
+}
+
+impl ProFeature {
+    pub const ALL: [ProFeature; 2] = [ProFeature::Sync, ProFeature::Obsidian];
+
+    /// Stable key, in the error string and the paywall.
+    pub fn key(self) -> &'static str {
+        match self {
+            ProFeature::Sync => "sync",
+            ProFeature::Obsidian => "obsidian",
+        }
+    }
+
+    /// Name as the UI says it (DESIGN.md vocabulary, sentence case).
+    pub fn label(self) -> &'static str {
+        match self {
+            ProFeature::Sync => "Sync",
+            ProFeature::Obsidian => "Export to Obsidian",
+        }
+    }
+}
+
+/// `Err` from [`require_pro_feature`]. Displays as
+/// `PRO_REQUIRED:<key>: <Label> is part of noFriction Pro.`; the frontend
+/// turns that into the paywall for `<key>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProRequired(pub ProFeature);
+
+impl std::fmt::Display for ProRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PRO_REQUIRED:{}: {} is part of noFriction Pro.", self.0.key(), self.0.label())
+    }
+}
+
+impl std::error::Error for ProRequired {}
+
+impl From<ProRequired> for String {
+    fn from(e: ProRequired) -> String {
+        e.to_string()
+    }
+}
+
+/// The rule, without global state: free only when this build isn't gated.
+pub fn check_feature(gated: bool, is_pro: bool, feature: ProFeature) -> Result<(), ProRequired> {
+    if !gated || is_pro {
+        Ok(())
+    } else {
+        Err(ProRequired(feature))
+    }
+}
+
+/// Gate for non-AI Pro features (Sync, Export to Obsidian). Same rule as
+/// [`require_pro`]: enforced only in the `mas` build, always `Ok` in the DMG
+/// build. AI calls keep using [`require_pro`].
+#[cfg(feature = "mas")]
+pub async fn require_pro_feature(feature: ProFeature) -> Result<(), ProRequired> {
+    if !STATE.read().loaded {
+        crate::store::refresh_entitlement().await;
+    }
+    check_feature(GATED, STATE.read().is_pro, feature)
+}
+
+#[cfg(not(feature = "mas"))]
+pub async fn require_pro_feature(feature: ProFeature) -> Result<(), ProRequired> {
+    check_feature(GATED, false, feature)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +189,39 @@ mod tests {
     fn dmg_never_gates() {
         let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
         assert!(rt.block_on(require_pro()).is_ok());
+        for f in ProFeature::ALL {
+            assert!(rt.block_on(require_pro_feature(f)).is_ok(), "{:?} gated in the DMG build", f);
+        }
+    }
+
+    #[test]
+    fn gated_only_in_mas() {
+        assert_eq!(GATED, cfg!(feature = "mas"));
+    }
+
+    #[test]
+    fn feature_rule() {
+        for f in ProFeature::ALL {
+            assert!(check_feature(false, false, f).is_ok(), "ungated build must pass");
+            assert!(check_feature(true, true, f).is_ok(), "Pro must pass");
+            assert_eq!(check_feature(true, false, f), Err(ProRequired(f)));
+        }
+    }
+
+    #[test]
+    fn feature_error_names_the_feature() {
+        // The frontend parses PRO_REQUIRED:<key>: (src/lib/pro.ts)
+        assert_eq!(
+            ProRequired(ProFeature::Obsidian).to_string(),
+            "PRO_REQUIRED:obsidian: Export to Obsidian is part of noFriction Pro."
+        );
+        assert_eq!(
+            String::from(ProRequired(ProFeature::Sync)),
+            "PRO_REQUIRED:sync: Sync is part of noFriction Pro."
+        );
+        for f in ProFeature::ALL {
+            let k = f.key();
+            assert!(!k.is_empty() && k.chars().all(|c| c.is_ascii_lowercase() || c == '_'), "{}", k);
+        }
     }
 }

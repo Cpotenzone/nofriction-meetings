@@ -5,6 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { isProRequiredError, requestPaywall } from "./build";
+import { proFeatureFromError, type ProFeature } from "./pro";
 
 export type AiKind = "text" | "vision";
 
@@ -164,7 +165,7 @@ export function friendlyAiError(e: unknown): string {
     };
     const cls = aiErrorClass(s);
     if (cls === "no_provider" || cls === "no_key") return NO_AI_MESSAGE;
-    const detail = s.replace(/^.*?(AI_[A-Z_]+|UNKNOWN_PROVIDER|CONSENT_REQUIRED|PRO_REQUIRED):\s*/, "");
+    const detail = s.replace(/^.*?(AI_[A-Z_]+|UNKNOWN_PROVIDER|CONSENT_REQUIRED|PRO_REQUIRED(?::[a-z_]+)?):\s*/, "");
     if (cls === "other") return detail;
     return `${labels[cls]}: ${detail}`;
 }
@@ -214,17 +215,20 @@ export function requestConsent(provider: string, userInitiated = true): Promise<
 
 /**
  * Run a user-initiated AI call. If it needs noFriction Pro (Mac App Store
- * build), show the paywall; if it needs consent for a cloud provider, show
- * the consent dialog. Retries after the user subscribes / allows.
+ * build), show the paywall titled for `feature`; if it needs consent for a
+ * cloud provider, show the consent dialog. Retries after the user
+ * subscribes / allows.
  */
-export async function withAiConsent<T>(fn: () => Promise<T>): Promise<T> {
+export async function withAiConsent<T>(fn: () => Promise<T>, feature?: ProFeature): Promise<T> {
     for (let attempt = 0; ; attempt++) {
         try {
             return await fn();
         } catch (e) {
             if (attempt >= 2) throw e;
             if (isProRequiredError(e)) {
-                if (!(await requestPaywall())) throw e;
+                // The AI gate says "ai"; the caller knows which feature it was
+                const asked = proFeatureFromError(e);
+                if (!(await requestPaywall(asked === "ai" ? feature ?? asked : asked))) throw e;
                 continue;
             }
             const provider = consentProviderFromError(e);

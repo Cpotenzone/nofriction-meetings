@@ -12,7 +12,7 @@ import type { AudioDevice } from "../../lib/tauri";
 import { AIProviderSettings } from "./AIProviderSettings";
 import { TranscriptionSettings } from "./TranscriptionSettings";
 import { SubscriptionSettings } from "./SubscriptionSettings";
-import { useCapabilities, PRIVACY_URL, SUPPORT_EMAIL, SUPPORT_URL, TERMS_URL } from "../../lib/build";
+import { isProRequiredError, useCapabilities, withPro, PRIVACY_URL, SUPPORT_EMAIL, SUPPORT_URL, TERMS_URL } from "../../lib/build";
 import { openHelp, type SettingsCategory } from "../../lib/navigation";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppVersion } from "../../hooks/useAppVersion";
@@ -83,6 +83,7 @@ export function Settings({ initialCategory = "recording" }: SettingsProps) {
 // ── Recording ────────────────────────────────────────────────────────────
 
 function RecordingSettings({ showToast }: { showToast: (text: string, error?: boolean) => void }) {
+    const caps = useCapabilities();
     const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
     const [selectedMic, setSelectedMic] = useState<string>("");
     const [isLoadingDevices, setIsLoadingDevices] = useState(true);
@@ -158,15 +159,18 @@ function RecordingSettings({ showToast }: { showToast: (text: string, error?: bo
         }
     };
 
+    // Export to Obsidian is noFriction Pro (Mac App Store build): without it
+    // the backend answers PRO_REQUIRED:obsidian and withPro opens the paywall.
     const chooseVault = async () => {
         try {
             const selected = await open({ directory: true, multiple: false, title: "Choose your Obsidian vault folder" });
             if (selected && typeof selected === "string") {
-                await tauri.setVaultPath(selected);
+                await withPro(() => tauri.setVaultPath(selected), "obsidian");
                 setVaultPath(selected);
                 showToast("Folder saved");
             }
         } catch (err) {
+            if (isProRequiredError(err)) return; // the paywall said why
             showToast(`Couldn't choose the folder: ${err instanceof Error ? err.message : String(err)}`, true);
         }
     };
@@ -175,9 +179,10 @@ function RecordingSettings({ showToast }: { showToast: (text: string, error?: bo
         const next = !autoExport;
         setAutoExport(next);
         try {
-            await invoke("set_setting", { key: "obsidian_auto_export", value: String(next) });
+            await withPro(() => invoke("set_setting", { key: "obsidian_auto_export", value: String(next) }), "obsidian");
         } catch (err) {
             setAutoExport(!next);
+            if (isProRequiredError(err)) return;
             showToast(`Couldn't save: ${err instanceof Error ? err.message : String(err)}`, true);
         }
     };
@@ -253,7 +258,9 @@ function RecordingSettings({ showToast }: { showToast: (text: string, error?: bo
                 <h3>Export</h3>
                 <div className="settings-row">
                     <div className="settings-label">
-                        <span className="label-main">Export to Obsidian</span>
+                        <span className="label-main">
+                            Export to Obsidian{caps?.pro_gating && <span className="pro-tag">Pro</span>}
+                        </span>
                         <span className="label-sub">
                             {vaultPath ? `Each recording is saved as Markdown in ${vaultPath}` : "Choose your vault folder to save recordings as Markdown."}
                         </span>

@@ -48,7 +48,7 @@ export interface ChatTurn {
 export const chatApi = {
     /** Ask in a thread (null starts one). Pro and consent come from the backend's AI client. */
     ask: (threadId: string | null, scope: Scope, message: string) =>
-        withAiConsent(() => invoke<ChatTurn>("chat_ask", { threadId, scope, message })),
+        withAiConsent(() => invoke<ChatTurn>("chat_ask", { threadId, scope, message }), "chat"),
     threads: () => invoke<ChatThread[]>("list_chat_threads"),
     thread: (threadId: string) => invoke<{ thread: ChatThread; messages: ChatMessage[] }>("get_chat_thread", { threadId }),
     remove: (threadId: string) => invoke<void>("delete_chat_thread", { threadId }),

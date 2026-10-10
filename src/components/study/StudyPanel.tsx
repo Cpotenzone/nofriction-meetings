@@ -122,7 +122,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
         setNeedsAi(false);
         setProgress(null);
         try {
-            const r = await withAiConsent(() => studyApi.generate(meetingId, kinds));
+            const r = await withAiConsent(() => studyApi.generate(meetingId, kinds), "review_guide");
             setGuide(r.guide);
             setFailed(r.failed);
             if (r.saved.length > 0 && !kinds) setTab((t) => (r.saved.includes(t as StudyPart) ? t : r.saved[0]));

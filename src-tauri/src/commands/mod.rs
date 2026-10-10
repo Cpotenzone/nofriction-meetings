@@ -1167,9 +1167,18 @@ pub async fn stop_recording_core(state: &AppState) -> Result<(), String> {
             }
         }
 
-        // v3.0.0: Obsidian Auto-Export
+        // v3.0.0: Obsidian Auto-Export (noFriction Pro; skipped without it)
         if let Ok(settings) = state.settings.get_all().await {
-            if settings.obsidian_auto_export && settings.obsidian_vault_path.is_some() {
+            let wants = settings.obsidian_auto_export && settings.obsidian_vault_path.is_some();
+            let allowed = wants
+                && match crate::entitlement::require_pro_feature(crate::entitlement::ProFeature::Obsidian).await {
+                    Ok(()) => true,
+                    Err(e) => {
+                        log::info!("Obsidian auto-export skipped: {}", e);
+                        false
+                    }
+                };
+            if allowed {
                 // Determine the meeting ID that just ended
                 let meeting_id = {
                     let timeline = state.timeline_builder.get_events();
@@ -1535,6 +1544,14 @@ pub async fn get_setting(
         .map_err(|e| format!("Failed to get setting: {}", e))
 }
 
+/// The Pro feature a setting write turns on, if any (docs/PRO.md).
+pub(crate) fn setting_needs_pro(key: &str, value: &str) -> Option<crate::entitlement::ProFeature> {
+    match (key, value) {
+        ("obsidian_auto_export", "true") => Some(crate::entitlement::ProFeature::Obsidian),
+        _ => None,
+    }
+}
+
 /// Set a single setting value
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_setting(
@@ -1549,6 +1566,10 @@ pub async fn set_setting(
         || key == crate::ai::config::SETTINGS_KEY
     {
         return Err(format!("'{}' can't be set here", key));
+    }
+    // Turning on automatic Export to Obsidian needs noFriction Pro (mas)
+    if let Some(feature) = setting_needs_pro(&key, &value) {
+        crate::entitlement::require_pro_feature(feature).await?;
     }
     state
         .settings
