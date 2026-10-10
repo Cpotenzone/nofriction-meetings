@@ -79,6 +79,16 @@ screenshot plan now describe the update that both apps get together:
   for a Class.
 - The school-policy notice shows on the first Class recording.
 
+**Pro packaging (owner decision 2026-10-10, [PRO.md](PRO.md)):** Sync with your
+Mac, Transcribe what's playing (iPhone) and Export to Obsidian (Mac) joined
+Pro. The descriptions' Free and Pro paragraphs, What's New, the proposed
+subscription descriptions and the review notes' Pro paragraph now say so.
+**Enter them only with builds that contain Sync and Transcribe what's
+playing** (guideline 2.3.1). For a build without them (for example iOS 1.0.1
+build 9 or Mac 3.7.0 build 42, already on TestFlight), drop the "New in
+noFriction Pro" line from What's New and keep the previous Free and Pro
+paragraphs (this file's history, before 2026-10-10).
+
 This copy was written from that spec, before the update reached this branch.
 Check the labels against the build being submitted before entering the text
 in App Store Connect. The category stays Productivity + Education (§1).
@@ -260,27 +270,27 @@ Meetings, classes and everyday life: record and transcribe on your device, mark 
 
 App Store Connect rejects some symbols in descriptions with "This field contains one or more invalid characters" (seen 2026-10-07 for ★; key glyphs like ⌘ are avoided too). Write marks and shortcuts in words here; bullets (•) are fine.
 
-**3987 / 4000 characters**
+**3999 / 4000 characters**
 
 ```text
 noFriction records and transcribes on your iPhone or iPad so you can stay in the moment: a meeting, a class, or anything else worth keeping. Then create notes, follow-up drafts and review guides with the AI you choose.
 
 WORK OFFLINE WITH LOCAL AI
-Recording and transcription run on your device. On supported devices, noFriction Pro can use Apple's on-device model for notes, follow-up drafts and review guides without a cloud AI account or API key. Complete setup and any required model downloads before working offline.
+Recording and transcription run on your device. On supported devices, noFriction Pro can use Apple's on-device model for notes and review guides without a cloud AI account or API key. Finish setup and model downloads before working offline.
 
-Apple on-device AI requires iOS 26 or later, compatible Apple Intelligence hardware, Apple Intelligence enabled and its model ready. You can also connect a model you run yourself through an OpenAI-compatible endpoint. A model running on another computer needs a reachable local network.
+Apple on-device AI requires iOS 26 or later, compatible Apple Intelligence hardware, Apple Intelligence enabled and its model ready. You can also connect a model you run yourself through an OpenAI-compatible endpoint. A model on another computer needs a reachable local network.
 
-noFriction does not host AI models or include cloud AI usage. Connecting a third-party cloud provider is optional, uses your own account and may incur charges from that provider. The app asks permission before sending recording content to it.
+noFriction hosts no AI models and includes no cloud AI usage. A cloud provider is optional, uses your own account and may charge you. The app asks permission before sending recording content to it.
 
 RECORD ANYTHING, FIND WHAT MATTERS
 • Say what it is when you record: Meeting, Class or Personal. Notes, marks and the review guide follow the type
-• Choose how long to record (15, 30, 60 or 90 minutes, or no limit). It stops by itself, after a warning with +15 min
+• Choose how long to record (15 to 90 minutes, or no limit); it stops by itself after a warning with +15 min
 • Live transcription with Apple's on-device speech recognition, even with the screen locked
-• Tap Mark this moment while you record: Important, Question, or the third mark for the type, with an optional note
+• Mark moments as you record: Important, Question, or the type's own mark, with a note
 • Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
-• Play back the audio and search everything you've recorded
+• Play back audio and search everything you've recorded
 • Add photos of slides, whiteboards and handouts
-• See the web addresses said in a recording, and add your own references. Nothing is fetched
+• See web addresses said in a recording and add your own references; nothing is fetched
 
 FOR MEETINGS
 • Link recordings to calendar events and their attendees
@@ -289,7 +299,7 @@ FOR MEETINGS
 
 FOR CLASSES
 • Lecture notes: key concepts, definitions and examples, and announcements and deadlines
-• The review guide becomes a study guide, with questions to ask your instructor. Moments you marked On the test or Important get extra weight
+• The review guide becomes a study guide, with questions to ask your instructor. Moments marked On the test or Important get extra weight
 
 FOR EVERYDAY LIFE
 • Personal covers everything else: conversations, appointments, talks, ideas
@@ -297,13 +307,14 @@ FOR EVERYDAY LIFE
 • Mark Remember on details you don't want to lose
 
 REVIEW ANY RECORDING
-noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz and questions to ask. Each quiz answer has an explanation and can jump to its moment. Export flashcards as a CSV file that popular flashcard apps can import, or share the whole guide as Markdown. Read and check generated notes and guides before sharing them.
+noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz and questions to ask. Each quiz answer has an explanation and can jump to its moment. Export flashcards as a CSV file that popular flashcard apps can import, or share the whole guide as Markdown. Check generated text before relying on it.
 
 KEEP CONTROL OF THE RECORD
-Edit transcript text, remove unwanted material, or use Strike from the record to leave a visible marker. Deleting or striking transcript text also deletes that recording's review guide. Share a recording as text when you choose. Recordings stay on your device, and no noFriction account is needed.
+Edit transcript text, remove unwanted material, or use Strike from the record to leave a visible marker. Deleting or striking text also deletes that recording's review guide. Share a recording as text. Recordings stay on your device; no account is needed.
 
 FREE AND PRO
-Recording, on-device transcription, recording types, Notebooks, timed recording, marks, links, calendar and people, photos, search, editing and text sharing are free. AI features, including notes and review guides, require noFriction Pro. One subscription unlocks Pro on iPhone, iPad and Mac.
+Free: recording on iPhone, iPad, Mac and Apple Watch, on-device microphone transcription, photos and screen snapshots, timed recording, Notebooks, marks, links, calendar and people, search, editing, Delete and Strike, and sharing.
+noFriction Pro adds notes, follow-up emails, topics, review guides and Chat; Sync with your Mac over your own Wi-Fi, with no server; and Transcribe what's playing: the video or call on screen, transcribed while you capture it. One subscription covers iPhone, iPad and Mac.
 
 noFriction Pro is an auto-renewing monthly or yearly subscription charged to your Apple Account; it renews unless canceled at least 24 hours before the period ends. Manage it in your Apple Account settings.
 Privacy Policy: https://nofriction.io/privacy
@@ -335,7 +346,7 @@ meeting,notes,transcription,recorder,voice,memo,lecture,class,minutes,action ite
 App Store Connect doesn't show this field for an app's first version. Use the
 text in the TestFlight "What to Test" field now and keep it for 1.0.1.
 
-**693 / 4000 characters**
+**829 / 4000 characters**
 
 ```text
 Welcome to noFriction for iPhone and iPad.
@@ -347,6 +358,7 @@ Welcome to noFriction for iPhone and iPad.
 • Calendar matching, attendees, and People under Recordings
 • Photos of slides and whiteboards in the timeline
 • Notes and follow-up emails with Apple's on-device model or your own endpoint (noFriction Pro)
+• New in noFriction Pro: Sync with your Mac over your Wi-Fi, with no server, and Transcribe what's playing while you capture the screen
 • Delete, or Strike from the record
 • Stops at the time you choose, or when the meeting ends
 ```
@@ -371,27 +383,27 @@ Notes for meetings, classes and everyday life, transcribed on your Mac. Rewind s
 
 ### Description (limit 4000)
 
-**3998 / 4000 characters**
+**3997 / 4000 characters**
 
 ```text
 noFriction keeps your Mac's recordings, transcripts, screenshots and notes in one place: meetings, classes and anything else worth keeping. Go back to any moment in Rewind, and turn the transcript into notes with the AI you choose.
 
 WORK OFFLINE WITH LOCAL MODELS
-Download a speech model once; after that, transcription runs on your Mac without an internet connection. noFriction Pro can also use a local model for notes, review guides and other text AI features.
+Download a speech model once; after that, transcription runs on your Mac without an internet connection. noFriction Pro can also use a local model for notes, review guides and Chat.
 
-Apple on-device AI is available on compatible Apple Intelligence Macs running macOS 26 or later, with Apple Intelligence enabled and its model ready. You can also connect a model you run yourself through an OpenAI-compatible endpoint. A model on another computer needs a reachable local network. Complete model downloads and setup before working offline.
+Apple on-device AI is available on compatible Apple Intelligence Macs running macOS 26 or later, with Apple Intelligence enabled and its model ready. You can also connect a model you run yourself through an OpenAI-compatible endpoint. A model on another computer needs a reachable local network. Finish setup and downloads before working offline.
 
-noFriction does not host AI models or include cloud AI usage. An optional custom AI endpoint uses your own account and may incur charges from its operator. When used, recording content goes straight to the endpoint you entered.
+noFriction hosts no AI models and includes no cloud AI usage. An optional custom endpoint uses your own account and may charge you. Recording content goes straight to the endpoint you entered.
 
 RECORD AND REWIND
 • Say what it is when you record: Meeting, Class or Personal. Notes, marks and the review guide follow the type
-• Choose how long to record (15, 30, 60 or 90 minutes, or no limit). It stops by itself, after a warning with +15 min
+• Choose how long to record (15 to 90 minutes, or no limit); it stops by itself after a warning with +15 min
 • Capture your microphone and your Mac's audio, with a live local transcript
 • Capture the displays or windows you choose, and see screenshots and transcript side by side in Rewind
-• Mark a moment with Control-Option-Command-M, even from another app: Important, Question, or the third mark for the type, with a note, shown on the Rewind timeline
+• Mark a moment with Control-Option-Command-M, even from another app: Important, Question, or the type's own mark, with a note, shown on the Rewind timeline
 • Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
 • Search titles, people, topics and every transcript from one field
-• See the web addresses said in a recording, and add your own references. Nothing is fetched
+• See web addresses said in a recording and add your own references; nothing is fetched
 
 FOR MEETINGS
 • Link recordings to calendar events and their attendees
@@ -409,13 +421,14 @@ FOR EVERYDAY LIFE
 • Mark Remember on details you don't want to lose
 
 REVIEW AND ASK
-noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz with explanations, and questions to ask. Export flashcards as a CSV file that popular flashcard apps can import, or the whole guide as Markdown. Ask your transcripts questions in Chat. Check generated text before relying on it.
+noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz with explanations, and questions to ask. Export flashcards as CSV for popular flashcard apps, or the guide as Markdown. Ask your transcripts questions in Chat. Check generated text before relying on it.
 
 YOUR RECORDS
-Keep recordings on your Mac, edit transcript text, remove unwanted material or use Strike from the record to leave a visible marker. Deleting or striking transcript text also deletes that recording's review guide. Export recordings as Markdown files to a folder you choose. No noFriction account is required.
+Keep recordings on your Mac, edit transcript text, remove unwanted material or use Strike from the record to leave a visible marker. Deleting or striking text also deletes that recording's review guide. Export everything as JSON. No noFriction account is required.
 
 FREE AND PRO
-Recording, transcription, recording types, Notebooks, timed recording, marks, links, screenshots, calendar and people, search, editing and export are free. AI features, including notes and review guides, require noFriction Pro. One subscription unlocks Pro on Mac, iPhone and iPad.
+Free: recording, on-device transcription of your microphone and your Mac's audio, screenshots, timed recording, Notebooks, marks, links, calendar and people, search, editing, Delete and Strike, and JSON export.
+noFriction Pro adds notes, follow-up emails, topics, review guides and Chat; Sync with your iPhone over your Wi-Fi, no server; and automatic Markdown export to a notes folder. One subscription covers Mac, iPhone and iPad.
 
 noFriction Pro is an auto-renewing monthly or yearly subscription charged to your Apple Account; it renews unless canceled 24 hours before the period ends. Manage it in Apple Account settings.
 Privacy Policy: https://nofriction.io/privacy
@@ -446,7 +459,7 @@ meeting,notes,transcription,recorder,slides,lecture,class,minutes,action items,f
 
 Not shown for the first macOS version either; use it for TestFlight.
 
-**793 / 4000 characters**
+**887 / 4000 characters**
 
 ```text
 Simpler, calmer noFriction.
@@ -458,7 +471,8 @@ Simpler, calmer noFriction.
 • Delete a recording with 5 seconds to undo
 • Settings in five places: Recording, Transcription, AI, Subscription, About
 • The menu-bar icon: Start Recording, Stop, Pause, Resume, Mark
-• AI settings offer ChatGPT, Anthropic, Muse, Grok and Mistral cards that fill in the endpoint; you paste your own key
+• AI settings offer provider cards that fill in the endpoint; you paste your own key
+• New in noFriction Pro: Sync with your iPhone over your Wi-Fi, with no server, and automatic Markdown export to a notes folder
 • One noFriction Pro subscription for Mac, iPhone and iPad
 ```
 
@@ -489,12 +503,12 @@ Monthly display name:
 Pro Monthly
 ```
 
-Monthly description:
+Monthly description (proposed 2026-10-10, was "AI notes, summaries and reviews, monthly"):
 
-**40 / 45 characters**
+**44 / 45 characters**
 
 ```text
-AI notes, summaries and reviews, monthly
+Notes, review guides, Chat and sync, monthly
 ```
 
 Yearly display name:
@@ -505,12 +519,12 @@ Yearly display name:
 Pro Yearly
 ```
 
-Yearly description:
+Yearly description (proposed 2026-10-10, was "AI notes, summaries and reviews, yearly"):
 
-**39 / 45 characters**
+**43 / 45 characters**
 
 ```text
-AI notes, summaries and reviews, yearly
+Notes, review guides, Chat and sync, yearly
 ```
 
 Limits used: display name 30, description 45 (App Store Connect's
@@ -520,9 +534,16 @@ review guides, billed yearly."); that file is only for local testing and
 doesn't need to match.
 
 Review information for each product: a screenshot of the paywall (iOS: the
-paywall from "Make notes"; Mac: Settings → Subscription) and the note "Unlocks
-the AI features. Reach it from a recording's Make notes button (iOS) or Settings →
-Subscription (Mac)."
+paywall from "Make notes"; Mac: Settings → Subscription) and the note
+(proposed 2026-10-10, docs/PRO.md): "Unlocks noFriction Pro: notes, follow-up
+email, topics, review guides, Chat, Sync between iPhone and Mac, Transcribe
+what's playing (iPhone) and Export to Obsidian (Mac). Reach it from a
+recording's Make notes button (iOS) or Settings → Subscription (Mac)."
+
+The display names stay "Pro Monthly" and "Pro Yearly". The new descriptions
+name sync, so enter them in App Store Connect only with the builds that ship
+Sync; until then keep the old ones. App Store Connect is updated after review
+of this text.
 
 ---
 
@@ -538,19 +559,19 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3999 / 4000 characters**
+**3988 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
 
 RECORD AND TRANSCRIBE
 1. Open Record and tap Record. After the one-time recording notice, keep Meeting (the default) in What is it?, pick a length in How long? (No limit is fine) and tap Record.
-2. Allow Microphone and Speech Recognition. Calendar access enables calendar matching. On a physical device with on-device speech recognition available, speak for a minute and check the live transcript. The Simulator can't test speech recognition.
-3. Optionally add a photo. Stop, then open the recording in Recordings.
+2. Allow Microphone and Speech Recognition (Calendar enables calendar matching). On a physical device, speak for a minute and check the live transcript. The Simulator can't test speech recognition.
+3. Optionally add a photo. Stop, then open it in Recordings.
 
 PRO AND RESTORE
-4. Open the recording and choose Make notes or Follow-up email. Without Pro, the paywall opens. Settings → Subscription also offers the subscription and Restore Purchases.
-5. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require the Pro entitlement.
+4. Open the recording and choose Make notes. Without Pro, the paywall opens and names the feature. Pro covers notes, follow-up email, topics, review guides, Chat, Sync with your Mac and Transcribe what's playing. Settings → Subscription offers the plans, Restore Purchases and Manage Subscription.
+5. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. All AI features, including local AI, require Pro; recording and microphone transcription don't.
 
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup sheet or Settings → Connect, choose Apple on-device, then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
@@ -558,26 +579,26 @@ Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Appl
 Alternatively, enter your own local OpenAI-compatible model server and model in Settings. A model on another computer requires a reachable local network. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied in these notes.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
-6. Tap Record. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
+6. Tap Record. In What is it?, choose Class. How long? offers 15 to 90 min or No limit, and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
 7. While recording, tap Mark this moment, then ? Question, ✎ On the test or Note within six seconds. On a physical device, say a web address such as "example dot com".
 8. Stop. Recordings shows Notebook chips that filter the list. In the recording, Marks lists the marks, and Links lists the address as Said; tap Add to add a reference. Links are never fetched. People, a row at the top of Recordings, lists everyone from calendar invites.
 Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type (step 9).
 
 REVIEW (Pro)
-9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Make notes follows the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Make notes.
+9. In the recording's Review section, make the guide and open it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. Its share button exports flashcards as CSV and the guide as Markdown. Notes follow the type: meeting notes, lecture notes for a Class, or summary, key points and to-dos for Personal. Review uses the same AI, Pro paywall and consent prompt as Make notes.
 
 APPLE WATCH
-The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the recording appears in the iPhone app's Recordings tab. Delivery and transcription require a physical iPhone and Apple Watch.
+The Apple Watch app records and sends the audio to the iPhone app, which transcribes it on the device. Install it from the Watch app on the paired iPhone; tap Record, then Stop; the recording appears in Recordings. Delivery and transcription require a physical iPhone and Apple Watch.
 
 EDITING
-Open a recording and select transcript text. Delete offers a brief undo period. Strike from the record is permanent and leaves a marker.
+Open a recording and select transcript text. Delete offers a brief undo. Strike from the record is permanent and leaves a marker.
 
-The local-model path requires its setup, compatible hardware and Pro entitlement; it is not a hosted fallback. Reviewer contact details will be supplied separately in App Store Connect.
+The local-model path needs its setup and compatible hardware; it is not a hosted fallback. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 ### macOS
 
-**3976 / 4000 characters**
+**3946 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -588,7 +609,7 @@ SETUP AND RECORDING
 3. Click Stop (top right), then open Recordings and select the recording to see the transcript and screenshots in Rewind.
 
 PRO AND RESTORE
-4. Settings (gear) → Subscription offers plans and Restore Purchases. An AI action without Pro opens the paywall. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. AI features, including local AI, require Pro.
+4. Settings (gear) → Subscription offers plans, Restore Purchases and Manage subscription. Without Pro, an AI action, Sync or Settings → Recording → Export to Obsidian opens the paywall naming that feature. Pro also covers topics and review guides. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. All AI features, including local AI, require Pro.
 
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible Mac running macOS 26 or later, with Apple Intelligence enabled and its model download complete. With no text provider configured, the app uses the available Apple on-device model automatically. No cloud account or API key is required for that path.
@@ -598,14 +619,14 @@ Alternatively enter a local OpenAI-compatible model server and model in Settings
 Open Chat and ask What did we decide? Or Recordings → select a recording → Notes → Make notes / Follow-up email. No AI runs during a recording. Apple on-device is text-only; screenshot capture and review do not require image analysis.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS, LINKS AND SEARCH (free)
-5. Record again. In What is it?, choose Class. How long? offers 15, 30, 60 or 90 min or No limit (keys 1-5, Enter starts) and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end, after a banner with +15 min and No limit (5 minutes before; 2 for 15 min).
+5. Record again. In What is it?, choose Class. How long? offers 15 to 90 min or No limit (keys 1-5, Enter starts) and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end, after a banner with +15 min and No limit (5 minutes before; 2 for 15 min).
 6. While recording, click Mark in the bar, or press ⌃⌥⌘M with another app in front (File → Mark and the menu-bar icon also work). Choose ? Question or ✎ On the test and add a note. Say a web address such as "example dot com".
 7. Stop. Recordings shows Notebook chips that filter the list, and marks on the Rewind timeline and in the transcript. Select the recording → Links lists the address as Said; use Add reference to add one. Links are never fetched.
 8. Type a word you said into the search field at the top of Recordings (⌘K); click a matching line to open the recording at that moment.
 Per type: the third mark is Follow up (Meeting), On the test (Class) or Remember (Personal), and the notes and guide follow the type.
 
 REVIEW (Pro)
-9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Notes follow the type: meeting notes (summary, key topics, decisions, action items), lecture notes for a Class, and summary, key points and to-dos for Personal. Review uses the same AI, Pro check and consent prompt as notes.
+9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. For a Class it is called Study guide; otherwise, Review guide. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Review uses the same AI, Pro check and consent prompt as notes.
 
 The ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied in these notes. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
 ```
@@ -618,10 +639,10 @@ feature.
 
 Beta app description (limit 4000):
 
-**308 / 4000 characters**
+**317 / 4000 characters**
 
 ```text
-noFriction records and transcribes meetings, classes and everyday life on your device. Create notes and follow-ups with Apple on-device AI or your own local model after setup on supported devices. AI features require Pro. Optional cloud providers use your own account. No noFriction login or hosted AI model.
+noFriction records and transcribes meetings, classes and everyday life on your device. Create notes and follow-ups with Apple on-device AI or your own local model after setup on supported devices. AI features and Sync require Pro. Optional cloud providers use your own account. No noFriction login or hosted AI model.
 ```
 
 What to Test (limit 4000):
@@ -828,37 +849,35 @@ can appear.
 
 ## 10. Character count summary
 
-Recounted 2026-10-06 (second pass: meetings, classes and everyday life) with
-Python `len()` on the exact text of every `text` block above (lines joined
-with `\n`, no trailing newline; each newline counts as one character). The
-script also checked that every keyword string has no space after a comma, no
-repeated term and no word from the recommended name or subtitle (the Name
-alt 1 strings may use `notes`).
-
-"Changed" marks a field whose text changed in this pass; "was" is its count
-in the previous version of this doc (the student pass, PR #13). App Store
-Connect still holds the 2026-10-03 text, so re-enter every field marked
-changed. The secondary category in App Store Connect still needs changing
-from Business to Education.
+Recounted 2026-10-10 (Pro packaging, [PRO.md](PRO.md)) with Python `len()`
+on the exact text of every `text` block above (lines joined with `\n`, no
+trailing newline; each newline counts as one character). "Changed" marks a
+field whose text changed in this pass; "was" is its count before it.
 
 | Field | Characters | Limit | This pass |
 |---|---|---|---|
-| Name | 28 | 30 | changed (was 25, "noFriction: Meeting Notes") |
-| Subtitle | 29 | 30 | changed (was "Record, transcribe, summarize") |
-| iOS promotional text | 159 | 170 | changed (was 166) |
-| iOS description | 3987 | 4000 | changed (was 3865) |
-| iOS keywords | 96 | 100 | changed |
-| iOS What's New 1.0 | 685 | 4000 | changed (was 365) |
-| Mac promotional text | 158 | 170 | changed (was 166) |
-| Mac description | 3989 | 4000 | changed (was 3900) |
-| Mac keywords | 100 | 100 | changed |
-| Mac What's New 3.6.0 | 804 | 4000 | changed (was 381) |
+| Name | 28 | 30 | |
+| Subtitle | 29 | 30 | |
+| iOS promotional text | 159 | 170 | |
+| iOS description | 3999 | 4000 | changed (was 3987): Free and Pro paragraph names Sync and Transcribe what's playing |
+| iOS keywords | 96 | 100 | |
+| iOS What's New 1.0.1 | 829 | 4000 | changed (was 693): new Pro line |
+| Mac promotional text | 158 | 170 | |
+| Mac description | 3997 | 4000 | changed (was 3998): Free and Pro paragraph names Sync and Markdown export |
+| Mac keywords | 100 | 100 | |
+| Mac What's New 3.7.0 | 887 | 4000 | changed (was 793): new Pro line; provider brand names removed |
 | Group display name | 14 | 30 | |
 | Monthly display name | 11 | 30 | |
-| Monthly description | 38 | 45 | |
+| Monthly description | 44 | 45 | proposed (was 40) |
 | Yearly display name | 10 | 30 | |
-| Yearly description | 37 | 45 | |
-| iOS review notes | 3988 | 4000 | changed 2026-10-09 (was 4053, over the limit; header said 3968) |
-| Mac review notes (3.7.0) | 3963 | 4000 | changed in the 3.7.0 acceptance pass (was 3865) |
-| Beta description | 308 | 4000 | changed (was 281) |
-| What to Test | 1366 | 4000 | changed (was 1058) |
+| Yearly description | 43 | 45 | proposed (was 39) |
+| iOS review notes | 3988 | 4000 | changed (was 3999): Pro paragraph |
+| Mac review notes (3.7.0) | 3946 | 4000 | changed (was 3976): Pro paragraph |
+| Beta description | 317 | 4000 | changed (was 308) |
+| What to Test | 1366 | 4000 | |
+
+The new Pro copy names no third-party app: the descriptions and What's New
+say "Markdown export to a notes folder", not the app's name. ("OpenAI-compatible
+endpoint", from earlier passes, describes an API format.) The review
+notes (not public) name Export to Obsidian and the provider cards so the
+reviewer can find them.

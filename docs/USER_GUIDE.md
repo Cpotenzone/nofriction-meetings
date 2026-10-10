@@ -380,29 +380,48 @@ the bin next to it in **Recordings** (you get 5 seconds to **Undo**).
 
 - **iPhone/iPad:** in a recording, tap the **Share** button to send it
   as text (Markdown) to Notes, Mail, Files or any app.
-- **Mac:** **Settings → Recording → Export to Obsidian** picks your vault
-  folder; the switch beside it exports each recording as Markdown when it
-  stops. **Export everything as JSON**
-  in the same place saves one file you choose.
+- **Mac:** **Export everything as JSON** in **Settings → Recording** saves
+  one file you choose (free). **Export to Obsidian** (noFriction Pro), in the
+  same place, picks your vault folder; the switch beside it exports each
+  recording as Markdown when it stops.
 
-Recordings don't sync between devices. Each device keeps what it recorded.
+Each device keeps what it recorded. With noFriction Pro, **Sync with your
+Mac** moves recordings between your iPhone and Mac (see
+[Subscription](#subscription)).
 
 ---
 
 ## Subscription
 
+noFriction Pro turns every recording into notes, a review guide and answers,
+and keeps your iPhone and Mac in sync. Recording and microphone
+transcription stay free. The full list is the same everywhere (owner
+decision 2026-10-10).
+
 | Free | noFriction Pro |
 |---|---|
-| Recording, on-device transcription, types and notebooks, marks, calendar and people, photos and screenshots, Rewind, search, Delete and Strike, export | The AI features above, including notes and review guides |
+| Recording on iPhone, iPad, Mac and Apple Watch, with types, notebooks, timed recording and automatic stop | **Notes** (**Make notes**, **Make again**) and, on the Mac, automatic notes |
+| On-device microphone transcription (Mac: also the call's audio) | **Follow-up email** and **Topics** |
+| Screens: Mac screenshots, iPhone screen snapshots, photos | **Review guides** (study guides for a class) with flashcards, a practice quiz and CSV/Markdown export |
+| Marks, Rewind, search, Links, calendar and people | **Chat** with your recordings |
+| Edit, Delete and Strike from the record | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code |
+| Share a recording as text; export everything as JSON (Mac) | **Transcribe what's playing** (iPhone): while you capture the screen, noFriction also transcribes the audio of the video or call you're watching |
+| | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault |
 
-- Pro is a monthly or yearly subscription. Prices (and any free trial) are
-  shown before you buy.
+When you reach a Pro feature without Pro, the paywall says which one ("Sync
+is part of noFriction Pro").
+
+- Pro is $0.99 a month or $5.99 a year in the United States, each with a
+  1-week free trial for new subscribers. The price, the period and the trial
+  are shown before you buy. After the trial, the subscription renews
+  automatically at that price unless you cancel at least 24 hours before the
+  end of the period.
 - One subscription covers iPhone, iPad and Mac on the same Apple Account.
 - **Restore Purchases**: iPhone/iPad, **Settings tab → Subscription**; Mac,
   **Settings → Subscription**.
-- **Cancel**: **Manage Subscription** in the same place, or your device's
-  Settings → your name → Subscriptions. You keep Pro until the end of the
-  period.
+- **Cancel**: **Manage Subscription** in the same place or on the paywall, or
+  your device's Settings → your name → Subscriptions. You keep Pro until the
+  end of the period.
 - Pro doesn't include an AI service. If your own endpoint charges for use,
   its operator bills you, not noFriction.
 

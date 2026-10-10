@@ -154,7 +154,7 @@ these rules apply.
   standard EULA (`src/lib/build.ts`, `ios/NoFriction/App/AppLinks.swift`).
 - **Subscriptions:** noFriction Pro, `com.nofriction.meetings.pro.monthly`
   ($0.99/month) and `.pro.yearly` ($5.99/year), 1-week free trial each, USA
-  only, Family Sharing off. Recording and transcription stay free.
+  only, Family Sharing off. Recording and microphone transcription stay free; Pro list in docs/PRO.md (owner decision 2026-10-10).
 - **Delete and Strike must purge everywhere.** The checklist is in
   `docs/REDACTION.md`. Any new place that stores transcript or screen text must
   be added to that purge.
