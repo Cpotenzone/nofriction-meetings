@@ -922,7 +922,7 @@ export async function setMeetingReportPrompt(prompt: string): Promise<void> {
 }
 
 export async function generateMeetingReport(meetingId: string): Promise<MeetingReport> {
-    return withAiConsent(() => invoke<MeetingReport>("generate_meeting_report", { meetingId }));
+    return withAiConsent(() => invoke<MeetingReport>("generate_meeting_report", { meetingId }), "notes");
 }
 
 // ============================================

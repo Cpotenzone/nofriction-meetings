@@ -1,7 +1,13 @@
 // noFriction Meetings - Vault Commands
 // Obsidian vault integration commands (v3.0.0)
+//
+// Export to Obsidian is part of noFriction Pro (docs/PRO.md): every command
+// that writes to the vault, or picks it, goes through
+// `require_pro_feature(ProFeature::Obsidian)` (enforced in the `mas` build
+// only). Reading the user's own vault files stays open.
 
 use crate::catch_up_agent::TranscriptSegment;
+use crate::entitlement::{require_pro_feature, ProFeature};
 use crate::live_intel_agent::{LiveIntelAgent, LiveInsightEvent};
 use crate::AppState;
 use std::sync::Arc;
@@ -38,6 +44,7 @@ pub async fn create_vault_topic(
     name: String,
     tags: Vec<String>,
 ) -> Result<serde_json::Value, String> {
+    require_pro_feature(ProFeature::Obsidian).await?;
     let topic = state.vault_manager.create_topic(&name, tags).await?;
     serde_json::to_value(&topic).map_err(|e| e.to_string())
 }
@@ -49,6 +56,7 @@ pub async fn export_meeting_to_vault(
     topic_name: String,
     meeting_id: String,
 ) -> Result<String, String> {
+    require_pro_feature(ProFeature::Obsidian).await?;
     internal_export_meeting(
         state.database.clone(),
         state.vault_manager.clone(),
@@ -297,6 +305,7 @@ pub async fn write_vault_note(
     file_name: String,
     content: String,
 ) -> Result<String, String> {
+    require_pro_feature(ProFeature::Obsidian).await?;
     state
         .vault_manager
         .write_note(&topic_name, &file_name, &content)
@@ -311,6 +320,7 @@ pub async fn upload_to_vault(
     source_path: String,
     dest_name: Option<String>,
 ) -> Result<String, String> {
+    require_pro_feature(ProFeature::Obsidian).await?;
     state
         .vault_manager
         .upload_file(&topic_name, &source_path, dest_name.as_deref())
@@ -356,6 +366,7 @@ pub async fn delete_vault_item(
 /// Set the vault path and persist to settings
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_vault_path(state: State<'_, AppState>, vault_path: String) -> Result<(), String> {
+    require_pro_feature(ProFeature::Obsidian).await?;
     // Validate the path exists
     let path = std::path::Path::new(&vault_path);
     if !path.exists() || !path.is_dir() {
@@ -461,4 +472,40 @@ pub async fn get_files_by_tag(
 pub async fn get_vault_graph(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let graph = state.vault_manager.build_graph().await?;
     serde_json::to_value(&graph).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::entitlement::ProFeature;
+
+    /// Every command that picks the vault or writes to it checks Pro first.
+    #[test]
+    fn vault_writes_are_pro_gated() {
+        let src = include_str!("vault.rs");
+        for name in [
+            "create_vault_topic",
+            "export_meeting_to_vault",
+            "write_vault_note",
+            "upload_to_vault",
+            "set_vault_path",
+        ] {
+            let start = src.find(&format!("pub async fn {}(", name)).unwrap_or_else(|| panic!("{} missing", name));
+            let body = &src[start..];
+            let end = body[1..].find("\npub async fn ").map(|i| i + 1).unwrap_or(body.len());
+            assert!(
+                body[..end].contains("require_pro_feature(ProFeature::Obsidian).await?"),
+                "{} must check Pro before touching the vault",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn auto_export_setting_needs_pro() {
+        use crate::commands::setting_needs_pro;
+        assert_eq!(setting_needs_pro("obsidian_auto_export", "true"), Some(ProFeature::Obsidian));
+        // Turning it off, and every other setting, stays free
+        assert_eq!(setting_needs_pro("obsidian_auto_export", "false"), None);
+        assert_eq!(setting_needs_pro("auto_stop_enabled", "true"), None);
+    }
 }

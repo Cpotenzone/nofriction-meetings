@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { SUBSCRIPTION_EVENT, store, type Entitlement } from "../../lib/build";
-import { FREE_FEATURES, PRO_FEATURES, ProOffer } from "../../components/PaywallModal";
+import { ProComparison, ProOffer } from "../../components/PaywallModal";
+import { PRO_VALUE } from "../../lib/pro";
 import "../../components/PaywallModal.css";
 
 const PLAN_NAMES: Record<string, string> = {
@@ -45,7 +46,7 @@ export function SubscriptionSettings() {
                 ) : ent.isPro ? (
                     <>
                         <p className="subscription-status">
-                            ✓ {PLAN_NAMES[ent.productId ?? ""] ?? "noFriction Pro"} is active
+                            {PLAN_NAMES[ent.productId ?? ""] ?? "noFriction Pro"} is active
                             {ent.expiration &&
                                 ` · ${ent.willRenew === false ? "ends" : "renews"} ${new Date(ent.expiration).toLocaleDateString()}`}
                         </p>
@@ -55,17 +56,9 @@ export function SubscriptionSettings() {
                     </>
                 ) : (
                     <>
-                        <p className="section-desc">Pro unlocks every AI feature:</p>
-                        <ul className="paywall-features">
-                            {PRO_FEATURES.map((f) => (
-                                <li key={f}>{f}</li>
-                            ))}
-                        </ul>
-                        <p className="paywall-free">{FREE_FEATURES}</p>
+                        <p className="paywall-value">{PRO_VALUE}</p>
+                        <ProComparison />
                         <ProOffer onPro={refresh} />
-                        <button className="ai-link-button" onClick={manage}>
-                            Manage subscriptions in the App Store
-                        </button>
                     </>
                 )}
                 {error && <p className="ai-error-text">{error}</p>}

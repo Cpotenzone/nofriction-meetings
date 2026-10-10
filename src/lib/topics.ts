@@ -18,5 +18,5 @@ export const topicsApi = {
     /** The user's own list for a recording (rename, remove, add); [] clears it */
     set: (meetingId: string, labels: string[]) => invoke<MeetingTopic[]>("set_meeting_topics", { meetingId, labels }),
     /** Find (again) with the user's AI; user topics are kept */
-    find: (meetingId: string) => withAiConsent(() => invoke<MeetingTopic[]>("find_topics", { meetingId })),
+    find: (meetingId: string) => withAiConsent(() => invoke<MeetingTopic[]>("find_topics", { meetingId }), "topics"),
 };

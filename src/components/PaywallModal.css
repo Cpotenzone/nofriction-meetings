@@ -8,12 +8,51 @@
   overflow-y: auto;
 }
 
-.paywall-features {
-  margin: 0 0 8px;
-  padding-left: 20px;
+.paywall-value {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--text-primary);
+}
+
+.paywall-groups {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.paywall-groups li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border-color, #262626);
+  background: var(--bg-card, #0d0d0d);
+  border-radius: 0 6px 6px 0;
+}
+
+/* The feature that opened the paywall */
+.paywall-groups li.active {
+  border-left-color: var(--hazard-yellow, #facc15);
+  background: var(--tactical-gray, #171717);
+}
+
+.paywall-group-title {
   font-size: 14px;
-  line-height: 1.7;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.paywall-groups li.active .paywall-group-title {
+  color: var(--hazard-yellow, #facc15);
+}
+
+.paywall-group-detail {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 
 .paywall-free {

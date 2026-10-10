@@ -3,10 +3,12 @@
 // The Rust side reports what this build can do (`get_build_capabilities`):
 // the Developer ID "dmg" build has everything and no Pro gating; the Mac App
 // Store "mas" build is sandboxed (no ffmpeg video, no Accessibility capture,
-// no owner-infra settings) and gates AI behind noFriction Pro.
+// no owner-infra settings) and gates AI, Sync and Export to Obsidian behind
+// noFriction Pro (docs/PRO.md).
 
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { proFeatureFromError, type ProFeature } from "./pro";
 
 export interface BuildCapabilities {
     flavor: "mas" | "dmg";
@@ -114,10 +116,12 @@ export const store = {
 };
 
 // ---------------------------------------------------------------------------
-// Paywall bus (PRO_REQUIRED from any AI call → PaywallModal)
+// Paywall bus (PRO_REQUIRED from any AI call or Pro feature → PaywallModal)
 // ---------------------------------------------------------------------------
 
 export interface PaywallRequest {
+    /** The feature that opened the paywall (its title names it); none from Settings. */
+    feature?: ProFeature | null;
     /** resolves true once the user is Pro */
     resolve: (isPro: boolean) => void;
 }
@@ -130,13 +134,31 @@ export function onPaywallRequest(fn: PaywallListener): () => void {
     return () => paywallListeners.delete(fn);
 }
 
-/** Show the paywall; resolves true if the user ends up with Pro. */
-export function requestPaywall(): Promise<boolean> {
+/**
+ * Show the paywall, titled for `feature` ("Sync is part of noFriction Pro");
+ * resolves true if the user ends up with Pro. Never opens in the DMG build.
+ */
+export function requestPaywall(feature?: ProFeature | null): Promise<boolean> {
     if (paywallListeners.size === 0) return Promise.resolve(false);
-    return new Promise((resolve) => paywallListeners.forEach((l) => l({ resolve })));
+    return new Promise((resolve) => paywallListeners.forEach((l) => l({ feature, resolve })));
 }
 
 export function isProRequiredError(e: unknown): boolean {
-    const s = e instanceof Error ? e.message : String(e);
-    return s.includes("PRO_REQUIRED");
+    return proFeatureFromError(e) !== null;
+}
+
+/**
+ * Run a call to a non-AI Pro feature (Sync, Export to Obsidian). If the
+ * backend answers `PRO_REQUIRED:<key>`, open the paywall for that feature
+ * and retry once the user subscribes; otherwise rethrow.
+ */
+export async function withPro<T>(fn: () => Promise<T>, feature?: ProFeature): Promise<T> {
+    try {
+        return await fn();
+    } catch (e) {
+        const asked = proFeatureFromError(e);
+        if (!asked) throw e;
+        if (!(await requestPaywall(asked === "ai" ? feature ?? asked : asked))) throw e;
+        return fn();
+    }
 }
