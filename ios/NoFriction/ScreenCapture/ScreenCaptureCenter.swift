@@ -62,10 +62,14 @@ final class ScreenCaptureCenter {
         publishAppAudio()
         setPaused(false)
         poller?.cancel()
+        // Every second while capturing or recording (the screen count); else
+        // a slow check: the extension's Darwin signals cover start and end
         poller = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
-                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                await self.refresh()
+                let busy = self.isCapturing || (self.session?.isActive ?? false)
+                try? await Task.sleep(for: .seconds(busy ? 1 : 10))
             }
         }
     }
