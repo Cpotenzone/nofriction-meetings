@@ -15,7 +15,7 @@ import ReplayKit
 /// app records the microphone itself), and holds no frame after it returns.
 /// Extensions get about 50 MB: everything here is sized well under that.
 final class SampleHandler: RPBroadcastSampleHandler {
-    private let darwin = DarwinListener()
+    private let darwin = DarwinSignal()
     /// Set on start, cleared at the end; ReplayKit and Darwin callbacks arrive on different threads
     private let lock = NSLock()
     private var _recorder: BroadcastRecorder?
@@ -41,7 +41,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         }
         recorder?.setPaused(shared?.bool(forKey: ScreenCaptureContract.Key.paused) ?? false)
         darwin.observe(ScreenCaptureContract.Signal.control) { [weak self] in self?.readControl() }
-        DarwinListener.post(ScreenCaptureContract.Signal.started)
+        DarwinSignal.post(ScreenCaptureContract.Signal.started)
     }
 
     override func broadcastPaused() {
@@ -92,44 +92,12 @@ final class SampleHandler: RPBroadcastSampleHandler {
         }
         guard let current else { return }
         current.finish()
-        DarwinListener.post(ScreenCaptureContract.Signal.finished)
+        DarwinSignal.post(ScreenCaptureContract.Signal.finished)
     }
 
     private func finish(message: String) {
         let error = NSError(domain: "com.nofriction.meetings.broadcast", code: 1,
                             userInfo: [NSLocalizedDescriptionKey: message])
         finishBroadcastWithError(error)
-    }
-}
-
-/// Darwin notifications: names only, between this extension and the app.
-final class DarwinListener {
-    private var handler: (() -> Void)?
-    private var name: String?
-
-    func observe(_ name: String, _ handler: @escaping () -> Void) {
-        stop()
-        self.handler = handler
-        self.name = name
-        let center = CFNotificationCenterGetDarwinNotifyCenter()
-        CFNotificationCenterAddObserver(center, Unmanaged.passUnretained(self).toOpaque(), { _, observer, _, _, _ in
-            guard let observer else { return }
-            Unmanaged<DarwinListener>.fromOpaque(observer).takeUnretainedValue().handler?()
-        }, name as CFString, nil, .deliverImmediately)
-    }
-
-    func stop() {
-        guard let name else { return }
-        CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), Unmanaged.passUnretained(self).toOpaque(),
-                                           CFNotificationName(name as CFString), nil)
-        self.name = nil
-        handler = nil
-    }
-
-    deinit { stop() }
-
-    static func post(_ name: String) {
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(name as CFString),
-                                             nil, nil, true)
     }
 }

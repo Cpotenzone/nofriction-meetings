@@ -78,6 +78,11 @@ final class Meeting {
     /// them back. Keys only (normalized labels), never transcript text.
     /// Optional, so older stores migrate without a schema version.
     var removedTopicKeysJSON: String?
+    /// Screen capture (docs/SCREEN_CAPTURE_IOS.md): JSON `[{file, start,
+    /// done}]`, app audio ("Transcribe what's playing") waiting to be
+    /// transcribed. File names and times only; each file is deleted once
+    /// transcribed, and with the recording. Optional (no schema version).
+    var screenAudioJSON: String?
 
     init(title: String, startedAt: Date = .now) {
         self.id = UUID()
@@ -152,6 +157,10 @@ final class Segment {
     /// JSON `[WordTiming]`: per-word audio times, so Delete / Strike can
     /// silence exactly those words. nil when the engine gave none.
     var wordTimingsJSON: String?
+    /// "screen": transcribed from the audio of what was playing during
+    /// screen capture (shown as "On screen"); nil = the microphone. Such a
+    /// line has no audio in the recording's file. Optional (no schema version).
+    var source: String?
 
     init(text: String, start: Date, duration: TimeInterval, audioOffset: Double? = nil, wordTimings: [WordTiming] = []) {
         self.text = text
@@ -170,6 +179,9 @@ final class Segment {
             wordTimingsJSON = newValue.isEmpty ? nil : (try? JSONEncoder().encode(newValue)).flatMap { String(data: $0, encoding: .utf8) }
         }
     }
+
+    /// Heard from what was playing on screen, not from the microphone.
+    var isFromScreen: Bool { source == Snapshot.Source.screen }
 }
 
 /// One word's place in the segment text (UTF-16 offsets) and in the audio file (seconds).
@@ -226,12 +238,16 @@ final class Redaction {
     var isStrike: Bool { action == Action.strike.rawValue }
 }
 
-/// A photo of a slide, whiteboard or screen taken during a meeting.
+/// A photo of a slide, whiteboard or screen taken during a meeting, or a
+/// screen kept by screen capture (docs/SCREEN_CAPTURE_IOS.md).
 @Model
 final class Snapshot {
     var fileName: String
     var takenAt: Date
     var meeting: Meeting?
+    /// "screen" when kept by screen capture; nil = a photo. Optional, so
+    /// older stores migrate without a schema version.
+    var source: String?
 
     init(fileName: String, takenAt: Date = .now) {
         self.fileName = fileName
@@ -239,6 +255,11 @@ final class Snapshot {
     }
 
     var fileURL: URL { Storage.snapshots.appending(path: fileName) }
+
+    enum Source { static let screen = "screen" }
+
+    /// Kept by screen capture, not taken with the camera or picked from Photos.
+    var isScreen: Bool { source == Source.screen }
 }
 
 /// Someone from a calendar invite. One per email, shared across meetings.

@@ -4,6 +4,7 @@ import SwiftUI
 /// Record. The transcript is the screen; the controls sit under your thumb.
 struct LiveView: View {
     @Environment(RecordingSession.self) private var session
+    @Environment(ScreenCaptureCenter.self) private var screenCapture
     @State private var showCamera = false
     @State private var photoItem: PhotosPickerItem?
     @State private var snapFlash = false
@@ -30,6 +31,8 @@ struct LiveView: View {
                                     dismiss: { session.dismissTimeWarning() })
                 } else if let notice = session.notice {
                     NoticeBanner(text: notice)
+                } else if screenCapture.hiddenNoticeDue {
+                    HiddenVideoBanner { screenCapture.dismissHiddenNotice() }
                 }
                 if showClassNotice {
                     ClassNoticeBanner { showClassNotice = false }
@@ -41,6 +44,15 @@ struct LiveView: View {
                 controls
             }
             .background(Theme.background.ignoresSafeArea())
+            // Apple's broadcast sheet for screen capture, opened from the
+            // Capture screen row or right after Record (docs/SCREEN_CAPTURE_IOS.md)
+            .background(alignment: .bottomLeading) {
+                BroadcastPickerHost(center: screenCapture)
+                    .frame(width: 1, height: 1)
+                    .opacity(0.02)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .overlay {
                 if snapFlash {
@@ -66,7 +78,14 @@ struct LiveView: View {
                         classNoticeShown = true
                         showClassNotice = true
                     }
-                    Task { await session.start(limit: limit, kind: kind, notebook: notebook) }
+                    // "Capture screen" on: Apple's sheet opens once the recording runs
+                    let captureScreen = ScreenCapturePrefs.captureOnRecord()
+                    Task {
+                        await session.start(limit: limit, kind: kind, notebook: notebook, captureScreen: captureScreen)
+                        guard captureScreen, session.isActive, !screenCapture.isCapturing else { return }
+                        try? await Task.sleep(for: .milliseconds(400))   // the Record sheet finishes closing
+                        screenCapture.presentPicker()
+                    }
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
@@ -127,6 +146,9 @@ struct LiveView: View {
                              extend: { session.extendTimeLimit() },
                              removeLimit: { session.removeTimeLimit() })
                     .padding(.top, 4)
+            }
+            if session.isActive || screenCapture.isCapturing {
+                ScreenCaptureRow().padding(.top, 4)
             }
             if let people = session.meeting?.people, !people.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {

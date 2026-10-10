@@ -47,6 +47,9 @@ final class RecordingSession {
     private var endWasDetected = false
     /// Injectable for tests
     var clock: () -> Date = Date.init
+    /// Screen capture (docs/SCREEN_CAPTURE_IOS.md): told when a recording
+    /// starts, pauses and stops, so a broadcast attaches to it and ends with it
+    @ObservationIgnored weak var screenCapture: ScreenCaptureCenter?
 
     var isActive: Bool { phase == .recording || phase == .paused || phase == .starting }
 
@@ -63,7 +66,9 @@ final class RecordingSession {
 
     /// `limit` / `kind` nil: the remembered choices (starts that skip the
     /// Record sheet). The sheet passes its choices and an optional notebook.
-    func start(limit: RecordingLimit? = nil, kind: RecordingKind? = nil, notebook: String? = nil) async {
+    /// `captureScreen`: the screen will be captured too, so Bluetooth
+    /// headphones keep high-quality playback (no hands-free mic).
+    func start(limit: RecordingLimit? = nil, kind: RecordingKind? = nil, notebook: String? = nil, captureScreen: Bool = false) async {
         guard phase == .idle, let context else { return }
         #if DEBUG
         // Film footage (-NFFilm): a demo recording; the Simulator has no speech recognition
@@ -102,6 +107,7 @@ final class RecordingSession {
         try? context.save()
 
         let capture = AudioCapture()
+        capture.keepsPlaybackQuality = captureScreen || (screenCapture?.isCapturing ?? false)
         let engine = TranscriptionEngines.best()
         do {
             try capture.configureSession()
@@ -131,6 +137,7 @@ final class RecordingSession {
         startMeter()
         startEndDetection(scheduledEnd: event?.end)
         startTimeLimit(meeting: meeting, limit: limit, startedAt: now)
+        screenCapture?.recordingStarted(meeting)
     }
 
     func stop() async {
@@ -152,6 +159,8 @@ final class RecordingSession {
         capture?.stop()
         await engine?.stop()
         await eventsTask?.value
+        // End a screen capture attached to this recording and import its screens
+        if let meeting { await screenCapture?.recordingWillStop(meeting) }
 
         if let meeting {
             meeting.endedAt = .now
@@ -187,6 +196,7 @@ final class RecordingSession {
             pausedAt = .now
             partial = ""
             phase = .paused
+            screenCapture?.recordingPaused(true)
             // Paused on purpose: no countdown while nothing is being recorded
             apply(detector?.cancelCountdown())
         case .paused:
@@ -194,6 +204,7 @@ final class RecordingSession {
             if let pausedAt { pausedTotal += Date().timeIntervalSince(pausedAt) }
             pausedAt = nil
             phase = .recording
+            screenCapture?.recordingPaused(false)
             apply(detector?.resetIdle())
         default:
             break

@@ -23,6 +23,8 @@ struct MeetingDetailView: View {
     @State private var consentFor: AIProvider?
     @State private var pendingAI: AIAction?
     @Environment(RedactionCenter.self) private var redactions
+    /// Screen capture: Delete Recording purges its app audio and leftovers (docs/SCREEN_CAPTURE_IOS.md)
+    @Environment(ScreenCaptureCenter.self) private var screenCapture
     // Editing (docs/REDACTION.md)
     @State private var editingSegment: Segment?
     @State private var selectingLines = false
@@ -118,7 +120,8 @@ struct MeetingDetailView: View {
         .confirmationDialog("Delete this recording?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { delete() }
         } message: {
-            Text("Its transcript, audio and photos are removed from this device.")
+            Text(meeting.screens.isEmpty ? "Its transcript, audio and photos are removed from this device."
+                 : "Its transcript, audio, photos and screens are removed from this device.")
         }
         .fullScreenCover(item: $viewing) { snapshot in
             SnapshotViewer(snapshot: snapshot)
@@ -436,8 +439,15 @@ struct MeetingDetailView: View {
             .sorted { $0.time < $1.time }
     }
 
+    /// "Photos", "Screens" (screen capture) or both
+    private var photosTitle: String {
+        let screens = meeting.snapshots.filter(\.isScreen).count
+        if screens == 0 { return "Photos" }
+        return screens == meeting.snapshots.count ? "Screens" : "Photos and screens"
+    }
+
     private var photos: some View {
-        SectionBlock(title: "Photos") {
+        SectionBlock(title: photosTitle) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
                 ForEach(photoItems) { item in
                     switch item {
@@ -466,8 +476,9 @@ struct MeetingDetailView: View {
                                 selectedPhotos.insert(snapshot.persistentModelID)
                             }
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Photo, \(snapshot.takenAt.formatted(date: .omitted, time: .shortened))")
-                            .accessibilityHint(selectingPhotos ? "Selects or deselects this photo" : "Opens the photo. Touch and hold to select photos.")
+                            .accessibilityLabel("\(snapshot.isScreen ? "Screen" : "Photo"), \(snapshot.takenAt.formatted(date: .omitted, time: .shortened))")
+                            .accessibilityHint(selectingPhotos ? "Selects or deselects this \(snapshot.isScreen ? "screen" : "photo")"
+                                               : "Opens the \(snapshot.isScreen ? "screen" : "photo"). Touch and hold to select.")
                             .accessibilityAddTraits(.isButton)
                             .accessibilityAddTraits(on ? .isSelected : [])
                             .accessibilityAction(named: "Select") {
@@ -496,8 +507,18 @@ struct MeetingDetailView: View {
             if meeting.importPhase != nil {
                 WatchImportStatus(meeting: meeting)
             }
+            if meeting.screenAudioJSON != nil {
+                // App audio from screen capture still being turned into text
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Transcribing what was playing on this \(DeviceName.current)…")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("screen-audio-status")
+            }
             if meeting.segments.isEmpty {
-                if meeting.importPhase == nil {
+                if meeting.importPhase == nil && meeting.screenAudioJSON == nil {
                     Text("Nothing was transcribed.").foregroundStyle(.secondary)
                 }
             } else {
@@ -618,6 +639,9 @@ struct MeetingDetailView: View {
         // too, and the import log keeps a re-delivery from bringing it back
         if let id = meeting.sourceRecordingID.flatMap(UUID.init(uuidString:)) { WatchInbox.shared.remove(id) }
         for s in meeting.snapshots { try? FileManager.default.removeItem(at: s.fileURL) }
+        // Screen capture: app audio still waiting to be transcribed, and any
+        // broadcast files of this recording still in the shared container
+        screenCapture.purge(meeting)
         // Chat answers that cited this recording go with it (docs/TOPICS_AND_CHAT.md)
         ChatStore.purge(meetingID: meeting.id, title: meeting.title, deleted: true, context: context)
         context.delete(meeting)
@@ -716,11 +740,16 @@ private struct SnapshotThumb: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(snapshot.takenAt.formatted(date: .omitted, time: .shortened))
-                .font(.caption2.monospacedDigit())
-                .padding(.horizontal, 6).padding(.vertical, 3)
-                .background(.black.opacity(0.55), in: Capsule())
-                .padding(6)
+            HStack(spacing: 4) {
+                if snapshot.isScreen {
+                    Image(systemName: "rectangle.dashed.badge.record").accessibilityHidden(true)
+                }
+                Text(snapshot.takenAt.formatted(date: .omitted, time: .shortened))
+            }
+            .font(.caption2.monospacedDigit())
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .background(.black.opacity(0.55), in: Capsule())
+            .padding(6)
         }
     }
 }
