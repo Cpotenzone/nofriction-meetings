@@ -287,6 +287,19 @@ Resubmit to App Review".
 
 ---
 
+
+### 5.10 First subscriptions need their group, and the web UI (2026-10-10)
+
+Subscriptions that have never been approved can't be submitted through
+`POST /v1/subscriptionSubmissions` ("has no pending version for
+submission"), and the version page has no subscriptions section any more.
+In App Store Connect, open each subscription and its group (noFriction Pro)
+and use **Add for Review → Draft iOS Submission**, so the version, both
+subscriptions and the group are one submission; then submit that draft
+(`PATCH reviewSubmissions {submitted: true}`). Without the group Apple
+answers "must be submitted with its subscription group version when the group
+has no approved version".
+
 ## 6. Order of work
 
 1. D1–D5 decisions → create the App ID and app record (reserves the name and bundle ID).
