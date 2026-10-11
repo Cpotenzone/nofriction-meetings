@@ -7,7 +7,7 @@ Thank you for your interest in contributing to noFriction Meetings!
 - **Rust** (latest stable) — [Install via rustup](https://rustup.rs/)
 - **Node.js** v18+ — [Download](https://nodejs.org/)
 - **Xcode Command Line Tools** — `xcode-select --install`
-- **macOS 12.3+** (required for build)
+- **macOS 13.0+** (required for build)
 
 ## Getting Started
 

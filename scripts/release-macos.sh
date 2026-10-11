@@ -58,6 +58,26 @@ log_info "Version: $APP_VERSION"
 log_info "Bundle ID: $BUNDLE_ID"
 log_info ""
 
+# Minimum macOS (system audio capture needs ScreenCaptureKit audio, macOS 13).
+# tauri.conf.json, Info.plist and build.rs must all agree.
+MIN_MACOS="13.0"
+check_min_macos_sources() {
+    local conf plist rs
+    conf=$(python3 -c "import json; print(json.load(open('$TAURI_CONF'))['bundle']['macOS']['minimumSystemVersion'])")
+    plist=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$TAURI_DIR/Info.plist")
+    rs=$(sed -n 's/.*let min_macos = "\(.*\)";.*/\1/p' "$TAURI_DIR/build.rs")
+    [[ "$conf" == "$MIN_MACOS" && "$plist" == "$MIN_MACOS" && "$rs" == "$MIN_MACOS" ]] \
+        || log_error "Minimum macOS mismatch (want $MIN_MACOS): tauri.conf.json=$conf Info.plist=$plist build.rs=$rs"
+}
+# The built binary must not require a newer macOS than MIN_MACOS.
+check_min_macos_binary() {
+    local bin="$1" minos
+    for minos in $(otool -l "$bin" | awk '/LC_BUILD_VERSION/{f=1} f&&$1=="minos"{print $2; f=0}'); do
+        [[ "$(printf '%s\n%s\n' "$minos" "$MIN_MACOS" | sort -V | tail -1)" == "$MIN_MACOS" ]] \
+            || log_error "$(basename "$bin") requires macOS $minos, newer than the declared minimum $MIN_MACOS"
+    done
+}
+
 # ---------------------------------------------------------
 # Validate Environment
 # ---------------------------------------------------------
@@ -90,6 +110,7 @@ validate_env() {
     command -v codesign >/dev/null 2>&1 || log_error "codesign not found"
     command -v xcrun >/dev/null 2>&1 || log_error "xcrun not found"
     command -v hdiutil >/dev/null 2>&1 || log_error "hdiutil not found"
+    check_min_macos_sources
     
     log_success "Environment validated"
 }
@@ -170,6 +191,9 @@ sign_app() {
         || log_error "Signature verification failed — check for a custom 'Always Trust' setting on the signing cert (security dump-trust-settings)"
     codesign -dr - "$APP_PATH" 2>&1 | grep -q "anchor apple generic" \
         || log_error "Designated requirement is not Apple-anchored — the signing cert has a custom trust override in Keychain Access; set it back to 'Use System Defaults'"
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PATH/Contents/Info.plist")" == "$MIN_MACOS" ]] \
+        || log_error "LSMinimumSystemVersion in the built app is not $MIN_MACOS"
+    check_min_macos_binary "$APP_PATH/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
     
     log_success "Application signed"
 }

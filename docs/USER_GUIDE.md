@@ -30,7 +30,7 @@ up yourself. It works on iPhone, iPad and Mac. There's no account to create.
    and **Calendars**. Calendar access is read-only; it's used to name
    meetings and list who attended.
 
-### Mac (macOS 12.3 or later)
+### Mac (macOS 13 Ventura or later)
 
 1. Install noFriction from the Mac App Store and open it.
 2. Setup is one screen. Click **Allow** next to **Microphone**, **Screen &
