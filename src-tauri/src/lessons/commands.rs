@@ -285,7 +285,7 @@ async fn save_mastery(pool: &Pool<Sqlite>, set_id: &str, concept_id: &str, m: &M
 
 // ── Submitted answers (shared shape) ─────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmittedAnswer {
     pub item_id: String,
@@ -346,31 +346,50 @@ pub struct GradedItem {
     pub correct: bool,
 }
 
+/// Grade `items` (the full presented/selected set, authoritative in Rust)
+/// against the client's submitted answers and update per-concept mastery.
+///
+/// Scoring is over the **server-known** item set, not the posted subset: every
+/// item in `items` is graded, and an item the client omitted (or sent blank)
+/// grades to zero via its default `Given`. This closes the gap where a
+/// one-item submission could score 100% and unlock a certificate.
+///
+/// `advance_review` gates the SM-2-lite review ladder: pass `true` only once a
+/// checkpoint is actually passed (LESSONS.md §8.1), `false` for a failing
+/// checkpoint or exam attempt so `due_at` is not written early.
 async fn grade_and_update_mastery(
     pool: &Pool<Sqlite>,
     set_id: &str,
     items: &[QuizItem],
     answers: &[SubmittedAnswer],
+    advance_review: bool,
 ) -> Vec<GradedItem> {
-    let by_id: HashMap<&str, &QuizItem> = items.iter().map(|i| (i.id.as_str(), i)).collect();
+    let by_answer: HashMap<&str, &SubmittedAnswer> = answers.iter().map(|a| (a.item_id.as_str(), a)).collect();
     let mut out = Vec::new();
-    for a in answers {
-        let Some(item) = by_id.get(a.item_id.as_str()) else { continue };
-        let given = to_given(item, a);
+    for item in items {
+        let submitted = by_answer.get(item.id.as_str()).copied();
+        // An omitted item is an unanswered item: a default `Given` grades to zero.
+        let given = match submitted {
+            Some(a) => to_given(item, a),
+            None => to_given(item, &SubmittedAnswer::default()),
+        };
+        let first_try = submitted.map(|a| a.first_try).unwrap_or(false);
         let g = crate::lessons::grade::grade_item(item, &given);
         let correct = g.is_full();
         // Update mastery for each tagged concept.
         for cid in &item.concept_ids {
             let mut m = load_mastery(pool, set_id, cid).await;
-            crate::lessons::mastery::record_attempt(&mut m, correct, a.first_try, g.fraction());
-            let q = review::quality_from_result(correct, a.first_try);
-            let mut rs = review::ReviewState { ease: m.ease, interval_days: m.interval_days, reviews: m.reviews };
-            m.interval_days = review::apply_review(&mut rs, q);
-            m.ease = rs.ease;
-            m.reviews = rs.reviews;
+            crate::lessons::mastery::record_attempt(&mut m, correct, first_try, g.fraction());
+            if advance_review {
+                let q = review::quality_from_result(correct, first_try);
+                let mut rs = review::ReviewState { ease: m.ease, interval_days: m.interval_days, reviews: m.reviews };
+                m.interval_days = review::apply_review(&mut rs, q);
+                m.ease = rs.ease;
+                m.reviews = rs.reviews;
+            }
             let _ = save_mastery(pool, set_id, cid, &m).await;
         }
-        out.push(GradedItem { item_id: a.item_id.clone(), earned: g.earned, possible: g.possible, correct });
+        out.push(GradedItem { item_id: item.id.clone(), earned: g.earned, possible: g.possible, correct });
     }
     out
 }
@@ -395,11 +414,43 @@ pub async fn lessons_submit_checkpoint(
     let pool = pool_of(&state);
     let dir = dir_path_of(&pool, &set_id).await?;
     let lesson = load_lesson(&dir, &lesson_id)?;
-    let graded = grade_and_update_mastery(&pool, &set_id, &lesson.checkpoint.items, &answers).await;
+
+    // Score against the items the learner was presented, not the posted subset:
+    // grade only the submitted answers that map to the checkpoint bank, but hold
+    // the denominator to at least `presentCount` so a short submission cannot
+    // game the 80% pass. Unaccounted presented slots count as zero.
+    let bank_ids: HashSet<&str> = lesson.checkpoint.items.iter().map(|i| i.id.as_str()).collect();
+    let presented: Vec<SubmittedAnswer> =
+        answers.into_iter().filter(|a| bank_ids.contains(a.item_id.as_str())).collect();
+    let present_count = lesson.checkpoint.present_count.max(1) as usize;
+
+    // Grade purely first (no mastery side effects) so `passed` can gate the
+    // review-ladder advance in the single mastery update that follows.
+    let by_id: HashMap<&str, &QuizItem> = lesson.checkpoint.items.iter().map(|i| (i.id.as_str(), i)).collect();
+    let mut graded: Vec<GradedItem> = Vec::new();
+    for a in &presented {
+        let Some(item) = by_id.get(a.item_id.as_str()) else { continue };
+        let g = crate::lessons::grade::grade_item(item, &to_given(item, a));
+        graded.push(GradedItem { item_id: a.item_id.clone(), earned: g.earned, possible: g.possible, correct: g.is_full() });
+    }
     let earned: f64 = graded.iter().map(|g| g.earned).sum();
-    let possible: f64 = graded.iter().map(|g| g.possible).sum();
+    // Denominator = graded points plus one point for each unanswered presented slot.
+    let graded_possible: f64 = graded.iter().map(|g| g.possible).sum();
+    let missing_slots = present_count.saturating_sub(graded.len()) as f64;
+    let possible = graded_possible + missing_slots;
     let score_pct = if possible > 0.0 { earned / possible * 100.0 } else { 0.0 };
     let passed = score_pct >= 80.0;
+
+    // Update per-concept mastery once over the presented answers, advancing the
+    // SM-2-lite review ladder only when the checkpoint is passed (LESSONS.md
+    // §8.1) so `due_at` is not written on a failing attempt. Mastery is updated
+    // only for the items actually presented, so unanswered bank items don't
+    // record a spurious wrong attempt.
+    let presented_items: Vec<QuizItem> = presented
+        .iter()
+        .filter_map(|a| by_id.get(a.item_id.as_str()).map(|i| (*i).clone()))
+        .collect();
+    let _ = grade_and_update_mastery(&pool, &set_id, &presented_items, &presented, passed).await;
 
     // Persist best score + passed flag on the lesson's progress row.
     let now = chrono::Utc::now().to_rfc3339();
@@ -721,13 +772,20 @@ pub async fn lessons_start_exam(state: State<'_, AppState>, set_id: String) -> R
 
     let attempt_id = uuid::Uuid::new_v4().simple().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query("INSERT INTO exam_attempts (id, lesson_set_id, started_at, answers) VALUES (?, ?, ?, '[]')")
-        .bind(&attempt_id)
-        .bind(&set_id)
-        .bind(&now)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    // Persist the drawn item ids so the submit scores against the server-known
+    // selection (unanswered → zero), not whatever subset the client posts.
+    let selected_json = serde_json::to_string(&chosen_ids).unwrap_or_else(|_| "[]".into());
+    sqlx::query(
+        "INSERT INTO exam_attempts (id, lesson_set_id, started_at, answers, selected_item_ids) \
+         VALUES (?, ?, ?, '[]', ?)",
+    )
+    .bind(&attempt_id)
+    .bind(&set_id)
+    .bind(&now)
+    .bind(&selected_json)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(StartedExam { attempt_id, items })
 }
@@ -752,19 +810,44 @@ pub async fn lessons_submit_exam(
     let set = load_set(&dir)?;
     let by_id: HashMap<&str, &QuizItem> = set.exam.items.iter().map(|i| (i.id.as_str(), i)).collect();
 
-    // Build the scored attempt from the answered items.
-    let mut givens: Vec<(QuizItem, Given)> = Vec::new();
-    for a in &answers {
-        if let Some(item) = by_id.get(a.item_id.as_str()) {
-            givens.push(((*item).clone(), to_given(item, a)));
-        }
+    // Load the server-known selection drawn at `lessons_start_exam`. The exam is
+    // scored over exactly these ids (unanswered → zero), never the posted subset,
+    // so a short submission cannot score 100% and earn a certificate.
+    let selected_json: String =
+        sqlx::query_scalar("SELECT selected_item_ids FROM exam_attempts WHERE id = ? AND lesson_set_id = ?")
+            .bind(&attempt_id)
+            .bind(&set_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("That exam attempt no longer exists")?;
+    let selected_ids: Vec<String> = serde_json::from_str(&selected_json).unwrap_or_default();
+    if selected_ids.is_empty() {
+        return Err("That exam attempt has no recorded question set.".into());
     }
+    let selected_items: Vec<QuizItem> =
+        selected_ids.iter().filter_map(|id| by_id.get(id.as_str()).map(|i| (*i).clone())).collect();
+
+    // Build the scored attempt over the full selected set: an item the client
+    // omitted (or sent blank) grades to zero via its default `Given`.
+    let by_answer: HashMap<&str, &SubmittedAnswer> = answers.iter().map(|a| (a.item_id.as_str(), a)).collect();
+    let givens: Vec<(QuizItem, Given)> = selected_items
+        .iter()
+        .map(|item| {
+            let given = match by_answer.get(item.id.as_str()) {
+                Some(a) => to_given(item, a),
+                None => to_given(item, &SubmittedAnswer::default()),
+            };
+            (item.clone(), given)
+        })
+        .collect();
     let answered: Vec<AnsweredItem> =
         givens.iter().map(|(item, given)| AnsweredItem { item, given: given.clone() }).collect();
     let scored = exam::score_attempt(&answered, set.exam.pass_pct);
 
-    // Update mastery from the item results.
-    let graded = grade_and_update_mastery(&pool, &set_id, &set.exam.items, &answers).await;
+    // Update mastery over the selected set (unanswered → zero). The exam does not
+    // advance the SM-2-lite review ladder (that is checkpoint/trainer-driven).
+    let graded = grade_and_update_mastery(&pool, &set_id, &selected_items, &answers, false).await;
 
     // Persist the attempt.
     let answer_json: Vec<serde_json::Value> = graded

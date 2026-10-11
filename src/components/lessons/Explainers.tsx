@@ -407,7 +407,7 @@ function MoleculeDiagramExplainer({ data }: { data: Record<string, any> }) {
                 {atoms.map((a) => (
                     <g key={a.id}>
                         <circle cx={a.x * W} cy={a.y * H} r={14} fill="var(--hazard-yellow, #facc15)" />
-                        <text x={a.x * W} y={a.y * H + 4} textAnchor="middle" fontSize="12" fill="#050505">
+                        <text x={a.x * W} y={a.y * H + 4} textAnchor="middle" fontSize="12" fill="var(--bg-main, #050505)">
                             {a.element}
                         </text>
                     </g>
@@ -417,6 +417,17 @@ function MoleculeDiagramExplainer({ data }: { data: Record<string, any> }) {
                 {atoms.map((a) => (
                     <li key={a.id}>{a.element}</li>
                 ))}
+                {bonds.map((b, i) => {
+                    const a = atoms.find((x) => x.id === b.a);
+                    const c = atoms.find((x) => x.id === b.b);
+                    if (!a || !c) return null;
+                    const order = b.order === 3 ? "triple" : b.order === 2 ? "double" : "single";
+                    return (
+                        <li key={`bond-${i}`}>
+                            {order} bond: {a.element}–{c.element}
+                        </li>
+                    );
+                })}
             </ul>
         </div>
     );

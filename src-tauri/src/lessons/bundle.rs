@@ -274,6 +274,13 @@ fn validate_bundle(raw: RawBundle) -> Result<PreparedBundle, BundleError> {
             .files
             .get(&f.path)
             .ok_or_else(|| format!("figure file missing: {}", f.path))?;
+        // Re-verify the figure's declared sha256 against the actual bytes.
+        // `figures[].sha256` feeds the content fingerprint, so a declared hash
+        // inconsistent with the bytes could skew the identity even though the
+        // files-list hash catches byte tampering. Assert they agree (NIT).
+        if sha256_hex(bytes) != f.sha256 {
+            return Err(format!("figure {} sha256 does not match its bytes", f.id));
+        }
         let img = image::load_from_memory(bytes).map_err(|_| format!("figure {} does not decode", f.id))?;
         if img.width() != f.width || img.height() != f.height {
             return Err(format!("figure {} dimensions mismatch manifest", f.id));

@@ -193,3 +193,26 @@ shared surfaces you may be merging:
 - Suites: `cargo test --lib` (449) + `--features mas` (432), `tsc`, `npm test`
   (97), policy guard, offline guard — all green. Did NOT run `npm run build` or
   touch versions/build numbers (your §2).
+
+## Review-gate fix pass 2 (CHANGES_REQUESTED → fixed)
+
+Second two-reviewer gate cleared (1 MEDIUM + 6 NIT). Shared-surface deltas you
+may be merging — all additive, no shared behavior changed:
+- **`src-tauri/src/lessons.rs`**: `exam_attempts` gains a `selected_item_ids`
+  column (in the CREATE + an `ensure_columns` for older DBs). Append-style; no
+  shared table altered.
+- **`src-tauri/src/lessons/commands.rs`**: exam/checkpoint now score over the
+  server-known selection (unanswered → zero), closing a scoring-integrity gap.
+  `grade_and_update_mastery` gained an `advance_review` flag so the SM-2-lite
+  ladder only advances on a passed checkpoint. Internal to the Lessons module —
+  no command signatures removed, none added.
+- **`src-tauri/src/lessons/bundle.rs`**: figure `sha256` is re-verified against
+  the decoded bytes during validation.
+- **`src/components/lessons/LessonPlayer.tsx`** + **`Explainers.tsx`**:
+  reduced-motion-aware scroll, tokenized molecule-SVG fill, bond connectivity in
+  the a11y list. No shared component touched.
+- **`docs/LESSONS.md` §6**: balancer row narrowed to atom-balance only (matches
+  the implementation; seed set is neutral). Append-safe doc edit.
+- Suites: `cargo test --lib lessons` + `--features mas lessons` (28 each, +1
+  regression test), `tsc`, `node --test lessonLogic` (9), policy + offline
+  guards — all green. Still did NOT run `npm run build`.

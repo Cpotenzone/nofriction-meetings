@@ -944,6 +944,56 @@ fn seed_exam_is_passable_by_a_perfect_learner_and_multistep_counts() {
     assert!(scored.possible > exam.items.len() as f64, "multistep items must be graded per step");
 }
 
+/// A blank/unanswered `Given` for an item — what the fixed exam/checkpoint
+/// commands substitute for any item in the server-known selection that the
+/// client did not submit. Every variant grades to zero.
+fn blank_given(item: &schema::QuizItem) -> Given {
+    match item.kind.as_str() {
+        "mc" => Given::Mc(u32::MAX),
+        "numeric" => Given::Numeric(String::new()),
+        "balance" => Given::Balance(vec![]),
+        "multistep" => Given::Multistep(vec![]),
+        other => panic!("unexpected item kind {}", other),
+    }
+}
+
+#[test]
+fn exam_scored_over_selected_set_not_posted_subset() {
+    // Regression for the MEDIUM scoring-integrity gap: the exam is scored over
+    // the server-known selection drawn at start, with every un-submitted item
+    // counting as zero. A one-item-correct submission must therefore score far
+    // below the pass line, never 100%. This mirrors `lessons_submit_exam`,
+    // which now builds the scored attempt over the full selected set and pads
+    // missing answers with a blank `Given`.
+    let prepared = bundle::validate_bytes(SEED_BUNDLE).expect("seed validates");
+    let exam = &prepared.validated.set.exam;
+
+    // The selection is the full bank here (a draw is a subset); grade one item
+    // correctly and leave the rest blank.
+    let answered: Vec<exam::AnsweredItem> = exam
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let given = if i == 0 { perfect_given(item) } else { blank_given(item) };
+            exam::AnsweredItem { item, given }
+        })
+        .collect();
+    let scored = exam::score_attempt(&answered, exam.pass_pct);
+    assert!(
+        !scored.passed,
+        "a single correct answer over the full selection must not pass, got {}%",
+        scored.score_pct
+    );
+    assert!(
+        scored.score_pct < exam.pass_pct as f64,
+        "score must be below the pass line, got {}%",
+        scored.score_pct
+    );
+    // Sanity: the denominator is the whole selection, not the one posted item.
+    assert!(scored.possible >= exam.items.len() as f64, "possible spans the whole selection");
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Seed loader
 // ════════════════════════════════════════════════════════════════════════

@@ -97,7 +97,16 @@ export function LessonPlayer({ set, lessonId, figureDir, onBack, onCheckpoint }:
     };
 
     const scrollToExplainer = (id: string) => {
-        explainerRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // A JS-initiated smooth scroll ignores the prefers-reduced-motion CSS
+        // media query, so honor the user's motion preference here directly.
+        const reduceMotion =
+            typeof window !== "undefined" &&
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        explainerRefs.current[id]?.scrollIntoView({
+            behavior: reduceMotion ? "auto" : "smooth",
+            block: "start",
+        });
     };
 
     if (error) return <div className="lessons-state is-error">Couldn't open this lesson: {error}</div>;

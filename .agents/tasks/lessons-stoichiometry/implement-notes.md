@@ -286,3 +286,65 @@ isolated: jsChunks 1 / cssFiles 1).
 - **Art-directed genmedia figures**: blocked on genmedia cloud reauth
   (`invalid_rapt`) — an owner-only action. Shipped deterministic figures are
   correct and reviewed; the genmedia versions are a documented drop-in.
+
+---
+
+# Review-gate fix pass 2 (`review.json` → CHANGES_REQUESTED: 1 MEDIUM, 6 NIT)
+
+Both reviewers' findings are addressed in code/content/docs. Suites re-run
+green: `cargo test --lib lessons` and `--features mas lessons` (28 each, +1 new
+regression test), `npx tsc --noEmit`, `node --test src/lib/lessonLogic.test.ts`
+(9), `scripts/check-ai-provider-policy.py` PASS, `npx vite build` +
+`scripts/check-lessons-offline.mjs` PASS.
+
+## MEDIUM — Exam/checkpoint scored over client-submitted set (review-a)
+Scoring is now over the **server-known** item set, with any un-submitted item
+counting as zero — a short submission can no longer score 100%, pass a
+checkpoint, unlock the exam, or earn a certificate.
+- `lessons.rs`: `exam_attempts` gains a `selected_item_ids TEXT NOT NULL
+  DEFAULT '[]'` column (added to the CREATE and via `ensure_columns` for older
+  DBs). `lessons_start_exam` persists the 30 drawn ids there.
+- `commands.rs` `lessons_submit_exam`: loads `selected_item_ids`, rebuilds the
+  scored attempt over the **full selection** (missing/blank answers → default
+  `Given`, which grades to zero), and grades mastery over that set. Rejects an
+  attempt with no recorded selection.
+- `commands.rs` `lessons_submit_checkpoint`: grades only submitted answers that
+  map to the checkpoint bank, but holds the denominator to at least
+  `presentCount` (one point per unanswered presented slot), so a one-item
+  submission scores `1/presentCount`, not 100%.
+- `commands.rs` `grade_and_update_mastery`: now iterates the full presented set
+  (unanswered → zero) and takes an `advance_review` flag (see NIT below).
+- Regression test `exam_scored_over_selected_set_not_posted_subset` in
+  `tests.rs`: one correct answer over the full selection scores below
+  `pass_pct` and never passes.
+
+## NIT — SM-2-lite ladder advanced before checkpoint pass (review-a)
+`grade_and_update_mastery` only advances the review ladder (`apply_review`,
+`due_at`) when `advance_review` is true. `lessons_submit_checkpoint` passes it
+only on a pass (LESSONS.md §8.1); the exam never advances the ladder;
+`lessons_submit_trainer_item` still advances it directly (trainer/review
+surface). A failing first checkpoint no longer writes `due_at`.
+
+## NIT — balance_equation omits the charge row (review-a)
+Narrowed the doc to match the implementation (the safe option the review
+offered): LESSONS.md §6 table row 1 now reads "per-element atom counts (atom
+balance only — the seed set is neutral species, so charge is not part of the
+system)". No code change; the seed set is all neutral.
+
+## NIT — figure sha256 not re-verified against bytes (review-a)
+`bundle.rs` `validate_bundle`: the figure-decode loop now asserts
+`sha256_hex(bytes) == figures[].sha256`, so the hash that feeds the content
+fingerprint cannot be declared inconsistently with the bytes.
+
+## NIT — smooth-scroll ignores prefers-reduced-motion (review-b)
+`LessonPlayer.tsx` `scrollToExplainer`: gates on
+`matchMedia("(prefers-reduced-motion: reduce)")` and uses `behavior: "auto"`
+when reduced motion is requested.
+
+## NIT — non-tokenized hex in molecule SVG (review-b)
+`Explainers.tsx`: the atom-label `fill="#050505"` is now
+`var(--bg-main, #050505)`.
+
+## NIT — thin molecule-diagram text-equivalent (review-b)
+`Explainers.tsx`: the a11y list now appends each bond as "single/double/triple
+bond: A–B", giving screen-reader users connectivity, not just composition.

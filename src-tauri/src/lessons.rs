@@ -130,7 +130,9 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
     )
     .await?;
 
-    // Learner-local: exam attempts.
+    // Learner-local: exam attempts. `selected_item_ids` persists the 30 item
+    // ids drawn at start so the submit scores against the server-known
+    // selection (unanswered → zero), not whatever subset the client posts.
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS exam_attempts (\
             id TEXT PRIMARY KEY, \
@@ -138,6 +140,7 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
             started_at TEXT NOT NULL, \
             submitted_at TEXT, \
             answers TEXT NOT NULL DEFAULT '[]', \
+            selected_item_ids TEXT NOT NULL DEFAULT '[]', \
             score_pct REAL NOT NULL DEFAULT 0, \
             passed INTEGER NOT NULL DEFAULT 0\
         )",
@@ -148,6 +151,15 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
         "CREATE INDEX IF NOT EXISTS idx_exam_attempts_set ON exam_attempts(lesson_set_id)",
     )
     .execute(&mut *conn)
+    .await?;
+    // `selected_item_ids` shipped after the table first existed, so an older DB
+    // needs the column added explicitly (CREATE TABLE IF NOT EXISTS never
+    // alters it in).
+    crate::database::ensure_columns(
+        &mut *conn,
+        "exam_attempts",
+        &[("selected_item_ids", "TEXT NOT NULL DEFAULT '[]'")],
+    )
     .await?;
 
     // Learner-local: issued certificates.
