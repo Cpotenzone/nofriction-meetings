@@ -51,6 +51,22 @@ export function paywallHeadline(feature?: ProFeature | null): string {
     return feature ? HEADLINES[feature] : "noFriction Pro";
 }
 
+/**
+ * Whether to mark a Pro feature as Pro in the UI ("Follow-up email (noFriction
+ * Pro)", "Part of noFriction Pro."): only in a build that gates Pro (Mac App
+ * Store) and only once we know the user isn't subscribed. Never in the DMG
+ * build (no gating, everything is on), never for a subscriber, and not while
+ * the entitlement is still loading, so a subscriber never sees it flash.
+ */
+export function showProMark(proGating: boolean | null | undefined, isPro: boolean | null | undefined): boolean {
+    return proGating === true && isPro === false;
+}
+
+/** Button-label suffix for a Pro feature: " (noFriction Pro)" or "". */
+export function proSuffix(proGating: boolean | null | undefined, isPro: boolean | null | undefined): string {
+    return showProMark(proGating, isPro) ? " (noFriction Pro)" : "";
+}
+
 /** The one line under the title. */
 export const PRO_VALUE =
     "Turn every recording into notes, a review guide and answers, and keep your iPhone and Mac in sync.";

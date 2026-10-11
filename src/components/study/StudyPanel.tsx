@@ -12,7 +12,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { aiErrorClass, friendlyAiError, isNoProviderError, withAiConsent } from "../../lib/ai";
-import { useCapabilities } from "../../lib/build";
+import { useCapabilities, useIsPro } from "../../lib/build";
+import { proSuffix } from "../../lib/pro";
 import { AiSetupNotice, useAiStatus } from "../AiSetupNotice";
 import { FlashcardDeck } from "./FlashcardDeck";
 import { QuizRunner } from "./QuizRunner";
@@ -62,6 +63,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
     const [tab, setTab] = useState<Tab>("summary");
     const { configured } = useAiStatus();
     const caps = useCapabilities();
+    const isPro = useIsPro();
     // The type names the guide; the loaded guide's own type wins
     const liveKind = useRecordingKind(meetingId);
     const kind: RecordingKind = guide ? parseKind(guide.recording_kind) : liveKind;
@@ -169,7 +171,7 @@ export function StudyPanel({ meetingId, onJump }: { meetingId: string; onJump: (
     const has = (k: StudyPart) => !!guide.materials[k];
     const any = STUDY_PARTS.some((p) => has(p.kind));
     const stale = Object.values(guide.materials).some((m) => m?.stale);
-    const proNote = caps?.pro_gating ? " (noFriction Pro)" : "";
+    const proNote = proSuffix(caps?.pro_gating, isPro);
     const showSetup = configured === false || needsAi;
     const marks = filterMarkers(guide.markers, "all");
     const testMarks = guide.markers.filter((m) => m.kind === "test").length;

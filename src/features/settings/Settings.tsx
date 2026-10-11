@@ -13,11 +13,12 @@ import { AIProviderSettings } from "./AIProviderSettings";
 import { TranscriptionSettings } from "./TranscriptionSettings";
 import { SubscriptionSettings } from "./SubscriptionSettings";
 import { SyncSettings } from "./SyncSettings";
-import { isProRequiredError, useCapabilities, withPro, PRIVACY_URL, SUPPORT_EMAIL, SUPPORT_URL, TERMS_URL } from "../../lib/build";
+import { isProRequiredError, useCapabilities, useIsPro, withPro, PRIVACY_URL, SUPPORT_EMAIL, SUPPORT_URL, TERMS_URL } from "../../lib/build";
 import { openHelp, type SettingsCategory } from "../../lib/navigation";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppVersion } from "../../hooks/useAppVersion";
 import { CheckIcon } from "../../components/icons";
+import { showProMark } from "../../lib/pro";
 
 interface SettingsProps {
     initialCategory?: SettingsCategory;
@@ -87,6 +88,7 @@ export function Settings({ initialCategory = "recording" }: SettingsProps) {
 
 function RecordingSettings({ showToast }: { showToast: (text: string, error?: boolean) => void }) {
     const caps = useCapabilities();
+    const isPro = useIsPro();
     const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
     const [selectedMic, setSelectedMic] = useState<string>("");
     const [isLoadingDevices, setIsLoadingDevices] = useState(true);
@@ -262,7 +264,7 @@ function RecordingSettings({ showToast }: { showToast: (text: string, error?: bo
                 <div className="settings-row">
                     <div className="settings-label">
                         <span className="label-main">
-                            Export to Obsidian{caps?.pro_gating && <span className="pro-tag">Pro</span>}
+                            Export to Obsidian{showProMark(caps?.pro_gating, isPro) && <span className="pro-tag">Pro</span>}
                         </span>
                         <span className="label-sub">
                             {vaultPath ? `Each recording is saved as Markdown in ${vaultPath}` : "Choose your vault folder to save recordings as Markdown."}
