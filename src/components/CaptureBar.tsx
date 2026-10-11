@@ -135,7 +135,7 @@ export function CaptureBar({ isRecording, isPaused = false, onResume, sttStatus,
 
                 <button className="cbar__sources" onClick={() => setPickerOpen(true)} type="button" title="Choose what to capture">
                     {chips.slice(0, 3).map((c) => (
-                        <span key={c.key} className="cbar__chip">
+                        <span key={c.key} className="cbar__chip" title={c.label}>
                             {c.kind === "display" ? <DisplayIcon size={12} /> : <WindowIcon size={12} />}
                             <span className="cbar__chip-label">{c.label}</span>
                         </span>
