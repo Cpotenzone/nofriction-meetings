@@ -30,7 +30,13 @@ invented people, lectures and a stored study guide, a live transcript that
 arrives line by line (`-NFDemoLiveFeed`), a live class (`-NFDemoLiveClass`),
 and a Record-sheet Start that shows a demo recording (no microphone or speech
 engine; the Simulator has neither). Times on screen read 9:41 like the status
-bar. The watch clips are the watch app's debug demo states
+bar. The Pro clips (a meeting's follow-up email, Chat, Sync) buy noFriction
+Pro in the local StoreKit test ledger (`NoFriction.storekit`, `SKTestSession`;
+no account, no money) and point the app's one custom AI endpoint, through
+launch arguments, at `ai-stub.py`: a stand-in on `127.0.0.1:18765`
+(`NF_FILM_AI_PORT`) that capture.sh starts and stops, answering with fixed
+demo text (no model; nothing leaves the Mac). The app's own code makes the
+request and maps the answer's `[n]` marks to its citation chips. The watch clips are the watch app's debug demo states
 (`ios/NoFrictionWatch/App/DemoMode.swift`, `-NFWatchDemo <state> -NFWatchFilm`;
 `flow` steps through the Record flow by itself). All of it is `#if DEBUG`.
 
@@ -39,13 +45,13 @@ recordVideo` records each whole test run. The test logs `start`, `still` and
 `end` (wall clock) to `marketing/out/footage/ios/raw/<run>.times`, the script
 adds when the recorder started, and each clip is cut between two of those
 marks (table `IPHONE_CLIPS` in `capture.sh`; one run can give several clips,
-e.g. `ios-01-record-sheet` and `ios-01b-record-start`). The Simulator writes
+e.g. a sheet and the recording it starts). The Simulator writes
 a frame only when the screen changes, so a gap between frames is a still
 screen; gaps longer than the clip's "max still" (XCUITest's own waits, which
 grow when the machine is busy) are shortened to it, invisibly, and the result
 is placed on a constant 30 fps grid. A test can protect a state the viewer
 must read in full with a `keep+` / `keep-` mark pair (the flipped flashcard
-in `ios-06-review`); that range is never shortened. Frame times come from the packets'
+in `ios-06-review`, the cited answer in `ios-09-chat`); that range is never shortened. Frame times come from the packets'
 presentation times: the Simulator repeats timestamps, and ffmpeg's own
 fps/trim filters then fall back to decode times that run seconds early (it
 put the wrong screen in clips). `NF_FILM_RECUT=1` re-cuts the last

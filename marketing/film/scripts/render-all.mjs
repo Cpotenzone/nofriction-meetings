@@ -3,6 +3,7 @@
 //   node scripts/render-all.mjs            # everything
 //   node scripts/render-all.mjs film       # just the hero film (+ poster, stills)
 //   node scripts/render-all.mjs previews   # just the App Store previews
+//   IOS_PREVIEW=1 node scripts/render-all.mjs iphone   # just the iPhone app preview
 //
 // 1. Synthesizes the score (scripts/make-score.mjs).
 // 2. Links footage/audio into public/ and writes src/footage.json.
@@ -13,9 +14,9 @@
 //    - film WebM: VP9 2-pass + Opus (size cap 12 MB), with Remotion's bundled
 //      ffmpeg (Homebrew's build often lacks libvpx), also out/hero.webm
 //    - app previews (out/previews/): Apple's spec (H.264 High@4.0,
-//      10-12 Mbps, 30 fps, stereo AAC 256 kbps 48 kHz). The Mac preview
-//      only; IOS_PREVIEW=1 adds the iPhone one, which still uses the
-//      pre-redesign iOS footage (README).
+//      10-12 Mbps, 30 fps, stereo AAC 256 kbps 48 kHz). The Mac preview;
+//      IOS_PREVIEW=1 adds the iPhone one, whose Simulator footage
+//      (capture/ios/capture.sh iphone) is captured separately.
 // 5. Renders the poster and the film stills (PNG, palette-compressed < 300 KB).
 //
 // Nothing is downloaded: the fonts are the Mac's own (src/theme.ts), and
@@ -197,14 +198,14 @@ if (which === "all" || which === "film") {
   if (statSync(webm).size > 12e6) console.warn("  !! WebM is over 12 MB");
 }
 
-if (which === "all" || which === "previews") {
+if (which === "all" || which === "previews" || which === "iphone") {
   // Apple app preview spec (developer.apple.com/help/app-store-connect/reference/app-preview-specifications):
   // 15-30 s, <= 30 fps, H.264 High Profile up to Level 4.0 at 10-12 Mbps,
   // .mp4/.mov/.m4v, <= 500 MB, stereo AAC 256 kbps at 44.1/48 kHz.
   const jobs = [
-    // The iPhone preview's footage is the pre-redesign iOS app: opt in only
-    ...(process.env.IOS_PREVIEW === "1" ? [{ id: "PreviewIPhone", file: "nofriction-app-preview-iphone-6.9in-886x1920.mp4", w: 886, h: 1920 }] : []),
-    { id: "PreviewMac", file: "nofriction-app-preview-mac-1920x1080.mp4", w: 1920, h: 1080 },
+    // The iPhone preview needs the Simulator footage (capture/ios/capture.sh iphone): opt in
+    ...(process.env.IOS_PREVIEW === "1" || which === "iphone" ? [{ id: "PreviewIPhone", file: "nofriction-app-preview-iphone-6.9in-886x1920.mp4", w: 886, h: 1920 }] : []),
+    ...(which === "iphone" ? [] : [{ id: "PreviewMac", file: "nofriction-app-preview-mac-1920x1080.mp4", w: 1920, h: 1080 }]),
   ];
   console.log("\nApp previews:");
   for (const job of jobs) {

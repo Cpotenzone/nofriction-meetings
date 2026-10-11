@@ -14,8 +14,8 @@ iPhone and Apple Watch 1.0.1).
 | Hero film | `nofriction-launch-film-1080p.mp4`, copied to `hero.mp4` | 1920x1080, 30 fps, 33.6 s, H.264 High yuv420p, +faststart, AAC stereo (< 25 MB) |
 | Hero film (web) | `nofriction-launch-film-1080p.webm`, copied to `hero.webm` | 1920x1080, 30 fps, 33.6 s, VP9 + Opus (< 12 MB) |
 | Poster | `nofriction-launch-film-poster.png`, copied to `poster.png` | 1920x1080 PNG (the Rewind shot) |
-| Mac app preview | `previews/nofriction-app-preview-mac-1920x1080.mp4` | 1920x1080, 30 fps, 28.8 s, H.264 High@4.0 ~11 Mbps, AAC 256 kbps 48 kHz stereo |
-| iPhone app preview | `previews/nofriction-app-preview-iphone-6.9in-886x1920.mp4` (`IOS_PREVIEW=1`) | 886x1920 portrait, 30 fps, 28.8 s, H.264 High@4.0 ~11 Mbps, AAC 256 kbps 48 kHz stereo |
+| Mac app preview | `previews/nofriction-app-preview-mac-1920x1080.mp4` | 1920x1080, 30 fps, 28.8 s, H.264 High@4.0 (~4 Mbps average, 12 Mbps cap), AAC 256 kbps 48 kHz stereo |
+| iPhone app preview | `previews/nofriction-app-preview-iphone-6.9in-886x1920.mp4` (`IOS_PREVIEW=1`) | 886x1920 portrait, 30 fps, 28.8 s, H.264 High@4.0 (~5.5 Mbps average, 12 Mbps cap), AAC 256 kbps 48 kHz stereo |
 | Film stills | `marketing/film/stills/film-*.png` (committed) | 1920x1080 palette PNG, < 300 KB each |
 | App Store screenshots | `marketing/film/stills/mac-3.7/` (`mac-harness/capture-store-3.7.mjs`), `marketing/film/stills/iphone-6.9/` (committed) | Mac 2880x1800; iPhone 1320x2868 + 1260x2736 |
 | Website screenshots | `site/img/` (`scripts/site-images.mjs`) | WebP + PNG at the page's sizes, < 300 KB each |
@@ -43,6 +43,19 @@ in a website hero. The music is optional.
 The Mac preview (28.8 s) is the same takes with captions: Record, On-device,
 Marks, Rewind, Review guide, Chat, Sync.
 
+The iPhone preview (28.8 s, the iOS 1.0.2 app: Record · Recordings · Chat ·
+Settings) is one Simulator take per beat, with captions:
+
+| Time | Caption | On screen (`src/clips.ts` has the in-points) |
+|---|---|---|
+| 0.0–4.4 s | Record · Meetings, classes and everyday life | Record → the Record sheet: Class, 60 min, Notebook BIO 101, Capture screen → Record; the recording starts, "Listening" |
+| 4.4–8.6 s | Mark · Mark what matters, then Stop | A class recording, lines arriving → Mark this moment → On the test → Stop |
+| 8.6–14.4 s | Recordings · Search every word. Jump to the moment | Recordings → the BIO 101 notebook chip → search "exam" → the matching line opens Lecture 7 at that moment, highlighted |
+| 14.4–18.8 s | Notes · Notes and a follow-up email | Brightwater pilot kickoff: Notes with Make again and Follow-up email → the drafted email |
+| 18.8–22.8 s | Review guide · Flashcards and a quiz from any recording | Lecture 7's study guide: a flashcard flipped, a practice-quiz question answered |
+| 22.8–26.2 s | Chat · Ask your recordings. Answers cite the moment | "What deadlines are coming up?" across all recordings → an answer with citation chips → a citation opens its recording |
+| 26.2–28.8 s | Sync · Device to device, with no server | Settings → Sync with your Mac → the pairing screen |
+
 ## What is real footage and what is motion graphics
 
 - **Real app footage** (never redrawn): every phone, watch and Mac screen in
@@ -55,7 +68,10 @@ Marks, Rewind, Review guide, Chat, Sync.
   - iPhone app preview: the iOS app in the Simulator with its debug demo data
     (`-NFSeedDemo -NFDemoLive -NFFilm`), driven by
     `ios/NoFrictionUITests/FilmFootageTests.swift`, recorded with
-    `xcrun simctl io … recordVideo` (`capture/ios/capture.sh`).
+    `xcrun simctl io … recordVideo` (`capture/ios/capture.sh`). Pro comes
+    from the local StoreKit test ledger, and the follow-up email and Chat
+    answer come from `capture/ios/ai-stub.py`, a local stand-in endpoint
+    with fixed demo text (capture/README.md).
   - What is simulated inside that real UI: the words of the live
     transcripts (the harness has no Rust backend and the Simulator no speech
     recognition, so invented lines are fed in at speaking pace), the AI notes,
@@ -101,6 +117,7 @@ node marketing/film/mac-harness/capture.mjs       # every clip at 3840x2160; or:
 # 2. film, Mac preview, poster, stills (writes marketing/out/*, marketing/film/stills/film-*.png)
 node marketing/film/scripts/render-all.mjs            # or: film | previews
 IOS_PREVIEW=1 node marketing/film/scripts/render-all.mjs previews   # adds the iPhone preview
+node marketing/film/scripts/render-all.mjs iphone                   # the iPhone preview only
 
 # Website screenshots (site/img/), with the harness server running
 npx vite --config marketing/film/mac-harness/vite.config.mjs --port 5287 --strictPort

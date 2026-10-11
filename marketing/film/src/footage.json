@@ -1,4 +1,88 @@
 {
+  "ios/ios-01-record-sheet.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 10.766667
+  },
+  "ios/ios-01-record-sheet.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-03-mark.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 7.733333
+  },
+  "ios/ios-03-mark.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-04-library.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 16.133333
+  },
+  "ios/ios-04-library.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-06-review.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 8.4
+  },
+  "ios/ios-06-review.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-08-meeting.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 9.666667
+  },
+  "ios/ios-08-meeting.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-09-chat.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 7.566667
+  },
+  "ios/ios-09-chat.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
+  "ios/ios-10-sync.mp4": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 30,
+    "dur": 4.533333
+  },
+  "ios/ios-10-sync.png": {
+    "w": 1320,
+    "h": 2868,
+    "fps": 25,
+    "dur": 0
+  },
   "mac/mac-01-record.mp4": {
     "w": 3840,
     "h": 2160,

@@ -25,6 +25,9 @@
 # -NFFilm, invented); the iPhone clips are the tests in
 # ios/NoFrictionUITests/FilmFootageTests.swift, the watch clips the watch
 # app's debug demo states (ios/NoFrictionWatch/App/DemoMode.swift).
+# The Pro clips buy Pro in the local StoreKit test ledger, and their AI
+# (follow-up email, Chat) is ai-stub.py on 127.0.0.1:$NF_FILM_AI_PORT
+# (default 18765): fixed demo text, no model, nothing leaves the Mac.
 #
 # Cutting: each iPhone test logs "start" / "still" / "end" (wall clock) to
 # raw/<clip>.times; the recorder's start time is logged when simctl says
@@ -49,32 +52,27 @@ APP_ID="com.nofriction.meetings"
 WATCH_ID="com.nofriction.meetings.watchkitapp"
 CRF=15
 
-# One recording per test. run (raw file name, as the test names it) | test method (FilmFootageTests)
+# One recording per test, in the iPhone app preview's story order.
+# run (raw file name, as the test names it) | test method (FilmFootageTests)
 IPHONE_RUNS=(
   "ios-01-record-sheet|testClip01RecordSheet"
-  "ios-02-live|testClip02Live"
-  "ios-02b-live-class|testClip02bLiveClass"
   "ios-03-mark|testClip03Mark"
   "ios-04-library|testClip04Library"
-  "ios-05-lecture|testClip05Lecture"
   "ios-06-review|testClip06Review"
-  "ios-07-personal|testClip07Personal"
   "ios-08-meeting|testClip08Meeting"
+  "ios-09-chat|testClip09Chat"
+  "ios-10-sync|testClip10Sync"
 )
 # Clips cut from them: clip | run | from mark | to mark | max still (s) | end still (s)
 # (a still stretch longer than "max still" is shortened to it; cut.py)
 IPHONE_CLIPS=(
-  "ios-01-record-sheet|ios-01-record-sheet|start|still|0.8|1.2"
-  "ios-01b-record-start|ios-01-record-sheet|still|end|0.9|1.4"
-  "ios-01-record-sheet-full|ios-01-record-sheet|start|end|0.8|1.4"
-  "ios-02-live|ios-02-live|start|end|1.0|1.5"
-  "ios-02b-live-class|ios-02b-live-class|start|end|1.0|1.5"
-  "ios-03-mark|ios-03-mark|start|end|1.0|1.5"
-  "ios-04-library|ios-04-library|start|end|1.6|2.6"
-  "ios-05-lecture|ios-05-lecture|start|end|1.1|1.4"
+  "ios-01-record-sheet|ios-01-record-sheet|start|end|0.8|1.4"
+  "ios-03-mark|ios-03-mark|start|end|1.0|1.2"
+  "ios-04-library|ios-04-library|start|end|1.0|2.0"
   "ios-06-review|ios-06-review|start|end|1.1|1.5"
-  "ios-07-personal|ios-07-personal|start|end|1.1|1.4"
-  "ios-08-meeting|ios-08-meeting|start|end|1.6|3.0"
+  "ios-08-meeting|ios-08-meeting|start|end|1.0|2.0"
+  "ios-09-chat|ios-09-chat|start|end|1.0|2.0"
+  "ios-10-sync|ios-10-sync|start|end|1.0|2.0"
 )
 # clip | -NFWatchDemo mode | cut start (s after the app's UI first shows, found
 # in the recording) | length (s) | still at (s into the clip)
@@ -93,6 +91,22 @@ WATCH_CLIPS=(
 )
 
 log() { printf '==> %s\n' "$*"; }
+
+# The AI endpoint the Pro clips use (Notes' follow-up email, Chat): a local
+# stand-in with fixed demo text (ai-stub.py), http://localhost:$AI_PORT/v1.
+AI_PORT="${NF_FILM_AI_PORT:-18765}"
+AI_URL="http://localhost:$AI_PORT/v1"
+AI_PID=""
+start_ai_stub() {
+  if nc -z 127.0.0.1 "$AI_PORT" 2>/dev/null; then echo "!! port $AI_PORT is taken (set NF_FILM_AI_PORT)"; return 1; fi
+  mkdir -p "$LOGS"
+  python3 -I "$HERE/ai-stub.py" "$AI_PORT" >"$LOGS/ai-stub.log" 2>&1 &
+  AI_PID=$!
+  for _ in $(seq 1 50); do nc -z 127.0.0.1 "$AI_PORT" 2>/dev/null && return 0; sleep 0.1; done
+  echo "!! the AI stand-in didn't start: $(cat "$LOGS/ai-stub.log")"; return 1
+}
+stop_ai_stub() { if [[ -n "$AI_PID" ]]; then kill "$AI_PID" 2>/dev/null || true; fi; AI_PID=""; }
+trap stop_ai_stub EXIT
 now() { python3 -c 'import time; print(f"{time.time():.3f}")'; }
 
 udid_for() {
@@ -254,7 +268,7 @@ record_iphone_run() {
   xcrun simctl terminate "$udid" "$APP_ID" >/dev/null 2>&1 || true
   start_recording "$udid" "$raw" "$OUT/ios/raw/$run.recorder.log"
   local status=0
-  run_test "$udid" "$method" "$LOGS/$run.log" TEST_RUNNER_NF_FILM_DIR="$OUT/ios/raw" || status=$?
+  run_test "$udid" "$method" "$LOGS/$run.log" TEST_RUNNER_NF_FILM_DIR="$OUT/ios/raw" TEST_RUNNER_NF_FILM_AI_URL="$AI_URL" || status=$?
   stop_recording
   echo "recorder_start $REC_T0" >>"$times"
   if [[ $status != 0 ]]; then
@@ -359,6 +373,7 @@ if [[ $need_iphone == 1 ]]; then
   log "$IPHONE_NAME ($IPH)"
   prepare_iphone "$IPH"
   build_iphone "$IPH"
+  start_ai_stub
   if [[ $want_stills == 1 ]]; then capture_stills "$IPH" || fail=1; fi
   for r in "${IPHONE_RUNS[@]}"; do
     IFS='|' read -r run method <<<"$r"
@@ -375,6 +390,7 @@ if [[ $need_iphone == 1 ]]; then
       cut_iphone_clip "$clip" "$run" "$from" "$to" "$max_hold" "$end_hold" || fail=1
     done
   done
+  stop_ai_stub
 fi
 
 if [[ $need_watch == 1 ]]; then

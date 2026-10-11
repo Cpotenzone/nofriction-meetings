@@ -1,3 +1,4 @@
+import StoreKitTest
 import XCTest
 
 /// Launch film and App Store app-preview footage, one test per clip, paced
@@ -12,14 +13,25 @@ import XCTest
 ///   NF_FILM_STILLS_DIR/NN-name.png   App Store screenshots (testStoreStills)
 ///
 /// Sample data only (-NFSeedDemo -NFFilm): invented people, notebooks and
-/// lectures. Never opens People, Settings, the paywall or a share sheet.
+/// lectures. The Pro clips (notes, Chat, Sync) buy Pro in the local StoreKit
+/// test ledger (NoFriction.storekit; no account, no money) and point the
+/// app's one AI endpoint at capture.sh's stand-in on this Mac
+/// (NF_FILM_AI_URL, capture/ios/ai-stub.py: fixed demo text, no model).
+/// Never opens People, the paywall, AI settings or a share sheet.
 final class FilmFootageTests: XCTestCase {
     private var clip = ""
     private var marks: [(String, Double)] = []
+    private var storeSession: SKTestSession?
 
     override func setUpWithError() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["NF_FILM"] == "1", "Film footage only: set NF_FILM=1")
         continueAfterFailure = false
+    }
+
+    override func tearDown() {
+        storeSession?.clearTransactions()
+        storeSession = nil
+        super.tearDown()
     }
 
     // MARK: Helpers
@@ -36,6 +48,38 @@ final class FilmFootageTests: XCTestCase {
                                "-recordingKindDefault", "meeting", "-recordingDefaultLength", "none"] + extra
         app.launch()
         return app
+    }
+
+    /// noFriction Pro from the local StoreKit test ledger (the yearly plan),
+    /// before the app launches. Cleared again in tearDown.
+    private func buyPro() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "NoFriction", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        session.clearTransactions()
+        session.disableDialogs = true
+        session.locale = Locale(identifier: "en_US")
+        session.storefront = "USA"
+        storeSession = session
+        let bought = expectation(description: "Pro bought in the StoreKit test ledger")
+        Task {
+            do { try await session.buyProduct(identifier: "com.nofriction.meetings.pro.yearly") } catch {
+                XCTFail("StoreKit test purchase failed: \(error)")
+            }
+            bought.fulfill()
+        }
+        wait(for: [bought], timeout: 30)
+    }
+
+    /// The app's one custom AI endpoint (AISettings' stored form), pointed at
+    /// capture.sh's local stand-in: http://localhost:<port>/v1, no key. A
+    /// loopback endpoint needs no consent (URLPolicy).
+    private func aiEndpointArgs() throws -> [String] {
+        let base = try XCTUnwrap(ProcessInfo.processInfo.environment["NF_FILM_AI_URL"],
+                                 "NF_FILM_AI_URL missing: run through capture.sh")
+        let saved = #"{"custom":{"baseURL":"\#(base)","model":"film-demo","models":[{"id":"film-demo","contextTokens":32768}]}}"#
+        let hex = Data(saved.utf8).map { String(format: "%02x", $0) }.joined()
+        return ["-ai.providers", "<\(hex)>", "-ai.activeProvider", "custom"]
     }
 
     /// A cut point for capture.sh.
@@ -87,12 +131,19 @@ final class FilmFootageTests: XCTestCase {
 
     // MARK: iPhone clips
     //
+    // The iPhone app preview, in story order: Record sheet → recording, Mark,
+    // Stop → Recordings: a notebook and a search that opens at the line →
+    // a meeting's Notes and its follow-up email → a class's study guide →
+    // Chat with a cited answer → Settings → Sync with your Mac.
+    //
     // Holds are short on purpose: every XCUITest action also waits for the
     // app to settle (about 0.5–1 s), which the video shows as a held frame.
     // Inside a clip, checks use `exists` (immediate) rather than
     // waitForExistence, which adds about a second even when the element is there.
 
-    /// Record → "What is it?" Class → 60 min → BIO 101 → Start → recording.
+    /// Record → the Record sheet: Class, 60 min, the BIO 101 notebook, Capture
+    /// screen (left off: its broadcast sheet is the system's) → Record → the
+    /// recording starts and its first words arrive.
     func testClip01RecordSheet() {
         let app = launch("ios-01-record-sheet")
         let record = app.buttons["record-button"].firstMatch
@@ -102,8 +153,8 @@ final class FilmFootageTests: XCTestCase {
         hold(0.4)
         record.tap()
         XCTAssertTrue(app.staticTexts["What is it?"].firstMatch.exists, "Record sheet didn't open")
-        expandRecordSheet(app)
-        hold(0.2)
+        XCTAssertTrue(app.switches["record-capture-screen"].firstMatch.exists, "Capture screen missing from the Record sheet")
+        hold(0.3)
         app.buttons["Class"].firstMatch.tap()
         hold(0.2)
         app.buttons["record-length-60"].firstMatch.tap()
@@ -113,94 +164,67 @@ final class FilmFootageTests: XCTestCase {
         still()
         app.buttons["record-plan-start"].firstMatch.tap()
         XCTAssertTrue(app.buttons["mark-button"].firstMatch.exists, "recording didn't start")
-        hold(3.4)
-        saveShot("ios-01b-record-start", envVar: "NF_FILM_DIR")   // still of the clip cut from "still" to "end"
-        hold(0.6)
+        hold(4.4)
+        saveShot("ios-01b-record-start", envVar: "NF_FILM_DIR")
+        hold(0.4)
         mark("end")
     }
 
-    /// A meeting being recorded: the timer runs, lines arrive one by one.
-    func testClip02Live() {
-        let app = launch("ios-02-live", ["-NFDemoLive", "-NFDemoLiveFeed"])
-        XCTAssertTrue(app.staticTexts["Q4 roadmap review"].firstMatch.waitForExistence(timeout: 10))
-        hold(0.6)
-        mark("start")
-        hold(7.6)
-        still()
-        hold(2.6)
-        mark("end")
-    }
-
-    /// A class being recorded (60-minute limit, time left), lines arriving.
-    func testClip02bLiveClass() {
-        let app = launch("ios-02b-live-class", ["-NFDemoLive", "-NFDemoLiveClass"])
-        XCTAssertTrue(app.buttons["mark-button"].firstMatch.waitForExistence(timeout: 10))
-        hold(0.6)
-        mark("start")
-        hold(7.0)
-        still()
-        hold(2.6)
-        mark("end")
-    }
-
-    /// While recording a class: Mark this moment (★ Important), then On the test, then Question.
+    /// A class being recorded (60-minute limit, time left), lines arriving:
+    /// Mark this moment (★ Important) → On the test → Stop.
     func testClip03Mark() {
         let app = launch("ios-03-mark", ["-NFDemoLive", "-NFDemoLiveClass"])
         let markButton = app.buttons["mark-button"].firstMatch
         XCTAssertTrue(markButton.waitForExistence(timeout: 10))
         hold(0.6)
         mark("start")
-        hold(1.8)
+        hold(2.4)
         markButton.tap()
         let test = app.buttons["On the test"].firstMatch
         XCTAssertTrue(test.exists, "mark kinds didn't show")
-        hold(1.4)
+        hold(1.0)
         test.tap()
         hold(0.8)
         still()
-        hold(0.6)
-        app.buttons["Question"].firstMatch.tap()
-        hold(1.8)
+        hold(1.0)
+        mark("stop")
+        app.buttons["record-button"].firstMatch.tap()
+        XCTAssertFalse(app.buttons["mark-button"].firstMatch.exists, "the recording didn't stop")
+        hold(1.2)
         mark("end")
     }
 
-    /// Recordings → the BIO 101 notebook chip → the notebook's lectures.
+    /// Recordings → the BIO 101 notebook chip → search "exam" → the matching
+    /// line under Lecture 7 → it opens at that moment, the line highlighted.
     func testClip04Library() {
         let app = launch("ios-04-library")
         openRecordings(app)
+        let field = app.searchFields.firstMatch
+        if !field.waitForExistence(timeout: 2) { app.swipeDown() }
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no search field")
         hold(1.0)
         mark("start")
-        hold(1.4)
+        hold(0.8)
         notebookChip(app, "BIO 101").tap()
         XCTAssertTrue(app.staticTexts["Lecture 5: Cell membranes"].firstMatch.exists)
-        hold(1.4)
-        still()
-        hold(1.4)
-        mark("end")
-    }
-
-    /// The lecture: notes, Review, Marks (★ / ? / On the test) on its
-    /// first screen; a slow scroll down to the marks in the transcript and
-    /// back to the top, ending on the clean first screen.
-    func testClip05Lecture() {
-        let app = launch("ios-05-lecture")
-        openRecordings(app)
-        notebookChip(app, "BIO 101").tap()
-        let lecture = app.staticTexts["Lecture 7: Cellular respiration"].firstMatch
-        XCTAssertTrue(lecture.waitForExistence(timeout: 5))
         hold(1.0)
-        mark("start")
-        hold(0.5)
-        lecture.tap()
-        XCTAssertTrue(app.buttons["study-open"].firstMatch.exists, "stored study guide missing")
-        hold(1.2)
+        field.tap()
+        hold(0.3)
+        // Letter by letter, as a person types (and so the list never flashes
+        // "No results" between the keystrokes and the search)
+        for letter in ["e", "x", "a", "m"] {
+            field.typeText(letter)
+            hold(0.25)
+        }
+        let line = app.descendants(matching: .any).matching(identifier: "search-line").firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5), "no matching line under the result")
+        hold(1.0)
         still()
         hold(0.4)
-        slowScroll(app, from: 0.72, fraction: 0.4, pointsPerSecond: 240)
-        hold(0.8)
-        // Back up past the top: the bounce settles exactly at the first screen
-        slowScroll(app, from: 0.3, fraction: -0.5, pointsPerSecond: 320)
-        hold(1.0)
+        line.tap()
+        let target = app.descendants(matching: .any)["transcript-search-line"].firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "the line isn't in the transcript")
+        hold(2.4)
         mark("end")
     }
 
@@ -236,33 +260,11 @@ final class FilmFootageTests: XCTestCase {
         mark("end")
     }
 
-    /// Personal: Health notebook → Physio check-in: summary, key points,
-    /// to-dos; a slow scroll to Review and the Remember mark, and back up.
-    func testClip07Personal() {
-        let app = launch("ios-07-personal")
-        openRecordings(app)
-        hold(1.0)
-        mark("start")
-        hold(0.6)
-        notebookChip(app, "Health").tap()
-        let physio = app.staticTexts["Physio check-in"].firstMatch
-        XCTAssertTrue(physio.exists)
-        hold(0.4)
-        physio.tap()
-        XCTAssertTrue(element(app, labelContains: "Band exercises").exists)
-        hold(0.8)
-        still()
-        slowScroll(app, from: 0.72, fraction: 0.32, pointsPerSecond: 300)
-        hold(0.7)
-        slowScroll(app, from: 0.3, fraction: -0.45, pointsPerSecond: 420)
-        hold(0.8)
-        mark("end")
-    }
-
-    /// A meeting with AI notes: summary, decisions, action items. No scroll:
-    /// the attendees (with their profile-link buttons) sit just below.
-    func testClip08Meeting() {
-        let app = launch("ios-08-meeting")
+    /// A meeting's Notes (summary, decisions, action items) with Make again
+    /// and Follow-up email → the follow-up email, drafted (Pro).
+    func testClip08Meeting() throws {
+        try buyPro()
+        let app = launch("ios-08-meeting", try aiEndpointArgs())
         openRecordings(app)
         let meeting = app.staticTexts["Brightwater pilot kickoff"].firstMatch
         XCTAssertTrue(meeting.waitForExistence(timeout: 5))
@@ -271,9 +273,71 @@ final class FilmFootageTests: XCTestCase {
         hold(0.6)
         meeting.tap()
         XCTAssertTrue(element(app, labelContains: "Pilot with five inspectors").exists)
-        hold(1.4)
+        hold(1.2)
+        slowScroll(app, from: 0.7, fraction: 0.22, pointsPerSecond: 260)
+        let email = app.buttons["ai-email"].firstMatch
+        XCTAssertTrue(email.exists && email.isHittable, "Follow-up email isn't on screen")
+        XCTAssertTrue(app.buttons["ai-summarize"].firstMatch.label.contains("Make again"), "no Make again")
+        hold(0.8)
         still()
-        hold(2.6)
+        email.tap()
+        XCTAssertTrue(app.navigationBars["Follow-up email"].firstMatch.waitForExistence(timeout: 10), "the email didn't open")
+        XCTAssertTrue(element(app, labelContains: "Brightwater pilot: next steps").waitForExistence(timeout: 5))
+        hold(2.4)
+        mark("end")
+    }
+
+    /// Chat: a suggested question across all recordings → the answer, with
+    /// citation chips → a citation opens the recording at that moment (Pro).
+    func testClip09Chat() throws {
+        try buyPro()
+        let app = launch("ios-09-chat", try aiEndpointArgs())
+        XCTAssertTrue(app.buttons["Chat"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["Chat"].firstMatch.tap()
+        let ask = app.buttons.matching(identifier: "chat-suggestion").matching(NSPredicate(format: "label CONTAINS %@", "deadlines")).firstMatch
+        XCTAssertTrue(ask.waitForExistence(timeout: 5), "no deadlines suggestion")
+        hold(1.0)
+        mark("start")
+        hold(0.8)
+        ask.tap()
+        let citation = app.buttons["chat-citation"].firstMatch
+        XCTAssertTrue(citation.waitForExistence(timeout: 15), "no cited answer")
+        // The answer, shown in full: capture.sh never shortens keep+…keep-
+        mark("keep+")
+        hold(2.4)
+        mark("keep-")
+        still()
+        hold(0.6)
+        citation.tap()
+        XCTAssertTrue(app.navigationBars.buttons["Chat"].firstMatch.waitForExistence(timeout: 5), "the citation didn't open its recording")
+        hold(2.0)
+        mark("end")
+    }
+
+    /// Settings → Sync with your Mac: the pairing screen (Pro). The clip
+    /// starts with Settings already scrolled to Sync.
+    func testClip10Sync() throws {
+        try buyPro()
+        let app = launch("ios-10-sync")
+        XCTAssertTrue(app.buttons["Settings"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["Settings"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].firstMatch.waitForExistence(timeout: 5))
+        // Sync in the upper half of the screen, the AI section scrolled away
+        // (the form builds its rows as they come on screen)
+        let row = app.buttons["sync-row"].firstMatch
+        for _ in 0..<16 {
+            if row.exists, row.isHittable, row.frame.minY > app.frame.height * 0.2, row.frame.midY < app.frame.height * 0.6 { break }
+            slowScroll(app, from: 0.75, fraction: 0.2, pointsPerSecond: 900)
+        }
+        XCTAssertTrue(row.exists && row.isHittable, "Sync with your Mac isn't on screen")
+        hold(1.2)
+        mark("start")
+        hold(1.0)
+        row.tap()
+        XCTAssertTrue(app.buttons["sync-pair"].firstMatch.exists, "the Sync screen didn't open")
+        hold(1.0)
+        still()
+        hold(2.0)
         mark("end")
     }
 
