@@ -1077,6 +1077,8 @@ impl DatabaseManager {
         // Moment markers and study guides (docs/STUDY_TOOLS.md)
         crate::markers::ensure_schema(&mut conn).await?;
         crate::study::ensure_schema(&mut conn).await?;
+        // Interactive education: lesson catalog + learner records (docs/LESSONS.md)
+        crate::lessons::ensure_schema(&mut conn).await?;
         // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
         crate::topics::ensure_schema(&mut conn).await?;
         crate::chat::ensure_schema(&mut conn).await?;
@@ -1349,6 +1351,9 @@ impl DatabaseManager {
             let mut conn = self.pool.acquire().await?;
             crate::topics::purge_for_meeting(&mut conn, id).await?;
             crate::chat::purge_for_meeting(&mut conn, id).await?;
+            // Recording-derived (generated) lesson sets cascade with the
+            // recording (docs/LESSONS.md §11.4); seed/imported are untouched.
+            crate::lessons::purge_for_meeting(&mut conn, id).await?;
         }
 
         sqlx::query("DELETE FROM meetings WHERE id = ?")

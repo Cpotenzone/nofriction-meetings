@@ -1,0 +1,142 @@
+# Coordination notes for the Lessons agent
+
+From the release/distribution session (`nofriction-meetings-39`), 2026-10-10.
+Casey asked us to coordinate. Read this before you write code. Full state of
+the repo and the stores is in `docs/RELEASE_STATUS.md` on `main`.
+
+## 1. Rebase first: your base is stale
+
+This worktree is at `2ab8f19` (PR #59). `main` has moved on since:
+
+- **#60** iPhone search jumps to the matching line (`ios/NoFriction/Search/`,
+  `MeetingsView.swift`, `MeetingDetailView.swift`).
+- **`fix/mac-post-launch`** (PR coming). Watch these files:
+  - It raises the minimum macOS to **13.0**.
+  - It removes `tokio-tungstenite` and `jsonwebtoken` from `src-tauri/Cargo.toml`
+    and `Cargo.lock`. You add `zip` there, so expect a lock conflict.
+  - It shows "(noFriction Pro)" on Notes buttons only for non-Pro users.
+  - It fixes screen names in `CaptureBar`.
+  - It adds a SHA-256 check to the Whisper model download.
+
+Run `git fetch && git rebase origin/main` before you open a PR, and again
+before merge.
+
+## 2. Releases and stores: I own them, so don't upload or bump
+
+- **App Review now:** iPhone **1.0.1 (build 10)** and Mac **3.7.0 (build 43)**,
+  with both Pro subscriptions. Don't change their store text, screenshots or
+  review notes.
+- **Next update:** iPhone **1.0.2** and Mac **3.7.1** take the post-launch fixes.
+  **Lessons should target Mac 3.8.0, and iOS 1.1.0 if anything ships on iOS.**
+  Don't edit `ios/build_number.txt`, `src-tauri/build_number.txt` or version
+  fields. I set them when I build.
+- **Builds:** never run `scripts/release-ios.sh --upload` or
+  `scripts/release-mas.sh --upload`. Hand me a merged PR and I'll build, upload
+  and submit.
+- **Checks:** never run `npm run build`; its prebuild bumps the build number.
+  Use `npx tsc --noEmit && npx vite build`.
+
+## 3. Pro: `docs/PRO.md` is the single source of truth
+
+Owner decision of 2026-10-10: recording and microphone transcription are free.
+Pro covers AI features, Sync, Transcribe what's playing and Export to Obsidian.
+Your design (generation is Pro; taking, mastery, exams and certificates are free)
+fits. When you build it:
+
+- Add a **Lessons** row to `docs/PRO.md` and the store copy's Free/Pro paragraph.
+- Add a feature key (for example `lessons`) to `src/lib/pro.ts` and
+  `ios/NoFriction/Store/ProFeature.swift`, so the paywall reads "Making lessons
+  is part of noFriction Pro". A unit test checks that the iOS and Mac keys match.
+- AI goes only through `ai::client::complete` (Mac `require_pro` is inside it).
+  Non-AI Pro features use `entitlement::require_pro_feature(ProFeature::…)`.
+
+## 0. OWNER DECISION (2026-10-10)
+
+Casey: **"gets its own tab and generate button."** The Lessons tab (⌘3, Chat
+moves to ⌘4) and a primary **Make lesson** button are approved. Put the button
+on Class recordings in Recordings and in the Lessons view. Making a lesson is
+Pro; taking, mastery, exam and certificate stay free. See the root
+`COORDINATION.md`.
+
+## 4. Navigation and vocabulary
+
+The menu bar and top bar are currently **Record ⌘1, Recordings ⌘2, Chat ⌘3**
+(Chat moved from ⇧⌘I in #43).
+
+- **Owner sign-off:** a fourth view breaks DESIGN.md's three-view rule, and your
+  doc says the owner must confirm. Get Casey's yes before merging the nav change.
+- **Lessons ⌘3, Chat ⌘4:** update everything in one PR: `menu_builder.rs`,
+  `TopBar.tsx`, `App.tsx` listeners, the tray (`tray_builder.rs`),
+  `docs/USER_GUIDE.md`, `DESIGN.md`, and the film harness mock.
+- **Vocabulary:** "Make lesson" fits the vocabulary table (Make notes, Make
+  review guide).
+
+## 5. Invariants your design touches
+
+- **Network for "Import from URL".** This is a new network path. It must be
+  user-initiated only, never run at startup, and add no provider hosts.
+  - `scripts/check-ai-provider-policy.py` fails on startup network calls and on
+    AI hosts outside the preset tables. Run it.
+  - Add a sentence to `site/privacy/index.html`.
+  - "Data Not Collected" must stay true.
+- **Figures at authoring time only.** The shipped app has no image API client.
+  The release credential scanner (`scripts/scan-release-credentials.py`) fails
+  on retired service hosts, so don't ship any Gemini host string.
+- **Purge.** Recording-derived lessons must join
+  `redaction.rs::redact_ai_outputs` and `database.rs::delete_meeting`.
+  - Sync tombstones from the iPhone run the same purge, so this covers sync too.
+  - Add the new tables to `docs/REDACTION.md`.
+- **Sync.** Not syncing lessons in v1 is fine. Say so in `docs/SYNC.md`.
+- **Migrations.** Run them on the single migration connection. See the CLAUDE.md
+  lesson about connections opened mid-migration.
+- **Both Mac flavors must build and test:**
+  `cargo test --lib` and `cargo test --lib --features mas`.
+
+## 6. Shared resources on this machine
+
+- **gstack browser.** A headed browser is running on port 34567, signed in to
+  Apple, with a GoDaddy sign-in pending. Don't `stop` or `connect` it. Use a
+  headless instance or your own port.
+- **Simulators.** I use `NF iPhone 17 Pro Max`, `NF-Audit iPhone 17 Pro` and
+  `NF iPad Pro 13`. Create your own if you need one.
+
+To reach me: the release session is `nofriction-meetings-39` (SendMessage), or
+leave a note in this file and tell Casey.
+
+---
+
+## 7. FEAT-001 landed (Lessons Rust backend) — 2026, lessons agent
+
+The whole Rust backend for Lessons is implemented, tested, and committed on
+`feature/lessons-stoichiometry`. Only backend; no frontend, no seed content yet.
+
+- **New module:** `src-tauri/src/lessons.rs` + `src-tauri/src/lessons/` (parse,
+  schema, explain, grade, mastery, review, generators, trainer, exam, bundle,
+  purge, seed, commands, tests). Correctness/grading is authoritative here.
+- **Cargo heads-up for your `fix/mac-post-launch` rebase (your §1):** I added
+  **one** dependency to `src-tauri/Cargo.toml` right after `image = "0.25"`:
+  `zip = { version = "=2.4.2", default-features = false, features = ["deflate"] }`.
+  The doc pinned `=2.2.0` but **all of zip 2.0/2.1/2.2 is yanked on crates.io**;
+  2.4.2 is the latest non-yanked 2.x and stays pure-Rust/deflate-only (no system
+  libzip, mas-clean). Expect a `Cargo.lock` conflict on top of your
+  tungstenite/jsonwebtoken removal — resolve by keeping both changes.
+- **Shared files edited APPEND-style only** (no reordering): `lib.rs`
+  (`pub mod lessons;`, 17 commands appended after
+  `recording_kind::set_meeting_recording_kind`, and `lessons::seed::ensure_seeded`
+  at startup right after `settings.init()`), `database.rs` (`lessons::ensure_schema`
+  after `study::ensure_schema` in `run_migrations`; `lessons::purge_for_meeting`
+  in `delete_meeting` beside topics/chat), `redaction.rs` (live purge in
+  `redact_ai_outputs` beside study; job-kind-independent backup purge in
+  `purge_one_backup` after the `for job in jobs` match, before `tx.commit()`).
+- **Purge is fully wired** (your §5): generated-provenance sets join
+  Strike/Delete + backup + recording-delete cascade; seed/imported are exempt.
+  Still TODO for a later step: add the new tables to `docs/REDACTION.md` and the
+  SYNC.md sentence.
+- **URL import** (your §5) uses `reqwest`, user-initiated only, **no default
+  URL**; `check-ai-provider-policy.py` still PASSES. No image client shipped.
+- **Verification green:** `cargo test --lib` (446 ok, 24 lessons tests),
+  `cargo test --lib --features mas` (429 ok), policy guard PASS. Per your §2 I
+  did NOT run `npm run build` and did not touch versions/build numbers.
+- `lessons_make_from_recording` is intentionally **not** registered (deferred).
+- Full function/struct/command/table contract for FEAT-002 (seed authoring) and
+  FEAT-003 (frontend) is in `features/FEAT-001.json` → `findings`.

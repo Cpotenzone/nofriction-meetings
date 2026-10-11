@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-004",
+  "type": "docs",
+  "description": "Docs, policy/offline guards, and CSP for the Lessons subsystem: the authoritative frontend zero-runtime-network guard (D5), confirmation of the Tauri CSP backstop, and append-style updates to README, ARCHITECTURE, CHANGELOG, REDACTION, PRO (+ pro.ts/ProFeature.swift key), SYNC, and the privacy site. DEPENDS ON FEAT-001 (purge/module map), FEAT-002 (data-on-disk + authoring doc), and FEAT-003 (the compiled Lessons bundle the offline guard scans). This is the final convergence feature.",
+  "status": "pending",
+  "steps": [
+    "Create scripts/check-lessons-offline.* (run in CI alongside the policy guard): produce/locate the compiled Lessons JS bundle (Vite output for src/components/lessons/** + src/lib/lessonLogic*) and compiled Lessons.css, scan both for any non-local http(s):// reference or any url(...) pointing at a remote host and FAIL on a match; allow-list local/relative/data:/tauri:// and bundled-font references. Additionally assert Lessons.css has no @import url(http…), no remote @font-face src, and that every font-family resolves to the bundled Inter (FR-OFF-2). Do NOT invoke `npm run build` (it bumps the build number); build only the Lessons surface or scan the existing dist output.",
+    "Confirm/annotate the Tauri CSP in src-tauri/tauri.conf.json as the runtime backstop: connect-src 'self' (already set at line 27), img-src/font-src restricted to 'self' + the asset protocol with no remote origin for the Lessons surface. Document that the grep guard is authoritative and the CSP is defense-in-depth.",
+    "README.md: APPEND Lessons to the feature table and the docs list. docs/ARCHITECTURE.md: APPEND the Lessons subsystem (module map src-tauri/src/lessons/* + data-on-disk <app data>/lessons/<id>/{lessonset.json,lessons/*.json,figures/*.png}). docs/CHANGELOG.md: APPEND the Lessons entry.",
+    "docs/REDACTION.md: extend the purge checklist step 5 — generated lessons are deleted (not rewritten) on transcript Delete/Strike; seed/imported are exempt; note the provenance='generated' guard, the save-time BEGIN IMMEDIATE fingerprint recheck, and the job-kind-independent backup purge hook in purge_one_backup (covers Words/Screens/RangeExtras).",
+    "docs/PRO.md: APPEND a Lessons row — Making a lesson (the deferred Generate pipeline) is Pro; taking, mastery, exam, and certificate are free. Add a 'lessons' feature key to src/lib/pro.ts (PRO_FEATURE_KEYS / ProFeature) and the matching key to ios/NoFriction/Store/ProFeature.swift so the pro.test.ts key-match test passes.",
+    "docs/SYNC.md: state lessons are NOT synced in v1. site/privacy/index.html: add a sentence covering the single user-initiated 'Import from URL' fetch, keeping 'Data Not Collected' true. Keep every doc honest about Mac-ships-fully vs iOS-is-a-documented-follow-up."
+  ],
+  "acceptance_criteria": [
+    "`python3 scripts/check-ai-provider-policy.py` passes",
+    "scripts/check-lessons-offline.* runs and reports no remote reference in the compiled Lessons bundle/CSS, bundled Inter only",
+    "`npx tsc --noEmit` passes (pro.ts key change compiles) and `npm test` passes (pro.test.ts key-match test green)",
+    "`cd src-tauri && cargo test --lib` and `cargo test --lib --features mas` still green",
+    "README/ARCHITECTURE/CHANGELOG/REDACTION/PRO/SYNC edits are append-style and the REDACTION purge checklist documents the generated-vs-seed/imported distinction"
+  ],
+  "verification": [
+    "python3 \"/Volumes/BIG DATA/Development/Agent-Workspaces/Gemini/nofriction-meetings/.worktrees/lessons-stoichiometry/scripts/check-ai-provider-policy.py\"",
+    "cd \"/Volumes/BIG DATA/Development/Agent-Workspaces/Gemini/nofriction-meetings/.worktrees/lessons-stoichiometry\" && npx tsc --noEmit && npm test",
+    "cd \"/Volumes/BIG DATA/Development/Agent-Workspaces/Gemini/nofriction-meetings/.worktrees/lessons-stoichiometry/src-tauri\" && cargo test --lib && cargo test --lib --features mas"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

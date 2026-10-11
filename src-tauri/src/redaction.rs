@@ -665,6 +665,9 @@ pub async fn redact_ai_outputs(
     replacement: &str,
 ) -> Result<u64, sqlx::Error> {
     let mut changed = crate::study::purge_for_meeting(conn, meeting_id).await?;
+    // Recording-derived (generated) lesson sets are deleted on any Delete/Strike
+    // of this recording's transcript text (docs/LESSONS.md §11.4).
+    changed += crate::lessons::purge_for_meeting(conn, meeting_id).await?;
     // AI topics name what the transcript was about, and chat answers quote
     // it: both are deleted outright; the user's own topics stay
     // (docs/TOPICS_AND_CHAT.md)
@@ -1323,6 +1326,10 @@ async fn purge_one_backup(path: &Path, meeting_id: &str, jobs: &[BackupJob]) -> 
             }
         }
     }
+    // Job-kind-independent: purge recording-derived (generated) lesson sets from
+    // this backup regardless of the arm, so a time-range or whole-recording
+    // Delete reaches them too (docs/LESSONS.md §11.4, MEDIUM-3).
+    crate::lessons::purge_for_meeting(&mut tx, meeting_id).await.map_err(err("lessons"))?;
     tx.commit().await.map_err(err("commit"))?;
     if tables.contains("transcripts_fts") {
         sqlx::query("INSERT INTO transcripts_fts(transcripts_fts) VALUES('rebuild')")

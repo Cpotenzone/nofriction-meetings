@@ -41,6 +41,13 @@ cpal = { git = "https://github.com/Kree0/cpal.git", branch = "master" }
 xcap = "0.8"
 image = "0.25"
 
+# Portable `.lesson` bundle container (docs/LESSONS.md §4.1): pure-Rust zip
+# reader/writer, no system libzip, so the `mas` sandbox build stays clean. We
+# use only deflate/stored (no bzip2/zstd native deps). NIT-10 pinned =2.2.0,
+# but the entire 2.2.x line was yanked on crates.io; =2.4.2 is the latest
+# non-yanked 2.x and keeps the pure-Rust, deflate-only, no-libzip contract.
+zip = { version = "=2.4.2", default-features = false, features = ["deflate"] }
+
 # Database (local SQLite only; the app is client-only)
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "chrono"] }
 
