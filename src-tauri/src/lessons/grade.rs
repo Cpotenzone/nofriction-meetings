@@ -50,7 +50,23 @@ const UNITS: &[Unit] = &[
     Unit { name: "°c", dim: "temperature", factor: 1.0, offset: 273.15 },
     Unit { name: "c", dim: "temperature", factor: 1.0, offset: 273.15 },
     Unit { name: "°k", dim: "temperature", factor: 1.0, offset: 0.0 },
+    // molarity (base mol/L) — "M" and "mol/L" are the same concentration unit
+    Unit { name: "mol/l", dim: "molarity", factor: 1.0, offset: 0.0 },
+    Unit { name: "m", dim: "molarity", factor: 1.0, offset: 0.0 },
+    Unit { name: "mm", dim: "molarity", factor: 1e-3, offset: 0.0 },
+    // molar mass (base g/mol) — its own dimension so it never cross-matches mass
+    Unit { name: "g/mol", dim: "molar_mass", factor: 1.0, offset: 0.0 },
+    // percent (dimensionless, base %) — used by percent-yield/composition items
+    Unit { name: "%", dim: "percent", factor: 1.0, offset: 0.0 },
+    Unit { name: "percent", dim: "percent", factor: 1.0, offset: 0.0 },
 ];
+
+/// Public, test-visible wrapper over the private unit lookup so the seed
+/// validator can assert every authored numeric `unit` round-trips through the
+/// grader's own table (an authored unit the grader rejects is a build break).
+pub fn unit_is_gradeable(token: &str) -> bool {
+    lookup_unit(token).is_some()
+}
 
 fn lookup_unit(token: &str) -> Option<&'static Unit> {
     let t = token.trim().to_lowercase();

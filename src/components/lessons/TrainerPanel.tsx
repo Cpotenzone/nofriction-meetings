@@ -8,13 +8,14 @@
 //     mastery, grades the answer, and records the attempt (lessons_submit_
 //     trainer_item) which advances mastery and the review interval in Rust.
 //
-// Grading of a trainer answer is a live preview cue only (previewNumeric);
-// mastery and the schedule remain authoritative in Rust via submitTrainerItem.
+// The raw trainer answer is submitted to Rust (lessons_submit_trainer_item),
+// which re-derives the drill, grades the answer authoritatively, and advances
+// mastery + the review interval. The UI shows the server verdict — no client
+// grades the trainer, matching the checkpoint/exam/certificate authority story.
 
 import { useEffect, useState } from "react";
 import type { DueConcept, TrainerItem } from "../../lib/lessons";
 import { reviewDue, nextTrainerItem, submitTrainerItem } from "../../lib/lessons";
-import { previewNumeric } from "../../lib/lessonLogic";
 import { TargetIcon, RouteIcon } from "../icons";
 
 export function TrainerPanel({ setId, conceptName }: { setId: string; conceptName: (id: string) => string }) {
@@ -114,11 +115,11 @@ function TrainerSession({
 
     const grade = async () => {
         if (!item) return;
-        const g = previewNumeric(value, item.answer, item.unit || null, { kind: "rel", value: 0.01 });
-        const correct = g === "correct";
-        setOutcome({ correct });
         try {
-            await submitTrainerItem(setId, item.conceptId, correct, true);
+            // Rust re-derives this drill from `attempt`, grades the raw answer,
+            // and returns the authoritative verdict + the correct answer.
+            const result = await submitTrainerItem(setId, attempt, value, true);
+            setOutcome({ correct: result.correct });
         } catch (e) {
             setError(String(e));
         }

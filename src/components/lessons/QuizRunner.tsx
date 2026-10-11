@@ -13,7 +13,8 @@
 //      and populate SubmittedAnswer.multistep, so they are gradeable from the
 //      UI instead of silently scoring 0.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { QuizItem, SubmittedAnswer, GradedItem, MultistepStep } from "../../lib/lessons";
 import { previewNumeric } from "../../lib/lessonLogic";
 
@@ -204,17 +205,55 @@ function ChoiceGroup({
     onSelect: (authoredIndex: number) => void;
 }) {
     const order = useMemo(() => shuffledOrder(itemId, choices.length), [itemId, choices.length]);
+    const refs = useRef<(HTMLButtonElement | null)[]>([]);
+
+    // The radiogroup is a single tab stop (roving tabIndex): the checked radio
+    // is focusable, or the first one if none is checked yet. Arrow keys move
+    // selection within the group, matching the ARIA radiogroup pattern (WCAG).
+    const selectedPos = order.findIndex((a) => a === selectedAuthored);
+    const activePos = selectedPos >= 0 ? selectedPos : 0;
+
+    const moveTo = (pos: number) => {
+        if (disabled) return;
+        const n = order.length;
+        const next = ((pos % n) + n) % n;
+        onSelect(order[next]);
+        refs.current[next]?.focus();
+    };
+
+    const onKeyDown = (e: KeyboardEvent, pos: number) => {
+        switch (e.key) {
+            case "ArrowDown":
+            case "ArrowRight":
+                e.preventDefault();
+                moveTo(pos + 1);
+                break;
+            case "ArrowUp":
+            case "ArrowLeft":
+                e.preventDefault();
+                moveTo(pos - 1);
+                break;
+            default:
+                break;
+        }
+    };
+
     return (
         <div role="radiogroup" aria-label={prompt}>
-            {order.map((authored) => (
+            {order.map((authored, pos) => (
                 <button
                     key={authored}
+                    ref={(el) => {
+                        refs.current[pos] = el;
+                    }}
                     type="button"
                     role="radio"
                     aria-checked={selectedAuthored === authored}
+                    tabIndex={pos === activePos ? 0 : -1}
                     disabled={disabled}
                     className={`quiz-choice ${selectedAuthored === authored ? "is-selected" : ""}`}
                     onClick={() => onSelect(authored)}
+                    onKeyDown={(e) => onKeyDown(e, pos)}
                 >
                     {choices[authored]}
                 </button>

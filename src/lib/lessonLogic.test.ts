@@ -31,6 +31,13 @@ test("previewNumeric: the full Rust unit set is mirrored (no false unreadable)",
     assert.equal(previewNumeric("760 torr", 1.0, "atm", rel), "correct");
     assert.equal(previewNumeric("101325 pa", 1.0, "atm", rel), "correct");
     assert.equal(previewNumeric("273.15 °k", 273.15, "K", rel), "correct");
+    // Molarity, molar mass and percent (review-a MEDIUM): echoing the prompted
+    // unit must not read as "unreadable" in the live preview either.
+    assert.equal(previewNumeric("0.1 mol/l", 0.1, "mol/L", rel), "correct");
+    assert.equal(previewNumeric("0.1 m", 0.1, "mol/L", rel), "correct"); // M == mol/L
+    assert.equal(previewNumeric("44.01 g/mol", 44.01, "g/mol", rel), "correct");
+    assert.equal(previewNumeric("80 %", 80.0, "%", rel), "correct");
+    assert.equal(previewNumeric("80", 80.0, "%", rel), "correct"); // bare number in declared unit
 });
 
 test("previewNumeric: incompatible units are wrong, unknown units unreadable", () => {

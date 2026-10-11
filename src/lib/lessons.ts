@@ -199,6 +199,14 @@ export interface TrainerItem {
     unit: string;
 }
 
+export interface TrainerGrade {
+    mastery: Mastery;
+    // The authoritative server grade for the submitted trainer answer.
+    correct: boolean;
+    answer: number;
+    unit: string;
+}
+
 export interface Certificate {
     id: string;
     courseTitle: string;
@@ -256,7 +264,7 @@ export const exportCertificate = (setId: string): Promise<Certificate | null> =>
 export const resetProgress = (setId: string): Promise<void> => invoke("lessons_reset_progress", { setId });
 export const submitTrainerItem = (
     setId: string,
-    conceptId: string,
-    correct: boolean,
+    attemptIndex: number,
+    given: string,
     firstTry: boolean,
-): Promise<Mastery> => invoke("lessons_submit_trainer_item", { setId, conceptId, correct, firstTry });
+): Promise<TrainerGrade> => invoke("lessons_submit_trainer_item", { setId, attemptIndex, given, firstTry });

@@ -397,6 +397,21 @@ fn numeric_grading_table() {
     // scientific notation.
     assert_eq!(grade::check_numeric("6.022e23", 6.022e23, None, &exact), NumericGrade::Correct);
     assert_eq!(grade::check_numeric("6.022 x 10^23", 6.022e23, None, &exact), NumericGrade::Correct);
+    // Molarity, molar mass and percent round-trip (review-a MEDIUM): a learner
+    // who echoes the prompted unit grades Correct, not Unparseable.
+    let rel = Tolerance { kind: "rel".into(), value: 0.01 };
+    assert_eq!(grade::check_numeric("0.1 mol/L", 0.1, Some("mol/L"), &rel), NumericGrade::Correct);
+    assert_eq!(grade::check_numeric("0.1 M", 0.1, Some("mol/L"), &rel), NumericGrade::Correct);
+    assert_eq!(grade::check_numeric("44.01 g/mol", 44.01, Some("g/mol"), &rel), NumericGrade::Correct);
+    assert_eq!(grade::check_numeric("80 %", 80.0, Some("%"), &rel), NumericGrade::Correct);
+    assert_eq!(grade::check_numeric("80", 80.0, Some("%"), &rel), NumericGrade::Correct);
+    // Cross-dimension mismatch stays Wrong (percent vs molarity).
+    assert_eq!(grade::check_numeric("80 %", 80.0, Some("mol/L"), &rel), NumericGrade::Wrong);
+    // Every unit class is now gradeable from its own round-trip helper.
+    for u in ["mol/L", "M", "g/mol", "%", "percent", "g", "mol", "L", "°C"] {
+        assert!(grade::unit_is_gradeable(u), "unit {} should be gradeable", u);
+    }
+    assert!(!grade::unit_is_gradeable("foobar"));
     // Hostile inputs never panic.
     for g in ["", "   ", "abc", "NaN", "1e999999", "----", "9".repeat(400).as_str()] {
         let _ = grade::check_numeric(g, 1.0, Some("g"), &abs);
@@ -860,6 +875,114 @@ fn shipped_seed_bundle_passes_validation_with_all_floors() {
         .expect("lesson 1 checkpoint has the 36.04 g H2O item");
     let ans = n1.answer.expect("numeric answer present");
     assert!((ans - 2.0).abs() < 0.01, "36.04 g H2O should be 2.00 mol, got {}", ans);
+
+    // 8b. Every authored numeric answer unit — on items AND on multistep steps,
+    //     across every lesson checkpoint, trainer, the exam, and the diagnostic
+    //     — must round-trip through the authoritative grader's own units table
+    //     (review-a MEDIUM). An authored unit the grader would reject as
+    //     "couldn't read that unit" is a build break here, not a runtime
+    //     surprise for a learner who echoes the prompted unit. (The import-time
+    //     validator enforces the same thing; this is a direct, legible guard on
+    //     the shipped seed so the property is visible in the test suite.)
+    let assert_unit_gradeable = |label: &str, unit: &Option<String>| {
+        if let Some(u) = unit {
+            if !u.is_empty() {
+                assert!(
+                    grade::unit_is_gradeable(u),
+                    "{label}: authored numeric unit {:?} is not in the grader's UNITS table — \
+                     a learner who answers with this unit would be told 'couldn't read that unit'",
+                    u
+                );
+            }
+        }
+    };
+    let check_item_units = |label: &str, items: &[schema::QuizItem]| {
+        for it in items {
+            if it.kind == "numeric" {
+                assert_unit_gradeable(&format!("{label} item {}", it.id), &it.unit);
+            }
+            if it.kind == "multistep" {
+                for (si, s) in it.steps.iter().flatten().enumerate() {
+                    if s.kind == "numeric" {
+                        assert_unit_gradeable(&format!("{label} item {} step {}", it.id, si), &s.unit);
+                    }
+                }
+            }
+        }
+    };
+    for lesson in lessons {
+        check_item_units(&format!("lesson {} checkpoint", lesson.index), &lesson.checkpoint.items);
+        check_item_units(&format!("lesson {} trainer", lesson.index), &lesson.trainer.static_items);
+    }
+    check_item_units("exam", &exam.items);
+    if let Some(d) = &set.diagnostic {
+        check_item_units("diagnostic", &d.items);
+    }
+
+    // 8c. Recompute the numeric answer keys from the SAME shared molar-mass
+    //     table / STP constant the generators use (docs/LESSONS.md §4.6 full
+    //     recompute), rather than trusting a hand-authored key. This closes the
+    //     gap where a future wrong numeric key would pass the finiteness-only
+    //     structural check. Each recomputed value must equal the authored key
+    //     within the item's own relative tolerance.
+    let find_item = |id: &str| -> &schema::QuizItem {
+        lessons
+            .iter()
+            .flat_map(|l| l.checkpoint.items.iter())
+            .chain(exam.items.iter())
+            .find(|i| i.id == id)
+            .unwrap_or_else(|| panic!("seed is missing numeric item {}", id))
+    };
+    let assert_key = |id: &str, expected: f64| {
+        let it = find_item(id);
+        let got = it.answer.unwrap_or_else(|| panic!("item {} has no answer", id));
+        let rel = it.tolerance.as_ref().map(|t| t.value).unwrap_or(0.01).max(1e-9);
+        assert!(
+            (got - expected).abs() <= rel * expected.abs().max(1e-9),
+            "numeric key {} = {} does not recompute to {} (rel tol {})",
+            id,
+            got,
+            expected,
+            rel
+        );
+    };
+    let mm_h2o = generators::molar_mass("H2O").expect("H2O molar mass");
+    let mm_h2 = generators::molar_mass("H2").expect("H2 molar mass");
+    let mm_co2 = generators::molar_mass("CO2").expect("CO2 molar mass");
+    let vm = generators::MOLAR_VOLUME_STP;
+    // mole = mass / molar mass
+    assert_key("l1-cp-n1", 36.04 / mm_h2o); // 2.00 mol
+    assert_key("l1-cp-n3", 88.02 / mm_co2); // 2.00 mol
+    assert_key("l1-cp-n2", mm_co2); // molar mass of CO2 as the key itself
+    assert_key("ex-num-0", 36.04 / mm_h2o);
+    assert_key("ex-num-2", 18.02 / mm_h2o); // 1.00 mol
+    assert_key("ex-num-18", mm_co2 / mm_co2); // 1.00 mol from 44.01 g CO2
+    // mass = moles * molar mass
+    assert_key("ex-num-3", 2.0 * mm_co2); // 88.02 g
+    assert_key("ex-num-11", (2.02 / mm_h2) * mm_h2o); // 2.02 g H2 → 1 mol → 18.02 g H2O
+    // mole ratio 2 H2 + O2 → 2 H2O: g H2O from 4.00 g H2 (1:1 mole ratio)
+    assert_key("l3-cp-n1", (4.00 / mm_h2) * mm_h2o);
+    assert_key("ex-num-6", (4.00 / mm_h2) * mm_h2o);
+    // percent yield = actual / theoretical * 100
+    assert_key("l4-cp-n1", 8.00 / 10.00 * 100.0); // 80 %
+    assert_key("ex-num-9", 8.00 / 10.00 * 100.0);
+    assert_key("ex-num-10", 4.50 / 5.00 * 100.0); // 90 %
+    // molarity = moles / liters, and dilution M1V1 = M2V2
+    assert_key("l5-cp-n1", 0.100 * 0.250); // 0.025 mol
+    assert_key("l5-cp-n2", 0.0500 / 0.500); // 0.1 mol/L
+    assert_key("l5-cp-n3", 2.00 * 0.0500 / 0.200); // 0.5 mol/L
+    assert_key("ex-num-12", 0.100 * 0.250);
+    assert_key("ex-num-13", 0.0500 / 0.500);
+    assert_key("ex-num-14", 2.00 * 0.0500 / 0.200);
+    // gas volume at STP = moles * molar volume
+    assert_key("l6-cp-n1", 2.0 * vm); // 44.82 L
+    assert_key("l6-cp-n2", 44.82 / vm); // 2.00 mol
+    assert_key("ex-num-15", 2.0 * vm);
+    assert_key("ex-num-16", 44.82 / vm);
+    assert_key("ex-num-19", 0.500 * vm); // 11.205 L
+    // ideal gas V = nRT/P
+    assert_key("l6-cp-n3", 1.00 * 0.0821 * 273.15 / 1.00);
+    assert_key("ex-num-17", 1.00 * 0.0821 * 273.15 / 1.00);
 }
 
 /// Build the correct `Given` for an item straight from its stored answer key —

@@ -348,3 +348,71 @@ when reduced motion is requested.
 ## NIT — thin molecule-diagram text-equivalent (review-b)
 `Explainers.tsx`: the a11y list now appends each bond as "single/double/triple
 bond: A–B", giving screen-reader users connectivity, not just composition.
+
+# Review-fix pass (gate verdict CHANGES_REQUESTED → fixes)
+
+## MEDIUM — authored numeric units the grader could not parse (review-a)
+Ten+ seed numeric items/steps declared answer units (`mol/L`, `M`, `g/mol`,
+`%`) absent from `grade::UNITS`, so a learner who echoed the prompted unit was
+graded `Unparseable("couldn't read that unit")` while the bare number graded
+Correct.
+- `src-tauri/src/lessons/grade.rs`: added three dimension classes to the single
+  UNITS table — molarity (`mol/l`, `m`, `mm`), molar mass (`g/mol`), and
+  percent (`%`, `percent`). Each is its own `dim` so it never cross-matches
+  another dimension. Added `pub fn unit_is_gradeable(token)` over the private
+  `lookup_unit` so content validation can assert round-trip.
+- `src/lib/lessonLogic.ts`: mirrored the three classes in the preview UNITS
+  table 1:1, and widened the unit-token regex to accept `/` and `%` so
+  `mol/l`, `g/mol`, `%` parse in the live preview too (no false "unreadable").
+- `src-tauri/src/lessons/schema.rs`: `validate_item` (numeric) and the
+  multistep numeric step path now reject any declared answer unit that is not
+  `grade::unit_is_gradeable` — an authored unit the grader can't read is now a
+  build break at import, so authored keys can never again out-run the grader.
+- Tests: `numeric_grading_table` now asserts `mol/L`/`M`/`g/mol`/`%` echo as
+  Correct, cross-dimension stays Wrong, and `unit_is_gradeable` is exhaustive;
+  `lessonLogic.test.ts` mirrors the same on the preview side.
+
+## NIT — seed numeric keys only finiteness-checked, not recomputed (review-a)
+`shipped_seed_bundle_passes_validation_with_all_floors` (tests.rs) now:
+- asserts EVERY authored numeric unit (items + multistep steps, across all
+  checkpoints, trainers, exam, diagnostic) round-trips through
+  `grade::unit_is_gradeable`; and
+- recomputes ~25 representative numeric answer keys (mole↔mass, mole-ratio,
+  percent yield, molarity + dilution, STP gas volume, ideal-gas PV=nRT) from
+  the SAME shared `generators::molar_mass` table / `MOLAR_VOLUME_STP` constant
+  the generators use, each within the item's own relative tolerance. A future
+  wrong numeric key now fails the build.
+
+## NIT — exam gate counted progress rows, not current-set lessons (review-a)
+`src-tauri/src/lessons/commands.rs`: new `passed_checkpoints_in_set` counts
+DISTINCT `lesson_progress.lesson_id` rows with `checkpoint_passed=1` filtered to
+the CURRENT `set.lessons`, so a stale progress row for a removed lesson id can't
+inflate the pass count. Both `lessons_start_exam` and `lessons_dashboard` use it.
+
+## NIT — adaptive trainer updated mastery from a client verdict (review-b)
+`src-tauri/src/lessons/commands.rs`: `lessons_submit_trainer_item` now takes the
+raw answer string + `attemptIndex` (not a client `correct` bool). It rebuilds
+the trainer snapshot (shared `trainer_states` helper), re-derives the exact
+generated drill for that attempt index, grades the raw answer with
+`check_numeric`, and returns a `TrainerGrade { mastery, correct, answer, unit }`.
+The key is reconstructed server-side; the client never supplies the verdict.
+- `src/lib/lessons.ts`: `submitTrainerItem(setId, attemptIndex, given, firstTry)`
+  → `TrainerGrade`; added the `TrainerGrade` type.
+- `src/components/lessons/TrainerPanel.tsx`: submits the raw answer and shows
+  the server verdict; dropped the client `previewNumeric` grade for the trainer.
+
+## NIT — MC radiogroup lacked arrow-key roving focus (review-b)
+`src/components/lessons/QuizRunner.tsx` `ChoiceGroup`: added roving `tabIndex`
+(the checked radio, or the first, is the single tab stop) and Up/Down/Left/Right
+handling that moves selection within the group and focuses it, per the ARIA
+radiogroup pattern. Tab operability (WCAG 2.1.1) is unchanged.
+
+## NIT — README "fourth view (⌘3)" phrasing (review-b)
+`README.md`: Lessons row now reads "a fourth view at ⌘3 (Chat moves to ⌘4)".
+
+## Verification
+- `cargo test --lib` → 450 passed; `cargo test --lib --features mas` builds and
+  the 28 lessons tests pass.
+- `npx tsc --noEmit` clean; `TZ=UTC node --test src/lib/lessonLogic.test.ts` 9/9.
+- `scripts/check-ai-provider-policy.py` PASS; `npx vite build` + 
+  `scripts/check-lessons-offline.mjs` PASS (Lessons isolated chunk, no remote refs).

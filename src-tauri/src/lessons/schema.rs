@@ -401,6 +401,14 @@ fn validate_item(item: &mut QuizItem, concepts: &HashSet<String>) -> Result<(), 
             if !matches!(tol.kind.as_str(), "exact" | "abs" | "rel") || !finite(tol.value) || tol.value < 0.0 {
                 return Err("numeric tolerance invalid".into());
             }
+            // A declared answer unit must round-trip through the authoritative
+            // grader's own units table, so an authored key can never again
+            // declare a unit the grader would reject as "couldn't read that unit".
+            if let Some(u) = item.unit.as_deref() {
+                if !u.is_empty() && !crate::lessons::grade::unit_is_gradeable(u) {
+                    return Err(format!("numeric item declares an ungradeable unit {}", u));
+                }
+            }
         }
         "balance" => {
             let eq = item.equation.as_ref().ok_or("balance item has no equation")?;
@@ -436,6 +444,13 @@ fn validate_item(item: &mut QuizItem, concepts: &HashSet<String>) -> Result<(), 
                         let tol = s.tolerance.as_ref().ok_or("multistep numeric has no tolerance")?;
                         if !matches!(tol.kind.as_str(), "exact" | "abs" | "rel") || !finite(tol.value) {
                             return Err("multistep numeric tolerance invalid".into());
+                        }
+                        // Same gradeable-unit round-trip guard as the item-level
+                        // numeric path (a step unit the grader rejects is a build break).
+                        if let Some(u) = s.unit.as_deref() {
+                            if !u.is_empty() && !crate::lessons::grade::unit_is_gradeable(u) {
+                                return Err(format!("multistep numeric step declares an ungradeable unit {}", u));
+                            }
                         }
                     }
                     "balance" => {

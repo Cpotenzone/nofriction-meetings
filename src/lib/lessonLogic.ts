@@ -56,6 +56,15 @@ const UNITS: Record<string, UnitDef> = {
     "°c": { dim: "temperature", factor: 1, offset: 273.15 },
     c: { dim: "temperature", factor: 1, offset: 273.15 },
     "°k": { dim: "temperature", factor: 1, offset: 0 },
+    // molarity (base mol/L) — "M" and "mol/L" are the same concentration unit
+    "mol/l": { dim: "molarity", factor: 1, offset: 0 },
+    m: { dim: "molarity", factor: 1, offset: 0 },
+    mm: { dim: "molarity", factor: 1e-3, offset: 0 },
+    // molar mass (base g/mol) — its own dimension so it never cross-matches mass
+    "g/mol": { dim: "molar_mass", factor: 1, offset: 0 },
+    // percent (dimensionless, base %)
+    "%": { dim: "percent", factor: 1, offset: 0 },
+    percent: { dim: "percent", factor: 1, offset: 0 },
 };
 
 export type PreviewGrade = "correct" | "wrong" | "unreadable";
@@ -68,9 +77,10 @@ function parseGiven(raw: string): { value: number; unit: string | null } | null 
     // Normalize "x 10^n" / "× 10^n" to e-notation.
     const normalized = s.replace(/\s*[x×]\s*10\s*\^\s*/i, "e");
     // The number is matched first (greedy, incl. scientific notation); the
-    // optional trailing unit token may contain letters, the µ/° symbols, and
-    // digits (e.g. cm3) — matching the tokens in the Rust UNITS table.
-    const m = normalized.match(/^([+-]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ°][a-zµ°0-9³]*)?$/i);
+    // optional trailing unit token may contain letters, the µ/° symbols,
+    // digits (e.g. cm3), and the compound-unit characters "/" and "%" (e.g.
+    // mol/l, g/mol, %) — matching the tokens in the Rust UNITS table.
+    const m = normalized.match(/^([+-]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ°%][a-zµ°0-9³/%]*)?$/i);
     if (!m) return null;
     const value = Number(m[1]);
     if (!Number.isFinite(value)) return null;

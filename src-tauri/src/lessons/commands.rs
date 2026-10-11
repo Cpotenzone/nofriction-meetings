@@ -487,19 +487,19 @@ pub struct TrainerItem {
     pub unit: String,
 }
 
-#[tauri::command(rename_all = "camelCase")]
-pub async fn lessons_next_trainer_item(
-    state: State<'_, AppState>,
-    set_id: String,
-    attempt_index: u64,
-) -> Result<Option<TrainerItem>, String> {
-    let pool = pool_of(&state);
-    let dir = dir_path_of(&pool, &set_id).await?;
-    let set = load_set(&dir)?;
-    // Build concept state snapshot from mastery + the first generator per concept.
+/// Build the per-concept state snapshot the trainer ranks over, from the set's
+/// generators and the learner's persisted mastery. Shared by `next` and
+/// `submit` so the submit path re-derives the SAME generated item (same focus
+/// concept, tier, and seeded draw) that `next` served for a given attempt index.
+async fn trainer_states(
+    pool: &Pool<Sqlite>,
+    set_id: &str,
+    dir: &PathBuf,
+    set: &LessonSet,
+) -> Vec<crate::lessons::trainer::ConceptState> {
     let mut generators: HashMap<String, String> = HashMap::new();
     for lid in &set.lessons {
-        if let Ok(lesson) = load_lesson(&dir, lid) {
+        if let Ok(lesson) = load_lesson(dir, lid) {
             for g in &lesson.trainer.generators {
                 for cid in &g.concept_ids {
                     generators.entry(cid.clone()).or_insert_with(|| g.template.clone());
@@ -509,7 +509,7 @@ pub async fn lessons_next_trainer_item(
     }
     let mut states = Vec::new();
     for c in &set.concepts {
-        let m = load_mastery(&pool, &set_id, &c.id).await;
+        let m = load_mastery(pool, set_id, &c.id).await;
         states.push(crate::lessons::trainer::ConceptState {
             concept_id: c.id.clone(),
             score: m.score,
@@ -518,6 +518,19 @@ pub async fn lessons_next_trainer_item(
             generator: generators.get(&c.id).cloned(),
         });
     }
+    states
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn lessons_next_trainer_item(
+    state: State<'_, AppState>,
+    set_id: String,
+    attempt_index: u64,
+) -> Result<Option<TrainerItem>, String> {
+    let pool = pool_of(&state);
+    let dir = dir_path_of(&pool, &set_id).await?;
+    let set = load_set(&dir)?;
+    let states = trainer_states(&pool, &set_id, &dir, &set).await;
     match crate::lessons::trainer::next_item(&states, attempt_index) {
         Some(crate::lessons::trainer::NextItem::Generated { concept_id, tier, item }) => Ok(Some(TrainerItem {
             concept_id,
@@ -537,15 +550,43 @@ pub async fn lessons_next_trainer_item(
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainerGrade {
+    pub mastery: Mastery,
+    /// The authoritative server grade for the submitted answer.
+    pub correct: bool,
+    /// The correct answer + unit, echoed so the UI can show it after grading.
+    pub answer: f64,
+    pub unit: String,
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn lessons_submit_trainer_item(
     state: State<'_, AppState>,
     set_id: String,
-    concept_id: String,
-    correct: bool,
+    attempt_index: u64,
+    given: String,
     first_try: bool,
-) -> Result<Mastery, String> {
+) -> Result<TrainerGrade, String> {
     let pool = pool_of(&state);
+    let dir = dir_path_of(&pool, &set_id).await?;
+    let set = load_set(&dir)?;
+    // Re-derive the exact item `lessons_next_trainer_item` served for this
+    // attempt index from the CURRENT mastery snapshot (unchanged until this
+    // call persists), so the answer key is reconstructed server-side and the
+    // raw learner answer is graded authoritatively in Rust — the client never
+    // supplies the verdict or the key.
+    let states = trainer_states(&pool, &set_id, &dir, &set).await;
+    let Some(crate::lessons::trainer::NextItem::Generated { concept_id, item, .. }) =
+        crate::lessons::trainer::next_item(&states, attempt_index)
+    else {
+        return Err("This trainer drill is no longer available to grade.".into());
+    };
+    let correct = matches!(
+        crate::lessons::grade::check_numeric(&given, item.answer, Some(&item.unit), &item.tolerance),
+        crate::lessons::grade::NumericGrade::Correct
+    );
     let mut m = load_mastery(&pool, &set_id, &concept_id).await;
     crate::lessons::mastery::record_attempt(&mut m, correct, first_try, if correct { 1.0 } else { 0.0 });
     let q = review::quality_from_result(correct, first_try);
@@ -554,7 +595,7 @@ pub async fn lessons_submit_trainer_item(
     m.ease = rs.ease;
     m.reviews = rs.reviews;
     save_mastery(&pool, &set_id, &concept_id, &m).await?;
-    Ok(m)
+    Ok(TrainerGrade { mastery: m, correct, answer: item.answer, unit: item.unit })
 }
 
 // ── Review due ────────────────────────────────────────────────────────────
@@ -688,15 +729,11 @@ pub async fn lessons_dashboard(state: State<'_, AppState>, set_id: String) -> Re
         });
     }
 
-    let passed: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM lesson_progress WHERE lesson_set_id = ? AND checkpoint_passed = 1",
-    )
-    .bind(&set_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(0);
+    // Count only checkpoints for lessons still in the current set (matches the
+    // exam gate), so a stale progress row cannot inflate the dashboard count.
+    let passed = passed_checkpoints_in_set(&pool, &set_id, &set.lessons).await as u32;
     let total = set.lessons.len() as u32;
-    let exam_unlocked = passed as u32 >= total && total > 0;
+    let exam_unlocked = passed >= total && total > 0;
 
     let counts = exam_item_counts(&set).await;
     let readiness_pct = exam::readiness(&scores, &counts);
@@ -704,7 +741,7 @@ pub async fn lessons_dashboard(state: State<'_, AppState>, set_id: String) -> Re
     Ok(Dashboard {
         set_id,
         concepts,
-        checkpoints_passed: passed as u32,
+        checkpoints_passed: passed,
         total_lessons: total,
         exam_unlocked,
         readiness_pct,
@@ -719,6 +756,25 @@ pub async fn lessons_dashboard(state: State<'_, AppState>, set_id: String) -> Re
 pub struct StartedExam {
     pub attempt_id: String,
     pub items: Vec<QuizItem>,
+}
+
+/// Count passed checkpoints joined to the CURRENT set's lesson ids. A
+/// `lesson_progress` row whose lesson_id is no longer part of the set (e.g. a
+/// stale row from a prior version of an imported bundle) must not inflate the
+/// pass count that gates the exam. Each in-set lesson is counted at most once.
+async fn passed_checkpoints_in_set(pool: &Pool<Sqlite>, set_id: &str, lesson_ids: &[String]) -> usize {
+    let in_set: HashSet<&str> = lesson_ids.iter().map(|s| s.as_str()).collect();
+    let rows = sqlx::query(
+        "SELECT DISTINCT lesson_id FROM lesson_progress \
+         WHERE lesson_set_id = ? AND checkpoint_passed = 1",
+    )
+    .bind(set_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.iter()
+        .filter(|r| in_set.contains(r.get::<String, _>("lesson_id").as_str()))
+        .count()
 }
 
 async fn recent_item_ids(pool: &Pool<Sqlite>, set_id: &str) -> HashSet<String> {
@@ -748,15 +804,11 @@ pub async fn lessons_start_exam(state: State<'_, AppState>, set_id: String) -> R
     let dir = dir_path_of(&pool, &set_id).await?;
     let set = load_set(&dir)?;
 
-    // Gate: all lessons' checkpoints must be passed.
-    let passed: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM lesson_progress WHERE lesson_set_id = ? AND checkpoint_passed = 1",
-    )
-    .bind(&set_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(0);
-    if (passed as usize) < set.lessons.len() {
+    // Gate: all lessons' checkpoints must be passed. Count only progress rows
+    // whose lesson_id is in the CURRENT set.lessons, so a stale progress row for
+    // a lesson id no longer in the set cannot inflate the pass count.
+    let passed = passed_checkpoints_in_set(&pool, &set_id, &set.lessons).await;
+    if passed < set.lessons.len() {
         return Err("Pass every lesson checkpoint before the exam unlocks.".into());
     }
 
