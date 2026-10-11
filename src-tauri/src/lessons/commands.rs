@@ -878,3 +878,38 @@ pub async fn lessons_reset_progress(state: State<'_, AppState>, set_id: String) 
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Read the saved per-lesson progress so the player can resume where the
+/// learner left off (which explainers/worked examples were seen, the last
+/// viewed explainer, and the best checkpoint result). Returns `None` if the
+/// lesson has never been opened. Read-only; no network.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn lessons_get_progress(
+    state: State<'_, AppState>,
+    set_id: String,
+    lesson_id: String,
+) -> Result<Option<LessonProgress>, String> {
+    let pool = pool_of(&state);
+    let row = sqlx::query(
+        "SELECT explainers_seen, worked_examples_seen, checkpoint_best_pct, \
+         checkpoint_passed, last_viewed_explainer_id \
+         FROM lesson_progress WHERE lesson_set_id = ? AND lesson_id = ?",
+    )
+    .bind(&set_id)
+    .bind(&lesson_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| {
+        let parse = |s: Option<String>| -> Vec<String> {
+            s.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default()
+        };
+        LessonProgress {
+            explainers_seen: parse(r.get("explainers_seen")),
+            worked_examples_seen: parse(r.get("worked_examples_seen")),
+            checkpoint_best_pct: r.get("checkpoint_best_pct"),
+            checkpoint_passed: r.get::<i64, _>("checkpoint_passed") != 0,
+            last_viewed_explainer_id: r.get("last_viewed_explainer_id"),
+        }
+    }))
+}

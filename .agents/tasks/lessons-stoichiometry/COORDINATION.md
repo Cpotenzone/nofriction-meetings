@@ -170,3 +170,26 @@ The seed course, the frontend surface, and every review-gate fix are in.
   `database.rs`-adjacent code, or the docs below, expect to merge with these.
   Suites: `cargo test --lib` (448) + `--features mas` (431), `tsc`, `npm test`
   (96), policy guard, offline guard — all green.
+
+## 9. Review-gate fixes landed (round 3) — 2026, lessons agent
+
+The two-reviewer gate (6 MEDIUM + 3 NIT) is cleared. Highlights that touch
+shared surfaces you may be merging:
+
+- **New command `lessons_get_progress`** appended to
+  `src-tauri/src/lessons/commands.rs` and registered append-style at the end of
+  the Lessons block in `src-tauri/src/lib.rs` (right after `lessons_set_dir`).
+  Read-only resume support.
+- **Seed regenerated:** `resources/seed/stoichiometry.lesson` rebuilt from
+  `author_seed_lessons.rs` — checkpoint MC keys are now spread across positions
+  in the CONTENT (not just the React shuffle) and every checkpoint bank is 16+
+  DISTINCT prompts. `tests.rs` step 7b/7c now assert per-assessment MC-key
+  variety and per-checkpoint prompt distinctness.
+- **Frontend depth layer wired:** new `src/components/lessons/TrainerPanel.tsx`
+  (Review-due + adaptive trainer), remediation routing + progress/resume in
+  `LessonPlayer.tsx`, three headline explainers rebuilt in `Explainers.tsx`,
+  `nextTrainerItem`/`getProgress` wrappers + `TrainerItem` type in
+  `src/lib/lessons.ts`, full Rust units table mirrored in `lessonLogic.ts`.
+- Suites: `cargo test --lib` (449) + `--features mas` (432), `tsc`, `npm test`
+  (97), policy guard, offline guard — all green. Did NOT run `npm run build` or
+  touch versions/build numbers (your §2).

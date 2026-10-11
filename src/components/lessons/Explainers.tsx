@@ -6,13 +6,27 @@
 // CSS. The convertAssetSrc below turns a bundled figure path into a local
 // Tauri asset URL — never a remote fetch.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Explainer } from "../../lib/lessons";
 
-export function ExplainerView({ explainer, figureDir }: { explainer: Explainer; figureDir?: string }) {
+export function ExplainerView({
+    explainer,
+    figureDir,
+    onSeen,
+}: {
+    explainer: Explainer;
+    figureDir?: string;
+    onSeen?: () => void;
+}) {
     const d = explainer.data as Record<string, any>;
+    // Rendering an explainer counts as the learner having reached it, so record
+    // it for resume/progress (fire-and-forget via the parent's handler).
+    useEffect(() => {
+        onSeen?.();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [explainer.id]);
     let body: ReactElement;
     switch (explainer.kind) {
         case "figure":
@@ -148,79 +162,220 @@ function BalancerExplainer({ data }: { data: Record<string, any> }) {
                 })}
             </div>
             <p className="explainer__a11y">
-                {balanced ? "Balanced — every element matches." : "Not balanced yet."}{" "}
-                Answer: {answer.join(", ")}.
+                {balanced
+                    ? `Balanced — every element matches. The coefficients are ${answer.join(", ")}.`
+                    : "Not balanced yet. Adjust the coefficients until every element's left and right counts match."}
             </p>
         </div>
     );
 }
 
+// A step-by-step reveal (docs/LESSONS.md §6): the learner uncovers the
+// conversion one stage at a time — set up the given quantity, apply the mole
+// ratio / conversion factor, then read the result — instead of a single
+// answer toggle. The stages are the generic stoichiometry chain (not fabricated
+// chemistry); the numeric final value comes straight from the authored,
+// Rust-verified `finalAnswer`. The answer only appears on the final step, so
+// the a11y text does not pre-reveal it.
 function MoleRatioExplainer({ data }: { data: Record<string, any> }) {
     const given = (data.given as any) || {};
     const want = (data.want as any) || {};
     const final = (data.finalAnswer as any) || {};
-    const [revealed, setRevealed] = useState(false);
+    const finalText =
+        final.value != null
+            ? `${typeof final.value === "number" ? final.value.toFixed(3) : final.value} ${final.unit ?? ""}`.trim()
+            : "";
+
+    const stages = [
+        {
+            label: "Set up the given quantity",
+            body: `Start from ${given.amount ?? "?"} ${given.unit ?? ""} of ${given.species ?? "?"}.`,
+        },
+        {
+            label: "Apply the conversion through moles",
+            body: `Convert ${given.species ?? "the reactant"} to moles, then use the balanced-equation mole ratio to reach ${want.species ?? "the target"}.`,
+        },
+        {
+            label: `Read the result in ${want.unit ?? "the target unit"}`,
+            body: finalText ? `${want.species ?? ""} = ${finalText}`.trim() : "Result.",
+        },
+    ];
+    // -1 means nothing revealed yet.
+    const [shown, setShown] = useState(0);
+    const done = shown >= stages.length;
+
     return (
         <div>
             <p className="explainer__a11y">
                 Given {given.amount} {given.unit} of {given.species}, find {want.unit} of {want.species}.
+                {done ? "" : " Reveal each step to work it through."}
             </p>
-            <button className="lessons-btn" type="button" onClick={() => setRevealed((v) => !v)}>
-                {revealed ? "Hide answer" : "Reveal answer"}
-            </button>
-            {revealed && (
-                <p className="quiz-solution">
-                    {final.value?.toFixed ? final.value.toFixed(3) : final.value} {final.unit}
-                </p>
+            <ol className="quiz-steps">
+                {stages.slice(0, shown).map((s, i) => (
+                    <li className="quiz-step" key={i}>
+                        <strong>{s.label}</strong>
+                        <div className="quiz-solution">{s.body}</div>
+                    </li>
+                ))}
+            </ol>
+            {!done ? (
+                <button className="lessons-btn" type="button" onClick={() => setShown((n) => n + 1)}>
+                    {shown === 0 ? "Start the step reveal" : "Next step"}
+                </button>
+            ) : (
+                <button className="lessons-btn" type="button" onClick={() => setShown(0)}>
+                    Reset
+                </button>
             )}
         </div>
     );
 }
 
+// A limiting-reagent SIMULATOR (docs/LESSONS.md §6): the learner drives the
+// reaction forward with a slider ("extent of reaction") and watches each
+// reactant bar drain in proportion to its stoichiometric need. The bar that
+// empties first is the limiting reagent; the sim stops there. The limiting
+// species is only named once the sim has reached the point where a reactant is
+// exhausted, so the a11y text does not spoil the exercise up front (NIT-9b).
 function LimitingReagentExplainer({ data }: { data: Record<string, any> }) {
     const reagents: any[] = (data.reagents as any[]) || [];
-    const consumption = reagents.map((rg) => ({
-        species: rg.species,
-        moles: rg.available / rg.molarMass / (rg.coeff || 1),
-    }));
-    const min = Math.min(...consumption.map((c) => c.moles));
+    // Starting moles of each reactant and how many moles are consumed per unit
+    // of reaction extent (its coefficient). The maximum reaction extent is set
+    // by whichever reactant's moles/coeff is smallest — that reactant limits.
+    const species = reagents.map((rg) => {
+        const startMoles = rg.available / rg.molarMass;
+        const coeff = rg.coeff || 1;
+        return { species: rg.species, startMoles, coeff, maxExtent: startMoles / coeff };
+    });
+    const limitExtent = species.length ? Math.min(...species.map((s) => s.maxExtent)) : 0;
+    const limiting = species.find((s) => Math.abs(s.maxExtent - limitExtent) < 1e-9);
+
+    // extent runs 0..limitExtent; the slider is normalized 0..100.
+    const [pct, setPct] = useState(0);
+    const extent = (pct / 100) * limitExtent;
+    const atCompletion = pct >= 100;
+
     return (
         <div>
-            {consumption.map((c) => (
-                <div className="explainer-row" key={c.species}>
-                    <span className="explainer-row__label">{c.species}</span>
-                    <div className="bar-track" style={{ flex: 1 }}>
-                        <div
-                            className={`bar-fill ${c.moles === min ? "" : "is-match"}`}
-                            style={{ width: `${(min / c.moles) * 100}%` }}
-                        />
+            {species.map((s) => {
+                const consumed = Math.min(s.startMoles, extent * s.coeff);
+                const remaining = Math.max(0, s.startMoles - consumed);
+                const fillPct = s.startMoles > 0 ? (remaining / s.startMoles) * 100 : 0;
+                const empty = remaining <= 1e-9;
+                return (
+                    <div className="explainer-row" key={s.species}>
+                        <span className="explainer-row__label">
+                            {s.species}: {remaining.toFixed(2)} mol
+                        </span>
+                        <div className="bar-track" style={{ flex: 1 }}>
+                            <div
+                                className={`bar-fill ${empty ? "is-depleted" : ""}`}
+                                style={{ width: `${fillPct}%` }}
+                            />
+                        </div>
                     </div>
-                </div>
-            ))}
+                );
+            })}
+            <div className="explainer-row">
+                <span className="explainer-row__label">Run reaction</span>
+                <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={pct}
+                    aria-label="extent of reaction"
+                    onChange={(e) => setPct(Number(e.target.value))}
+                />
+            </div>
             <p className="explainer__a11y">
-                The bar that empties first (
-                {consumption.find((c) => c.moles === min)?.species}) is the limiting reagent.
+                {atCompletion
+                    ? `${limiting?.species ?? "one reactant"} empties first, so it is the limiting reagent; the others are left in excess.`
+                    : "Drag to run the reaction forward and watch which reactant empties first."}
             </p>
         </div>
     );
 }
 
+// A dimensional-analysis "railroad" BUILDER (docs/LESSONS.md §6): the learner
+// places conversion tiles onto the track one at a time (click to place / click
+// to remove — keyboard-operable buttons, not a mouse-only drag, so it is a11y
+// friendly). As each tile lands, the running product updates live and the unit
+// carried in from the left cancels against the tile's denominator (shown with a
+// strike-through). The learner builds the whole chain to reach the target unit;
+// the final numeric value matches the authored, Rust-verified `value`.
 function DimensionalAnalysisExplainer({ data }: { data: Record<string, any> }) {
     const start = (data.start as any) || {};
     const tiles: any[] = (data.tiles as any[]) || [];
     const target = (data.target as any) || {};
-    let product = start.value || 0;
-    tiles.forEach((t) => (product *= t.num / t.den));
+
+    // placed[i] = whether tile i (in authored order) is on the track. Tiles are
+    // placed left-to-right; the next placeable tile is the first unplaced one.
+    const [placedCount, setPlacedCount] = useState(0);
+    const placed = tiles.slice(0, placedCount);
+
+    const startValue = typeof start.value === "number" ? start.value : 0;
+    let product = startValue;
+    placed.forEach((t) => (product *= (t.num ?? 1) / (t.den ?? 1)));
+
+    const complete = placedCount >= tiles.length;
+    const carriedUnit = complete ? target.unit : "…";
+
     return (
         <div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span className="lesson-card__tag">{start.value} {start.unit}</span>
-                {tiles.map((t, i) => (
-                    <span key={i} className="lesson-card__tag">× {t.num} / {t.den}</span>
-                ))}
-                <span aria-hidden>=</span>
-                <span className="lesson-card__badge">{product.toFixed(3)} {target.unit}</span>
+            <div className="railroad" role="group" aria-label="dimensional-analysis railroad">
+                <span className="railroad__tile is-start">
+                    <span className="railroad__num">{startValue}</span>
+                    <span className="railroad__unit">{start.unit}</span>
+                </span>
+                {placed.map((t, i) => {
+                    // The denominator of this tile cancels the unit carried in
+                    // from the tile to its left (strike it through to show the
+                    // cancellation mechanic).
+                    return (
+                        <span className="railroad__tile" key={i}>
+                            <span aria-hidden className="railroad__times">×</span>
+                            <span className="railroad__frac">
+                                <span className="railroad__num">{t.num}</span>
+                                <span className="railroad__bar" aria-hidden />
+                                <span className="railroad__den is-cancelled">{t.den}</span>
+                            </span>
+                        </span>
+                    );
+                })}
+                <span aria-hidden className="railroad__times">=</span>
+                <span className="lesson-card__badge">
+                    {product.toFixed(3)} {carriedUnit}
+                </span>
             </div>
+
+            {!complete && tiles[placedCount] && (
+                <div className="railroad__tray">
+                    <span className="explainer-row__label">Next factor</span>
+                    <button
+                        type="button"
+                        className="lessons-btn"
+                        onClick={() => setPlacedCount((n) => n + 1)}
+                    >
+                        Place × {tiles[placedCount].num} / {tiles[placedCount].den}
+                    </button>
+                </div>
+            )}
+            {placedCount > 0 && (
+                <button
+                    type="button"
+                    className="lessons-btn"
+                    style={{ marginTop: 6 }}
+                    onClick={() => setPlacedCount((n) => Math.max(0, n - 1))}
+                >
+                    Remove last factor
+                </button>
+            )}
+            <p className="explainer__a11y">
+                {complete
+                    ? `All units cancel to leave ${target.unit}: the result is ${product.toFixed(3)} ${target.unit ?? ""}.`
+                    : `Place each conversion factor so its denominator cancels the unit carried in. ${placedCount} of ${tiles.length} placed.`}
+            </p>
         </div>
     );
 }

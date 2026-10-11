@@ -196,6 +196,89 @@ Fixes for the consolidated review (2 HIGH, 2 MEDIUM UX/offline, 1 MEDIUM content
   `src-tauri/src/menu_builder.rs`.
 - `README.md`: added a Lessons row to the capability matrix (append-style).
 
+## Review round 3 (review.json CHANGES_REQUESTED — assessment integrity + frontend depth)
+
+Fixes for the consolidated gate (6 MEDIUM, 3 NIT across review-a backend and
+review-b frontend). Every blocking finding addressed; suites re-run green:
+`cargo test --lib` (449) + `--features mas` (432), `npx tsc --noEmit`,
+`npm test` (97, +1 units preview test), `check-ai-provider-policy.py` PASS,
+`npx vite build` + `scripts/check-lessons-offline.mjs` PASS (Lessons chunk still
+isolated: jsChunks 1 / cssFiles 1).
+
+### MEDIUM-1 + MEDIUM-2 + finding-3/NIT-7 — checkpoint MC key integrity in the content
+- `src-tauri/examples/author_seed_lessons.rs`: the anti-gameability property now
+  lives in the platform-neutral CONTENT, not just the React shuffle. Added
+  `mc_rot` (rotate a single inline MC item's correct answer to a target index,
+  pure reordering) and rewrote `mc_filler` to (a) distribute each item's key
+  across positions via the existing `rotate_choices` and (b) REQUIRE distinct
+  prompts (asserts `templates.len() >= n`) instead of cycling 3 prompts ×4.
+  Every inline checkpoint MC and the three diagnostic MC items are now rotated to
+  varied indices; each checkpoint bank is 16+ DISTINCT prompts. Seed regenerated
+  (`cargo run --example author_seed_lessons`).
+- `src-tauri/src/lessons/tests.rs` step 7b now asserts MC-key variety PER
+  ASSESSMENT (each lesson checkpoint, the exam, and the diagnostic individually
+  — any assessment with ≥2 MC items must use ≥2 key positions), so a uniform-key
+  checkpoint fails the build. Step 7c now also asserts every checkpoint bank has
+  all-distinct prompts (not just the exam multistep bank).
+
+### MEDIUM-3 — three headline explainers rebuilt to the §6 hero-interaction contract
+- `src/components/lessons/Explainers.tsx`:
+  - **MoleRatioExplainer** is now a genuine step-by-step reveal (set-up →
+    conversion through moles → read result), one stage per click, with a reset;
+    the final value is the authored Rust-verified `finalAnswer`.
+  - **LimitingReagentExplainer** is now a SIMULATOR: a slider drives the reaction
+    extent and each reactant bar drains in proportion to its coefficient; the bar
+    that empties first is the limiting reagent (shown with a depleted-red fill).
+  - **DimensionalAnalysisExplainer** is now an interactive railroad BUILDER:
+    tiles are placed/removed one at a time (keyboard-operable buttons, not a
+    mouse-only drag), the running product updates live, and each tile's
+    denominator shows the cancellation strike-through.
+- `src/components/lessons/Lessons.css`: added `.bar-fill.is-depleted` and the
+  `.railroad*` builder styles (DESIGN.md tokens only).
+
+### MEDIUM-4 — D3 §8 depth layer wired on the frontend
+- New `src/components/lessons/TrainerPanel.tsx`: a Review-due surface
+  (`lessons_review_due`, weakest-first with mastery bars) + an adaptive trainer
+  session that pulls `lessons_next_trainer_item`, grades the answer (preview cue
+  via `previewNumeric`), and records it via `lessons_submit_trainer_item`
+  (authoritative mastery + SM-2 interval). Uses the previously-unused `TargetIcon`
+  and `RouteIcon`.
+- `src/lib/lessons.ts`: added `nextTrainerItem` wrapper + `TrainerItem` type
+  (the registered `lessons_next_trainer_item` command had no wrapper).
+- `CourseView.tsx` renders `<TrainerPanel>` after the mastery dashboard and a
+  "Start over" section calling `resetProgress` (previously-unused wrapper), with
+  a confirm.
+
+### MEDIUM-5 — remediation routing after a failed checkpoint
+- `src/components/lessons/LessonPlayer.tsx`: a sub-80% checkpoint now computes
+  the MISSED concepts from the graded result (`missedConcepts`) and renders a
+  remediation panel with one "Review: <concept>" button per missed concept that
+  scrolls to that concept's explainer (via per-explainer refs). Plus a "Retake
+  the checkpoint" control. The stale "handled by the parent" comment is replaced.
+
+### MEDIUM-6 — progress persisted + resume from the UI
+- `LessonPlayer.tsx` now calls `saveProgress` as explainers render (`onSeen`) and
+  as worked examples are fully revealed (`onReveal`), and persists the checkpoint
+  best/pass alongside. On open it reads saved progress and offers a "Resume where
+  you left off" control positioned at `resumeExplainerIndex`.
+- `ExplainerView` gained an `onSeen` callback (fired on mount per explainer id).
+- New read command `lessons_get_progress` (appended to `commands.rs`, registered
+  append-style in `lib.rs`) + `getProgress` wrapper so resume survives reopen.
+
+### NIT-8 — TS preview units table mirrors the full Rust table
+- `src/lib/lessonLogic.ts`: `UNITS` now mirrors `grade::UNITS` 1:1 (µg/ug, dL,
+  cm³/cm3/cc, kPa, mmHg/torr, Pa, °K, gram/mole/liter aliases). Widened the unit
+  token regex to allow digit/³ characters (cm3). New `lessonLogic.test.ts` case
+  asserts none of the added units read as a false "unreadable".
+
+### NIT-9 — hardcoded exam count + a11y answer spoilers
+- `CourseView.tsx`: the exam button renders `set.exam.questionCount` instead of a
+  literal 30.
+- `Explainers.tsx`: the balancer text-equivalent only names the coefficients once
+  the learner has reached a balanced state; the limiting-reagent sim only names
+  the limiting species once the sim has been run to completion — neither
+  pre-reveals the answer.
+
 ## Not done (and why)
 - **Pro feature key `lessons`** (COORDINATION §3): deferred with the generation
   pipeline (D2). Adding a half-wired key now would risk the cross-platform

@@ -18,6 +18,21 @@ test("previewNumeric: compatible units convert before comparison", () => {
     assert.equal(previewNumeric("25 °c", 298.15, "K", tabs), "correct");
 });
 
+test("previewNumeric: the full Rust unit set is mirrored (no false unreadable)", () => {
+    // Units that the Rust grader accepts must not read as "unreadable" in the
+    // live preview (NIT-8): µg/ug, dL, cm3/cc, kPa, mmHg/torr, Pa, °K.
+    const rel = { kind: "rel" as const, value: 0.01 };
+    assert.equal(previewNumeric("1000000 ug", 1.0, "g", rel), "correct"); // 1e6 µg = 1 g
+    assert.equal(previewNumeric("2 dl", 0.2, "L", rel), "correct"); // 2 dL = 0.2 L
+    assert.equal(previewNumeric("250 cm3", 0.25, "L", rel), "correct"); // 250 cm³ = 0.25 L
+    assert.equal(previewNumeric("250 cc", 0.25, "L", rel), "correct");
+    assert.equal(previewNumeric("101.325 kpa", 1.0, "atm", rel), "correct"); // 1 atm
+    assert.equal(previewNumeric("760 mmhg", 1.0, "atm", rel), "correct");
+    assert.equal(previewNumeric("760 torr", 1.0, "atm", rel), "correct");
+    assert.equal(previewNumeric("101325 pa", 1.0, "atm", rel), "correct");
+    assert.equal(previewNumeric("273.15 °k", 273.15, "K", rel), "correct");
+});
+
 test("previewNumeric: incompatible units are wrong, unknown units unreadable", () => {
     const abs = { kind: "abs" as const, value: 0.001 };
     assert.equal(previewNumeric("4 L", 4.0, "g", abs), "wrong");

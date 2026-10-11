@@ -20,20 +20,42 @@ interface UnitDef {
     factor: number;
     offset: number;
 }
+// Mirrors the authoritative Rust `grade::UNITS` table 1:1 so the preview hint
+// never shows a false "unreadable" for a unit the Rust grader accepts (NIT-8).
 const UNITS: Record<string, UnitDef> = {
+    // mass (base g)
     g: { dim: "mass", factor: 1, offset: 0 },
     grams: { dim: "mass", factor: 1, offset: 0 },
+    gram: { dim: "mass", factor: 1, offset: 0 },
     mg: { dim: "mass", factor: 1e-3, offset: 0 },
+    "µg": { dim: "mass", factor: 1e-6, offset: 0 },
+    ug: { dim: "mass", factor: 1e-6, offset: 0 },
     kg: { dim: "mass", factor: 1e3, offset: 0 },
+    // volume (base L)
     l: { dim: "volume", factor: 1, offset: 0 },
+    liters: { dim: "volume", factor: 1, offset: 0 },
+    liter: { dim: "volume", factor: 1, offset: 0 },
     ml: { dim: "volume", factor: 1e-3, offset: 0 },
+    dl: { dim: "volume", factor: 0.1, offset: 0 },
+    "cm³": { dim: "volume", factor: 1e-3, offset: 0 },
+    cm3: { dim: "volume", factor: 1e-3, offset: 0 },
+    cc: { dim: "volume", factor: 1e-3, offset: 0 },
+    // amount (base mol)
     mol: { dim: "amount", factor: 1, offset: 0 },
+    mole: { dim: "amount", factor: 1, offset: 0 },
     moles: { dim: "amount", factor: 1, offset: 0 },
     mmol: { dim: "amount", factor: 1e-3, offset: 0 },
+    // pressure (base atm)
     atm: { dim: "pressure", factor: 1, offset: 0 },
+    kpa: { dim: "pressure", factor: 1 / 101.325, offset: 0 },
+    mmhg: { dim: "pressure", factor: 1 / 760, offset: 0 },
+    torr: { dim: "pressure", factor: 1 / 760, offset: 0 },
+    pa: { dim: "pressure", factor: 1 / 101325, offset: 0 },
+    // temperature (base K) — °C uses an additive offset, not a factor
     k: { dim: "temperature", factor: 1, offset: 0 },
     "°c": { dim: "temperature", factor: 1, offset: 273.15 },
     c: { dim: "temperature", factor: 1, offset: 273.15 },
+    "°k": { dim: "temperature", factor: 1, offset: 0 },
 };
 
 export type PreviewGrade = "correct" | "wrong" | "unreadable";
@@ -45,7 +67,10 @@ function parseGiven(raw: string): { value: number; unit: string | null } | null 
     if (s === "") return null;
     // Normalize "x 10^n" / "× 10^n" to e-notation.
     const normalized = s.replace(/\s*[x×]\s*10\s*\^\s*/i, "e");
-    const m = normalized.match(/^([+-]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ°]+)?$/i);
+    // The number is matched first (greedy, incl. scientific notation); the
+    // optional trailing unit token may contain letters, the µ/° symbols, and
+    // digits (e.g. cm3) — matching the tokens in the Rust UNITS table.
+    const m = normalized.match(/^([+-]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ°][a-zµ°0-9³]*)?$/i);
     if (!m) return null;
     const value = Number(m[1]);
     if (!Number.isFinite(value)) return null;

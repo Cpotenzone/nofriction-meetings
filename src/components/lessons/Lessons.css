@@ -372,6 +372,59 @@
     line-height: 1.6;
 }
 
+/* ── Interactive explainer extras (sim + railroad builder) ───────────── */
+
+/* A depleted reactant bar in the limiting-reagent simulator. */
+.bar-fill.is-depleted {
+    background: var(--accent-danger, #ef4444);
+}
+
+/* The dimensional-analysis railroad builder. */
+.railroad {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 6px 0 10px;
+}
+.railroad__tile {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #262626);
+    background: var(--bg-card, #0d0d0d);
+}
+.railroad__tile.is-start {
+    border-color: var(--hazard-yellow, #facc15);
+}
+.railroad__times {
+    color: var(--text-secondary, #a3a3a3);
+}
+.railroad__frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.1;
+}
+.railroad__bar {
+    width: 100%;
+    height: 1px;
+    background: var(--text-secondary, #a3a3a3);
+    margin: 1px 0;
+}
+.railroad__den.is-cancelled {
+    text-decoration: line-through;
+    color: var(--text-secondary, #a3a3a3);
+}
+.railroad__tray {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0;
+}
+
 /* ── Reduced motion: no explainer transitions ───────────────────────── */
 @media (prefers-reduced-motion: reduce) {
     .bar-fill,

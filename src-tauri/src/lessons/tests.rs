@@ -779,36 +779,52 @@ fn shipped_seed_bundle_passes_validation_with_all_floors() {
         assert!(*n >= 2, "exam concept {} has only {} items", cid, n);
     }
 
-    // 7b. MC answer keys are not all identical (HIGH-2). An MC surface whose
-    //     every key sits at index 0 is gameable by always clicking the first
-    //     choice. Collect every MC answerIndex across the whole course (exam,
-    //     checkpoints, diagnostic) and assert they span more than one position.
-    let mut mc_keys: std::collections::HashSet<u32> = std::collections::HashSet::new();
-    let mut collect_mc = |items: &[schema::QuizItem]| {
-        for it in items {
-            if it.kind == "mc" {
-                if let Some(a) = it.answer_index {
-                    mc_keys.insert(a);
-                }
-            }
+    // 7b. MC answer keys must vary WITHIN EACH assessment, not merely across
+    //     the course union (review findings 1/2). An assessment whose every MC
+    //     key sits at one index is gameable by always clicking that choice; an
+    //     alternate client (planned iOS, an automated grader) that submits
+    //     authored indices without replicating the frontend's presentation-time
+    //     shuffle would pass it trivially. So the anti-gameability property must
+    //     live in the platform-neutral content: assert per-assessment variety.
+    //
+    //     Any assessment with >= 2 MC items must use at least two distinct key
+    //     positions. This is checked for every lesson checkpoint, the exam, and
+    //     the diagnostic individually — a uniform-key checkpoint fails the build.
+    let mc_key_positions = |items: &[schema::QuizItem]| -> std::collections::HashSet<u32> {
+        items
+            .iter()
+            .filter(|it| it.kind == "mc")
+            .filter_map(|it| it.answer_index)
+            .collect()
+    };
+    let assert_mc_variety = |label: &str, items: &[schema::QuizItem]| {
+        let mc_count = items.iter().filter(|it| it.kind == "mc").count();
+        let positions = mc_key_positions(items);
+        if mc_count >= 2 {
+            assert!(
+                positions.len() > 1,
+                "{label}: all {mc_count} MC answer keys sit at one position ({:?}) — \
+                 the assessment is trivially gameable by any client that submits \
+                 authored indices without the frontend's choice shuffle",
+                positions
+            );
         }
     };
-    collect_mc(&exam.items);
     for lesson in lessons {
-        collect_mc(&lesson.checkpoint.items);
+        assert_mc_variety(
+            &format!("lesson {} checkpoint", lesson.index),
+            &lesson.checkpoint.items,
+        );
     }
+    assert_mc_variety("exam", &exam.items);
     if let Some(d) = &set.diagnostic {
-        collect_mc(&d.items);
+        assert_mc_variety("diagnostic", &d.items);
     }
-    assert!(
-        mc_keys.len() > 1,
-        "all MC answer keys are identical ({:?}) — the MC surface would be trivially gameable",
-        mc_keys
-    );
 
-    // 7c. The multistep exam items are not all identical (MEDIUM-3): a retake
-    //     must be a genuinely different paper, so the multistep bank needs real
-    //     variety. Assert the prompts across the multistep items are distinct.
+    // 7c. Both the multistep EXAM items and every CHECKPOINT bank must be made
+    //     of DISTINCT prompts (review finding 3 / MEDIUM-3): a retake must be a
+    //     genuinely different paper, so no bank may pad with verbatim-duplicated
+    //     questions. Assert prompt uniqueness per assessment.
     let ms_prompts: std::collections::HashSet<&str> =
         exam.items.iter().filter(|i| i.kind == "multistep").map(|i| i.prompt.as_str()).collect();
     let ms_count = exam.items.iter().filter(|i| i.kind == "multistep").count();
@@ -818,6 +834,18 @@ fn shipped_seed_bundle_passes_validation_with_all_floors() {
         ms_count,
         ms_prompts.len()
     );
+    for lesson in lessons {
+        let prompts: std::collections::HashSet<&str> =
+            lesson.checkpoint.items.iter().map(|i| i.prompt.as_str()).collect();
+        assert_eq!(
+            prompts.len(),
+            lesson.checkpoint.items.len(),
+            "lesson {} checkpoint bank padded with duplicate prompts: {} items but {} unique prompts",
+            lesson.index,
+            lesson.checkpoint.items.len(),
+            prompts.len()
+        );
+    }
 
     // 8. Content rigor: every worked example and item answer key recomputes
     //    consistently. Balance keys are already re-verified by validate_bundle

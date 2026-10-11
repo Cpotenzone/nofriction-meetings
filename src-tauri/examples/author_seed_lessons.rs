@@ -101,6 +101,15 @@ fn rotate_choices(choices: &[&str], correct: usize, target: usize) -> (Vec<Strin
     (out, target)
 }
 
+/// An MC item whose correct answer (authored at `correct`) is rotated to the
+/// `target` position so inline checkpoint keys are spread across indices rather
+/// than all sitting at 0 (findings 1/2). Pure reordering of the choice text.
+fn mc_rot(id: &str, concept: &str, prompt: &str, choices: &[&str], correct: usize, target: usize, explanation: &str) -> Value {
+    let (rotated, new_idx) = rotate_choices(choices, correct, target);
+    let rotated_refs: Vec<&str> = rotated.iter().map(|s| s.as_str()).collect();
+    mc(id, concept, prompt, &rotated_refs, new_idx as u32, explanation)
+}
+
 fn mc(id: &str, concept: &str, prompt: &str, choices: &[&str], answer_index: u32, explanation: &str) -> Value {
     assert!((answer_index as usize) < choices.len(), "mc {id}: answerIndex out of range");
     json!({
@@ -177,13 +186,33 @@ fn misconception(claim: &str, why: &str, correct: &str, concept: &str) -> Value 
     json!({"claim": claim, "whyWrong": why, "correct": correct, "conceptIds": [concept]})
 }
 
-/// Fill a checkpoint bank to `n` MC items drawn from a small bank of templates,
-/// so a lesson's checkpoint comfortably over-provisions its presentCount.
+/// Build a checkpoint MC bank from DISTINCT prompts (no verbatim repeats, so a
+/// retake draws a genuinely different paper — finding 3), distributing each
+/// item's authored answer key across choice positions via `rotate_choices` so
+/// the keys are not all index 0 (findings 1/2). The correct answer text is
+/// unchanged; only its index moves. Every template is used exactly once, so the
+/// caller must supply at least `n` distinct prompts.
 fn mc_filler(prefix: &str, concept: &str, n: usize, templates: &[(&str, &[&str], u32)]) -> Vec<Value> {
+    assert!(
+        templates.len() >= n,
+        "mc_filler {prefix}: need {n} distinct templates but only {} supplied — \
+         checkpoint banks must not pad with verbatim duplicates",
+        templates.len()
+    );
     let mut out = Vec::new();
-    for i in 0..n {
-        let (prompt, choices, ans) = templates[i % templates.len()];
-        out.push(mc(&format!("{prefix}-f{i}"), concept, prompt, choices, ans, "Review the concept summary."));
+    for (i, (prompt, choices, ans)) in templates.iter().take(n).enumerate() {
+        // Spread keys over positions: item i targets index i % choices.len().
+        let target = i % choices.len();
+        let (rotated, new_idx) = rotate_choices(choices, *ans as usize, target);
+        let rotated_refs: Vec<&str> = rotated.iter().map(|s| s.as_str()).collect();
+        out.push(mc(
+            &format!("{prefix}-f{i}"),
+            concept,
+            prompt,
+            &rotated_refs,
+            new_idx as u32,
+            "Review the concept summary.",
+        ));
     }
     out
 }
@@ -267,18 +296,25 @@ fn main() {
                 numeric("l1-cp-n3", c, "How many moles are in 88.02 g of CO2?", 88.02 / mm_co2, "mol",
                     "Divide grams by molar mass.",
                     vec![wstep("Divide", "88.02 / 44.01", "2.00", "mol")]),
-                mc("l1-cp-m1", c, "What is Avogadro's number?",
-                    &["6.022 x 10^23 per mole", "3.14 per mole", "1.00 x 10^6 per mole"], 0,
+                mc_rot("l1-cp-m1", c, "What is Avogadro's number?",
+                    &["6.022 x 10^23 per mole", "3.14 per mole", "1.00 x 10^6 per mole"], 0, 1,
                     "A mole contains 6.022 x 10^23 particles."),
-                mc("l1-cp-m2", cm, "Molar mass has units of:",
-                    &["g/mol", "mol/g", "g only"], 0, "Molar mass is grams per mole."),
-                mc("l1-cp-m3", c, "One mole of water contains how many molecules?",
-                    &["6.022 x 10^23", "18", "2"], 0, "One mole is Avogadro's number of molecules."),
+                mc_rot("l1-cp-m2", cm, "Molar mass has units of:",
+                    &["g/mol", "mol/g", "g only"], 0, 2, "Molar mass is grams per mole."),
+                mc_rot("l1-cp-m3", c, "One mole of water contains how many molecules?",
+                    &["6.022 x 10^23", "18", "2"], 0, 1, "One mole is Avogadro's number of molecules."),
             ];
             v.extend(mc_filler("l1-cp", cm, 10, &[
-                ("Molar mass of H2O is closest to:", &["18 g/mol", "2 g/mol", "32 g/mol"], 0),
+                ("Molar mass of H2O is closest to:", &["18 g/mol", "2 g/mol", "32 g/mol"] as &[&str], 0),
                 ("Molar mass of O2 is:", &["32.00 g/mol", "16.00 g/mol", "8.00 g/mol"], 0),
                 ("To find moles from grams you:", &["divide by molar mass", "multiply by Avogadro", "add molar mass"], 0),
+                ("To find grams from moles you:", &["multiply by molar mass", "divide by Avogadro", "subtract molar mass"], 0),
+                ("The number of molecules in n moles is:", &["n x 6.022 x 10^23", "n / 6.022 x 10^23", "n x 18"], 0),
+                ("The molar mass of carbon (C) is about:", &["12.01 g/mol", "6.00 g/mol", "24.02 g/mol"], 0),
+                ("A mole of any substance contains:", &["the same number of particles", "the same mass", "the same volume"], 0),
+                ("Molar mass of CO2 is closest to:", &["44 g/mol", "28 g/mol", "16 g/mol"], 0),
+                ("The mass of one mole of H2 is about:", &["2.02 g", "1.01 g", "18.02 g"], 0),
+                ("Avogadro's number links a count of particles to a:", &["measurable mass", "volume in liters", "temperature"], 0),
             ]));
             v
         };
@@ -340,17 +376,26 @@ fn main() {
                     "N2 + 3 H2 -> 2 NH3."),
                 balance_item("l2-cp-b4", c, "Balance: C3H8 + O2 -> CO2 + H2O", &["C3H8", "O2"], &["CO2", "H2O"],
                     "C3H8 + 5 O2 -> 3 CO2 + 4 H2O."),
-                mc("l2-cp-m1", c, "To balance an equation you adjust:",
-                    &["coefficients", "subscripts", "atomic masses"], 0,
+                mc_rot("l2-cp-m1", c, "To balance an equation you adjust:",
+                    &["coefficients", "subscripts", "atomic masses"], 0, 1,
                     "Coefficients are changed; subscripts define the compound."),
-                mc("l2-cp-m2", c, "Balancing enforces which law?",
-                    &["conservation of mass", "ideal gas law", "Avogadro's law"], 0,
+                mc_rot("l2-cp-m2", c, "Balancing enforces which law?",
+                    &["conservation of mass", "ideal gas law", "Avogadro's law"], 0, 2,
                     "Atoms are conserved, so mass is conserved."),
             ];
             v.extend(mc_filler("l2-cp", c, 12, &[
-                ("Hydrogen gas is written as:", &["H2", "H", "H3"], 0),
+                ("Hydrogen gas is written as:", &["H2", "H", "H3"] as &[&str], 0),
                 ("Changing a subscript to balance is:", &["wrong, it changes the substance", "fine", "required"], 0),
                 ("A coefficient multiplies:", &["every atom in the formula", "only the first atom", "nothing"], 0),
+                ("Oxygen gas is written as:", &["O2", "O", "O3"], 0),
+                ("Nitrogen gas is written as:", &["N2", "N", "N3"], 0),
+                ("In 2 H2O the coefficient 2 means:", &["two water molecules", "two oxygen atoms only", "two hydrogen atoms only"], 0),
+                ("A balanced equation has equal atoms of each element on:", &["both sides", "the left only", "the right only"], 0),
+                ("The subscript in H2O tells you:", &["atoms per molecule", "number of molecules", "the molar mass"], 0),
+                ("To start balancing, it often helps to balance:", &["the most complex molecule first", "oxygen first always", "nothing in particular"], 0),
+                ("If an equation is unbalanced, mass is:", &["not conserved on paper", "always conserved", "irrelevant"], 0),
+                ("Coefficients in a balanced equation are usually:", &["the lowest whole numbers", "always 1", "fractions"], 0),
+                ("Diatomic elements like Cl2 appear as:", &["two-atom molecules", "single atoms", "ions"], 0),
             ]));
             v
         };
@@ -415,17 +460,26 @@ fn main() {
                 numeric("l3-cp-n2", c, "For N2 + 3 H2 -> 2 NH3, mol NH3 from 3.00 mol H2?", 3.0*2.0/3.0, "mol",
                     "Apply the 3:2 ratio of H2 to NH3.",
                     vec![wstep("3:2 ratio", "3.00 x (2/3)", "2.00", "mol NH3")]),
-                mc("l3-cp-m1", c, "Mole ratios come from:",
-                    &["balanced-equation coefficients", "molar masses", "atomic numbers"], 0,
+                mc_rot("l3-cp-m1", c, "Mole ratios come from:",
+                    &["balanced-equation coefficients", "molar masses", "atomic numbers"], 0, 1,
                     "Coefficients give the mole ratio."),
-                mc("l3-cp-m2", c, "Before using a mole ratio you must:",
-                    &["balance the equation", "measure the pressure", "cool the sample"], 0,
+                mc_rot("l3-cp-m2", c, "Before using a mole ratio you must:",
+                    &["balance the equation", "measure the pressure", "cool the sample"], 0, 2,
                     "The equation must be balanced first."),
             ];
             v.extend(mc_filler("l3-cp", c, 12, &[
-                ("Masses can be used directly as mole ratios:", &["no, convert to moles first", "yes", "only for gases"], 0),
+                ("Masses can be used directly as mole ratios:", &["no, convert to moles first", "yes", "only for gases"] as &[&str], 0),
                 ("A stoichiometric factor is a ratio of:", &["coefficients", "masses", "volumes"], 0),
                 ("To find grams of product you end by:", &["multiplying moles by molar mass", "dividing by Avogadro", "adding coefficients"], 0),
+                ("The first step of a grams-to-grams problem is:", &["convert grams to moles", "apply the mole ratio", "multiply by Avogadro"], 0),
+                ("In 2 H2 + O2 -> 2 H2O, the H2 : H2O ratio is:", &["1 : 1", "2 : 1", "1 : 2"], 0),
+                ("In N2 + 3 H2 -> 2 NH3, the H2 : NH3 ratio is:", &["3 : 2", "1 : 1", "2 : 3"], 0),
+                ("A mole ratio converts between:", &["amounts of two substances", "mass and volume", "pressure and temperature"], 0),
+                ("The middle step of a stoichiometry problem is:", &["apply the mole ratio", "weigh the product", "measure the volume"], 0),
+                ("Coefficients of 1 are:", &["usually left unwritten", "always written", "errors"], 0),
+                ("In CH4 + 2 O2 -> CO2 + 2 H2O, the CH4 : O2 ratio is:", &["1 : 2", "1 : 1", "2 : 1"], 0),
+                ("A balanced equation is required because:", &["coefficients set the ratio", "it looks neater", "it changes the molar mass"], 0),
+                ("Grams-to-grams problems pass through:", &["moles", "liters", "atoms"], 0),
             ]));
             v
         };
@@ -488,17 +542,26 @@ fn main() {
                 numeric("l4-cp-n2", c, "2 H2 + O2 -> 2 H2O with 2 mol H2 and 2 mol O2. Mol H2O (H2 limits)?", 2.0, "mol",
                     "H2 is limiting; 2:2 ratio gives 2 mol H2O.",
                     vec![wstep("H2 limits (needs 1 mol O2, has 2)", "2 mol H2 x (2/2)", "2.00", "mol H2O")]),
-                mc("l4-cp-m1", c, "The limiting reagent is the one that:",
-                    &["runs out first", "has the smallest mass", "has the largest molar mass"], 0,
+                mc_rot("l4-cp-m1", c, "The limiting reagent is the one that:",
+                    &["runs out first", "has the smallest mass", "has the largest molar mass"], 0, 1,
                     "It is consumed first and caps the product."),
-                mc("l4-cp-m2", c, "Percent yield above 100% usually means:",
-                    &["measurement or impurity error", "a new element", "perfect reaction"], 0,
+                mc_rot("l4-cp-m2", c, "Percent yield above 100% usually means:",
+                    &["measurement or impurity error", "a new element", "perfect reaction"], 0, 2,
                     "Yield cannot really exceed theoretical."),
             ];
             v.extend(mc_filler("l4-cp", c, 12, &[
-                ("The smaller starting mass is always limiting:", &["no, compare moles and ratios", "yes", "only for gases"], 0),
+                ("The smaller starting mass is always limiting:", &["no, compare moles and ratios", "yes", "only for gases"] as &[&str], 0),
                 ("Theoretical yield is based on the:", &["limiting reagent", "excess reagent", "catalyst"], 0),
                 ("Excess reagent is the one that:", &["is left over", "runs out", "is a gas"], 0),
+                ("Percent yield is defined as:", &["actual / theoretical x 100", "theoretical / actual x 100", "actual x theoretical"], 0),
+                ("To find the limiting reagent, compare:", &["moles divided by coefficient", "raw masses", "molar masses"], 0),
+                ("Theoretical yield is the:", &["maximum possible product", "measured product", "leftover reactant"], 0),
+                ("Actual yield is usually:", &["less than theoretical", "more than theoretical", "exactly theoretical"], 0),
+                ("Once the limiting reagent is gone, the reaction:", &["stops making product", "keeps going", "reverses"], 0),
+                ("A percent yield of 80% means you obtained:", &["80% of the maximum", "80 grams", "80 moles"], 0),
+                ("The excess reagent amount at the end is:", &["greater than zero", "zero", "negative"], 0),
+                ("Which reactant sets the amount of product?", &["the limiting one", "the excess one", "the catalyst"], 0),
+                ("If both reactants are in a perfect ratio, then:", &["either can be seen as limiting", "neither reacts", "yield is zero"], 0),
             ]));
             v
         };
@@ -568,14 +631,23 @@ fn main() {
                 numeric("l5-cp-n3", c, "Dilute 50.0 mL of 2.00 M to 200.0 mL: new molarity?", 0.500, "mol/L",
                     "M1V1 = M2V2.",
                     vec![wstep("solve M2", "2.00 x 50.0 / 200.0", "0.500", "mol/L")]),
-                mc("l5-cp-m1", c, "The equivalence point is where:",
-                    &["moles of acid equal moles of base", "the indicator is added", "the pH is 1"], 0,
+                mc_rot("l5-cp-m1", c, "The equivalence point is where:",
+                    &["moles of acid equal moles of base", "the indicator is added", "the pH is 1"], 0, 1,
                     "Stoichiometric equivalence of acid and base."),
             ];
             v.extend(mc_filler("l5-cp", c, 12, &[
-                ("Molarity has units of:", &["mol/L", "g/mol", "L/mol"], 0),
+                ("Molarity has units of:", &["mol/L", "g/mol", "L/mol"] as &[&str], 0),
                 ("Dilution changes:", &["concentration, not moles", "moles, not concentration", "neither"], 0),
                 ("The endpoint and equivalence point are:", &["close but not identical", "always identical", "unrelated"], 0),
+                ("Moles of solute equal:", &["molarity times volume", "molarity divided by volume", "volume divided by molarity"], 0),
+                ("The dilution equation is:", &["M1V1 = M2V2", "M1V2 = M2V1", "M1 + V1 = M2 + V2"], 0),
+                ("Adding water to a solution:", &["lowers its concentration", "raises its concentration", "removes solute"], 0),
+                ("A titration is used to find:", &["an unknown concentration", "the boiling point", "the molar mass"], 0),
+                ("At the equivalence point of a strong acid-base titration, pH is about:", &["7", "1", "14"], 0),
+                ("Molarity is a measure of:", &["concentration", "mass", "volume"], 0),
+                ("1 L of 1 M solution contains:", &["1 mole of solute", "1 gram of solute", "1 L of solute"], 0),
+                ("An indicator signals the:", &["endpoint", "molar mass", "temperature"], 0),
+                ("To make a dilute solution from a stock, you:", &["add solvent", "add more solute", "boil it"], 0),
             ]));
             v
         };
@@ -634,14 +706,23 @@ fn main() {
                 numeric("l6-cp-n3", c, "Using PV=nRT, V of 1.00 mol at 1.00 atm and 273.15 K (R=0.0821)?", 1.0*0.0821*273.15/1.0, "L",
                     "V = nRT/P.",
                     vec![wstep("compute", "1.00 x 0.0821 x 273.15 / 1.00", "22.43", "L")]),
-                mc("l6-cp-m1", c, "Molar volume at STP is:",
-                    &["22.41 L/mol", "1.00 L/mol", "6.022 L/mol"], 0,
+                mc_rot("l6-cp-m1", c, "Molar volume at STP is:",
+                    &["22.41 L/mol", "1.00 L/mol", "6.022 L/mol"], 0, 1,
                     "One mole of ideal gas is 22.41 L at STP."),
             ];
             v.extend(mc_filler("l6-cp", c, 12, &[
-                ("In PV=nRT, R is the:", &["gas constant", "rate", "radius"], 0),
+                ("In PV=nRT, R is the:", &["gas constant", "rate", "radius"] as &[&str], 0),
                 ("Using 22.4 L/mol off STP is:", &["an error", "always fine", "required"], 0),
                 ("Doubling moles at fixed T and P:", &["doubles volume", "halves volume", "no change"], 0),
+                ("In PV = nRT, T must be in:", &["kelvin", "celsius", "fahrenheit"], 0),
+                ("For R = 0.0821, pressure must be in:", &["atmospheres", "pascals", "mmHg"], 0),
+                ("Solving PV = nRT for volume gives:", &["V = nRT / P", "V = P / nRT", "V = nP / RT"], 0),
+                ("At fixed T and P, volume is proportional to:", &["moles of gas", "molar mass", "pressure"], 0),
+                ("STP stands for:", &["standard temperature and pressure", "simple test pressure", "standard total pressure"], 0),
+                ("One mole of any ideal gas at STP occupies:", &["22.41 L", "1.00 L", "6.022 L"], 0),
+                ("To convert 25 degrees C to kelvin you:", &["add 273.15", "subtract 273.15", "multiply by 273.15"], 0),
+                ("If you halve the pressure at fixed n and T, volume:", &["doubles", "halves", "stays the same"], 0),
+                ("Gas volume at STP from moles is found by:", &["multiplying by 22.41", "dividing by Avogadro", "multiplying by molar mass"], 0),
             ]));
             v
         };
@@ -694,9 +775,9 @@ fn main() {
     // ── Diagnostic (optional placement) ─────────────────────────────────────
     let diagnostic = json!({
         "items": [
-            mc("dx1", "c-mole", "A mole is:", &["6.022 x 10^23 particles", "one gram", "one liter"], 0, "Avogadro's number of particles."),
-            mc("dx2", "c-balance", "Balancing conserves:", &["atoms", "pressure", "temperature"], 0, "Atoms are conserved."),
-            mc("dx3", "c-ratio", "Mole ratios come from:", &["coefficients", "molar masses", "volumes"], 0, "Coefficients."),
+            mc_rot("dx1", "c-mole", "A mole is:", &["6.022 x 10^23 particles", "one gram", "one liter"], 0, 0, "Avogadro's number of particles."),
+            mc_rot("dx2", "c-balance", "Balancing conserves:", &["atoms", "pressure", "temperature"], 0, 1, "Atoms are conserved."),
+            mc_rot("dx3", "c-ratio", "Mole ratios come from:", &["coefficients", "molar masses", "volumes"], 0, 2, "Coefficients."),
         ]
     });
 

@@ -951,6 +951,7 @@ pub fn run() {
             lessons::commands::lessons_export_certificate,
             lessons::commands::lessons_reset_progress,
             lessons::commands::lessons_set_dir,
+            lessons::commands::lessons_get_progress,
         ])
         .on_window_event(|window, event| {
             match event {

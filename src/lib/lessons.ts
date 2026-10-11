@@ -191,6 +191,14 @@ export interface DueConcept {
     dueAt?: string | null;
 }
 
+export interface TrainerItem {
+    conceptId: string;
+    tier: number;
+    prompt: string;
+    answer: number;
+    unit: string;
+}
+
 export interface Certificate {
     id: string;
     courseTitle: string;
@@ -226,12 +234,16 @@ export const importBundle = (source: ImportSource): Promise<string> =>
 export const removeSet = (setId: string): Promise<void> => invoke("lessons_remove_set", { setId });
 export const saveProgress = (setId: string, lessonId: string, progress: LessonProgress): Promise<void> =>
     invoke("lessons_save_progress", { setId, lessonId, progress });
+export const getProgress = (setId: string, lessonId: string): Promise<LessonProgress | null> =>
+    invoke("lessons_get_progress", { setId, lessonId });
 export const submitCheckpoint = (
     setId: string,
     lessonId: string,
     answers: SubmittedAnswer[],
 ): Promise<CheckpointResult> => invoke("lessons_submit_checkpoint", { setId, lessonId, answers });
 export const reviewDue = (setId: string): Promise<DueConcept[]> => invoke("lessons_review_due", { setId });
+export const nextTrainerItem = (setId: string, attemptIndex: number): Promise<TrainerItem | null> =>
+    invoke("lessons_next_trainer_item", { setId, attemptIndex });
 export const dashboard = (setId: string): Promise<Dashboard> => invoke("lessons_dashboard", { setId });
 export const startExam = (setId: string): Promise<StartedExam> => invoke("lessons_start_exam", { setId });
 export const submitExam = (

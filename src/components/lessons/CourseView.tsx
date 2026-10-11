@@ -4,10 +4,11 @@
 
 import { useEffect, useState } from "react";
 import type { LessonSet, Dashboard as DashboardT, StartedExam, Certificate as CertT } from "../../lib/lessons";
-import { dashboard as fetchDashboard, startExam, submitExam, exportCertificate, getLesson } from "../../lib/lessons";
+import { dashboard as fetchDashboard, startExam, submitExam, exportCertificate, getLesson, resetProgress } from "../../lib/lessons";
 import { GaugeIcon, TrophyIcon, CertificateIcon, LockIcon, CheckIcon } from "../icons";
 import { QuizRunner } from "./QuizRunner";
 import { LessonPlayer } from "./LessonPlayer";
+import { TrainerPanel } from "./TrainerPanel";
 
 type Screen = "overview" | { lessonId: string } | "exam" | "certificate";
 
@@ -17,10 +18,24 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
     const [error, setError] = useState<string | null>(null);
     const [lessonTitles, setLessonTitles] = useState<Record<string, { index: number; title: string; passed?: boolean }>>({});
 
+    const conceptName = (id: string) => set.concepts.find((c) => c.id === id)?.name ?? id;
+
     const refresh = () => {
         fetchDashboard(set.id).then(setDash).catch((e) => setError(String(e)));
     };
     useEffect(refresh, [set.id]);
+
+    const startOver = async () => {
+        if (!window.confirm("Start this course over? This clears your progress, mastery, exam attempts and certificate for this course.")) {
+            return;
+        }
+        try {
+            await resetProgress(set.id);
+            refresh();
+        } catch (e) {
+            setError(String(e));
+        }
+    };
 
     useEffect(() => {
         let alive = true;
@@ -126,13 +141,15 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                 </section>
             )}
 
+            <TrainerPanel setId={set.id} conceptName={conceptName} />
+
             <section className="lesson-player__section">
                 <h3>
                     <TrophyIcon size={15} /> Final exam
                 </h3>
                 {dash?.examUnlocked ? (
                     <button className="lessons-btn is-primary" type="button" onClick={() => setScreen("exam")}>
-                        Start the 30-question exam
+                        Start the {set.exam.questionCount}-question exam
                     </button>
                 ) : (
                     <p className="lesson-card__meta">
@@ -141,6 +158,16 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                 )}
                 <button className="lessons-btn" type="button" style={{ marginLeft: 8 }} onClick={() => setScreen("certificate")}>
                     <CertificateIcon size={14} /> View certificate
+                </button>
+            </section>
+
+            <section className="lesson-player__section">
+                <h3>Start over</h3>
+                <p className="lesson-card__meta">
+                    Reset your progress, mastery, exam attempts and certificate for this course.
+                </p>
+                <button className="lessons-btn" type="button" onClick={startOver}>
+                    Start this course over
                 </button>
             </section>
         </div>
