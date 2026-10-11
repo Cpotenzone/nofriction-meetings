@@ -39,8 +39,10 @@ versions in review.
   key in both `src/lib/pro.ts` and `ios/NoFriction/Store/ProFeature.swift`; a
   test checks that they match. AI goes through `ai::client::complete`. Gate
   non-AI Mac features with `entitlement::require_pro_feature`.
-- **Navigation.** It is Record ⌘1, Recordings ⌘2, Chat ⌘3 today. Adding a view
-  (Lessons) needs the owner's yes, because DESIGN.md has a three-view rule.
+- **Navigation.** It is Record ⌘1, Recordings ⌘2, Chat ⌘3 today. **Owner
+  approved (2026-10-10)** a Lessons tab (Record · Recordings · Lessons · Chat,
+  ⌘1–⌘4) and a **Make lesson** generate button. That PR updates DESIGN.md's
+  three-view rule.
 - **Invariants.** Follow the CLAUDE.md noFriction section: client-only, sync
   device to device, Delete/Strike purge everywhere, no logging of transcript
   text, and both Mac flavors build.
