@@ -76,7 +76,7 @@ fn build_swift_bridge() {
         a => a.to_string(),
     };
     // Keep in sync with bundle.macOS.minimumSystemVersion
-    let min_macos = "12.3";
+    let min_macos = "13.0";
     let target = format!("{}-apple-macos{}", arch, min_macos);
     let sdk = Command::new("xcrun")
         .args(["--sdk", "macosx", "--show-sdk-path"])

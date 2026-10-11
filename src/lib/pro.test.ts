@@ -9,6 +9,8 @@ import {
     groupFor,
     paywallHeadline,
     proFeatureFromError,
+    proSuffix,
+    showProMark,
 } from "./pro.ts";
 
 test("the Rust feature gate's errors name the feature (entitlement::ProRequired)", () => {
@@ -61,4 +63,22 @@ test("copy: sentence case, no emoji", () => {
         const rest = g.title.split(" ").slice(1).filter((w) => !["Obsidian", "iPhone", "Mac"].includes(w));
         for (const w of rest) assert.equal(w, w.toLowerCase(), `${g.title}: ${w}`);
     }
+});
+
+test("the (noFriction Pro) label shows only to a known non-subscriber in a gated build", () => {
+    // Mac App Store build (gated): only a user known not to have Pro sees it
+    assert.equal(proSuffix(true, false), " (noFriction Pro)");
+    assert.equal(proSuffix(true, true), "");
+    assert.equal(proSuffix(true, null), ""); // entitlement still loading: no flash for subscribers
+    assert.equal(proSuffix(true, undefined), "");
+    // DMG build (no gating, always Pro) never shows it, whatever the entitlement says
+    for (const isPro of [true, false, null, undefined]) {
+        assert.equal(proSuffix(false, isPro), "");
+        assert.equal(showProMark(false, isPro), false);
+    }
+    // Capabilities not known yet
+    assert.equal(proSuffix(undefined, false), "");
+    assert.equal(proSuffix(null, false), "");
+    assert.equal(`Follow-up email${proSuffix(true, true)}`, "Follow-up email");
+    assert.equal(`Follow-up email${proSuffix(true, false)}`, "Follow-up email (noFriction Pro)");
 });

@@ -7,6 +7,7 @@
 // noFriction Pro (docs/PRO.md).
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { proFeatureFromError, type ProFeature } from "./pro";
 
@@ -114,6 +115,38 @@ export const store = {
     restore: () => invoke<Entitlement>("store_restore"),
     manageSubscriptions: () => invoke<void>("store_manage_subscriptions"),
 };
+
+/**
+ * Whether the user has noFriction Pro: always true in a build without Pro
+ * gating (DMG), the StoreKit entitlement in the Mac App Store build (kept
+ * current through purchases, restores and expiry), `null` until known.
+ */
+export function useIsPro(): boolean | null {
+    const [isPro, setIsPro] = useState<boolean | null>(null);
+    useEffect(() => {
+        let alive = true;
+        let off: (() => void) | undefined;
+        getCapabilities().then((c) => {
+            if (!alive) return;
+            if (!c.pro_gating) {
+                setIsPro(true);
+                return;
+            }
+            store
+                .entitlement()
+                .then((e) => alive && setIsPro(!!e.isPro))
+                .catch(() => alive && setIsPro(false));
+            listen<Entitlement>(SUBSCRIPTION_EVENT, (ev) => alive && setIsPro(!!ev.payload?.isPro))
+                .then((u) => (alive ? (off = u) : u()))
+                .catch(() => {});
+        });
+        return () => {
+            alive = false;
+            off?.();
+        };
+    }, []);
+    return isPro;
+}
 
 // ---------------------------------------------------------------------------
 // Paywall bus (PRO_REQUIRED from any AI call or Pro feature → PaywallModal)

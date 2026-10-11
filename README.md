@@ -9,7 +9,7 @@ yourself**. No accounts, no noFriction servers, no analytics.
 
 | | iPhone / iPad | Mac |
 |---|---|---|
-| App | SwiftUI, iOS/iPadOS 18+ (`ios/`) | Tauri 2: Rust + React (`src-tauri/`, `src/`), macOS 12.3+ |
+| App | SwiftUI, iOS/iPadOS 18+ (`ios/`) | Tauri 2: Rust + React (`src-tauri/`, `src/`), macOS 13.0+ |
 | Version | 1.0.0 | 3.6.0 |
 | Transcription | Apple on-device speech | Local Whisper on the Mac (one-time model download); no cloud transcription |
 | Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |

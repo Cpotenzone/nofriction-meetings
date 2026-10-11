@@ -1,6 +1,6 @@
 // Apple on-device model (Foundation Models, macOS 26+ with Apple
 // Intelligence on). Text only. Compiled into both flavors; the framework is
-// weak-linked (build.rs) so the app still launches on macOS 12–15, where
+// weak-linked (build.rs) so the app still launches on macOS 13–15, where
 // availability reports "requires_macos_26".
 
 import Foundation

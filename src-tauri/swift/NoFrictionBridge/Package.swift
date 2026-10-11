@@ -9,7 +9,7 @@ import PackageDescription
 
 let package = Package(
     name: "NoFrictionBridge",
-    platforms: [.macOS("12.3")],
+    platforms: [.macOS("13.0")],
     products: [
         .library(name: "NoFrictionBridge", type: .static, targets: ["NoFrictionBridge"]),
     ],

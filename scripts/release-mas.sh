@@ -95,11 +95,32 @@ APP_PATH="$BUNDLE_DIR/$APP_NAME.app"
 TMP_DIR="$(mktemp -d -t nofriction-mas)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+# Minimum macOS (system audio capture needs ScreenCaptureKit audio, macOS 13).
+# tauri.conf.json, Info.plist and build.rs must all agree.
+MIN_MACOS="13.0"
+check_min_macos_sources() {
+    local conf plist rs
+    conf=$(json "$TAURI_CONF" "['bundle']['macOS']['minimumSystemVersion']")
+    plist=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$TAURI_DIR/Info.plist")
+    rs=$(sed -n 's/.*let min_macos = "\(.*\)";.*/\1/p' "$TAURI_DIR/build.rs")
+    [[ "$conf" == "$MIN_MACOS" && "$plist" == "$MIN_MACOS" && "$rs" == "$MIN_MACOS" ]] \
+        || log_error "Minimum macOS mismatch (want $MIN_MACOS): tauri.conf.json=$conf Info.plist=$plist build.rs=$rs"
+}
+# The built binary must not require a newer macOS than MIN_MACOS.
+check_min_macos_binary() {
+    local bin="$1" minos
+    for minos in $(otool -l "$bin" | awk '/LC_BUILD_VERSION/{f=1} f&&$1=="minos"{print $2; f=0}'); do
+        [[ "$(printf '%s\n%s\n' "$minos" "$MIN_MACOS" | sort -V | tail -1)" == "$MIN_MACOS" ]] \
+            || log_error "$(basename "$bin") requires macOS $minos, newer than the declared minimum $MIN_MACOS"
+    done
+}
+
 have_identity() { security find-identity -v -p "$2" 2>/dev/null | grep -qF "\"$1\""; }
 
 # ---------------------------------------------------------------------------
 preflight() {
     "$AUDIT_PYTHON" "$SCRIPT_DIR/check-ai-provider-policy.py" || log_error "AI source policy failed"
+    check_min_macos_sources
     "$AUDIT_PYTHON" -c "import brotli" || log_error "Credential audit needs Python Brotli; set NF_AUDIT_PYTHON to an interpreter that has it"
     for tool in npx cargo codesign xcrun productbuild pkgutil python3 security /usr/libexec/PlistBuddy; do
         command -v "$tool" >/dev/null 2>&1 || log_error "$tool not found"
@@ -251,11 +272,13 @@ verify() {
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == "$BUILD_NUMBER" ]] || log_error "CFBundleVersion is not $BUILD_NUMBER"
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$plist")" == "false" ]] || log_error "ITSAppUsesNonExemptEncryption missing"
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$plist")" == "public.app-category.productivity" ]] || log_error "LSApplicationCategoryType missing"
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" == "$MIN_MACOS" ]] || log_error "LSMinimumSystemVersion is not $MIN_MACOS"
 
     # Sandbox blockers must be compiled out (m1 ffmpeg, m3 osascript, m4 ioreg, m7 shell plugin)
     local bin="$APP_PATH/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")"
     local hits; hits=$(strings -a "$bin" | grep -E -i 'ffmpeg|ffprobe|osascript|ioreg -l|System Events|plugin:shell|tauri-plugin-shell|/opt/homebrew' || true)
     [[ -z "$hits" ]] || { echo "$hits" | head -20; log_error "Binary still references sandbox-incompatible tools (above)"; }
+    check_min_macos_binary "$bin"
     if strings -a "$bin" | grep -q 'AXUIElementCopyAttributeValue'; then
         log_error "Binary still links the Accessibility (AX) API"
     fi

@@ -223,7 +223,7 @@ impl CalendarClient {
 
             // Fire the permission request — macOS shows the consent dialog.
             // requestFullAccessToEventsWithCompletion: is macOS 14+; on
-            // 12.3–13 it doesn't exist (an unrecognized selector aborts), so
+            // macOS 13 it doesn't exist (an unrecognized selector aborts), so
             // use the older entity-type request there.
             let full_access: objc::runtime::BOOL =
                 msg_send![store, respondsToSelector: sel!(requestFullAccessToEventsWithCompletion:)];

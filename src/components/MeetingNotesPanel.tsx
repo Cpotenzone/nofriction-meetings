@@ -9,7 +9,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as tauri from "../lib/tauri";
 import { aiErrorClass, friendlyAiError, isNoProviderError, withAiConsent } from "../lib/ai";
-import { useCapabilities } from "../lib/build";
+import { useCapabilities, useIsPro } from "../lib/build";
+import { proSuffix, showProMark } from "../lib/pro";
 import { AiSetupNotice, useAiStatus } from "./AiSetupNotice";
 import { notesLayout, notesStyleHint } from "../lib/recordingKind";
 import { SYNCED_NOTES_MODEL, syncedNotesSections } from "../lib/syncLogic";
@@ -72,6 +73,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
     const [drafting, setDrafting] = useState(false);
     const { configured } = useAiStatus();
     const caps = useCapabilities();
+    const isPro = useIsPro();
     const kind = useRecordingKind(meetingId);
     // A provider was just connected in Settings: clear the earlier failure
     useEffect(() => {
@@ -144,7 +146,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
         );
     }
 
-    const proNote = caps?.pro_gating ? " (noFriction Pro)" : "";
+    const proNote = proSuffix(caps?.pro_gating, isPro);
     const showSetup = configured === false || needsAi;
 
     const actions = (
@@ -175,7 +177,7 @@ export function MeetingNotesPanel({ meetingId }: { meetingId: string }) {
                     <p>
                         Notes are made from the transcript by the AI you set up, on their own when a recording
                         longer than 6 minutes stops (Settings → AI). {notesStyleHint(kind)}
-                        {caps?.pro_gating ? " Part of noFriction Pro." : ""}
+                        {showProMark(caps?.pro_gating, isPro) ? " Part of noFriction Pro." : ""}
                     </p>
                     {actions}
                 </div>

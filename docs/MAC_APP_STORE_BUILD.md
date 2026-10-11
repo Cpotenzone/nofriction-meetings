@@ -77,7 +77,7 @@ What the script does:
 
 `--universal` builds arm64 + x86_64 (`--target universal-apple-darwin`;
 needs `rustup target add x86_64-apple-darwin`). The default is this Mac's
-architecture, which the App Store accepts because the minimum macOS is 12.3.
+architecture, which the App Store accepts because the minimum macOS is 13.0.
 
 ---
 
@@ -127,7 +127,7 @@ architecture and links it statically:
 
 - `AppleModel.swift`: Foundation Models (`SystemLanguageModel`,
   `LanguageModelSession`). Built into **both** flavors; the framework is
-  weak-linked so the app launches on macOS 12–15. Wired into the AI layer as
+  weak-linked so the app launches on macOS 13–15. Wired into the AI layer as
   the `apple` preset and the key-less fallback (docs/AI_PROVIDERS.md).
 - `Store.swift`: StoreKit 2, compiled only for `mas` (`-DNF_STOREKIT`):
   products (display name, price, period, intro offer if eligible),

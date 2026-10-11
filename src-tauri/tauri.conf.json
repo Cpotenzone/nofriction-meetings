@@ -52,7 +52,7 @@
     "longDescription": "noFriction captures your screen and audio to provide real-time meeting transcription — with local Whisper transcription. Optional AI uses Apple on-device or an OpenAI-compatible endpoint and model explicitly configured by the user; no remote AI service is preconfigured.",
     "macOS": {
       "entitlements": "entitlements.plist",
-      "minimumSystemVersion": "12.3",
+      "minimumSystemVersion": "13.0",
       "signingIdentity": "Developer ID Application: casey potenzone (C7GCEESE2V)",
       "hardenedRuntime": true
     }

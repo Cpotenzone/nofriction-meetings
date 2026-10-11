@@ -22,7 +22,7 @@ docs/                specs, guides, release docs
 
 | Tool | Notes |
 |---|---|
-| macOS 12.3+ | the Mac app's minimum; macOS 26 to exercise Apple on-device AI |
+| macOS 13.0+ | the Mac app's minimum (system audio capture needs 13); macOS 26 to exercise Apple on-device AI |
 | Xcode (current) + command line tools | Swift bridge, iOS app, signing |
 | Rust (stable) | `rustup`; add `x86_64-apple-darwin` for `--universal` builds |
 | Node.js 18+ | frontend |

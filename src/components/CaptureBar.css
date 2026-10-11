@@ -11,6 +11,12 @@
   min-height: 52px;
 }
 
+/* Only the status line gives way when the bar is short of room (it has the
+   full text in a tooltip). The timer, the screens being captured, Mark and
+   Capture screen keep their natural size, so a screen name is never cut to
+   "Main di…". */
+.cbar > * { flex: none; }
+
 .cbar__status {
   display: flex;
   align-items: center;
@@ -53,7 +59,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
   padding: 5px 6px 5px 5px;
   border-radius: 10px;
   border: 1px solid var(--border-color, #262626);
@@ -72,8 +77,11 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 180px;
+  /* A display name ("Main display", "Built-in Retina Display") fits whole;
+     only a very long window title is shortened (full name in the tooltip). */
+  max-width: 260px;
   padding: 3px 8px;
+  white-space: nowrap;
   border-radius: 7px;
   background: var(--tactical-gray, #171717);
   font-size: 12px;
@@ -89,6 +97,7 @@
 }
 
 .cbar__edit {
+  white-space: nowrap;
   font-size: 12px;
   color: var(--text-secondary, #a3a3a3);
   padding: 0 4px;
@@ -105,6 +114,7 @@
   color: #0a0a0a;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: transform 100ms ease;
 }
@@ -371,10 +381,11 @@
   object-position: top;
 }
 
+/* Name over time, so a screen name gets the card's full width */
 .film__frame figcaption {
   display: flex;
-  justify-content: space-between;
-  gap: 6px;
+  flex-direction: column;
+  gap: 1px;
   padding: 4px 6px;
   font-size: 10px;
   color: var(--text-secondary, #a3a3a3);
