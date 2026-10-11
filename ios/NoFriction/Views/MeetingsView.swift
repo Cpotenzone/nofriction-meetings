@@ -8,8 +8,14 @@ struct MeetingsView: View {
     @Query(sort: \Meeting.startedAt, order: .reverse) private var meetings: [Meeting]
     @Query(filter: #Predicate<Person> { !$0.isSelf }) private var people: [Person]
     @Environment(RecordingSession.self) private var session
-    @State private var selection: Meeting?
+    @Environment(RedactionCenter.self) private var redactions
+    @Environment(\.modelContext) private var context
+    @State private var selection: RecordingRoute?
     @State private var query = ""
+    /// Lines that matched the search, by recording (`RecordingSearch`)
+    @State private var lineHits: [UUID: RecordingSearch.Group] = [:]
+    /// Bumped when the store is saved, so results drop a struck or deleted line
+    @State private var storeVersion = 0
     /// Notebook filter; nil = All
     @State private var notebookFilter: String?
 
@@ -26,15 +32,32 @@ struct MeetingsView: View {
         let past = meetings.filter {
             $0.id != session.meeting?.id && Notebook.matches($0.courseName, filter: activeNotebook)
         }
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return past }
-        return past.filter { m in
-            m.title.lowercased().contains(q)
-                || (m.courseName?.lowercased().contains(q) ?? false)
-                || m.people.contains { $0.person.displayName.lowercased().contains(q) || ($0.person.company?.lowercased().contains(q) ?? false) }
-                || m.topics.contains { $0.label.lowercased().contains(q) }
-                || m.transcriptText.lowercased().contains(q)
+        guard let q = RecordingSearch.normalized(query) else { return past }
+        return past.filter { lineHits[$0.id] != nil || RecordingSearch.meetingMatches($0, query: q) }
+    }
+
+    /// What the search depends on: a change runs it again
+    private struct SearchKey: Equatable {
+        var query: String
+        var storeVersion: Int
+        var pendingDelete: UUID?
+        var excluding: UUID?
+    }
+
+    private var searchKey: SearchKey {
+        SearchKey(query: RecordingSearch.normalized(query) ?? "", storeVersion: storeVersion,
+                  pendingDelete: redactions.pending?.recordID, excluding: session.meeting?.id)
+    }
+
+    /// Find the lines that match (after a short pause while typing, so every keystroke doesn't hit the store)
+    private func runSearch(_ key: SearchKey) async {
+        guard !key.query.isEmpty else {
+            lineHits = [:]
+            return
         }
+        try? await Task.sleep(for: .milliseconds(150))
+        guard !Task.isCancelled else { return }
+        lineHits = RecordingSearch.group(RecordingSearch.lines(matching: key.query, in: context, excluding: key.excluding))
     }
 
     /// Sections by day, newest first (`RecordingsGrouping`)
@@ -71,7 +94,30 @@ struct MeetingsView: View {
                 ForEach(sections) { section in
                     Section(section.title) {
                         ForEach(section.meetings) { meeting in
-                            NavigationLink(value: meeting) { MeetingRow(meeting: meeting) }
+                            NavigationLink(value: RecordingRoute(meeting: meeting)) { MeetingRow(meeting: meeting) }
+                            // Search: the lines that matched, each opening the recording at that moment
+                            if !query.isEmpty, let hits = lineHits[meeting.id] {
+                                ForEach(hits.lines) { line in
+                                    NavigationLink(value: RecordingRoute(meeting: meeting, line: line.id)) {
+                                        SearchLineRow(line: line)
+                                    }
+                                    .listRowSeparator(.hidden, edges: .top)
+                                    .accessibilityElement(children: .ignore)
+                                    .accessibilityLabel(line.accessibilityLabel)
+                                    .accessibilityHint("Opens the recording at this moment")
+                                    .accessibilityAddTraits(.isButton)
+                                    .accessibilityIdentifier("search-line")
+                                }
+                                if hits.moreLines > 0 {
+                                    Text("and \(hits.moreLines) more")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.leading, SearchLineRow.indent)
+                                        .listRowSeparator(.hidden, edges: .top)
+                                        .accessibilityLabel("And \(hits.moreLines) more matching \(hits.moreLines == 1 ? "line" : "lines")")
+                                        .accessibilityIdentifier("search-more")
+                                }
+                            }
                         }
                     }
                 }
@@ -83,6 +129,10 @@ struct MeetingsView: View {
             .tint(Color.white.opacity(0.14))
             .navigationTitle("Recordings")
             .searchable(text: $query, prompt: "Titles, people, topics, or anything said")
+            .task(id: searchKey) { await runSearch(searchKey) }
+            .onReceive(NotificationCenter.default.publisher(for: ModelContext.didSave)) { _ in
+                if !query.isEmpty { storeVersion &+= 1 }
+            }
             .overlay {
                 if meetings.isEmpty {
                     ContentUnavailableView("No recordings yet", systemImage: "waveform",
@@ -96,12 +146,54 @@ struct MeetingsView: View {
             }
         } detail: {
             if let selection {
-                MeetingDetailView(meeting: selection)
+                // A new route (another recording, or a line) opens a fresh view
+                MeetingDetailView(meeting: selection.meeting, jumpToLine: selection.line)
+                    .id(selection)
             } else {
                 ContentUnavailableView("Select a recording", systemImage: "rectangle.stack")
                     .background(Theme.background)
             }
         }
+    }
+}
+
+/// What the Recordings list opens: a recording at its top, or at a line
+/// that matched the search (scrolled to it, highlighted briefly).
+struct RecordingRoute: Hashable {
+    let meeting: Meeting
+    var line: PersistentIdentifier? = nil
+}
+
+/// A line that matched the search, under its recording: the time from the
+/// recording's start, and the words around the match.
+private struct SearchLineRow: View {
+    static let indent: CGFloat = 12
+    let line: RecordingSearch.Line
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        // Side by side; stacked at the largest text sizes so the line keeps its width
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 10))
+        layout {
+            Text(line.offset.clock)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                if line.isFromScreen {
+                    Label(ScreenSpeaker.label, systemImage: "rectangle.dashed.badge.record")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                Text(line.text)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(typeSize.isAccessibilitySize ? 6 : 3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.leading, Self.indent)
     }
 }
 
