@@ -187,7 +187,9 @@ Good to know:
 
 **iPhone/iPad:** the **Recordings** tab lists every recording by day, named
 from your calendar when it matches an event. Search by title, person, topic
-or anything said. Filter with the **Notebooks** chips. Open a recording to
+or anything said; up to three matching lines show under each recording with
+their time, and tapping a line opens the recording at that moment. Filter
+with the **Notebooks** chips. Open a recording to
 read the transcript, play the audio and see photos. **People**, a row at the
 top of Recordings, lists everyone you've met with and their recordings; on a
 person's page you can add their LinkedIn link.
