@@ -8,6 +8,8 @@
 
 import { mockConvertFileSrc, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { DEMO_MEETINGS, LIVE_SCRIPTS, RECENT_NOTEBOOKS, type DemoMeeting, type Kind } from "./mock-data";
+// The fictional pairing code for Settings → Sync (encodes PAIRING_LINK below)
+import pairingQrSvg from "./pairing-qr.svg?raw";
 
 type Args = Record<string, any> | undefined;
 
@@ -335,7 +337,7 @@ const CAPABILITIES = {
     apple_intelligence: true,
     apple_intelligence_reason: "",
     version: "3.7.0",
-    build: "41",
+    build: "43",
 };
 
 const AI_STATUS = {
@@ -808,6 +810,23 @@ function handle(cmd: string, args: Args): unknown {
             if (AI_OPENAI && !openaiConsent) throw "CONSENT_REQUIRED:custom";
             return chatAnswer(a.threadId ?? null, a.scope, String(a.message ?? ""));
 
+        // Sync (Settings → Sync, sync/commands.rs): Pro only, one paired
+        // iPhone, and a fictional pairing code (mock/pairing-qr.svg)
+        case "sync_status":
+            return syncStatus();
+        case "sync_set_enabled":
+            if (!isPro) throw "PRO_REQUIRED:sync: Sync is part of noFriction Pro.";
+            syncEnabled = !!a.enabled;
+            return syncStatus();
+        case "sync_pair_start":
+            if (!isPro) throw "PRO_REQUIRED:sync: Sync is part of noFriction Pro.";
+            return { link: PAIRING_LINK, qr_svg: pairingQrSvg, expires_in_secs: 300 };
+        case "sync_pair_cancel":
+            return null;
+        case "sync_forget":
+            syncDevices = syncDevices.filter((d) => d.id !== a.deviceId);
+            return syncStatus();
+
         // Plugins (dialogs, opener)
         case "plugin:dialog|ask":
         case "plugin:dialog|confirm":
@@ -822,6 +841,30 @@ function handle(cmd: string, args: Args): unknown {
     console.warn("[mock] unhandled", cmd, args);
     return null;
 }
+
+// ── Sync (fictional: a demo iPhone, a pairing link to a private address) ──
+
+// The link has the real format (docs/SYNC.md: nfsync:1?id&n&fp&h&p&c) with
+// made-up values; the QR in pairing-qr.svg encodes exactly this string.
+const PAIRING_LINK =
+    "nfsync:1?id=demo-mac-7f3a&n=Demo%20MacBook%20Pro&fp=1458145e68f2ad1db7c946e7b31eb088b42923ec3bdcf596dd2d36170a6bc631&h=192.168.1.24&p=52817&c=K7M2QX9D4T";
+let syncEnabled = true;
+let syncDevices = [
+    {
+        id: "demo-iphone",
+        name: "Demo iPhone",
+        paired_at: new Date(Date.now() - 6 * 86_400_000).toISOString(),
+        last_sync_at: new Date(Date.now() - 4 * 60_000).toISOString(),
+        last_error: null as string | null,
+    },
+];
+const syncStatus = () => ({
+    enabled: syncEnabled,
+    running: syncEnabled && isPro,
+    pro: isPro,
+    devices: isPro ? syncDevices : [],
+    last_synced_at: isPro ? (syncDevices[0]?.last_sync_at ?? null) : null,
+});
 
 // ── Chat from the demo data ──────────────────────────────────────────
 
@@ -863,18 +906,29 @@ function chatAnswer(threadId: string | null, scope: any, message: string) {
         chatThreads.unshift(thread);
     }
     const acme = meetingById("m-acme-sync");
+    const bio = meetingById("m-bio-membrane");
     const user = { id: `msg-${chatMessages.length + 1}`, thread_id: thread.id, role: "user", content: message, citations: [], scope_label: null, created_at: now };
+    // Two canned answers: the BIO 101 exam, or (anything else) the Acme launch.
+    // Citations quote the demo transcripts at their real times.
+    const exam = /quiz|exam|test|bio/i.test(message);
     const assistant = {
         id: `msg-${chatMessages.length + 2}`,
         thread_id: thread.id,
         role: "assistant",
-        content:
-            "You decided to lock the plan names by Friday so billing can start [1], and to send team invites after the first project instead of during setup [2]. The new onboarding will be tested with five beta teams before it's built [3].",
-        citations: [
-            { n: 1, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: ms("12:40"), excerpt: "Let's lock the plan names by Friday so billing can start.", source: "transcript" },
-            { n: 2, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: ms("10:26"), excerpt: "Invites come after the first project, not during setup.", source: "transcript" },
-            { n: 3, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: null, excerpt: "Test the new onboarding with five beta teams before building it", source: "notes" },
-        ],
+        content: exam
+            ? "Dr. Reyes said two things will be tested. Name the four parts of the membrane and what each one does [1], and the sodium-potassium pump: three sodium out, two potassium in for every ATP [2]. The quiz on membranes is next Wednesday [3]."
+            : "You decided to lock the plan names by Friday so billing can start [1], and to send team invites after the first project instead of during setup [2]. The new onboarding will be tested with five beta teams before it's built [3].",
+        citations: exam
+            ? [
+                  { n: 1, meeting_id: "m-bio-membrane", title: bio?.title ?? "", timestamp_ms: ms("15:40"), excerpt: "This will be on the exam: name the four parts of the membrane and what each one does.", source: "transcript" },
+                  { n: 2, meeting_id: "m-bio-membrane", title: bio?.title ?? "", timestamp_ms: ms("38:00"), excerpt: "The sodium-potassium pump moves three sodium ions out and two potassium ions in for every ATP.", source: "transcript" },
+                  { n: 3, meeting_id: "m-bio-membrane", title: bio?.title ?? "", timestamp_ms: ms("47:30"), excerpt: "Quiz on membranes next Wednesday. See you Friday.", source: "transcript" },
+              ]
+            : [
+                  { n: 1, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: ms("3:30"), excerpt: "Let's do that. Plan names are locked by Friday.", source: "transcript" },
+                  { n: 2, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: ms("8:40"), excerpt: "Could we send the invites after the first project instead of during setup?", source: "transcript" },
+                  { n: 3, meeting_id: "m-acme-sync", title: acme?.title ?? "", timestamp_ms: null, excerpt: "Test the new onboarding with five beta teams before building it", source: "notes" },
+              ],
         scope_label: scopeLabel(scope),
         created_at: now,
     };

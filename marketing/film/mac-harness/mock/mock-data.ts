@@ -344,9 +344,39 @@ const health: DemoMeeting = {
 
 const older: DemoMeeting[] = [
     { id: "m-old-design", title: "Design review: settings page", kind: "meeting", notebook: "Acme project", daysAgo: 5, startTime: "14:00", durationMin: 34, plannedMinutes: 60 },
-    { id: "m-old-cells", title: "BIO 101: Intro to cells", kind: "class", notebook: "BIO 101", daysAgo: 6, startTime: "09:00", durationMin: 50, plannedMinutes: 60 },
+    {
+        id: "m-old-cells",
+        title: "BIO 101: Intro to cells",
+        kind: "class",
+        notebook: "BIO 101",
+        daysAgo: 6,
+        startTime: "09:00",
+        durationMin: 50,
+        plannedMinutes: 60,
+        // A few lines so a search ("membrane") finds more than one lecture
+        lines: [
+            { at: "0:20", speaker: "Dr. Reyes", text: "Welcome back. Today we meet the cell, the smallest unit of life." },
+            { at: "8:45", speaker: "Dr. Reyes", text: "Every cell is wrapped in a plasma membrane that separates the inside from the outside." },
+            { at: "22:10", speaker: "Dr. Reyes", text: "Plant cells add a cell wall outside the membrane. Animal cells don't have one." },
+            { at: "41:30", speaker: "Dr. Reyes", text: "Next week we look at the membrane up close: what it's made of and how it works." },
+        ],
+    },
     { id: "m-old-lab", title: "BIO 101: Lab safety", kind: "class", notebook: "BIO 101", daysAgo: 11, startTime: "09:00", durationMin: 45, plannedMinutes: 60 },
-    { id: "m-old-chem", title: "BIO 101: Chemistry of life", kind: "class", notebook: "BIO 101", daysAgo: 13, startTime: "09:00", durationMin: 50, plannedMinutes: 60 },
+    {
+        id: "m-old-chem",
+        title: "BIO 101: Chemistry of life",
+        kind: "class",
+        notebook: "BIO 101",
+        daysAgo: 13,
+        startTime: "09:00",
+        durationMin: 50,
+        plannedMinutes: 60,
+        lines: [
+            { at: "0:15", speaker: "Dr. Reyes", text: "Today: the four big molecules of life. Carbohydrates, lipids, proteins and nucleic acids." },
+            { at: "18:40", speaker: "Dr. Reyes", text: "Lipids don't mix with water, and that's exactly why they make a good membrane." },
+            { at: "33:05", speaker: "Dr. Reyes", text: "Proteins do most of the work in a cell, including moving things across the membrane." },
+        ],
+    },
 ];
 
 export const DEMO_MEETINGS: DemoMeeting[] = [acme, bio, health, ...older];
