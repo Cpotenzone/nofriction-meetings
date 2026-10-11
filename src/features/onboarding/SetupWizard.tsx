@@ -287,7 +287,13 @@ function ModelDownload() {
             await invoke("set_local_whisper_model", { model });
             await invoke("download_whisper_model", { model });
         } catch (e) {
-            setError(`The download failed: ${String(e)}. Check your internet connection; you can try again in Settings → Transcription.`);
+            const msg = String(e);
+            // A checksum failure (local_stt.rs DOWNLOAD_DAMAGED) already says what to do
+            setError(
+                msg.startsWith("The download was damaged")
+                    ? msg
+                    : `The download failed: ${msg}. Check your internet connection; you can try again in Settings → Transcription.`
+            );
         } finally {
             setDownloading(null);
             refresh();
