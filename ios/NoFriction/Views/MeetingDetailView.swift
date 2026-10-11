@@ -6,7 +6,12 @@ struct MeetingDetailView: View {
     @Bindable var meeting: Meeting
     /// Open scrolled to the transcript line spoken at this moment (a Chat citation)
     var jumpTo: Date? = nil
+    /// Open scrolled to this transcript line, highlighted briefly (a search result)
+    var jumpToLine: PersistentIdentifier? = nil
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The line a search opened, highlighted for a moment
+    @State private var highlightedLine: PersistentIdentifier?
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @State private var viewing: Snapshot?
@@ -77,11 +82,21 @@ struct MeetingDetailView: View {
             }
             .onChange(of: jumpTarget) { _, target in
                 guard let target else { return }
-                withAnimation { proxy.scrollTo(target, anchor: .center) }
+                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(target, anchor: .center) }
                 jumpTarget = nil
             }
             .task {
-                // Opened from a citation: let the transcript lay out, then scroll to the moment
+                // Opened from a citation or a search result: let the transcript lay out, then scroll to the moment
+                if let line = jumpToLine, let segment = transcriptRows.first(where: { $0.persistentModelID == line }) {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    jumpTarget = line
+                    highlightedLine = line
+                    AccessibilityNotification.Announcement(
+                        "Showing the line at \(max(0, segment.start.timeIntervalSince(meeting.startedAt)).clock)").post()
+                    try? await Task.sleep(for: .seconds(2))
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.6)) { highlightedLine = nil }
+                    return
+                }
                 guard let jumpTo else { return }
                 try? await Task.sleep(for: .milliseconds(400))
                 jump(jumpTo)
@@ -528,6 +543,15 @@ struct MeetingDetailView: View {
                         let hasWords = RedactionText.tokens(segment.text).contains(where: \.isWord)
                         EditableTranscriptRow(segment: segment, meeting: meeting, selecting: selectingLines,
                                               selected: selectedLines.contains(segment.persistentModelID))
+                            // The line a search opened: highlighted for a moment (drawn around the row, no layout shift)
+                            .background {
+                                if highlightedLine == segment.persistentModelID {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Theme.accent.opacity(0.18))
+                                        .padding(-6)
+                                }
+                            }
+                            .accessibilityIdentifier(jumpToLine == segment.persistentModelID ? "transcript-search-line" : "transcript-line")
                             .onTapGesture {
                                 guard hasWords else { return }
                                 if selectingLines { toggleLine(segment) } else { editingSegment = segment }
