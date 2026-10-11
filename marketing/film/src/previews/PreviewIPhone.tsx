@@ -2,18 +2,22 @@ import React from "react";
 import { P } from "../clips";
 import { Preview, Shot } from "./Preview";
 
-// iPhone 6.9" app preview: 886x1920 portrait, 30 fps, 28.8 s (864 frames).
-// One continuous story in the real app: set up a class, record it, mark a
-// moment, find it in its notebook, read the notes, review.
+// iPhone 6.9" app preview: 886x1920, 30 fps, 28.8 s (864 frames). The
+// redesigned app (Record · Recordings · Chat · Settings), one take after
+// another: the Record sheet, Mark and Stop, a search that opens at the line,
+// a meeting's Notes and follow-up email, a class's study guide, Chat with
+// citations, Sync. Captions in sentence case, no brand names but noFriction.
 const SHOTS: Shot[] = [
   { ...P.iosRecord, label: "Record", caption: "Meetings, classes\nand everyday *life*" },
-  { ...P.iosStart, label: "On-device", caption: "Transcribed on your\niPhone, even *offline*" },
-  { ...P.iosLive },
-  { ...P.iosMark, label: "Marks", caption: "Mark what\n*matters*" },
-  { ...P.iosLibrary, label: "Notebooks", caption: "Every recording\nin its *notebook*" },
-  { ...P.iosLecture, label: "Notes", caption: "Notes in the\nright *style*" },
-  { ...P.iosCards, label: "Review", caption: "Flashcards and a quiz\nfrom any *recording*" },
-  { ...P.iosQuiz },
+  { ...P.iosMark, label: "Mark", caption: "Mark what *matters*,\nthen Stop" },
+  { ...P.iosChip, label: "Recordings", caption: "Search every word.\nJump to the *moment*" },
+  { ...P.iosSearch },
+  { ...P.iosJump },
+  { ...P.iosNotes, label: "Notes", caption: "Notes and a\nfollow-up *email*" },
+  { ...P.iosEmail },
+  { ...P.iosReview, label: "Review guide", caption: "Flashcards and a quiz\nfrom any *recording*" },
+  { ...P.iosChat, label: "Chat", caption: "Ask your recordings.\nAnswers cite the *moment*" },
+  { ...P.iosSync, label: "Sync", caption: "Device to device,\nwith no *server*" },
 ];
 
 const W = 720;

@@ -3,8 +3,8 @@
 //   mac/     mac-harness/capture.mjs (the 3.7 Mac UI, demo data)
 //   stills/  the 1.0.1 App Store screenshots (iPhone 6.9", Apple Watch 46 mm),
 //            copied in by scripts/link-media.mjs
-//   ios/, watch/  capture/ios/capture.sh (pre-redesign iOS UI; only the
-//            iPhone app preview uses them, see README)
+//   ios/, watch/  capture/ios/capture.sh (the iOS 1.0.2 UI in the Simulator;
+//            only the iPhone app preview uses them, see README)
 // The cut notes below are from the captures; re-check them after a re-capture.
 import type { Zoom } from "./components/Screen";
 
@@ -45,15 +45,24 @@ export const CLIPS = {
 /** App preview shots: footage, in-point and length in frames (30 fps). */
 type PUse = Use & { dur: number };
 export const P = {
-  // iPhone preview (pre-redesign footage; not rendered by default, see README)
-  iosRecord: { clip: ios("ios-01-record-sheet"), from: 1.0, dur: 186 },
-  iosStart: { clip: ios("ios-01b-record-start"), from: 0.4, dur: 72 },
-  iosLive: { clip: ios("ios-02b-live-class"), from: 2.0, dur: 96 },
-  iosMark: { clip: ios("ios-03-mark"), from: 2.0, dur: 126 },
-  iosLibrary: { clip: ios("ios-04-library"), from: 1.0, dur: 81 },
-  iosLecture: { clip: ios("ios-05-lecture"), from: 1.3, dur: 90 },
-  iosCards: { clip: ios("ios-06-review"), from: 3.0, dur: 96 },
-  iosQuiz: { clip: ios("ios-06-review"), from: 6.3, dur: 117 },
+  // iPhone preview: 864 frames (capture/ios/capture.sh iphone, the 1.0.2 app)
+  // ios-01-record-sheet  1.0 sheet · 2.0 Class · 3.5 60 min · 4.5 BIO 101 · 6.5 Record · 7.0 recording · 8.0 first words
+  // ios-03-mark          0-2.5 lines arriving · 2.5 Mark this moment (★ Important) · 4.0 On the test · 6.5 Stop → Ready
+  // ios-04-library       1.0 BIO 101 chip · 3.0 search · 4.5-7.5 "exam", letter by letter → the matching line · 12.5 tap → 13.5 the line, highlighted
+  // ios-08-meeting       1.0 Notes with Make again · Follow-up email · 3.0 scroll · 6.0 tap · 6.5 the email
+  // ios-06-review        1.0 study guide · 3.0 flashcard · 3.5 flipped · 5.0 Practice quiz · 6.0 answered
+  // ios-09-chat          1.0 a suggested question · 2.0 the cited answer · 4.5 a citation opens Lecture 7
+  // ios-10-sync          1.0 Sync with your Mac · 1.5 the pairing screen
+  iosRecord: { clip: ios("ios-01-record-sheet"), from: 0.7, rate: 1.75, dur: 132 },
+  iosMark: { clip: ios("ios-03-mark"), from: 0.8, rate: 1.45, dur: 126 },
+  iosChip: { clip: ios("ios-04-library"), from: 0.6, rate: 1.5, dur: 48 },
+  iosSearch: { clip: ios("ios-04-library"), from: 4.3, rate: 2.0, dur: 60 },
+  iosJump: { clip: ios("ios-04-library"), from: 12.2, dur: 66 },
+  iosNotes: { clip: ios("ios-08-meeting"), from: 1.0, dur: 42 },
+  iosEmail: { clip: ios("ios-08-meeting"), from: 2.9, rate: 1.7, dur: 90 },
+  iosReview: { clip: ios("ios-06-review"), from: 1.0, rate: 1.6, dur: 120 },
+  iosChat: { clip: ios("ios-09-chat"), from: 0.7, rate: 1.25, dur: 102 },
+  iosSync: { clip: ios("ios-10-sync"), from: 0.4, dur: 78 },
   // Mac preview: 864 frames
   macRecord: { clip: mac("mac-01-record"), from: 0.8, dur: 165 },
   macLive: { clip: mac("mac-02-mark-stop"), from: 0.2, dur: 48 },
