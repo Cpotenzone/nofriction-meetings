@@ -42,7 +42,7 @@ const Caption: React.FC<{ text: string; label?: string; size: number; exitAt?: n
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: labelSize * 0.9 }}>
       {label && (
-        <div style={{ fontFamily: F.mono, fontSize: labelSize, letterSpacing: "0.22em", textTransform: "uppercase", color: C.yellow, opacity: lo }}>{label}</div>
+        <div style={{ fontFamily: F.sans, fontWeight: 600, fontSize: labelSize * 1.3, letterSpacing: "-0.005em", color: C.yellow, opacity: lo }}>{label}</div>
       )}
       <Reveal text={text} at={2} stagger={2} dur={18} size={size} align="center" exitAt={exitAt} lineHeight={1.08} />
     </div>

@@ -103,7 +103,7 @@ export const Reveal: React.FC<Props> = ({
   );
 };
 
-/** Small uppercase mono label, the app's HUD style. */
+/** Small sentence-case label (DESIGN.md: no tracked all-caps). */
 export const Label: React.FC<{
   children: React.ReactNode;
   at?: number;
@@ -116,11 +116,10 @@ export const Label: React.FC<{
   return (
     <div
       style={{
-        fontFamily: F.mono,
-        fontSize: size,
-        fontWeight: 500,
-        letterSpacing: "0.2em",
-        textTransform: "uppercase",
+        fontFamily: F.sans,
+        fontSize: size * 1.25,
+        fontWeight: 600,
+        letterSpacing: "-0.005em",
         color,
         opacity: p,
         transform: `translateY(${(1 - p) * 10}px)`,

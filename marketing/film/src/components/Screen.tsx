@@ -30,7 +30,7 @@ export function footageSeconds(clip: string): number {
  * `clip` is relative to public/footage, e.g. "ios/ios-02-live.mp4"; a .png
  * shows a still.
  */
-export type Zoom = { scale: number; x: number; y: number; at?: number; dur?: number };
+export type Zoom = { scale: number; x: number; y: number; at?: number; dur?: number; /** frame where it eases back out to 1 (over `dur`) */ out?: number };
 
 export const Footage: React.FC<{
   clip: string;
@@ -62,11 +62,14 @@ export const Footage: React.FC<{
   const video = <OffthreadVideo src={staticFile(`footage/${clip}`)} trimBefore={startFrame} playbackRate={rate} muted style={fill} />;
   const body = frame >= last ? <Freeze frame={last}>{video}</Freeze> : video;
   if (!zoom) return body;
-  const z = interpolate(frame, [zoom.at ?? 0, (zoom.at ?? 0) + (zoom.dur ?? 45)], [1, zoom.scale], {
+  const zd = zoom.dur ?? 45;
+  const zin = interpolate(frame, [zoom.at ?? 0, (zoom.at ?? 0) + zd], [1, zoom.scale], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: easeInOut,
   });
+  const zout = zoom.out === undefined ? 0 : interpolate(frame, [zoom.out, zoom.out + zd], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: easeInOut });
+  const z = zin + (1 - zin) * zout;
   return (
     <div style={{ width: "100%", height: "100%", overflow: "hidden" }}>
       <div style={{ width: "100%", height: "100%", transform: `scale(${z})`, transformOrigin: `${zoom.x * 100}% ${zoom.y * 100}%` }}>{body}</div>

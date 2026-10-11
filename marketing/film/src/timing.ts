@@ -5,20 +5,21 @@ export const FPS = 30;
 export const BEAT = 18;
 export const BAR = 72;
 
-/** Hero film scenes, in bars (start, length). Total 26 bars = 62.4 s. */
+/** Hero film scenes, in bars (start, length). Total 14 bars = 33.6 s.
+ *  Keep in step with filmArrangement() in scripts/make-score.mjs. */
 export const FILM_SCENES = {
-  moments: { from: 0, bars: 4 },
-  record: { from: 4, bars: 3 },
-  transcribe: { from: 7, bars: 3 },
-  mark: { from: 10, bars: 3 },
-  rewind: { from: 13, bars: 4 },
-  notes: { from: 17, bars: 3 },
-  offline: { from: 20, bars: 3 },
-  end: { from: 23, bars: 3 },
+  record: { from: 0, bars: 2 },
+  mark: { from: 2, bars: 2 },
+  rewind: { from: 4, bars: 2 },
+  notes: { from: 6, bars: 2 },
+  chat: { from: 8, bars: 2 },
+  sync: { from: 10, bars: 1 },
+  privacy: { from: 11, bars: 1 },
+  end: { from: 12, bars: 2 },
 } as const;
 
-export const FILM_BARS = 26;
-export const FILM_FRAMES = FILM_BARS * BAR; // 1872
+export const FILM_BARS = 14;
+export const FILM_FRAMES = FILM_BARS * BAR; // 1008
 
 /** App previews: 12 bars = 28.8 s (Apple: 15–30 s). */
 export const PREVIEW_BARS = 12;
