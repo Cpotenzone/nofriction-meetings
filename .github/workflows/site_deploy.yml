@@ -10,6 +10,7 @@ on:
     paths:
       - "site/**"
       - "infra/site/**"
+      - "marketing/out/**"
       - ".github/workflows/site_deploy.yml"
   workflow_dispatch:
 
@@ -55,6 +56,19 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           role-session-name: nofriction-site-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch the homepage film (release asset)
+        if: steps.cfg.outputs.configured == 'true'
+        # hero.mp4 / hero.webm are too large for git; they live on the
+        # `site-media` release. deploy.sh copies marketing/out/hero.* into
+        # site/video/. Replace them with: gh release upload site-media <file> --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p marketing/out
+          gh release download site-media --repo "$GITHUB_REPOSITORY" --pattern 'hero.*' --dir marketing/out --clobber \
+            || echo "::warning title=No film::site-media release missing; the site deploys without updating video/"
+          ls -la marketing/out || true
 
       - name: Deploy
         if: steps.cfg.outputs.configured == 'true'

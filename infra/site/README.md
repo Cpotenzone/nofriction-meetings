@@ -283,3 +283,16 @@ header button says "Download". Commit to `main`; the workflow deploys it.
 - No trackers, no cookies, no analytics scripts on the site. CloudFront
   standard logging can be turned on to an S3 bucket if traffic numbers are
   ever needed; the website privacy policy already covers server access logs.
+
+
+## Homepage film
+
+`hero.mp4` and `hero.webm` are too large for git. They are assets on the
+`site-media` GitHub release, and the deploy workflow downloads them into
+`marketing/out/` before `deploy.sh` copies them to `site/video/`. To publish a
+new film, render it (`marketing/film/README.md`), then run:
+
+```bash
+gh release upload site-media marketing/out/hero.mp4 marketing/out/hero.webm --clobber -R Cpotenzone/nofriction-meetings
+gh workflow run site_deploy.yml -R Cpotenzone/nofriction-meetings
+```
