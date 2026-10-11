@@ -64,7 +64,7 @@ export const EndCard: React.FC<{ fadeOut?: boolean; compact?: boolean }> = ({ fa
           <div style={{ fontFamily: F.mono, fontWeight: 500, fontSize: compact ? 30 * k * 1.6 : 32, color: C.yellow, padding: "14px 34px", border: "1px solid rgba(250,204,21,0.45)", borderRadius: 999, background: "rgba(250,204,21,0.06)", letterSpacing: "0.04em" }}>
             nofriction.io
           </div>
-          <div style={{ fontFamily: F.mono, fontSize: compact ? 16 * k * 1.6 : 18, letterSpacing: "0.24em", color: C.text3, textTransform: "uppercase" }}>
+          <div style={{ fontFamily: F.sans, fontWeight: 500, fontSize: compact ? 22 * k * 1.6 : 24, color: C.text2 }}>
             iPhone · iPad · Mac · Apple Watch
           </div>
         </div>

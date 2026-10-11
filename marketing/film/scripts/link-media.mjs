@@ -7,12 +7,27 @@
 // public/audio   -> ../../out/audio     (scripts/make-score.mjs output)
 
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const FILM = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(FILM, "..", "out");
+const SHOTS = join(FILM, "..", "..", "ios", "AppStore", "screenshots");
+
+// The iPhone and Apple Watch App Store screenshots (1.0.1, the redesigned
+// apps) as stills for the film: out/footage/stills/
+const STILLS = {
+  "iphone-01-record.png": join(SHOTS, "iphone-6.9", "01-record.png"),
+  "iphone-06-meetings.png": join(SHOTS, "iphone-6.9", "06-meetings.png"),
+  "watch-02-record.png": join(SHOTS, "watch-46mm", "02-record.png"),
+  "watch-04-class.png": join(SHOTS, "watch-46mm", "04-class.png"),
+};
+mkdirSync(join(OUT, "footage", "stills"), { recursive: true });
+for (const [name, src] of Object.entries(STILLS)) {
+  if (existsSync(src)) copyFileSync(src, join(OUT, "footage", "stills", name));
+  else console.warn(`missing still: ${relative(join(FILM, "..", ".."), src)}`);
+}
 
 for (const name of ["footage", "audio"]) {
   const target = join(OUT, name);

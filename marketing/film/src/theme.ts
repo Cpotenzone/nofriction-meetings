@@ -1,5 +1,3 @@
-import { loadFont as loadInter } from "@remotion/google-fonts/Inter";
-import { loadFont as loadMono } from "@remotion/google-fonts/JetBrainsMono";
 import { Easing } from "remotion";
 
 // The app's own tokens: DESIGN.md / src/App.css (Mac) and Theme in
@@ -22,12 +20,13 @@ export const C = {
   ai: "#5a8ce6",
 };
 
-const inter = loadInter("normal", { weights: ["400", "500", "600", "700", "800"], subsets: ["latin"] });
-const mono = loadMono("normal", { weights: ["400", "500", "700"], subsets: ["latin"] });
-
+// The app's own font stacks (DESIGN.md), resolved from the fonts installed
+// on the rendering Mac: nothing is fetched at render time. Install Inter
+// (SIL OFL, rsms.me/inter) for the exact look; without it the type falls
+// back to the system font. Mono falls back to SF Mono / Menlo, as in the app.
 export const F = {
-  sans: inter.fontFamily,
-  mono: mono.fontFamily,
+  sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif",
+  mono: "'JetBrains Mono', 'SF Mono', Menlo, monospace",
 };
 
 /** Expo-out: fast in, long settle. Used for most entrances. */

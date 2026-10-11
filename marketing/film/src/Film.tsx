@@ -1,27 +1,23 @@
 import React from "react";
 import { AbsoluteFill, Html5Audio, Sequence, staticFile } from "remotion";
-import { S1Moments } from "./scenes/S1Moments";
-import { S2Record } from "./scenes/S2Record";
-import { S3Transcribe } from "./scenes/S3Transcribe";
-import { S4Mark } from "./scenes/S4Mark";
-import { S5Rewind } from "./scenes/S5Rewind";
-import { S6Notes } from "./scenes/S6Notes";
-import { S7Offline } from "./scenes/S7Offline";
 import { S8End } from "./scenes/S8End";
+import { SChat, SMark, SNotes, SPrivacy, SRecord, SRewind, SSync } from "./scenes/Scenes";
 import { BAR, FILM_SCENES } from "./timing";
 
+// Storyboard (3.7 Mac UI · 1.0.1 iPhone and Watch):
+// record → mark (then Stop) → rewind → notes and review guide → chat → sync → privacy → end card
 const SCENES: { key: keyof typeof FILM_SCENES; C: React.FC }[] = [
-  { key: "moments", C: S1Moments },
-  { key: "record", C: S2Record },
-  { key: "transcribe", C: S3Transcribe },
-  { key: "mark", C: S4Mark },
-  { key: "rewind", C: S5Rewind },
-  { key: "notes", C: S6Notes },
-  { key: "offline", C: S7Offline },
+  { key: "record", C: SRecord },
+  { key: "mark", C: SMark },
+  { key: "rewind", C: SRewind },
+  { key: "notes", C: SNotes },
+  { key: "chat", C: SChat },
+  { key: "sync", C: SSync },
+  { key: "privacy", C: SPrivacy },
   { key: "end", C: S8End },
 ];
 
-/** The hero film: 1920x1080, 62.4 s. Tells the story in type; sound optional. */
+/** The hero film: 1920x1080, 33.6 s. Tells the story in type; sound optional. */
 export const Film: React.FC<{ music: boolean }> = ({ music }) => (
   <AbsoluteFill style={{ background: "#050505" }}>
     {SCENES.map(({ key, C }) => (

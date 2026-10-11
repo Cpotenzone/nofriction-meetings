@@ -2,14 +2,17 @@ import React from "react";
 import { P } from "../clips";
 import { Preview, Shot } from "./Preview";
 
-// Mac app preview: 1920x1080, 30 fps, 28.8 s (864 frames).
+// Mac app preview: 1920x1080, 30 fps, 28.8 s (864 frames). The 3.7 window,
+// one take after another: record a class, mark it, rewind a meeting, the
+// study guide, Chat, Sync.
 const SHOTS: Shot[] = [
-  { ...P.macHome, label: "Works offline", caption: "Nothing leaves this Mac unless you *want* it to" },
   { ...P.macRecord, label: "Record", caption: "Meetings, classes and everyday *life*" },
   { ...P.macLive, label: "On-device", caption: "Transcribed right on your *Mac*" },
-  { ...P.macMark, label: "Marks", caption: "Mark what *matters*, even from another app" },
+  { ...P.macMark, label: "Marks", caption: "Mark what *matters*" },
   { ...P.macRewind, label: "Rewind", caption: "Every screen, next to what was *said*" },
-  { ...P.macReview, label: "Review", caption: "Notes and a review guide from any *recording*" },
+  { ...P.macReview, label: "Review guide", caption: "Notes and a review guide from any *recording*" },
+  { ...P.macChat, label: "Chat", caption: "Ask your recordings. Answers cite the *moment*" },
+  { ...P.macSync, label: "Sync", caption: "iPhone and Mac in sync, with no *server*" },
 ];
 
 const W = 1568;

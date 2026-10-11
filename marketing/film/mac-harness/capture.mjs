@@ -1,13 +1,11 @@
-// Films the Mac app's real UI (running in the harness with mocked data) for
-// the launch film, and takes the Mac App Store screenshots.
+// Films the Mac app's real UI (the 3.7 window: Record · Recordings · Chat,
+// running in the harness with mocked data) for the launch film and the Mac
+// App Store app preview. The screenshots are capture-store-3.7.mjs.
 //
-//   cd marketing/film/mac-harness
-//   npm install            # playwright 1.58.2 (uses the cached Chromium 1208)
-//   node make-frames.mjs   # once: renders the fictional slides to frames/
-//   node capture.mjs                       # App Store stills, then every clip
-//   node capture.mjs stills                # App Store stills only
-//   node capture.mjs clips                 # every clip (video + 4K still)
-//   node capture.mjs mac-01-rewind mac-05-mark   # some clips
+//   npm --prefix marketing/film/mac-harness install   # playwright 1.58.2 (cached Chromium 1208)
+//   node marketing/film/mac-harness/make-frames.mjs   # once: the fictional slides to frames/
+//   node marketing/film/mac-harness/capture.mjs                  # every clip (video + 4K still)
+//   node marketing/film/mac-harness/capture.mjs mac-03-rewind    # some clips
 //
 // The script starts the harness's Vite server itself (repo root
 // node_modules) on a free port and stops it at the end; set HARNESS_URL to
@@ -22,7 +20,6 @@
 //   FILM_DEBUG=1         log action times and frame gaps
 //
 // Output
-//   ../stills/mac/*.png                  App Store screenshots, 2880x1800
 //   ../../out/footage/mac/<clip>.mp4     H.264 yuv420p, 30 fps CFR, CRF 15, 3840x2160
 //   ../../out/footage/mac/<clip>.png     4K still of the clip's key state
 //
@@ -49,7 +46,6 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../../..");
 const CLIPS_OUT = path.join(REPO, "marketing/out/footage/mac");
-const STILLS_OUT = path.join(REPO, "marketing/film/stills/mac");
 const RAW = path.join(os.tmpdir(), "nofriction-film-raw");
 
 // Film: a 1440x810 window rendered at 3840x2160
@@ -57,8 +53,6 @@ const RAW = path.join(os.tmpdir(), "nofriction-film-raw");
 const HD = process.env.FILM_RES === "1080";
 const FILM = { w: 1440, h: 810, scale: HD ? 4 / 3 : 8 / 3 };
 const OUT = HD ? { w: 1920, h: 1080 } : { w: 3840, h: 2160 };
-// App Store (Mac): 16:10, 2880x1800
-const STORE = { w: 1440, h: 900, scale: 2 };
 // Slow motion while filming (time.ts): page time runs this many times
 // slower while the camera rolls, the script acts this much slower, and the
 // frame times are mapped back. 10x keeps 4K smooth on a busy Mac (a loaded
@@ -232,7 +226,7 @@ class Recorder {
 class StopShot extends Error {}
 
 class Shot {
-    /** mode: "video" (record), "still" (4K PNG at the key state), "store" (App Store PNG) */
+    /** mode: "video" (record) or "still" (4K PNG at the key state) */
     constructor(page, name, mode, cdp, url, out = null) {
         this.page = page;
         this.name = name;
@@ -248,8 +242,8 @@ class Shot {
     }
 
     async load() {
-        await this.page.goto(this.mode === "store" ? this.url : `${this.url}?film=1`, { waitUntil: "networkidle" });
-        await this.page.waitForSelector(".agency-layout", { timeout: 20000 });
+        await this.page.goto(`${this.url}?film=1`, { waitUntil: "networkidle" });
+        await this.page.waitForSelector(".topbar", { timeout: 20000 });
         await this.page.evaluate(() => document.fonts.ready);
         await this.page.mouse.move(this.mouse.x, this.mouse.y);
         await this.wait(600);
@@ -412,30 +406,31 @@ class Shot {
 }
 
 // Common setups (instant, before recording)
+async function mode(s, label) {
+    await s.go(`.topbar__mode:has-text("${label}")`);
+    await s.wait(300);
+}
+
 async function openRecording(s, title, tab = null) {
-    await s.go('button.mode-btn:has-text("REWIND")');
-    await s.go(`.meeting-item:has-text("${title}")`);
+    await mode(s, "Recordings");
+    await s.go(s.page.locator(".meeting-item", { hasText: title }).first());
     await s.wait(600);
-    if (tab) await s.go(`button[role=tab]:has-text("${tab}")`);
+    if (tab) await s.go(s.page.locator(".recording-detail > .deck-tabs .deck-tab", { hasText: tab }).first());
     await s.wait(500);
 }
 
-async function rewindReady(s, collapseMarkers = true) {
-    await s.imagesLoaded(".rewind-thumbnails .thumbnail img", 7);
+/** Every screen of the open recording loaded and decoded before the camera rolls. */
+async function rewindReady(s) {
+    await s.imagesLoaded(".rewind-thumbnails .thumbnail img", 6);
     await s.imagesLoaded(".rewind-frame-preview img", 1);
-    // Show every screen once so the big images are loaded and decoded
-    // before the camera rolls
     const n = await s.page.locator(".rewind-thumbnails .thumbnail").count();
     for (let i = n - 1; i >= 0; i--) {
         await s.page.locator(".rewind-thumbnails .thumbnail").nth(i).click();
         await s.imagesLoaded(".rewind-frame-preview img", 1);
         await s.wait(120);
     }
+    await s.page.locator(".rewind-thumbnails .thumbnail").first().click();
     await s.wait(500);
-    if (collapseMarkers) {
-        // More room for the transcript: the marks stay as pins and inline chips
-        await s.go(".study-markers__toggle");
-    }
 }
 
 /** Scroll the transcript so its first visible line starts cleanly at the
@@ -452,7 +447,6 @@ async function alignTranscript(s) {
         const fits = [...panel.querySelectorAll(".transcript-entry")]
             .map((e) => top(e) - 8)
             .filter((t) => t <= aTop && t >= aBottom + 8 - panel.clientHeight);
-        // The highlighted line lowest in view: the lines before it give context
         if (fits.length) panel.scrollTop = Math.min(...fits);
     });
     await s.wait(300);
@@ -461,62 +455,27 @@ async function alignTranscript(s) {
 const thumb = (s, i) => s.page.locator(".rewind-thumbnails .thumbnail").nth(i);
 const pin = (s, kind) => s.page.locator(`.study-pins .study-pin.is-${kind}`).first();
 
-// ── Film clips ──────────────────────────────────────────────────────────
+/** A point on the Rewind timeline slider, `f` (0..1) along it. */
+async function sliderAt(s, f) {
+    const b = await s.page.locator(".timeline-slider").boundingBox();
+    // the thumb's travel is inset by its radius (about 8 px)
+    return { x: b.x + 8 + (b.width - 16) * f, y: b.y + b.height / 2 };
+}
+
+// ── Film clips (the 3.7 window: Record · Recordings · Chat) ─────────────
+//
+// Cut notes (s) are in ../src/clips.ts.
 
 const CLIPS = {
-    // The signature shot: screenshots in sync with the transcript, marks on the timeline
-    async "mac-01-rewind"(s) {
+    // Record → What is it? Class · 60 min · BIO 101 → Start recording → the
+    // capture bar, the first words and screens arriving
+    async "mac-01-record"(s) {
         await s.load();
-        await openRecording(s, "Acme project sync");
-        await rewindReady(s);
-        await s.moveTo(".rewind-frame-preview", 1);
-        await s.record();
-        await s.hold(700);
-        await s.click(thumb(s, 1), { move: 380 }); // roadmap, 1:46
-        await s.hold(1000);
-        await s.click(pin(s, "important"), { move: 380 }); // ★ 3:32: the decision, annotated slide
-        await s.hold(1400);
-        if (s.mode !== "video") await alignTranscript(s);
-        await s.key();
-        await s.click(thumb(s, 3), { move: 380 }); // sign-ups chart, 4:36
-        await s.hold(1000);
-        await s.click(pin(s, "question"), { move: 380 }); // ? 8:42: beta feedback
-        await s.hold(1200);
-        await s.click(pin(s, "test"), { move: 380 }); // ✎ Follow up 15:51: launch checklist
-        await s.hold(1900);
-        await s.cut();
-    },
-
-    // Recording: lines streaming in, captures and live insights arriving
-    async "mac-02-live"(s) {
-        await s.load();
+        await s.moveTo({ x: 720, y: 640 }, 1);
         await s.slowmo();
-        await s.harness("startLive", "meeting", { prefill: 3, backdateSec: 42, duration: "60" });
-        await s.wait(1300);
-        await s.moveTo({ x: 1200, y: 760 }, 1);
         await s.record();
-        await s.hold(9300);
-        await s.key();
-        await s.cut();
-    },
-
-    // The idle home screen: "Ready when you are" and the privacy promise
-    async "mac-03-home"(s) {
-        await s.load();
-        await s.moveTo({ x: 720, y: 790 }, 1);
-        await s.record();
-        await s.key();
-        await s.hold(5000);
-        await s.cut();
-    },
-
-    // Record → What is it? Class · 60 min · BIO 101 → Start
-    async "mac-04-record-picker"(s) {
-        await s.load();
-        await s.moveTo({ x: 720, y: 560 }, 1);
-        await s.record();
-        await s.hold(500);
-        await s.click(".lt-empty__action", { move: 340 });
+        await s.hold(600);
+        await s.click(".lt-empty__action", { move: 380 });
         await s.hold(700);
         await s.click('.rpick__kind:has-text("Class")', { move: 320 });
         await s.hold(350);
@@ -529,170 +488,182 @@ const CLIPS = {
         await s.hold(600);
         await s.key();
         await s.click(".rpick__go", { move: 380 });
-        await s.hold(1900);
+        await s.moveTo({ x: 1100, y: 700 }, 600);
+        await s.hold(5200);
         await s.cut();
     },
 
-    // While recording a class: Mark → On the test → a note
-    async "mac-05-mark"(s) {
+    // While recording a class: Mark → On the test → a note → Stop → the
+    // recording opens in Recordings, its Rewind with the new mark
+    async "mac-02-mark-stop"(s) {
         await s.load();
         // 4 lines in; "Write that one down. It will be on the exam." is being said
         await s.slowmo();
         await s.harness("startLive", "class", { prefill: 4, backdateSec: 150, duration: "60" });
         await s.wait(1300);
-        await s.moveTo({ x: 1100, y: 600 }, 1);
+        await s.moveTo({ x: 1000, y: 500 }, 1);
         await s.record();
-        await s.hold(900);
+        await s.hold(1400);
         await s.click(".study-mark__btn", { move: 450 });
-        await s.hold(1000);
-        await s.click(".study-mark__card .study-kind.is-test", { move: 380 });
-        await s.hold(600);
-        await s.click(".study-mark__card .study-input", { move: 300 });
-        await s.type("Pump: 3 Na out, 2 K in", 60);
         await s.hold(900);
+        await s.click(".study-mark__card .study-kind.is-test", { move: 380 });
+        await s.hold(500);
+        await s.click(".study-mark__card .study-input", { move: 300 });
+        await s.type("Pump: 3 Na out, 2 K in", 55);
+        await s.hold(700);
         await s.key();
         await s.page.keyboard.press("Enter");
-        await s.hold(1000);
+        await s.hold(1400);
+        await s.click(".topbar__stop", { move: 520 });
+        await s.hold(1500);
+        await s.click(pin(s, "test"), { move: 600 });
+        await s.hold(2200);
         await s.cut();
     },
 
-    // The lecture's Study guide: flip a flashcard, answer a quiz question
-    async "mac-06-review"(s) {
+    // The signature shot: Recordings → a meeting → Rewind, scrubbing the
+    // timeline: every screen in step with what was said, the marks as pins
+    async "mac-03-rewind"(s) {
         await s.load();
-        await openRecording(s, "BIO 101: Cell Biology", "REVIEW");
-        await s.page.waitForSelector(".study-tabs");
-        await s.moveTo({ x: 900, y: 700 }, 1);
+        await openRecording(s, "Acme project sync");
+        await rewindReady(s);
+        await s.moveTo({ x: 700, y: 420 }, 1);
         await s.record();
-        await s.hold(1000);
-        await s.click('.study-tabs button:has-text("Flashcards")', { move: 450 });
-        await s.hold(700);
-        await s.click(".study-card", { move: 420 });
-        await s.hold(1300);
-        await s.click('.study-tabs button:has-text("Practice quiz")', { move: 450 });
+        await s.hold(600);
+        // drag the playhead from 0:10 to the roadmap, past the decision
+        const a = await sliderAt(s, 0.01);
+        await s.moveTo(a, 450);
+        await s.wait(80);
+        await s.page.mouse.down();
+        const b = await sliderAt(s, 0.17);
+        const steps = 40;
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            await s.page.mouse.move(a.x + (b.x - a.x) * e, a.y);
+            await s.wait(1400 / steps);
+        }
+        await s.page.mouse.up();
+        s.mouse = b;
         await s.hold(900);
-        await s.click(s.page.locator(".study-choice").nth(1), { move: 420 });
-        await s.hold(1700);
+        await s.click(pin(s, "important"), { move: 380 }); // ★ 3:32 the decision, annotated slide
+        await s.hold(1500);
+        if (s.mode !== "video") await alignTranscript(s);
         await s.key();
+        await s.click(thumb(s, 3), { move: 420 }); // sign-ups chart, 4:36
+        await s.hold(1000);
+        await s.click(pin(s, "question"), { move: 420 }); // ? beta feedback
+        await s.hold(1300);
         await s.cut();
     },
 
-    // Meeting notes written on this Mac: summary, decisions, action items
-    async "mac-07-notes"(s) {
+    // A meeting's Notes: summary, decisions, action items, scrolled
+    async "mac-04-notes"(s) {
         await s.load();
-        await openRecording(s, "Acme project sync", "NOTES");
-        await s.page.waitForSelector(".mn-notes");
-        const scroller = await s.page.evaluate(() => {
-            let el = document.querySelector(".mn-notes");
+        await openRecording(s, "Acme project sync", "Notes");
+        await s.page.waitForSelector(".mn-notes, .mn-section", { timeout: 10000 });
+        await s.page.evaluate(() => {
+            let el = document.querySelector(".mn-notes, .mn-section");
             while (el && !(el.scrollHeight > el.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
-            if (!el) return null;
-            el.setAttribute("data-film-scroll", "1");
-            return el.className;
+            el?.setAttribute("data-film-scroll", "1");
         });
-        await s.moveTo({ x: 900, y: 500 }, 1);
+        await s.moveTo({ x: 1000, y: 500 }, 1);
         await s.record();
         await s.key();
-        await s.hold(1100);
-        if (scroller) await s.scrollTo("[data-film-scroll]", "end", 3200);
+        await s.hold(1500);
+        if (await s.page.locator("[data-film-scroll]").count()) await s.scrollTo("[data-film-scroll]", "end", 3000);
         await s.hold(1200);
         await s.cut();
     },
 
-    // The library, filtered by notebook
-    async "mac-08-library"(s) {
+    // The lecture's Study guide: flip a flashcard, answer a quiz question
+    async "mac-05-review"(s) {
         await s.load();
-        await s.go('button.mode-btn:has-text("REWIND")');
+        await openRecording(s, "BIO 101: Cell Biology", "Study");
+        await s.page.waitForSelector(".study-tabs");
+        await s.moveTo({ x: 900, y: 700 }, 1);
+        await s.record();
+        await s.hold(900);
+        await s.click('.study-tabs .deck-tab:has-text("Flashcards")', { move: 450 });
+        await s.hold(700);
+        await s.click(".study-card", { move: 420 });
+        await s.hold(1300);
+        await s.click('.study-tabs .deck-tab:has-text("Practice quiz")', { move: 450 });
+        await s.hold(900);
+        await s.click(s.page.locator(".study-choice").nth(1), { move: 420 });
+        await s.hold(1900);
+        await s.key();
+        await s.cut();
+    },
+
+    // Chat: ask across recordings; the answer cites the moments
+    async "mac-06-chat"(s) {
+        await s.load();
+        await mode(s, "Chat");
+        await s.page.waitForSelector("textarea");
+        await s.moveTo({ x: 720, y: 600 }, 1);
+        await s.slowmo();
+        await s.record();
+        await s.hold(600);
+        await s.click(s.page.locator("textarea").first(), { move: 450 });
+        await s.type("What's going to be on the BIO 101 exam?", 45);
+        await s.hold(300);
+        await s.page.keyboard.press("Enter");
+        await s.page.waitForSelector(".rc-sources__toggle", { timeout: 10000 * s.k });
+        await s.hold(1300);
+        await s.click(s.page.locator(".rc-sources__toggle").last(), { move: 450 });
+        await s.hold(2200);
+        await s.key();
+        await s.cut();
+    },
+
+    // Settings → Sync → Pair a device: the code the iPhone scans
+    async "mac-07-sync"(s) {
+        await s.load();
+        await s.moveTo({ x: 900, y: 500 }, 1);
+        await s.slowmo();
+        await s.record();
+        await s.hold(500);
+        await s.click(".topbar__gear", { move: 450 });
+        await s.hold(600);
+        await s.click(s.page.locator(".settings__nav-item", { hasText: /^Sync$/ }).first(), { move: 450 });
+        await s.hold(800);
+        await s.click('button:has-text("Pair a device")', { move: 450 });
+        await s.page.waitForSelector(".sync-qr svg", { timeout: 10000 * s.k });
+        await s.hold(2400);
+        await s.key();
+        await s.cut();
+    },
+
+    // The idle Record view: "Ready when you are" and the privacy promise
+    async "mac-08-home"(s) {
+        await s.load();
+        await s.moveTo({ x: 720, y: 790 }, 1);
+        await s.record();
+        await s.key();
+        await s.hold(5000);
+        await s.cut();
+    },
+
+    // Recordings filtered to a notebook
+    async "mac-09-notebooks"(s) {
+        await s.load();
+        await mode(s, "Recordings");
         await s.page.waitForSelector(".meeting-item");
         await s.wait(800); // the view's fade-in
-        await s.moveTo({ x: 700, y: 600 }, 1);
+        await s.moveTo({ x: 300, y: 600 }, 1);
         await s.record();
-        await s.hold(1100);
-        await s.click('.class-filter .class-chip:has-text("BIO 101")', { move: 600 });
-        await s.hold(2400);
+        await s.hold(900);
+        await s.click(s.page.locator(".class-filter .class-chip", { hasText: "BIO 101" }).first(), { move: 600 });
+        await s.hold(1200);
+        await s.click(s.page.locator(".meeting-item", { hasText: "BIO 101: Cell Biology" }).first(), { move: 500 });
+        await s.hold(2200);
         await s.key();
         await s.cut();
-    },
-
-    // Links: a site said in the meeting → jump to that moment in Rewind
-    async "mac-09-links"(s) {
-        await s.load();
-        await openRecording(s, "Acme project sync", "LINKS");
-        await s.page.waitForSelector(".ml-row");
-        await s.moveTo({ x: 900, y: 650 }, 1);
-        await s.record();
-        await s.key();
-        await s.hold(1300);
-        await s.click('.ml-link-btn:has-text("first said at 5:48")', { move: 520 });
-        await s.hold(2400);
-        await s.cut();
-    },
-};
-
-// ── App Store screenshots (1440x900 @2x) ────────────────────────────────
-
-const STORE_SHOTS = {
-    async "01-rewind"(s) {
-        await s.load();
-        await openRecording(s, "Acme project sync");
-        await rewindReady(s);
-        await s.page.locator(".study-pins .study-pin.is-important").click();
-        await sleep(1200);
-        await s.page.mouse.move(1000, 500);
-        await alignTranscript(s);
-        await sleep(300);
-    },
-    async "02-record-sheet"(s) {
-        await s.load();
-        await s.go(".lt-empty__action");
-        await s.go('.rpick__kind:has-text("Class")');
-        await s.go('.rpick__choice:has-text("60")');
-        await s.go("#rpick-notebook");
-        await s.page.keyboard.type("BIO");
-        await s.go('.rpick__chip:has-text("BIO 101")');
-        await s.page.mouse.move(720, 880);
-        await sleep(500);
-    },
-    async "03-review"(s) {
-        await s.load();
-        await openRecording(s, "BIO 101: Cell Biology", "REVIEW");
-        await s.go('.study-tabs button:has-text("Practice quiz")');
-        await s.go(s.page.locator(".study-choice").nth(1));
-        await s.page.mouse.move(1200, 860);
-        await sleep(500);
-    },
-    async "04-links"(s) {
-        await s.load();
-        await openRecording(s, "Acme project sync", "LINKS");
-        await s.page.waitForSelector(".ml-row");
-        await s.page.mouse.move(900, 860);
-        await sleep(500);
-    },
-    async "05-notebooks"(s) {
-        await s.load();
-        await s.go('button.mode-btn:has-text("REWIND")');
-        await s.go('.class-filter .class-chip:has-text("BIO 101")');
-        await s.page.mouse.move(900, 880);
-        await sleep(700);
     },
 };
 
 // ── Main ────────────────────────────────────────────────────────────────
-
-async function runStore(server, names) {
-    fs.mkdirSync(STILLS_OUT, { recursive: true });
-    const browser = await chromium.launch();
-    const context = await browser.newContext({ viewport: { width: STORE.w, height: STORE.h }, deviceScaleFactor: STORE.scale });
-    const page = await context.newPage();
-    page.on("pageerror", (e) => console.warn("  [page error]", e.message));
-    console.log("App Store screenshots");
-    for (const name of names) {
-        const s = new Shot(page, name, "store", null, server.url);
-        await STORE_SHOTS[name](s);
-        const out = path.join(STILLS_OUT, `${name}.png`);
-        await page.screenshot({ path: out, type: "png" });
-        console.log(`  ${path.relative(REPO, out)}`);
-    }
-    await browser.close();
-}
 
 async function runClips(server, names) {
     fs.mkdirSync(CLIPS_OUT, { recursive: true });
@@ -701,9 +672,11 @@ async function runClips(server, names) {
         args: [`--force-device-scale-factor=${FILM.scale}`, `--window-size=${FILM.w},${FILM.h + 100}`, "--hide-scrollbars"],
     });
     // FILM_TAKES takes per clip (default 1), plus up to 2 more when a take
-    // drops frames mid-motion (more than 20 stutters) or fails; the take with
-    // the fewest stutters is kept
+    // drops frames mid-motion (more than FILM_MAX_STUTTERS, default 40) or
+    // fails; the take with the fewest stutters is kept. (At 4K a take sends
+    // 250+ source frames a second, so a few dozen short gaps don't show.)
     const takes = Math.max(1, Number(process.env.FILM_TAKES || 1));
+    const MAX_STUTTERS = Number(process.env.FILM_MAX_STUTTERS || 40);
     console.log("Film clips");
     const run = async (name, mode, out) => {
         for (let attempt = 1; ; attempt++) {
@@ -726,7 +699,7 @@ async function runClips(server, names) {
     };
     for (const name of names) {
         const done = [];
-        while (done.length < takes || (done.length < takes + 2 && Math.min(...done.map((t) => t.stutters)) > 20)) {
+        while (done.length < takes || (done.length < takes + 2 && Math.min(...done.map((t) => t.stutters)) > MAX_STUTTERS)) {
             done.push(await run(name, "video", path.join(CLIPS_OUT, `${name}.take${done.length + 1}.mp4`)));
         }
         await run(name, "still", null);
@@ -742,9 +715,8 @@ async function runClips(server, names) {
 }
 
 const args = process.argv.slice(2);
-const wantStore = args.length === 0 || args.includes("stills");
 const clipNames = args.length === 0 || args.includes("clips") ? Object.keys(CLIPS) : args.filter((a) => a in CLIPS);
-const unknown = args.filter((a) => !(a in CLIPS) && a !== "stills" && a !== "clips");
+const unknown = args.filter((a) => !(a in CLIPS) && a !== "clips");
 if (unknown.length) {
     console.error(`Unknown: ${unknown.join(", ")}. Clips: ${Object.keys(CLIPS).join(", ")}`);
     process.exit(1);
@@ -757,10 +729,9 @@ try {
         const b = await chromium.launch();
         const p = await b.newPage();
         await p.goto(server.url, { waitUntil: "networkidle" });
-        await p.waitForSelector(".agency-layout", { timeout: 60000 });
+        await p.waitForSelector(".topbar", { timeout: 60000 });
         await b.close();
     }
-    if (wantStore) await runStore(server, Object.keys(STORE_SHOTS));
     if (clipNames.length) await runClips(server, clipNames);
 } finally {
     server.stop();

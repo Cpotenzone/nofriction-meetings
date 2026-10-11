@@ -114,24 +114,24 @@ const CHORDS = {
 function filmArrangement() {
   const cycle = ["D", "Bm", "G", "A"];
   const bars = [];
-  for (let b = 0; b < 26; b++) {
-    const chord = b <= 19 ? cycle[b % 4] : ["Bm", "G", "A", "D", "D", "D"][b - 20];
+  // 14 bars, in step with FILM_SCENES in src/timing.ts
+  for (let b = 0; b < 14; b++) {
+    const chord = b <= 11 ? cycle[b % 4] : "D";
     const s = { chord, pad: 0.5, bass: 0, kick: 0, hat: 0, clap: 0, arp: 0 };
-    if (b <= 3) { s.pad = 0.32 + b * 0.08; s.arp = b >= 2 ? 1 : 0; }          // 1. moments
-    else if (b <= 6) { s.pad = 0.55; s.bass = 1; s.kick = 1; s.arp = 2; }   // 2. record
-    else if (b <= 9) { s.pad = 0.62; s.bass = 1; s.kick = 1; s.hat = 1; s.arp = 3; } // 3. transcribe
-    else if (b <= 12) { s.pad = 0.68; s.bass = 2; s.kick = 1; s.hat = 1; s.clap = 1; s.arp = 3; } // 4. mark
-    else if (b <= 19) { s.pad = 0.8; s.bass = 2; s.kick = 2; s.hat = 2; s.clap = 1; s.arp = 3; } // 5-6. rewind, notes
-    else if (b <= 22) { s.pad = 0.45; s.arp = 2; }                          // 7. offline (breakdown)
-    else { s.pad = 0.7; s.arp = b === 23 ? 1 : 0; }                         // 8. end card
+    if (b <= 1) { s.pad = 0.4 + b * 0.12; s.bass = b; s.kick = b; s.arp = 2; }            // 1. record
+    else if (b <= 3) { s.pad = 0.62; s.bass = 1; s.kick = 1; s.hat = 1; s.arp = 3; }      // 2. mark, stop
+    else if (b <= 9) { s.pad = 0.8; s.bass = 2; s.kick = 2; s.hat = 2; s.clap = 1; s.arp = 3; } // 3-5. rewind, notes, chat
+    else if (b === 10) { s.pad = 0.7; s.bass = 1; s.kick = 1; s.hat = 1; s.arp = 3; }     // 6. sync
+    else if (b === 11) { s.pad = 0.45; s.arp = 2; }                                         // 7. privacy (breakdown)
+    else { s.pad = 0.7; s.arp = b === 12 ? 1 : 0; }                                        // 8. end card
     bars.push(s);
   }
   return {
     name: "score-film", bars,
-    risers: [{ endBar: 13, bars: 1 }, { endBar: 23, bars: 1.5 }],
-    rewinds: [13],
-    impacts: [13, 23],
-    bells: [{ bar: 23, beat: 0 }, { bar: 0, beat: 0, soft: true }],
+    risers: [{ endBar: 4, bars: 1 }, { endBar: 12, bars: 1 }],
+    rewinds: [4],
+    impacts: [4, 12],
+    bells: [{ bar: 12, beat: 0 }, { bar: 0, beat: 0, soft: true }],
     tail: 1.6,
   };
 }

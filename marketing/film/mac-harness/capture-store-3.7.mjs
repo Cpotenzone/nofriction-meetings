@@ -9,11 +9,14 @@
 //   node marketing/film/mac-harness/make-frames.mjs        # once: the slide "screens"
 //   node marketing/film/mac-harness/capture-store-3.7.mjs  # every shot
 //   node marketing/film/mac-harness/capture-store-3.7.mjs 03-search 07-settings-ai
+//   node marketing/film/mac-harness/capture-store-3.7.mjs site   # the website's Mac shots
 //
 // HARNESS_URL picks another server (default http://127.0.0.1:5287/).
 // Output: marketing/film/stills/mac-3.7/NN-name.png
+//         marketing/out/site-src/mac-NN-name.png (site; gitignored, encoded
+//         into site/img/ by marketing/film/scripts/site-images.mjs)
 //
-// (capture.mjs films the pre-redesign UI and is kept for the launch film.)
+// (capture.mjs films the same UI for the launch film and the app previews.)
 
 import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
@@ -23,7 +26,8 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../../..");
-const OUT = path.join(REPO, "marketing/film/stills/mac-3.7");
+const STORE_OUT = path.join(REPO, "marketing/film/stills/mac-3.7");
+const SITE_OUT = path.join(REPO, "marketing/out/site-src");
 const BASE = process.env.HARNESS_URL || "http://127.0.0.1:5287/";
 const STORE = { w: 1440, h: 900, scale: 2 };
 
@@ -155,11 +159,85 @@ const SHOTS = {
     },
 };
 
-const args = process.argv.slice(2);
-const names = args.length ? args : Object.keys(SHOTS);
-const unknown = names.filter((n) => !(n in SHOTS));
+/** Scroll the Rewind transcript so the highlighted line sits lowest in view,
+ *  its first visible line starting cleanly (the lines before give context). */
+async function alignTranscript(page) {
+    await page.evaluate(() => {
+        const panel = document.querySelector(".rewind-transcripts");
+        const active = panel?.querySelector(".transcript-entry.active");
+        if (!panel || !active) return;
+        const pr = panel.getBoundingClientRect();
+        const top = (el) => el.getBoundingClientRect().top - pr.top + panel.scrollTop;
+        const aTop = top(active);
+        const aBottom = aTop + active.offsetHeight;
+        const fits = [...panel.querySelectorAll(".transcript-entry")]
+            .map((e) => top(e) - 8)
+            .filter((t) => t <= aTop && t >= aBottom + 8 - panel.clientHeight);
+        if (fits.length) panel.scrollTop = Math.min(...fits);
+    });
+    await sleep(300);
+}
+
+/** Wait until every <img> matching the selector has loaded. */
+async function imagesLoaded(page, selector, min = 1) {
+    await page.waitForFunction(
+        ([sel, n]) => {
+            const imgs = [...document.querySelectorAll(sel)];
+            return imgs.length >= n && imgs.every((i) => i.complete && i.naturalWidth > 0);
+        },
+        [selector, min],
+        { timeout: 15000 },
+    );
+}
+
+// nofriction.io (site/index.html): same window size and scale. Encoded to
+// 1400x875 WebP + PNG by marketing/film/scripts/site-images.mjs.
+const SITE_SHOTS = {
+    // (a) The hero: a recording open in Recordings, its Rewind at the
+    // Important mark: the roadmap slide on screen at 3:34 beside the lines
+    // said then, the marks on the timeline, the screens strip below
+    async "mac-01-rewind"(page) {
+        await load(page);
+        await openRecording(page, "Acme project sync");
+        await imagesLoaded(page, ".rewind-thumbnails .thumbnail img", 6);
+        await page.locator(".study-pins .study-pin.is-important").first().click();
+        await sleep(900);
+        await imagesLoaded(page, ".rewind-frame-preview img", 1);
+        await alignTranscript(page);
+        await sleep(500);
+    },
+    // (d) The Record sheet: Class, 60 min, BIO 101 (the App Store shot)
+    "mac-02-record-sheet": (page) => SHOTS["06-record-sheet"](page),
+    // (e) The Study guide's practice quiz, a question answered (the App Store shot)
+    "mac-03-review": (page) => SHOTS["04-study-quiz"](page),
+    // (c) Links: the addresses said in the meeting with when, and one added by hand
+    async "mac-04-links"(page) {
+        await load(page);
+        await openRecording(page, "Acme project sync", "Links");
+        await page.waitForSelector(".ml-row", { timeout: 10000 });
+    },
+    // (b) Recordings filtered to the BIO 101 notebook, the latest lecture's Notes open
+    async "mac-05-notebooks"(page) {
+        await load(page);
+        await mode(page, "Recordings");
+        await page.locator(".class-filter .class-chip", { hasText: "BIO 101" }).first().click();
+        await sleep(600);
+        await page.locator(".meeting-item", { hasText: "BIO 101: Cell Biology" }).first().click();
+        await sleep(700);
+        await page.locator(".recording-detail > .deck-tabs .deck-tab", { hasText: "Notes" }).first().click();
+        await sleep(900);
+    },
+};
+
+let args = process.argv.slice(2);
+const site = args[0] === "site";
+if (site) args = args.slice(1);
+const SET = site ? SITE_SHOTS : SHOTS;
+const OUT = site ? SITE_OUT : STORE_OUT;
+const names = args.length ? args : Object.keys(SET);
+const unknown = names.filter((n) => !(n in SET));
 if (unknown.length) {
-    console.error(`Unknown shots: ${unknown.join(", ")}\nShots: ${Object.keys(SHOTS).join(", ")}`);
+    console.error(`Unknown shots: ${unknown.join(", ")}\nShots: ${Object.keys(SET).join(", ")}`);
     process.exit(1);
 }
 
@@ -173,7 +251,7 @@ for (const name of names) {
     page.on("pageerror", (e) => console.warn(`  [${name}] page error:`, e.message));
     page.on("console", (m) => m.text().includes("[mock] unhandled") && console.warn(`  [${name}]`, m.text()));
     try {
-        await SHOTS[name](page);
+        await SET[name](page);
         // Park the (invisible) mouse where it hovers nothing
         await page.mouse.move(STORE.w - 2, STORE.h - 2);
         await sleep(400);
