@@ -56,3 +56,6 @@ dist-mas/
 marketing/out/
 # Website: the hero film is copied in by infra/site/deploy.sh, never committed
 site/video/
+
+# Agent worktrees (other agents check out branches here)
+.worktrees/
