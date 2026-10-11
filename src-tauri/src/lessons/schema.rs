@@ -24,6 +24,12 @@ pub const MAX_CHOICES: usize = 6;
 pub const MAX_CHECKPOINT_BANK: usize = 40;
 pub const MIN_EXAM_BANK: usize = 60;
 pub const MAX_EXAM_BANK: usize = 300;
+// Per-kind exam-bank floors (docs/LESSONS.md §4.6/§10.1b): the bank must
+// over-provision each kind well past the drawn mix so a retake is a different
+// paper and an imported bundle cannot under-provision.
+pub const MIN_EXAM_MC: u32 = 18;
+pub const MIN_EXAM_NUMERIC: u32 = 18;
+pub const MIN_EXAM_MULTISTEP: u32 = 9;
 pub const MIN_WORKED_EXAMPLES: usize = 3;
 pub const MAX_LESSONS: usize = 64;
 pub const MAX_CONCEPTS: usize = 128;
@@ -617,10 +623,30 @@ fn validate_exam(exam: &mut Exam, concepts: &HashSet<String>) -> Result<(), Vali
     if exam.pass_pct == 0 || exam.pass_pct > 100 {
         return Err("exam passPct out of range".into());
     }
-    // Per-kind supply must cover the drawn mix.
+    // Per-kind supply must cover the drawn mix AND clear the bank floors, so a
+    // retake draws a genuinely different paper and an imported bundle cannot
+    // under-provision (§4.6/§10.1b).
     let count_kind = |k: &str| exam.items.iter().filter(|i| i.kind == k).count() as u32;
-    if count_kind("mc") < m.mc || count_kind("numeric") < m.numeric || count_kind("multistep") < m.multistep {
+    let (mc_n, num_n, ms_n) = (count_kind("mc"), count_kind("numeric"), count_kind("multistep"));
+    if mc_n < m.mc || num_n < m.numeric || ms_n < m.multistep {
         return Err("exam bank cannot supply the mix".into());
+    }
+    if mc_n < MIN_EXAM_MC || num_n < MIN_EXAM_NUMERIC || ms_n < MIN_EXAM_MULTISTEP {
+        return Err(format!(
+            "exam bank under-provisioned: mc {} (>= {}), numeric {} (>= {}), multistep {} (>= {})",
+            mc_n, MIN_EXAM_MC, num_n, MIN_EXAM_NUMERIC, ms_n, MIN_EXAM_MULTISTEP
+        ));
+    }
+    // Per-concept exam coverage: every concept the exam items tag must carry at
+    // least two items so a drawn exam can reach each concept.
+    let mut per_concept: HashMap<&str, u32> = HashMap::new();
+    for it in &exam.items {
+        for cid in &it.concept_ids {
+            *per_concept.entry(cid.as_str()).or_insert(0) += 1;
+        }
+    }
+    if let Some((cid, _)) = per_concept.iter().find(|(_, &n)| n < 2) {
+        return Err(format!("exam concept {} has fewer than 2 items", cid));
     }
     Ok(())
 }

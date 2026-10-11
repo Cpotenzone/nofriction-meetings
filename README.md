@@ -15,6 +15,7 @@ yourself**. No accounts, no noFriction servers, no analytics.
 | Screens | Camera photos, images from Photos | Screenshots of chosen displays/windows, Snap |
 | AI (noFriction Pro) | Notes in the recording type's style, review guide, follow-up email | Notes in the recording type's style, review guide, chat across recordings, live insights, meeting prep brief, screenshot analysis |
 | Also | Recording type (Meeting · Class · Personal), notebooks, timed recording, marks, calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Markdown share | Recording type (Meeting · Class · Personal), notebooks, timed recording, marks (⌃⌥⌘M), Rewind, calendar match, People + LinkedIn, auto-stop, Delete / Strike from the record, Obsidian export, JSON export |
+| Lessons | — | Interactive education: a fourth view (⌘3) with a six-lesson stoichiometry course — SVG/interactive explainers, Rust-graded checkpoints, a 30-question final exam, mastery dashboard, and an offline certificate. Taking a lesson is fully offline and free; a Generate button is an honest coming-soon stub. |
 
 **What is it, how long, notebook:** Record asks **What is it?** (Meeting ·
 Class · Personal; "Personal covers everything else: conversations,

@@ -223,6 +223,15 @@
     color: var(--text-primary, #f5f5f5);
     font: inherit;
 }
+/* A dependable visible focus ring on the interactive explainer controls (the
+   equation balancer number field and the titration / ideal-gas sliders), which
+   otherwise fall through to the UA default and are unreliable on matte black
+   (WCAG 2.4.7). Reuses the 2px hazard-yellow pattern from .lessons-btn. */
+.explainer input[type="number"]:focus-visible,
+.explainer input[type="range"]:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 2px;
+}
 
 /* ── Quiz / exam ─────────────────────────────────────────────────────── */
 
@@ -268,6 +277,19 @@
     background: var(--tactical-gray, #171717);
     font-size: 13px;
 }
+.quiz-steps {
+    list-style: decimal;
+    margin: 6px 0 0;
+    padding-left: 22px;
+}
+.quiz-step {
+    margin-bottom: 12px;
+}
+.quiz-step .quiz-item__prompt {
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--text-secondary, #a3a3a3);
+}
 
 /* ── Dashboard / mastery ─────────────────────────────────────────────── */
 
@@ -280,6 +302,27 @@
 .mastery-row__name {
     flex: 1;
     font-size: 13px;
+}
+.mastery-row__check {
+    color: var(--accent-success, #34d399);
+    vertical-align: -2px;
+}
+.misconception-mark {
+    color: var(--accent-danger, #ef4444);
+}
+/* Visually hidden but readable by assistive tech (scoped to Lessons so no new
+   global utility is introduced). Used to voice state that an aria-hidden icon
+   conveys visually. */
+.lessons-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 .readiness-meter {
     margin: 16px 0;

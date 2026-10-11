@@ -711,8 +711,8 @@ proven consistent with a Rust recomputation, so the UI can never present a wrong
 **Scope of the "recomputed" guarantee (NIT-8, NIT-9).** The full numeric
 re-derivation applies to the closed-form kinds: equation balancer (1), mole-ratio
 calculator (2), limiting-reagent simulator (3), dimensional-analysis builder (4),
-and ideal-gas PV explorer (7), plus the numeric/balance/multistep items and
-worked examples. Two kinds are **explicitly carved out** of the full-recompute
+and ideal-gas PV explorer (7), plus the numeric/balance/multistep items (whose
+answer keys are structured and recomputed at authoring/import). Two kinds are **explicitly carved out** of the full-recompute
 claim and their scientific correctness is routed to the **§12.2 human review
 gate** (same as figures), because their fidelity is not a closed-form
 computation:
@@ -730,6 +730,15 @@ computation:
   pedagogically-wrong authored curve is caught by the §12.2 human gate, not the
   machine. (A future enhancement may recompute the curve and verify authored
   `points[]` within tolerance; it is not required this build.)
+- **Worked examples (§6.2):** a worked example is **prose-authored** — its
+  `steps[]` are free-text teaching narration with no machine-parseable
+  structural inputs, so Rust validation checks structure (non-empty prompt,
+  ≥1 step, a finite `finalAnswer.value`) rather than re-deriving the final
+  answer. The worked-example numbers are instead verified at **authoring time**
+  (the `author_seed_lessons` tool computes them from the same shared
+  molar-mass table and balancer the runtime grader uses) and by the §12.2 human
+  review gate. An imported bundle's worked examples are trusted as authored
+  prose, consistent with their structure-only validation.
 
 Every other kind below is fully recomputed.
 

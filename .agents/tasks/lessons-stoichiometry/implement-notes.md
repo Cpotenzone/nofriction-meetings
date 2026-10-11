@@ -117,6 +117,85 @@ PASS.
   fingerprint tolerated). Added `bundle::fingerprint_for` so seed authoring and
   the test fixture write a matching fingerprint.
 
+## Review round 2 (review.json CHANGES_REQUESTED — assessment integrity + NITs)
+
+Fixes for the consolidated review (2 HIGH, 2 MEDIUM UX/offline, 1 MEDIUM content,
++ NITs). Suites re-run green: `cargo test --lib` (449) and `--features mas`
+(432), `npx tsc --noEmit`, `npm test` (96), `check-ai-provider-policy.py` PASS,
+`npx vite build` + `scripts/check-lessons-offline.mjs` PASS.
+
+### HIGH — multistep exam items were ungradeable from the UI
+- `src/components/lessons/QuizRunner.tsx`: added a real `MultistepInput` that
+  renders each step with the right control (mc / numeric / balance) and
+  populates `SubmittedAnswer.multistep`. Previously multistep rendered a static
+  placeholder and submitted no step answers, so the 6 multistep exam points
+  (20%) always scored 0, capping a flawless MC+numeric learner at exactly 80%.
+  (The Rust `to_given`/`grade_multistep` already supported multistep; the gap
+  was purely that the shared runner never collected the answers.)
+- New Rust regression `seed_exam_is_passable_by_a_perfect_learner_and_multistep_counts`
+  (tests.rs): a perfect learner scores 100% and passes; leaving multistep blank
+  costs points; the bank's total possible exceeds its item count (multistep is
+  graded per step). Proves the exam is now passable with margin.
+
+### HIGH — all MC keys at index 0 + no choice shuffle (trivially gameable)
+- `QuizRunner.tsx`: MC choices are now shuffled at presentation (deterministic
+  per-item Fisher–Yates seeded from the item id, stable across re-renders) and
+  the chosen screen position is mapped back to the AUTHORED index before submit.
+  Shared `ChoiceGroup` used by both standalone MC items and multistep MC steps.
+  Always clicking the first choice no longer scores 100% on any bank.
+- Defense-in-depth on the content side: `author_seed_lessons.rs` now distributes
+  the authored exam MC keys across positions via a pure `rotate_choices` helper
+  (the correct text is unchanged, only its index moves). Seed regenerated.
+- New seed assertion (tests.rs §7b): the union of MC answer keys across exam +
+  checkpoints + diagnostic must span more than one position.
+
+### MEDIUM — all 12 multistep exam items were byte-identical
+- `author_seed_lessons.rs::build_exam_items`: replaced the 12 identical
+  CH4-combustion items with 12 DISTINCT multistep items spanning the mole-ratio,
+  limiting-reagent / percent-yield, and gas-law concept chains (ammonia
+  synthesis, hydrogen combustion, limiting reagent by mol and by grams, percent
+  yield, gas volume at STP, PV=nRT, propane combustion, O2-in-grams limiting).
+  Numbers computed from the shared molar-mass table so the authoring recompute
+  gate verifies them. New seed assertion (§7c): multistep prompts are distinct.
+
+### MEDIUM — offline guard (D5) was never invoked
+- `package.json`: added `check:lessons-offline` and a `postbuild` hook. npm runs
+  `postbuild` automatically after `build`, and `tauri.conf.json`'s
+  `beforeBuildCommand` is `npm run build`, so the guard now runs on every
+  `npm run build` / `tauri build` — including the release-macos CI job — and
+  fails the build on a remote reference. (Verified PASS on the compiled bundle.)
+
+### MEDIUM — no visible focus ring on interactive explainer inputs
+- `Lessons.css`: added a `:focus-visible` 2px hazard-yellow outline (reusing the
+  `.lessons-btn` pattern) to `.explainer input[type="number"]` and
+  `.explainer input[type="range"]`, covering the balancer number field and both
+  sliders (WCAG 2.4.7).
+
+### NITs
+- `grade.rs` `check_numeric` `exact` branch: replaced the ~4-ULP machine epsilon
+  with a small relative epsilon (`1e-9*|answer|`, abs floor `1e-9`) so a
+  correctly-rounded `exact`-keyed value is accepted for imported bundles.
+- `schema.rs` `validate_exam`: now asserts the per-kind bank floors
+  (`MIN_EXAM_MC`=18, `MIN_EXAM_NUMERIC`=18, `MIN_EXAM_MULTISTEP`=9) and
+  per-concept exam coverage (>=2 items), so an imported bundle cannot
+  under-provision.
+- `generators.rs`: molar-mass table aligned to the SAME 2-dp values the seed
+  authoring tool uses (2.02 / 18.02 / 44.01 …) and STP molar volume unified to a
+  shared `MOLAR_VOLUME_STP = 22.41` constant — one table across generators and
+  authored content.
+- Worked-example recompute (NIT): worked examples are prose-authored with no
+  machine-parseable structural inputs, so instead of claiming a recompute that
+  the code does not do, `docs/LESSONS.md` §6.1 was softened to state worked
+  examples are structure-validated (non-empty prompt, >=1 step, finite final
+  answer) and their numbers verified at authoring time + the §12.2 human gate.
+- Status glyphs: `CourseView.tsx` mastered marker now uses `CheckIcon`
+  (already aria-hidden) plus a scoped `.lessons-sr-only` "mastered" label;
+  `LessonPlayer.tsx` MisconceptionCard `✗` wrapped in an `aria-hidden` span (the
+  claim text carries the meaning).
+- Stale header comments updated to four views in `src/App.tsx` and
+  `src-tauri/src/menu_builder.rs`.
+- `README.md`: added a Lessons row to the capability matrix (append-style).
+
 ## Not done (and why)
 - **Pro feature key `lessons`** (COORDINATION §3): deferred with the generation
   pipeline (D2). Adding a half-wired key now would risk the cross-platform

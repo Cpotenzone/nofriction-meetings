@@ -779,6 +779,46 @@ fn shipped_seed_bundle_passes_validation_with_all_floors() {
         assert!(*n >= 2, "exam concept {} has only {} items", cid, n);
     }
 
+    // 7b. MC answer keys are not all identical (HIGH-2). An MC surface whose
+    //     every key sits at index 0 is gameable by always clicking the first
+    //     choice. Collect every MC answerIndex across the whole course (exam,
+    //     checkpoints, diagnostic) and assert they span more than one position.
+    let mut mc_keys: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let mut collect_mc = |items: &[schema::QuizItem]| {
+        for it in items {
+            if it.kind == "mc" {
+                if let Some(a) = it.answer_index {
+                    mc_keys.insert(a);
+                }
+            }
+        }
+    };
+    collect_mc(&exam.items);
+    for lesson in lessons {
+        collect_mc(&lesson.checkpoint.items);
+    }
+    if let Some(d) = &set.diagnostic {
+        collect_mc(&d.items);
+    }
+    assert!(
+        mc_keys.len() > 1,
+        "all MC answer keys are identical ({:?}) — the MC surface would be trivially gameable",
+        mc_keys
+    );
+
+    // 7c. The multistep exam items are not all identical (MEDIUM-3): a retake
+    //     must be a genuinely different paper, so the multistep bank needs real
+    //     variety. Assert the prompts across the multistep items are distinct.
+    let ms_prompts: std::collections::HashSet<&str> =
+        exam.items.iter().filter(|i| i.kind == "multistep").map(|i| i.prompt.as_str()).collect();
+    let ms_count = exam.items.iter().filter(|i| i.kind == "multistep").count();
+    assert!(
+        ms_prompts.len() >= ms_count,
+        "multistep exam items are not all distinct: {} items but only {} unique prompts",
+        ms_count,
+        ms_prompts.len()
+    );
+
     // 8. Content rigor: every worked example and item answer key recomputes
     //    consistently. Balance keys are already re-verified by validate_bundle
     //    (verify_balance runs on every balance item). Spot-check a known key:
@@ -792,6 +832,88 @@ fn shipped_seed_bundle_passes_validation_with_all_floors() {
         .expect("lesson 1 checkpoint has the 36.04 g H2O item");
     let ans = n1.answer.expect("numeric answer present");
     assert!((ans - 2.0).abs() < 0.01, "36.04 g H2O should be 2.00 mol, got {}", ans);
+}
+
+/// Build the correct `Given` for an item straight from its stored answer key —
+/// the "perfect learner" oracle used by the exam-passability test.
+fn perfect_given(item: &schema::QuizItem) -> Given {
+    match item.kind.as_str() {
+        "mc" => Given::Mc(item.answer_index.expect("mc item has an answerIndex")),
+        "numeric" => Given::Numeric(format!("{}", item.answer.expect("numeric item has an answer"))),
+        "balance" => Given::Balance(
+            item.answer_coefficients
+                .clone()
+                .expect("balance item has coefficients")
+                .iter()
+                .map(|&c| c as u32)
+                .collect(),
+        ),
+        "multistep" => Given::Multistep(
+            item.steps
+                .as_ref()
+                .expect("multistep item has steps")
+                .iter()
+                .map(|s| match s.kind.as_str() {
+                    "mc" => MultistepGiven::Mc(s.answer_index.expect("mc step answerIndex")),
+                    "numeric" => MultistepGiven::Numeric(format!("{}", s.answer.expect("numeric step answer"))),
+                    "balance" => MultistepGiven::Balance(
+                        s.answer_coefficients.clone().expect("balance step coeffs").iter().map(|&c| c as u32).collect(),
+                    ),
+                    other => panic!("unexpected step kind {}", other),
+                })
+                .collect(),
+        ),
+        other => panic!("unexpected item kind {}", other),
+    }
+}
+
+#[test]
+fn seed_exam_is_passable_by_a_perfect_learner_and_multistep_counts() {
+    // Regression for the HIGH exam-integrity findings: with multistep answers
+    // actually submitted, a perfect learner must clear 80% with real margin
+    // (previously the 6 multistep points were unreachable from the UI, capping
+    // a flawless MC+numeric learner at exactly 80%).
+    let prepared = bundle::validate_bytes(SEED_BUNDLE).expect("seed validates");
+    let exam = &prepared.validated.set.exam;
+
+    // Score the whole bank as a perfect learner (a drawn attempt is a subset,
+    // so a perfect score on the superset implies a perfect score on any draw).
+    let answered: Vec<exam::AnsweredItem> =
+        exam.items.iter().map(|i| exam::AnsweredItem { item: i, given: perfect_given(i) }).collect();
+    let scored = exam::score_attempt(&answered, exam.pass_pct);
+    assert!(
+        (scored.score_pct - 100.0).abs() < 1e-6,
+        "a perfect learner should score 100%, got {}",
+        scored.score_pct
+    );
+    assert!(scored.passed, "a perfect learner must pass");
+
+    // The multistep portion is non-trivial: it contributes real points, so an
+    // otherwise-perfect learner who leaves every multistep item blank must lose
+    // enough to NOT trivially pass on MC+numeric alone (the old failure mode was
+    // the inverse — multistep could never contribute).
+    let answered_no_ms: Vec<exam::AnsweredItem> = exam
+        .items
+        .iter()
+        .map(|i| {
+            let given = if i.kind == "multistep" {
+                Given::Multistep(vec![]) // no step answers submitted
+            } else {
+                perfect_given(i)
+            };
+            exam::AnsweredItem { item: i, given }
+        })
+        .collect();
+    let scored_no_ms = exam::score_attempt(&answered_no_ms, exam.pass_pct);
+    assert!(
+        scored_no_ms.score_pct < 100.0,
+        "leaving multistep blank must cost points, got {}",
+        scored_no_ms.score_pct
+    );
+    // And the multistep items each carry more than one point (per-step), so the
+    // bank's total possible exceeds its item count — proving multistep is graded
+    // per step, not as a single all-or-nothing point.
+    assert!(scored.possible > exam.items.len() as f64, "multistep items must be graded per step");
 }
 
 // ════════════════════════════════════════════════════════════════════════

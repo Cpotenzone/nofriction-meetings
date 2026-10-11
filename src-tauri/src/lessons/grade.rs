@@ -149,7 +149,11 @@ pub fn check_numeric(given: &str, answer: f64, item_unit: Option<&str>, tol: &To
         (None, _) => raw_value, // absent unit compares in the declared unit
     };
     let ok = match tol.kind.as_str() {
-        "exact" => (compared - answer).abs() <= f64::EPSILON * answer.abs().max(1.0) * 4.0,
+        // A small RELATIVE epsilon (plus a tiny absolute floor for answers near
+        // zero) so a correctly-rounded value entered at normal precision is
+        // accepted; a 4-ULP machine epsilon rejected legitimate answers for
+        // imported bundles whose `exact` key came from a division.
+        "exact" => (compared - answer).abs() <= 1e-9 * answer.abs().max(1e-9),
         "abs" => (compared - answer).abs() <= tol.value,
         "rel" => (compared - answer).abs() <= tol.value * answer.abs(),
         _ => return NumericGrade::Unparseable("unknown tolerance"),

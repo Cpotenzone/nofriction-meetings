@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import type { LessonSet, Dashboard as DashboardT, StartedExam, Certificate as CertT } from "../../lib/lessons";
 import { dashboard as fetchDashboard, startExam, submitExam, exportCertificate, getLesson } from "../../lib/lessons";
-import { GaugeIcon, TrophyIcon, CertificateIcon, LockIcon } from "../icons";
+import { GaugeIcon, TrophyIcon, CertificateIcon, LockIcon, CheckIcon } from "../icons";
 import { QuizRunner } from "./QuizRunner";
 import { LessonPlayer } from "./LessonPlayer";
 
@@ -106,7 +106,14 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                     {dash.concepts.map((c) => (
                         <div className="mastery-row" key={c.conceptId}>
                             <span className="mastery-row__name">
-                                {c.name} {c.mastered ? "✓" : ""}
+                                {c.name}
+                                {c.mastered && (
+                                    <>
+                                        {" "}
+                                        <CheckIcon size={13} className="mastery-row__check" />
+                                        <span className="lessons-sr-only"> mastered</span>
+                                    </>
+                                )}
                             </span>
                             <div className="bar-track" style={{ width: 140 }}>
                                 <div className={`bar-fill ${c.mastered ? "is-match" : ""}`} style={{ width: `${c.score}%` }} />

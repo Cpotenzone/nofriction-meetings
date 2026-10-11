@@ -49,23 +49,30 @@ impl SeededRng {
     }
 }
 
-/// A molar mass table for the species the generators use (g/mol, 2 dp).
+/// A molar mass table for the species the generators use (g/mol, 2 dp). This is
+/// the SAME table (same 2-dp values) the seed authoring tool uses, so a
+/// generated drill and the authored seed content never disagree on a molar mass
+/// (docs/LESSONS.md §6.1; keeps one source of truth).
 pub fn molar_mass(species: &str) -> Option<f64> {
     let m = match species {
-        "H2" => 2.016,
-        "O2" => 31.998,
-        "H2O" => 18.015,
-        "CO2" => 44.009,
+        "H2" => 2.02,
+        "O2" => 32.00,
+        "H2O" => 18.02,
+        "CO2" => 44.01,
         "NaCl" => 58.44,
-        "N2" => 28.014,
-        "CH4" => 16.043,
-        "NH3" => 17.031,
-        "C" => 12.011,
-        "O" => 15.999,
+        "N2" => 28.02,
+        "CH4" => 16.04,
+        "NH3" => 17.03,
+        "C" => 12.01,
+        "O" => 16.00,
         _ => return None,
     };
     Some(m)
 }
+
+/// Molar volume of an ideal gas at STP (L/mol, 2 dp) — the single value shared
+/// by the generators and the seed content.
+pub const MOLAR_VOLUME_STP: f64 = 22.41;
 
 /// A generated numeric item: a prompt, the correct answer + unit + tolerance,
 /// and the ordered worked-solution steps.
@@ -187,17 +194,17 @@ pub fn solve_with_steps(
             })
         }
         "gas_volume_stp" => {
-            // moles → volume at STP (22.414 L/mol)
+            // moles → volume at STP (22.41 L/mol — the shared constant)
             let moles = (grams / 10.0).max(0.1);
-            let vol = moles * 22.414;
+            let vol = moles * MOLAR_VOLUME_STP;
             Some(GeneratedItem {
                 prompt: format!("What volume does {:.2} mol of an ideal gas occupy at STP?", moles),
                 answer: vol,
                 unit: "L".into(),
                 tolerance: tol,
                 steps: vec![Step {
-                    text: "At STP one mole occupies 22.414 L.".into(),
-                    expression: Some(format!("{:.2} mol × 22.414 L/mol", moles)),
+                    text: "At STP one mole occupies 22.41 L.".into(),
+                    expression: Some(format!("{:.2} mol × 22.41 L/mol", moles)),
                     result: Some(format!("{:.3}", vol)),
                     unit: Some("L".into()),
                 }],

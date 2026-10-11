@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "postbuild": "node scripts/check-lessons-offline.mjs",
+    "check:lessons-offline": "node scripts/check-lessons-offline.mjs",
     "test": "TZ=UTC node --test src/lib/*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri",

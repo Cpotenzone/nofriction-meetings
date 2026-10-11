@@ -1,7 +1,7 @@
 // noFriction - the app
 //
-// Three views (Record · Recordings · Chat), the Record sheet, the setup
-// screens on first run, and the native menu / tray / shortcut events.
+// Four views (Record · Recordings · Lessons · Chat), the Record sheet, the
+// setup screens on first run, and the native menu / tray / shortcut events.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AiConsentModal } from "./components/AiConsentModal";
 import { PaywallModal } from "./components/PaywallModal";

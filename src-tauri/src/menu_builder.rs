@@ -1,5 +1,5 @@
 // noFriction - native macOS menu bar. Same names as the window:
-// Record · Recordings · Chat, Settings, Help.
+// Record · Recordings · Lessons · Chat, Settings, Help.
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},

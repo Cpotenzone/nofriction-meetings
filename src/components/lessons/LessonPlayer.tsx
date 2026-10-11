@@ -152,7 +152,10 @@ function MisconceptionCard({ claim, why, correct }: { claim: string; why: string
                 onClick={() => setOpen((v) => !v)}
                 style={{ width: "100%", textAlign: "left" }}
             >
-                ✗ {claim}
+                <span className="misconception-mark" aria-hidden="true">
+                    ✗
+                </span>{" "}
+                {claim}
             </button>
             {open && (
                 <div className="quiz-solution">

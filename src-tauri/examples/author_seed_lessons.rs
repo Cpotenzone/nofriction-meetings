@@ -84,6 +84,23 @@ fn balance(reactants: &[&str], products: &[&str]) -> (Value, Vec<u32>) {
 
 // ── Item builders ────────────────────────────────────────────────────────────
 
+/// Rotate `choices` so the correct answer (at `correct`) moves to position
+/// `target`, returning the rotated choices and the new correct index. Pure
+/// reordering — the correct text is unchanged, only its position moves — so the
+/// authored keys are spread across positions instead of all being index 0.
+fn rotate_choices(choices: &[&str], correct: usize, target: usize) -> (Vec<String>, usize) {
+    let n = choices.len();
+    let target = target % n;
+    // A rotation by `shift` maps old index j -> (j + shift) % n. We want
+    // correct -> target, so shift = (target + n - correct) % n.
+    let shift = (target + n - (correct % n)) % n;
+    let mut out = vec![String::new(); n];
+    for (j, c) in choices.iter().enumerate() {
+        out[(j + shift) % n] = c.to_string();
+    }
+    (out, target)
+}
+
 fn mc(id: &str, concept: &str, prompt: &str, choices: &[&str], answer_index: u32, explanation: &str) -> Value {
     assert!((answer_index as usize) < choices.len(), "mc {id}: answerIndex out of range");
     json!({
@@ -792,8 +809,16 @@ fn build_exam_items() -> Vec<Value> {
         ("c-ratio", "A stoichiometric factor relates:", &["moles of two species", "mass and volume", "pH and volume"], 0),
         ("c-gas", "22.4 L/mol applies:", &["only at STP", "always", "never"], 0),
     ];
+    // Distribute the authored answer key across positions (defense-in-depth on
+    // top of the presentation-time choice shuffle in QuizRunner): rotate each
+    // item's choices so the correct one lands at a varied index, carrying the
+    // answerIndex with it. An exam whose keys are all index 0 is a review
+    // finding; the seed-validation test asserts the keys are not all identical.
     for (i, (c, p, choices, a)) in mc_bank.iter().enumerate() {
-        items.push(mc(&format!("ex-mc-{i}"), c, p, choices, *a, "See the lesson summary."));
+        let target = i % choices.len();
+        let (rotated, new_idx) = rotate_choices(choices, *a as usize, target);
+        let rotated_refs: Vec<&str> = rotated.iter().map(|s| s.as_str()).collect();
+        items.push(mc(&format!("ex-mc-{i}"), c, p, &rotated_refs, new_idx as u32, "See the lesson summary."));
     }
 
     // ── 20 numeric across concepts (>=18) ──
@@ -838,10 +863,18 @@ fn build_exam_items() -> Vec<Value> {
             vec![wstep("Multiply", &format!("{factor:.2} x 22.41"), &format!("{:.2}", factor*22.41), "L")]));
     }
 
-    // ── 12 multistep (balance -> ratio -> grams) (>=9) ──
-    for i in 0..12 {
-        let item = multistep(
-            &format!("ex-ms-{i}"), "c-ratio",
+    // ── 12 DISTINCT multistep items (>=9) spanning the mole-ratio,
+    //    limiting-reagent / percent-yield, and gas-law concept chains, so the
+    //    drawn 6 differ and a retake is a genuinely different paper. Each item
+    //    chains a balance (or ratio) step -> a reasoning MC step -> a numeric
+    //    step; numeric answers are computed from the shared molar-mass table so
+    //    the authoring run's recompute gate verifies them.
+    let mm_nh3 = molar_mass("NH3");
+    let mm_o2 = molar_mass("O2");
+    let multistep_items: Vec<Value> = vec![
+        // 1. Methane combustion: ratio then grams CO2.
+        multistep(
+            "ex-ms-0", "c-ratio",
             "Balance the combustion of methane, then find grams of CO2 from 1.00 mol CH4.",
             vec![
                 step_balance("Balance CH4 + O2 -> CO2 + H2O", &["CH4", "O2"], &["CO2", "H2O"]),
@@ -849,9 +882,130 @@ fn build_exam_items() -> Vec<Value> {
                 step_numeric("Grams of CO2 from 1.00 mol CH4", mm_co2, "g"),
             ],
             "Balance (1,2,1,2), apply the 1:1 ratio, then multiply by the molar mass of CO2.",
-        );
-        items.push(item);
-    }
+        ),
+        // 2. Ammonia synthesis: ratio then grams NH3 from 2.00 mol N2.
+        multistep(
+            "ex-ms-1", "c-ratio",
+            "Balance N2 + H2 -> NH3, then find grams of NH3 from 2.00 mol N2 (excess H2).",
+            vec![
+                step_balance("Balance N2 + H2 -> NH3", &["N2", "H2"], &["NH3"],),
+                step_mc("The N2 : NH3 mole ratio is:", &["1 : 2", "1 : 1", "2 : 1"], 0),
+                step_numeric("Grams of NH3 from 2.00 mol N2", 4.0 * mm_nh3, "g"),
+            ],
+            "Balance (1,3,2); 1:2 ratio gives 4.00 mol NH3; multiply by the molar mass of NH3.",
+        ),
+        // 3. Hydrogen combustion: ratio then grams H2O from 3.00 mol H2.
+        multistep(
+            "ex-ms-2", "c-ratio",
+            "Balance H2 + O2 -> H2O, then find grams of H2O from 3.00 mol H2 (excess O2).",
+            vec![
+                step_balance("Balance H2 + O2 -> H2O", &["H2", "O2"], &["H2O"],),
+                step_mc("The H2 : H2O mole ratio is:", &["1 : 1", "2 : 1", "1 : 2"], 0),
+                step_numeric("Grams of H2O from 3.00 mol H2", 3.0 * mm_h2o, "g"),
+            ],
+            "Balance (2,1,2); 1:1 ratio gives 3.00 mol H2O; multiply by the molar mass of H2O.",
+        ),
+        // 4. Limiting reagent: 2 H2 + O2 -> 2 H2O, 2 mol H2 vs 2 mol O2.
+        multistep(
+            "ex-ms-3", "c-limiting",
+            "For 2 H2 + O2 -> 2 H2O with 2.00 mol H2 and 2.00 mol O2, find the mol of H2O formed.",
+            vec![
+                step_mc("Which reactant is limiting?", &["H2", "O2", "neither"], 0),
+                step_mc("How much O2 does 2.00 mol H2 require?", &["1.00 mol", "2.00 mol", "4.00 mol"], 0),
+                step_numeric("Mol of H2O formed", 2.0, "mol"),
+            ],
+            "H2 limits (needs 1.00 mol O2, O2 is in excess); the 2:2 ratio gives 2.00 mol H2O.",
+        ),
+        // 5. Limiting reagent with grams: 4.04 g H2 (2.00 mol) + excess O2.
+        multistep(
+            "ex-ms-4", "c-limiting",
+            "For 2 H2 + O2 -> 2 H2O with 4.04 g H2 and excess O2, find grams of H2O.",
+            vec![
+                step_numeric("Moles of H2 in 4.04 g", 4.04 / mm_h2, "mol"),
+                step_mc("The H2 : H2O ratio is:", &["1 : 1", "2 : 1", "1 : 2"], 0),
+                step_numeric("Grams of H2O formed", (4.04 / mm_h2) * mm_h2o, "g"),
+            ],
+            "4.04 g H2 = 2.00 mol; the 2:2 ratio gives 2.00 mol H2O; multiply by 18.02 g/mol.",
+        ),
+        // 6. Percent yield after a stoichiometry calc.
+        multistep(
+            "ex-ms-5", "c-limiting",
+            "1.00 mol CH4 burns to CO2; the actual yield is 35.21 g CO2. Find the percent yield.",
+            vec![
+                step_mc("The CH4 : CO2 ratio is:", &["1 : 1", "1 : 2", "2 : 1"], 0),
+                step_numeric("Theoretical grams of CO2", mm_co2, "g"),
+                step_numeric("Percent yield (actual 35.21 g)", 35.21 / mm_co2 * 100.0, "%"),
+            ],
+            "1:1 ratio -> 44.01 g theoretical; 35.21 / 44.01 x 100 = 80.0%.",
+        ),
+        // 7. Percent yield, ammonia.
+        multistep(
+            "ex-ms-6", "c-limiting",
+            "2.00 mol N2 reacts to form NH3; the actual yield is 54.50 g NH3. Find the percent yield.",
+            vec![
+                step_mc("The N2 : NH3 ratio is:", &["1 : 2", "1 : 1", "2 : 1"], 0),
+                step_numeric("Theoretical grams of NH3", 4.0 * mm_nh3, "g"),
+                step_numeric("Percent yield (actual 54.50 g)", 54.50 / (4.0 * mm_nh3) * 100.0, "%"),
+            ],
+            "1:2 ratio -> 4.00 mol = 68.12 g theoretical; 54.50 / 68.12 x 100 = 80.0%.",
+        ),
+        // 8. Gas law: moles then volume at STP.
+        multistep(
+            "ex-ms-7", "c-gas",
+            "Find the STP volume of the CO2 from burning 0.500 mol CH4 (CH4 + 2 O2 -> CO2 + 2 H2O).",
+            vec![
+                step_mc("The CH4 : CO2 ratio is:", &["1 : 1", "1 : 2", "2 : 1"], 0),
+                step_numeric("Moles of CO2 produced", 0.5, "mol"),
+                step_numeric("Volume of CO2 at STP", 0.5 * 22.41, "L"),
+            ],
+            "1:1 ratio -> 0.500 mol CO2; 0.500 x 22.41 = 11.21 L at STP.",
+        ),
+        // 9. Gas law: PV = nRT.
+        multistep(
+            "ex-ms-8", "c-gas",
+            "2.00 mol of an ideal gas is held at 1.00 atm and 273.15 K (R = 0.0821). Find its volume.",
+            vec![
+                step_mc("Which form solves for V?", &["V = nRT / P", "V = P / nRT", "V = nP / RT"], 0),
+                step_numeric("Volume (L)", 2.0 * 0.0821 * 273.15 / 1.0, "L"),
+                step_mc("At STP this equals about:", &["2 x 22.41 L", "22.41 L", "11.21 L"], 0),
+            ],
+            "V = nRT/P = 2.00 x 0.0821 x 273.15 / 1.00 = 44.86 L, about 2 x 22.41 L.",
+        ),
+        // 10. Gas stoichiometry: O2 needed to burn methane, as a volume.
+        multistep(
+            "ex-ms-9", "c-gas",
+            "Burning 1.00 mol CH4 needs O2 (CH4 + 2 O2 -> CO2 + 2 H2O). Find the STP volume of that O2.",
+            vec![
+                step_balance("Balance CH4 + O2 -> CO2 + H2O", &["CH4", "O2"], &["CO2", "H2O"]),
+                step_mc("The CH4 : O2 ratio is:", &["1 : 2", "1 : 1", "2 : 1"], 0),
+                step_numeric("Volume of O2 at STP", 2.0 * 22.41, "L"),
+            ],
+            "Balance (1,2,1,2); 1:2 ratio -> 2.00 mol O2; 2.00 x 22.41 = 44.82 L.",
+        ),
+        // 11. Mole ratio: propane combustion to CO2 grams.
+        multistep(
+            "ex-ms-10", "c-ratio",
+            "Balance C3H8 + O2 -> CO2 + H2O, then find grams of CO2 from 1.00 mol C3H8.",
+            vec![
+                step_balance("Balance C3H8 + O2 -> CO2 + H2O", &["C3H8", "O2"], &["CO2", "H2O"]),
+                step_mc("The C3H8 : CO2 ratio is:", &["1 : 3", "1 : 1", "3 : 1"], 0),
+                step_numeric("Grams of CO2 from 1.00 mol C3H8", 3.0 * mm_co2, "g"),
+            ],
+            "Balance (1,5,3,4); 1:3 ratio -> 3.00 mol CO2; 3.00 x 44.01 = 132.03 g.",
+        ),
+        // 12. Limiting reagent with O2 given in grams.
+        multistep(
+            "ex-ms-11", "c-limiting",
+            "For 2 H2 + O2 -> 2 H2O with 2.00 mol H2 and 64.00 g O2, find the limiting reactant and mol H2O.",
+            vec![
+                step_numeric("Moles of O2 in 64.00 g", 64.00 / mm_o2, "mol"),
+                step_mc("Which reactant is limiting?", &["H2", "O2", "neither"], 0),
+                step_numeric("Mol of H2O formed", 2.0, "mol"),
+            ],
+            "64.00 g O2 = 2.00 mol; 2.00 mol H2 needs only 1.00 mol O2, so H2 limits -> 2.00 mol H2O.",
+        ),
+    ];
+    items.extend(multistep_items);
 
     items
 }
