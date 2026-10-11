@@ -22,6 +22,11 @@ pub struct Mastery {
     pub mastered: bool,
     pub ease: f64,
     pub interval_days: f64,
+    /// How many spaced-repetition reviews this concept has had (drives the
+    /// SM-2-lite 1 → 3 → interval·ease ladder, docs/LESSONS.md §8.1). Persisted
+    /// so the interval actually advances past 1 day across sessions.
+    #[serde(default)]
+    pub reviews: u32,
 }
 
 impl Default for Mastery {
@@ -34,6 +39,7 @@ impl Default for Mastery {
             mastered: false,
             ease: crate::lessons::review::START_EASE,
             interval_days: 0.0,
+            reviews: 0,
         }
     }
 }

@@ -17,6 +17,7 @@ pub mod menu_ids {
 
     pub const VIEW_RECORD: &str = "view_record";
     pub const VIEW_RECORDINGS: &str = "view_recordings";
+    pub const VIEW_LESSONS: &str = "view_lessons";
     pub const VIEW_CHAT: &str = "view_chat";
     pub const VIEW_SETTINGS: &str = "view_settings";
     pub const SEARCH: &str = "search";
@@ -98,8 +99,13 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(menu_ids::VIEW_CHAT, "Chat")
+            &MenuItemBuilder::with_id(menu_ids::VIEW_LESSONS, "Lessons")
                 .accelerator("CmdOrCtrl+3")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::VIEW_CHAT, "Chat")
+                .accelerator("CmdOrCtrl+4")
                 .build(app)?,
         )
         .separator()
@@ -150,6 +156,7 @@ pub fn handle_menu_event(app: &AppHandle<Wry>, event_id: &str) {
         }
         menu_ids::VIEW_RECORD => "menu:view_record",
         menu_ids::VIEW_RECORDINGS => "menu:view_recordings",
+        menu_ids::VIEW_LESSONS => "menu:view_lessons",
         menu_ids::VIEW_CHAT => "menu:view_chat",
         menu_ids::VIEW_SETTINGS => "menu:view_settings",
         menu_ids::SEARCH => "menu:search",
@@ -183,6 +190,7 @@ fn shows_window(event_id: &str) -> bool {
         menu_ids::NEW_RECORDING
             | menu_ids::VIEW_RECORD
             | menu_ids::VIEW_RECORDINGS
+            | menu_ids::VIEW_LESSONS
             | menu_ids::VIEW_CHAT
             | menu_ids::VIEW_SETTINGS
             | menu_ids::SEARCH
@@ -200,6 +208,7 @@ mod tests {
             menu_ids::NEW_RECORDING,
             menu_ids::VIEW_RECORD,
             menu_ids::VIEW_RECORDINGS,
+            menu_ids::VIEW_LESSONS,
             menu_ids::VIEW_CHAT,
             menu_ids::VIEW_SETTINGS,
             menu_ids::SEARCH,

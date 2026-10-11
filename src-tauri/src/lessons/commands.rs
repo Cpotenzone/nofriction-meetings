@@ -218,7 +218,7 @@ pub async fn lessons_save_progress(
 
 async fn load_mastery(pool: &Pool<Sqlite>, set_id: &str, concept_id: &str) -> Mastery {
     let row = sqlx::query(
-        "SELECT score, attempts, correct_attempts, first_try_correct, mastered, ease, interval_days \
+        "SELECT score, attempts, correct_attempts, first_try_correct, mastered, ease, interval_days, reviews \
          FROM mastery_records WHERE lesson_set_id = ? AND concept_id = ?",
     )
     .bind(set_id)
@@ -236,6 +236,7 @@ async fn load_mastery(pool: &Pool<Sqlite>, set_id: &str, concept_id: &str) -> Ma
             mastered: r.get::<i64, _>("mastered") != 0,
             ease: r.get("ease"),
             interval_days: r.get("interval_days"),
+            reviews: r.get::<i64, _>("reviews") as u32,
         },
         None => Mastery::default(),
     }
@@ -243,16 +244,25 @@ async fn load_mastery(pool: &Pool<Sqlite>, set_id: &str, concept_id: &str) -> Ma
 
 async fn save_mastery(pool: &Pool<Sqlite>, set_id: &str, concept_id: &str, m: &Mastery) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
+    // When a review ladder is active (reviews > 0, interval > 0), schedule the
+    // next due date so the "Review due" surface (§8.1) can resurface it. Until
+    // a concept has been reviewed its due_at stays NULL (not yet in the ladder).
+    let due_at: Option<String> = if m.reviews > 0 && m.interval_days > 0.0 {
+        let secs = (m.interval_days * 86_400.0) as i64;
+        Some((chrono::Utc::now() + chrono::Duration::seconds(secs)).to_rfc3339())
+    } else {
+        None
+    };
     sqlx::query(
         "INSERT INTO mastery_records \
          (lesson_set_id, concept_id, score, attempts, correct_attempts, first_try_correct, mastered, \
-          ease, interval_days, due_at, last_reviewed_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?) \
+          ease, interval_days, reviews, due_at, last_reviewed_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
          ON CONFLICT(lesson_set_id, concept_id) DO UPDATE SET \
           score=excluded.score, attempts=excluded.attempts, correct_attempts=excluded.correct_attempts, \
           first_try_correct=excluded.first_try_correct, mastered=excluded.mastered, ease=excluded.ease, \
-          interval_days=excluded.interval_days, last_reviewed_at=excluded.last_reviewed_at, \
-          updated_at=excluded.updated_at",
+          interval_days=excluded.interval_days, reviews=excluded.reviews, due_at=excluded.due_at, \
+          last_reviewed_at=excluded.last_reviewed_at, updated_at=excluded.updated_at",
     )
     .bind(set_id)
     .bind(concept_id)
@@ -263,6 +273,8 @@ async fn save_mastery(pool: &Pool<Sqlite>, set_id: &str, concept_id: &str, m: &M
     .bind(m.mastered as i64)
     .bind(m.ease)
     .bind(m.interval_days)
+    .bind(m.reviews as i64)
+    .bind(&due_at)
     .bind(&now)
     .bind(&now)
     .execute(pool)
@@ -352,9 +364,10 @@ async fn grade_and_update_mastery(
             let mut m = load_mastery(pool, set_id, cid).await;
             crate::lessons::mastery::record_attempt(&mut m, correct, a.first_try, g.fraction());
             let q = review::quality_from_result(correct, a.first_try);
-            let mut rs = review::ReviewState { ease: m.ease, interval_days: m.interval_days, reviews: 0 };
+            let mut rs = review::ReviewState { ease: m.ease, interval_days: m.interval_days, reviews: m.reviews };
             m.interval_days = review::apply_review(&mut rs, q);
             m.ease = rs.ease;
+            m.reviews = rs.reviews;
             let _ = save_mastery(pool, set_id, cid, &m).await;
         }
         out.push(GradedItem { item_id: a.item_id.clone(), earned: g.earned, possible: g.possible, correct });
@@ -485,9 +498,10 @@ pub async fn lessons_submit_trainer_item(
     let mut m = load_mastery(&pool, &set_id, &concept_id).await;
     crate::lessons::mastery::record_attempt(&mut m, correct, first_try, if correct { 1.0 } else { 0.0 });
     let q = review::quality_from_result(correct, first_try);
-    let mut rs = review::ReviewState { ease: m.ease, interval_days: m.interval_days, reviews: 0 };
+    let mut rs = review::ReviewState { ease: m.ease, interval_days: m.interval_days, reviews: m.reviews };
     m.interval_days = review::apply_review(&mut rs, q);
     m.ease = rs.ease;
+    m.reviews = rs.reviews;
     save_mastery(&pool, &set_id, &concept_id, &m).await?;
     Ok(m)
 }
@@ -839,6 +853,15 @@ pub async fn lessons_export_certificate(
         provenance: r.get("provenance"),
         result_hash: r.get("result_hash"),
     }))
+}
+
+/// The on-disk catalog directory for a set, so the frontend can build LOCAL
+/// Tauri asset URLs for the set's figure PNGs (never a remote fetch).
+#[tauri::command(rename_all = "camelCase")]
+pub async fn lessons_set_dir(state: State<'_, AppState>, set_id: String) -> Result<String, String> {
+    let pool = pool_of(&state);
+    let dir = dir_path_of(&pool, &set_id).await?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command(rename_all = "camelCase")]

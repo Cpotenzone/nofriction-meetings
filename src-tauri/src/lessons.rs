@@ -110,6 +110,7 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
             mastered INTEGER NOT NULL DEFAULT 0, \
             ease REAL NOT NULL DEFAULT 2.5, \
             interval_days REAL NOT NULL DEFAULT 0, \
+            reviews INTEGER NOT NULL DEFAULT 0, \
             due_at TEXT, \
             last_reviewed_at TEXT, \
             updated_at TEXT NOT NULL, \
@@ -117,6 +118,16 @@ pub async fn ensure_schema(conn: &mut SqliteConnection) -> Result<(), sqlx::Erro
         )",
     )
     .execute(&mut *conn)
+    .await?;
+    // `reviews` shipped after the table first existed, so an older DB needs the
+    // column added explicitly (CREATE TABLE IF NOT EXISTS never alters). It
+    // persists the SM-2-lite review count so the interval walks 1 → 3 →
+    // interval·ease across sessions instead of resetting to 1 day every grade.
+    crate::database::ensure_columns(
+        &mut *conn,
+        "mastery_records",
+        &[("reviews", "INTEGER NOT NULL DEFAULT 0")],
+    )
     .await?;
 
     // Learner-local: exam attempts.

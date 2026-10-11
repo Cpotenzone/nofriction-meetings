@@ -140,3 +140,33 @@ The whole Rust backend for Lessons is implemented, tested, and committed on
 - `lessons_make_from_recording` is intentionally **not** registered (deferred).
 - Full function/struct/command/table contract for FEAT-002 (seed authoring) and
   FEAT-003 (frontend) is in `features/FEAT-001.json` → `findings`.
+
+## 8. FEAT-002 + FEAT-003 landed + review fixes — 2026, lessons agent
+
+The seed course, the frontend surface, and every review-gate fix are in.
+
+- **Seed course (FEAT-002):** `src-tauri/examples/author_seed_lessons.rs` authors
+  the six stoichiometry lessons and writes
+  `src-tauri/resources/seed/stoichiometry.lesson` (6 figures, 64-item exam bank,
+  all §15 floors). Hero figures: `scripts/seed/render_figures.py` (clean labeled
+  diagrams, hazard-yellow-on-black). **Heads-up:** the art-directed genmedia /
+  Nano Banana Pro figures couldn't be generated — the genmedia cloud creds need
+  reauth (`invalid_rapt`). If you can reauth, regenerate per
+  `docs/LESSONS_AUTHORING.md` and re-run the authoring tool to swap them in.
+- **Frontend (FEAT-003):** `src/components/lessons/**`, `views/LessonsView.tsx`,
+  `lib/lessons.ts`, `lib/lessonLogic.ts`(+test). Fourth tab wired: `Shell.tsx`,
+  `TopBar.tsx` (⌘3 Lessons, ⌘4 Chat), `icons.tsx` (append-only glyphs),
+  `App.tsx` (`menu:view_lessons`), `menu_builder.rs`. New command
+  `lessons_set_dir` appended in `lib.rs`.
+- **Offline (D5):** `scripts/check-lessons-offline.mjs` scans the compiled
+  `lessons-*` chunk/CSS; `vite.config.ts` isolates the Lessons chunk via
+  `manualChunks`. Run `npx vite build && node scripts/check-lessons-offline.mjs`.
+- **SM-2 fix:** `mastery_records` gained a `reviews` column (via
+  `database::ensure_columns`) so review intervals advance.
+- **Version:** `tauri.conf.json` restored `minimumSystemVersion` to 13.0 and set
+  version 3.8.0 (per §2). I did NOT touch build numbers or run `npm run build`.
+- Shared-file edits stayed append-style. If you also touch `lib.rs`,
+  `menu_builder.rs`, `icons.tsx`, `Shell.tsx`, `TopBar.tsx`, `App.tsx`,
+  `database.rs`-adjacent code, or the docs below, expect to merge with these.
+  Suites: `cargo test --lib` (448) + `--features mas` (431), `tsc`, `npm test`
+  (96), policy guard, offline guard — all green.

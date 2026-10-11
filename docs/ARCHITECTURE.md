@@ -67,6 +67,7 @@ Details: [MAC_APP_STORE_BUILD.md](MAC_APP_STORE_BUILD.md).
 | Meetings | `meeting_end.rs` (auto-stop: call-app mic release, window, calendar, silence), `calendar_client.rs`, `people.rs`, `attendee_intel.rs` |
 | AI | `ai/` (`providers.rs` Apple + custom endpoint choices, URL policy, log redaction; `client.rs` adapters + guardrails; `config.rs`; `commands.rs`), `ai_client.rs` (prompt-level helpers), `meeting_notes.rs`, `live_intel_agent.rs`, `meeting_intel.rs`, `catch_up_agent.rs`, `vlm_client.rs` + `vlm_scheduler.rs` (screenshot analysis via the configured AI), `vision_ocr.rs` (Apple Vision OCR, local), `prompt_manager.rs` |
 | Editing | `redaction.rs` (+ `redaction/tests.rs`): Delete / Strike purge pipeline |
+| Lessons | `lessons.rs` + `lessons/` (`schema.rs`, `bundle.rs` zip + hashed manifest, `parse.rs`, `explain.rs`, `grade.rs`, `mastery.rs`, `review.rs` SM-2-lite, `trainer.rs`, `generators.rs`, `exam.rs`, `purge.rs`, `seed.rs`, `commands.rs`, `tests.rs`): the interactive-education subsystem ([LESSONS.md](LESSONS.md)). Correctness/grading is authoritative Rust (shared with a future Swift layer); taking a lesson is fully offline, no AI/image call. Seed course authored by `examples/author_seed_lessons.rs` into `resources/seed/stoichiometry.lesson`. Generated-provenance sets join the `redaction.rs` purge; seed/imported are exempt. |
 | Secrets | `secrets.rs`: Keychain; migrates and deletes old plaintext keys; removes leftovers of retired integrations |
 | Store | `store.rs` + `swift/NoFrictionBridge/` (StoreKit 2 in `mas`, Apple Foundation Models in both), `entitlement.rs` |
 | Export | `obsidian_vault.rs` + `bookmarks.rs` (security-scoped folder access) |
@@ -77,12 +78,16 @@ guardrails and (in `mas`) `entitlement::require_pro()`.
 ### Frontend (`src/`)
 
 `App.tsx` hosts `components/Shell.tsx`: `TopBar.tsx` (**Record** ·
-**Recordings** · **Chat**, Stop while recording, the Settings gear), one
-banner slot (meeting-end and time-limit banners), and one view:
-`views/RecordView.tsx` (idle: the promise and one Record button; recording:
-the capture bar, live transcript and screens; no AI), `views/RecordingsView.tsx`
-(`MeetingHistory.tsx` with the one search field backed by `search.rs`, and the
-open recording: title block, Rewind · Notes · Links · Review guide) and
+**Recordings** · **Lessons** · **Chat**, ⌘1–4, Stop while recording, the
+Settings gear), one banner slot (meeting-end and time-limit banners), and one
+view: `views/RecordView.tsx` (idle: the promise and one Record button;
+recording: the capture bar, live transcript and screens; no AI),
+`views/RecordingsView.tsx` (`MeetingHistory.tsx` with the one search field
+backed by `search.rs`, and the open recording: title block, Rewind · Notes ·
+Links · Review guide), `views/LessonsView.tsx` (the Lessons library, course
+player, interactive explainers in `components/lessons/`, mastery dashboard,
+exam, certificate, and the Generate preview; preview-only logic in
+`lib/lessonLogic.ts`, grading via the Rust `lessons_*` commands) and
 `chat/RecordingsChat.tsx`. Settings (`features/settings/Settings.tsx` in
 `SettingsWindow.tsx`): Recording, Transcription, AI, Sync, Subscription
 (`mas` only), About. Sync with your iPhone: `src-tauri/src/sync/` and

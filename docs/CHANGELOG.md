@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Lessons — interactive education (Mac 3.8.0).** A new fourth top-bar view
+  (Record / Recordings / Lessons / Chat, ⌘1–4) that ships a six-lesson
+  Stoichiometry course at AP Chem / college level: interactive explainers
+  (equation balancer, mole-ratio and dimensional-analysis builders, a
+  limiting-reagent simulator, a titration-curve explorer, an ideal-gas PV
+  explorer, molecule diagrams), AI-authored figures embedded in the bundle,
+  step-reveal worked examples, a common-mistakes explainer, an 8–10 item
+  checkpoint per lesson, per-concept mastery with spaced-repetition review and
+  adaptive trainers, a cumulative 30-question exam (80% to pass, unlocked after
+  all six checkpoints), a mastery dashboard with an exam-readiness meter, and a
+  printable offline certificate with a local verification hash. Lessons are
+  portable `.lesson` bundles (zip + hashed manifest) you can also import from a
+  file, folder, or a user-pasted URL. Taking a lesson is **100% offline and
+  free**; grading is authoritative in Rust and no AI/image call is made for a
+  present lesson. A visible **Generate** button previews the coming-soon
+  recording→lesson pipeline (it makes no AI call this build). The iOS render
+  layer is a documented follow-up; the data and correctness layer is shared
+  Rust. See `docs/LESSONS.md` and `docs/LESSONS_AUTHORING.md`.
 - **Apple Watch app (iOS 1.0.0, next build).** Record a meeting on the watch
   with one tap: elapsed time, live level, Pause/Resume, Stop. It keeps
   recording with the wrist down; a call or Siri pauses it until you tap

@@ -172,6 +172,27 @@ exist on the platform:
      knows to ask again; the user's questions are the user's own words and
      stay. The Mac preview says "n CHAT answers that drew on this recording:
      deleted (the chat is marked)".
+   - **Generated lessons are deleted, not rewritten** (Mac `lesson_sets` rows
+     with `provenance = 'generated'` and their learner records —
+     `lesson_progress`, `mastery_records`, `exam_attempts`, `certificates` —
+     plus the on-disk `<app data>/lessons/<id>/` bundle;
+     `lessons::purge_for_meeting` in `redact_ai_outputs`, live database and app
+     backups; [LESSONS.md](LESSONS.md#11-pro-gating-offline-and-purge)). A
+     generated lesson paraphrases the recording exactly like a study guide, so
+     any Delete or Strike of transcript text deletes it. The purge resolves the
+     `dir_path`s first, deletes the DB rows next, then removes the on-disk dirs
+     (tolerating an already-absent dir), keyed by `source_recording_id` and the
+     `WHERE provenance = 'generated'` guard, so it is idempotent under the
+     non-transactional `delete_meeting` sequencing. **`seed` and `imported`
+     lesson sets are never recording-derived and are exempt** — a recording edit
+     can only ever remove a `generated` set. A save still in flight is not
+     written if the transcript fingerprint changed meanwhile (the same
+     `BEGIN IMMEDIATE` recheck the study guide uses). The backup purge runs
+     job-kind-independently in `purge_one_backup` (after the `for job in jobs`
+     match, before commit), so a Words / Screens / time-range / whole-recording
+     Delete all reach a generated set in every backup. In this build no code
+     path writes `generated`, so this is dormant-but-wired until the deferred
+     recording→lesson pipeline ships.
 6. **Exports.** Share/export/Markdown/Obsidian output from now on renders the
    marker. Files already exported outside the app can't be recalled; the Strike
    confirmation says so in one line.

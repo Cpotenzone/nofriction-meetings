@@ -419,6 +419,42 @@ the bin next to it in **Recordings** (you get 5 seconds to **Undo**).
 
 ---
 
+## Lessons (Mac)
+
+**Lessons** is the fourth view in the top bar (⌘3; Chat moves to ⌘4). It opens
+on your library of courses. noFriction ships with a six-lesson **Stoichiometry**
+course (AP Chem / college level) ready to take.
+
+Open a course to see its lessons, a mastery dashboard and the final exam. Each
+lesson has:
+
+- **Interactive explainers** — an equation balancer, mole-ratio and
+  dimensional-analysis builders, a limiting-reagent simulator, a titration-curve
+  explorer, an ideal-gas PV explorer and labeled molecule diagrams — plus an
+  authored figure. They are keyboard-operable and respect Reduce Motion.
+- **Worked examples** that reveal one step at a time.
+- A **common mistakes** card deck.
+- A **checkpoint** quiz. Score 80% to pass it; a lower score marks the lesson
+  "needs review" and points you at the explainers for the concepts you missed.
+
+Pass all six checkpoints to unlock the **final exam** (30 questions, 80% to
+pass). Pass the exam to earn a **certificate** you can print or save as a PDF.
+The dashboard shows per-concept mastery and an exam-readiness estimate; concepts
+you've learned come back on a spaced-repetition schedule so they stick.
+
+Everything about taking a lesson is **free and works fully offline** — no AI, no
+network. Use **Import a lesson…** to add a `.lesson` file, folder, or a URL you
+paste. The **Generate** button previews a coming-soon feature that will turn a
+Class recording into a lesson; it makes no AI call yet.
+
+### QA appendix — performance (NFR-4)
+
+Manual check: cold-open Lessons, open the Stoichiometry course's first lesson,
+and time to the first interactive explainer. Target under 1 second on a mid
+Mac.
+
+---
+
 ## Export your recordings
 
 - **iPhone/iPad:** in a recording, tap the **Share** button to send it

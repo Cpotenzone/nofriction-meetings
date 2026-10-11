@@ -202,20 +202,26 @@ Every async operation MUST have an error state that includes:
 
 ## Navigation Model
 
-### Three views (top bar)
+### Four views (top bar)
 | View | Purpose |
 |------|---------|
-| **Record** | Idle: a title, the privacy promise, one Record button. Recording: the capture bar (time left, Mark, Capture screen), the live transcript, the screens. No AI runs here. |
-| **Recordings** | One search field (⌘K), Notebook chips, the list by day; the open recording's title block and **Rewind · Notes · Links · Review guide**. |
-| **Chat** | Ask your recordings, scoped to all, a notebook, a topic or one recording, with citations. |
+| **Record** (⌘1) | Idle: a title, the privacy promise, one Record button. Recording: the capture bar (time left, Mark, Capture screen), the live transcript, the screens. No AI runs here. |
+| **Recordings** (⌘2) | One search field (⌘K), Notebook chips, the list by day; the open recording's title block and **Rewind · Notes · Links · Review guide**. |
+| **Lessons** (⌘3) | The local library of lesson sets (non-empty on first run: the built-in Stoichiometry course), **Import a lesson…**, and the **Generate** affordance. A course opens to its lessons, mastery dashboard, final exam and certificate. Taking a lesson is fully offline and free. |
+| **Chat** (⌘4) | Ask your recordings, scoped to all, a notebook, a topic or one recording, with citations. |
 
 Right side of the bar: **Stop** while recording, and the Settings gear.
 Settings has six sections: Recording, Transcription, AI, Sync, Subscription
 (`mas` only), About. Help is one document, `docs/USER_GUIDE.md`.
 
 ### Rules
-- Three views. Nothing goes under a MORE menu; if it can't earn a place in
-  the three views or Settings, it is cut.
+- Four primary views (expanded from three for Lessons — owner-decision D1,
+  `.agents/tasks/lessons-stoichiometry/owner-decisions.md`: *"gets it own
+  tab."*). Interactive education is a distinct noun with its own lifecycle
+  (browse → take → master → review → exam → certificate), so it earns a
+  first-class slot exactly as Chat did rather than hiding under Recordings.
+  Nothing else goes under a MORE menu; if it can't earn a place in the four
+  views or Settings, it is cut.
 - One control per act: one Record, one Stop, one search, one Delete with
   Undo, one Strike from the record.
 - Banners live in the one slot under the top bar, never over it.
@@ -236,7 +242,17 @@ Settings has six sections: Recording, Transcription, AI, Sync, Subscription
 | Review material | Review guide (Study guide for a Class) | Study (for every type) |
 | Screens (Mac) / Photos (iOS) | Capture screen | Snap |
 | AI | AI (section), endpoint (the URL), connection (saved) | AI Engine, provider (in UI) |
+| A unit of study | lesson | module, chapter |
+| A course | lesson set / course | class (that is a recording type) |
+| Make one from a recording (deferred) | **Make lesson** (verb); the button is labelled **Generate** per owner-decision D2 | — |
+| Add someone else's lesson | **Import a lesson…** | Download, Install |
 | Settings / Help | Settings, Help | System, Overlay, Admin Console, Docs |
+
+Note: "Generate" is forbidden as a label for **AI notes** (use *Make notes*),
+but is the owner-chosen label for the Lessons **Make lesson** affordance
+(owner-decision D2, verbatim *"generate button"*). The two never collide: Notes
+says *Make notes*; the Lessons button says *Generate* and *Make lesson* is its
+vocabulary verb.
 
 ---
 

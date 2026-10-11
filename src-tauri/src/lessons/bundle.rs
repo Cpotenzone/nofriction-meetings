@@ -210,6 +210,31 @@ fn canonical_json(v: &Value) -> String {
     }
 }
 
+/// Compute the canonical content fingerprint (§4.4) for a set of bundle files
+/// and figures, independent of a `RawBundle`. Used by seed authoring and tests
+/// to write a manifest whose declared `contentFingerprint` matches what import
+/// recomputes (so the NIT fingerprint check passes). `entries` excludes
+/// `manifest.json`.
+pub fn fingerprint_for(entries: &[(String, Vec<u8>)], figures: &[Figure]) -> Result<String, BundleError> {
+    let raw = RawBundle {
+        manifest: Manifest {
+            format: FORMAT.into(),
+            schema_major: SCHEMA_MAJOR,
+            schema_minor: crate::lessons::SCHEMA_MINOR,
+            lesson_set_id: String::new(),
+            title: String::new(),
+            provenance: String::new(),
+            files: Vec::new(),
+            content_fingerprint: String::new(),
+            authored_at: String::new(),
+            generator: String::new(),
+            figures: figures.to_vec(),
+        },
+        files: entries.iter().cloned().collect(),
+    };
+    content_fingerprint(&raw)
+}
+
 /// A validated, integrity-checked bundle ready to persist to the catalog.
 #[derive(Debug)]
 pub struct PreparedBundle {
@@ -225,6 +250,16 @@ pub struct PreparedBundle {
 fn validate_bundle(raw: RawBundle) -> Result<PreparedBundle, BundleError> {
     verify_integrity(&raw)?;
     let fingerprint = content_fingerprint(&raw)?;
+    // The recomputed fingerprint is the authoritative identity. If the manifest
+    // declares one, it must match — a mismatch means the declared identity does
+    // not describe the bundle's actual content, so reject it rather than leave
+    // the field as unvalidated data (review NIT). An empty declared fingerprint
+    // is tolerated (older/hand-authored bundles): identity is still recomputed.
+    if !raw.manifest.content_fingerprint.is_empty()
+        && raw.manifest.content_fingerprint != fingerprint
+    {
+        return Err("bundle content fingerprint does not match its manifest".into());
+    }
 
     // Parse the lesson set.
     let lessonset_raw = raw.files.get("lessonset.json").ok_or("bundle has no lessonset.json")?;

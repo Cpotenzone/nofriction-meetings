@@ -1,8 +1,8 @@
-// The top bar: Record · Recordings · Chat, and on the right the one
+// The top bar: Record · Recordings · Lessons · Chat, and on the right the one
 // Record/Stop control (Stop only while recording: the idle Record screen
 // has the Record button) and the Settings gear. Nothing else.
 
-import { GearIcon } from "./icons";
+import { GearIcon, GraduationCapIcon } from "./icons";
 import type { AppMode } from "./Shell";
 
 interface TopBarProps {
@@ -16,7 +16,8 @@ interface TopBarProps {
 const MODES: { mode: AppMode; label: string; shortcut: string }[] = [
     { mode: "record", label: "Record", shortcut: "⌘1" },
     { mode: "recordings", label: "Recordings", shortcut: "⌘2" },
-    { mode: "chat", label: "Chat", shortcut: "⌘3" },
+    { mode: "lessons", label: "Lessons", shortcut: "⌘3" },
+    { mode: "chat", label: "Chat", shortcut: "⌘4" },
 ];
 
 export function TopBar({ activeMode, onModeChange, isRecording, onStop, onOpenSettings }: TopBarProps) {
@@ -39,6 +40,7 @@ export function TopBar({ activeMode, onModeChange, isRecording, onStop, onOpenSe
                         title={shortcut}
                     >
                         {mode === "record" && isRecording && <span className="topbar__rec-dot" aria-hidden />}
+                        {mode === "lessons" && <GraduationCapIcon size={15} />}
                         {label}
                     </button>
                 ))}

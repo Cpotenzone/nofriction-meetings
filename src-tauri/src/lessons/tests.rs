@@ -17,6 +17,7 @@ use crate::database::DatabaseManager;
 use crate::redaction::{self as rd, RedactionEnv, WordTarget};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -150,6 +151,15 @@ fn sample_bundle() -> (Vec<u8>, String) {
             kind: if p.ends_with(".png") { Some("image/png".into()) } else { None },
         })
         .collect();
+    let figures = vec![schema::Figure {
+        id: figure_id.into(),
+        path: format!("figures/{}.png", figure_id),
+        sha256: sha(&png),
+        width: 2,
+        height: 2,
+        alt: "a mole".into(),
+        reviewed_by: "tester".into(),
+    }];
     let manifest = Manifest {
         format: bundle::FORMAT.into(),
         schema_major: 1,
@@ -158,18 +168,10 @@ fn sample_bundle() -> (Vec<u8>, String) {
         title: "Stoichiometry sample".into(),
         provenance: "imported".into(),
         files: manifest_files,
-        content_fingerprint: "placeholder".into(),
+        content_fingerprint: bundle::fingerprint_for(&files, &figures).unwrap(),
         authored_at: "2026-01-01T00:00:00Z".into(),
         generator: "test".into(),
-        figures: vec![schema::Figure {
-            id: figure_id.into(),
-            path: format!("figures/{}.png", figure_id),
-            sha256: sha(&png),
-            width: 2,
-            height: 2,
-            alt: "a mole".into(),
-            reviewed_by: "tester".into(),
-        }],
+        figures,
     };
     let manifest_json = serde_json::to_vec(&manifest).unwrap();
     let zip = bundle::write_zip(&manifest_json, &files).unwrap();
@@ -479,6 +481,62 @@ fn diagnostic_seeds_mastery() {
     assert!(!weak.mastered);
 }
 
+#[tokio::test]
+async fn review_count_persists_so_interval_advances_across_db_round_trips() {
+    // Regression for the SM-2-lite bug: the review count was rebuilt as 0 on
+    // every grade, pinning the interval to 1 day forever. Driving multiple
+    // reviews through the mastery_records table (with the `reviews` column)
+    // must walk the 1 -> 3 -> interval*ease ladder.
+    let f = fx().await;
+    let pool = f.db.pool();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Each "review" = load the row, apply a passing review, store it back,
+    // exactly as the commands do (reviews loaded from and written to the DB).
+    let mut intervals = Vec::new();
+    for _ in 0..3 {
+        let row = sqlx::query(
+            "SELECT ease, interval_days, reviews FROM mastery_records \
+             WHERE lesson_set_id = 'set' AND concept_id = 'c'",
+        )
+        .fetch_optional(pool)
+        .await
+        .unwrap();
+        let (ease, interval_days, reviews) = match row {
+            Some(r) => (r.get::<f64, _>("ease"), r.get::<f64, _>("interval_days"), r.get::<i64, _>("reviews") as u32),
+            None => (review::START_EASE, 0.0, 0u32),
+        };
+        let mut rs = ReviewState { ease, interval_days, reviews };
+        let next = review::apply_review(&mut rs, 5); // passing, first-try
+        intervals.push(next);
+        sqlx::query(
+            "INSERT INTO mastery_records (lesson_set_id, concept_id, ease, interval_days, reviews, updated_at) \
+             VALUES ('set', 'c', ?, ?, ?, ?) \
+             ON CONFLICT(lesson_set_id, concept_id) DO UPDATE SET \
+              ease=excluded.ease, interval_days=excluded.interval_days, reviews=excluded.reviews, updated_at=excluded.updated_at",
+        )
+        .bind(rs.ease)
+        .bind(rs.interval_days)
+        .bind(rs.reviews as i64)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    assert_eq!(intervals[0], 1.0, "first review is 1 day");
+    assert_eq!(intervals[1], 3.0, "second review is 3 days (reviews persisted)");
+    assert!(intervals[2] > 3.0, "third review grows by ease, got {} (bug: pinned to 1)", intervals[2]);
+
+    // The persisted reviews counter reached 3.
+    let reviews: i64 = sqlx::query_scalar(
+        "SELECT reviews FROM mastery_records WHERE lesson_set_id = 'set' AND concept_id = 'c'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(reviews, 3);
+}
+
 #[test]
 fn review_schedule_is_deterministic() {
     let mut s = ReviewState::default();
@@ -598,6 +656,142 @@ fn certificate_hash_is_stable_and_sensitive() {
     assert_eq!(a, b);
     let c = exam::result_hash("fp", 91.0, "2026-01-01T00:00:00Z", "set");
     assert!(a != c);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Shipped seed bundle validation + content rigor (docs/LESSONS.md §14/§15)
+// ════════════════════════════════════════════════════════════════════════
+
+/// The shipped seed course, embedded at compile time. Produced by
+/// `cargo run --example author_seed_lessons` (FEAT-002). If this file is
+/// absent the build fails here, which is the point: a figure-free or missing
+/// seed course must never ship (owner-decision D4).
+const SEED_BUNDLE: &[u8] = include_bytes!("../../resources/seed/stoichiometry.lesson");
+
+#[test]
+fn shipped_seed_bundle_passes_validation_with_all_floors() {
+    // 1. It validates end-to-end through the ordinary import path (§4.5).
+    let prepared = bundle::validate_bytes(SEED_BUNDLE)
+        .expect("the shipped stoichiometry seed bundle must pass validate_bundle with zero errors");
+    let set = &prepared.validated.set;
+    let lessons = &prepared.validated.lessons;
+
+    // 2. Exactly six lessons, in order.
+    assert_eq!(lessons.len(), 6, "the seed course ships six lessons");
+
+    // 3. Required-figure floor (D4): every lesson embeds >=1 figure-kind
+    //    explainer whose figureId resolves to a manifest Figure, and that PNG
+    //    decoded (validate_bytes already decoded every figure to its declared
+    //    width/height, so a non-decoding/empty PNG would have failed above).
+    let figure_ids: std::collections::HashSet<&str> =
+        prepared.validated.figures.iter().map(|f| f.id.as_str()).collect();
+    assert!(!figure_ids.is_empty(), "seed set must carry figures");
+    for lesson in lessons {
+        let figs: Vec<&schema::Explainer> =
+            lesson.explainers.iter().filter(|e| e.kind == "figure").collect();
+        assert!(
+            !figs.is_empty(),
+            "lesson {} ships no figure-kind explainer (D4 floor)",
+            lesson.index
+        );
+        for f in figs {
+            let fid = f.data.get("figureId").and_then(|v| v.as_str()).unwrap_or("");
+            assert!(
+                figure_ids.contains(fid),
+                "lesson {} figure explainer references unknown figure {}",
+                lesson.index,
+                fid
+            );
+        }
+    }
+    // Every manifest figure has a non-empty reviewedBy signoff (§12.2).
+    for f in &prepared.validated.figures {
+        assert!(!f.reviewed_by.trim().is_empty(), "figure {} has no reviewedBy signoff", f.id);
+    }
+
+    // 4. Set-level FR-EXP inventory completeness (NIT-7): the union of
+    //    interactive explainer kinds across the six lessons covers every kind.
+    let kinds: std::collections::HashSet<&str> =
+        lessons.iter().flat_map(|l| l.explainers.iter().map(|e| e.kind.as_str())).collect();
+    for k in [
+        "equation_balancer",
+        "mole_ratio",
+        "limiting_reagent",
+        "dimensional_analysis",
+        "molecule_diagram",
+        "titration_curve",
+        "ideal_gas_pv",
+    ] {
+        assert!(kinds.contains(k), "seed set is missing explainer kind {}", k);
+    }
+
+    // 5. Checkpoint item-bank floors (MEDIUM-5): bank >= 2x presentCount, and
+    //    every tested concept has >= 2 items.
+    for lesson in lessons {
+        let pc = lesson.checkpoint.present_count as usize;
+        let bank = lesson.checkpoint.items.len();
+        assert!(bank >= pc * 2, "lesson {} checkpoint bank {} < 2x presentCount {}", lesson.index, bank, pc);
+        let mut per_concept: HashMap<&str, usize> = HashMap::new();
+        for it in &lesson.checkpoint.items {
+            for cid in &it.concept_ids {
+                *per_concept.entry(cid.as_str()).or_insert(0) += 1;
+            }
+        }
+        for (cid, n) in &per_concept {
+            assert!(*n >= 2, "lesson {} concept {} has only {} checkpoint items", lesson.index, cid, n);
+        }
+    }
+
+    // 6. Balance-kind checkpoint floor (Finding 4): every concept taught by an
+    //    equation_balancer explainer is covered by >= 1 balance-kind item in
+    //    that lesson's checkpoint. Concretely Lesson 2 (balancing) must have one.
+    for lesson in lessons {
+        let teaches_balance = lesson.explainers.iter().any(|e| e.kind == "equation_balancer");
+        if teaches_balance {
+            let has_balance_item = lesson.checkpoint.items.iter().any(|i| i.kind == "balance");
+            assert!(
+                has_balance_item,
+                "lesson {} teaches equation_balancer but has no balance-kind checkpoint item",
+                lesson.index
+            );
+        }
+    }
+
+    // 7. Exam bank floors (MEDIUM-5): >=60 total, >=18 mc, >=18 numeric,
+    //    >=9 multistep, mix sums to 30, mix.balance == 0, >=2 items per concept.
+    let exam = &set.exam;
+    assert!(exam.items.len() >= 60, "exam bank {} < 60", exam.items.len());
+    let count = |k: &str| exam.items.iter().filter(|i| i.kind == k).count();
+    assert!(count("mc") >= 18, "exam mc bank {} < 18", count("mc"));
+    assert!(count("numeric") >= 18, "exam numeric bank {} < 18", count("numeric"));
+    assert!(count("multistep") >= 9, "exam multistep bank {} < 9", count("multistep"));
+    let m = &exam.mix;
+    assert_eq!(m.mc + m.numeric + m.balance + m.multistep, exam.question_count);
+    assert_eq!(m.balance, 0, "mix.balance must be 0 (NIT-6)");
+    assert_eq!(exam.question_count, 30);
+    let mut exam_concept: HashMap<&str, usize> = HashMap::new();
+    for it in &exam.items {
+        for cid in &it.concept_ids {
+            *exam_concept.entry(cid.as_str()).or_insert(0) += 1;
+        }
+    }
+    for (cid, n) in &exam_concept {
+        assert!(*n >= 2, "exam concept {} has only {} items", cid, n);
+    }
+
+    // 8. Content rigor: every worked example and item answer key recomputes
+    //    consistently. Balance keys are already re-verified by validate_bundle
+    //    (verify_balance runs on every balance item). Spot-check a known key:
+    //    molar mass of H2O to 2 dp drives the Lesson-1 "36.04 g -> 2.00 mol".
+    let l1 = &lessons[0];
+    let n1 = l1
+        .checkpoint
+        .items
+        .iter()
+        .find(|i| i.id == "l1-cp-n1")
+        .expect("lesson 1 checkpoint has the 36.04 g H2O item");
+    let ans = n1.answer.expect("numeric answer present");
+    assert!((ans - 2.0).abs() < 0.01, "36.04 g H2O should be 2.00 mol, got {}", ans);
 }
 
 // ════════════════════════════════════════════════════════════════════════

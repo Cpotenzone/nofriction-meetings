@@ -950,6 +950,7 @@ pub fn run() {
             lessons::commands::lessons_submit_exam,
             lessons::commands::lessons_export_certificate,
             lessons::commands::lessons_reset_progress,
+            lessons::commands::lessons_set_dir,
         ])
         .on_window_event(|window, event| {
             match event {
