@@ -74,18 +74,5 @@
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
 
-    <!-- URL Schemes (optional) -->
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>nofriction</string>
-            </array>
-            <key>CFBundleURLName</key>
-            <string>com.nofriction.meetings</string>
-        </dict>
-    </array>
-    
 </dict>
 </plist>
