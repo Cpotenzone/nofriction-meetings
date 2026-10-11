@@ -21,7 +21,7 @@ versions in review.
 
 | Train | Contents | Owner |
 |---|---|---|
-| iPhone 1.0.2 / Mac 3.7.1 | Post-launch fixes: macOS 13 minimum, Pro label, screen names, model checksum, dependency cleanup (PR `fix/mac-post-launch`), iPhone search jump-to-line (#60, merged) | release session |
+| iPhone 1.0.2 / Mac 3.7.1 | **Merged (#60, #63, #64)**, building for TestFlight: macOS 13 minimum, Pro label only for non-Pro, full screen names, SHA-256 on the speech model, 12 unused crates removed, iPhone search jumps to the line | release session |
 | Mac 3.8.0 / iOS 1.1.0 | Lessons (`docs/LESSONS.md`, `.worktrees/lessons-stoichiometry`) | Lessons agent |
 
 ## Rules for every agent
