@@ -3,7 +3,9 @@
 // becomes the official App Store badges, and store links point at the listing.
 // The HTML defaults to the not-live state, so the page is correct with JS off.
 const STORE = {
-  live: false,
+  live: true,
+  // The Mac App Store listing goes live separately; until then its badges stay hidden.
+  macLive: false,
   ios: "https://apps.apple.com/us/app/nofriction-record-your-life/id6818838861",
   mac: "https://apps.apple.com/us/app/nofriction-record-your-life/id6818838861?mt=12",
   testflight: "https://testflight.apple.com/join/4JnJD3Fk"
@@ -19,6 +21,9 @@ const STORE = {
   if (!STORE.live) return;
   document.querySelectorAll('[data-store="notify"]').forEach(function (el) { el.hidden = true; });
   document.querySelectorAll('[data-store="live"]').forEach(function (el) { el.hidden = false; });
+  if (!STORE.macLive) {
+    document.querySelectorAll('[data-store-href="mac"]').forEach(function (a) { a.hidden = true; });
+  }
   document.querySelectorAll("[data-store-text]").forEach(function (el) {
     el.textContent = el.getAttribute("data-store-text");
   });
