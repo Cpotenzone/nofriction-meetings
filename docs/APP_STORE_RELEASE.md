@@ -308,3 +308,13 @@ has no approved version".
 4. Privacy policy + terms pages → external TestFlight.
 5. Mac: m1–m15 → Mac TestFlight on the same record.
 6. Screenshots and metadata → App Store review.
+
+### 5.11 Mac: explain `network.server` up front (2026-10-14)
+
+Mac 3.7.0 was rejected by an automated 2.4.5 check: "includes the
+com.apple.security.network.server entitlement but does not appear to have
+matching functionality". The entitlement is for Sync, where the Mac listens on
+the local network for the paired iPhone. Keep the **ENTITLEMENT** section at
+the top of the Mac review notes (`docs/APP_STORE_LISTING.md` §8). If the check
+fires again, reply to App Review with the same explanation, mark the rejected
+item resolved, and resubmit (§5.9).
