@@ -4,18 +4,19 @@ Read this before starting work. Several agents work in this repo at once.
 Last updated 2026-10-10 by the release/distribution session
 (`nofriction-meetings-39`). Update it when you change any of the facts below.
 
-## In the stores now
+## In the stores now (updated 2026-10-14)
 
 | What | Version (build) | State | Notes |
 |---|---|---|---|
-| App Store, iPhone/iPad (+ Watch) | 1.0.1 (10) | Waiting for review | Screen capture, sync, Pro paywall, redesign |
-| Mac App Store | 3.7.0 (43) | Waiting for review | One window, sync, Pro paywall |
-| Subscriptions (Pro Monthly/Yearly + group) | — | Waiting for review | Submitted with iPhone 1.0.1 |
-| TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10 + 11, Mac 43 + 44 | Waiting for beta review | 11/44 are the 1.0.2/3.7.1 fixes; builds 8/9 and 41/42 expired |
+| App Store, iPhone/iPad (+ Watch) | 1.0.1 (10) | **Released 2026-10-14** (Ready for Sale) | First public release |
+| App Store, iPhone update | 1.0.2 (11) | Waiting for review, releases automatically | Search jumps to the line; new iPhone preview video |
+| Mac App Store | 3.7.0 (43) | **Rejected**; reason being read in App Store Connect | Fix, then resubmit as 3.7.1 (44) or a new build |
+| Subscriptions (Pro Monthly/Yearly) | — | **Approved** | |
+| TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10, 11 · Mac 43, 44 | In beta testing | |
 
-Release is **manual**: the owner presses Release in App Store Connect after
-approval. Don't change the store text, screenshots or review notes of the
-versions in review.
+Website: App Store badges go live when the public listing URL resolves (PR #72);
+the Mac badge stays hidden (`macLive: false` in `site/js/store.js`) until Mac
+is approved.
 
 ## Version plan
 
