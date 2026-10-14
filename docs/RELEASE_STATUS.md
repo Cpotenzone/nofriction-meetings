@@ -10,7 +10,7 @@ Last updated 2026-10-10 by the release/distribution session
 |---|---|---|---|
 | App Store, iPhone/iPad (+ Watch) | 1.0.1 (10) | **Released 2026-10-14** (Ready for Sale) | First public release |
 | App Store, iPhone update | 1.0.2 (11) | Waiting for review, releases automatically | Search jumps to the line; new iPhone preview video |
-| Mac App Store | 3.7.0 (43) | **Rejected**; reason being read in App Store Connect | Fix, then resubmit as 3.7.1 (44) or a new build |
+| Mac App Store | 3.7.1 (44) | Waiting for review (resubmitted 2026-10-14), releases automatically | 3.7.0 was rejected under 2.4.5: automated check couldn't see a use for `network.server`. Explained Sync in the review notes and a reply to App Review. |
 | Subscriptions (Pro Monthly/Yearly) | — | **Approved** | |
 | TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10, 11 · Mac 43, 44 | In beta testing | |
 
