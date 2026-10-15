@@ -252,6 +252,11 @@ gone is removed. `gone` for a line removes the whole line the same way, and
   are sent as stored (no re-encoding), JPEG or PNG only, at most 16 MiB
   each; a file is all or nothing (an interrupted one is asked for again
   next session, not resumed mid-file).
+- **Lessons don't sync in v1** (docs/LESSONS.md §11.4, OQ-10): lesson sets,
+  mastery, progress, exam attempts and certificates stay on the device that
+  earned them. If syncing is added later, a struck/deleted-recording tombstone
+  triggers the receiver's own purge of any `generated` lesson, and removed
+  transcript text is never sent — the same rule as every other item here.
 - Topics: new topics and removed topics sync; renaming a topic doesn't
   (yet). AI topics are deleted by each device's own purge after an edit.
 - Notes made on the iPhone replace the Mac's when they are newer, and the

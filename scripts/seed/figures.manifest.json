@@ -1,0 +1,13 @@
+{
+  "artDirection": "Hazard yellow (#facc15) line art and accents on a matte-black background; flat minimalist scientific-textbook style; crisp sentence-case sans-serif labels; legible at 2x; no photorealism, no watermark; high contrast.",
+  "model": "gemini-3-pro-image",
+  "note": "Produce each PNG with the genmedia MCP image tool (Nano Banana Pro) into this directory as lesson1.png .. lesson6.png, then run `cargo run --example author_seed_lessons` from src-tauri/. See docs/LESSONS_AUTHORING.md.",
+  "figures": [
+    { "id": "fig-l1-hero", "file": "lesson1.png", "prompt": "The mole concept and molar mass: a balance scale relating grams to moles, Avogadro's number 6.022 x 10^23, and 'grams / molar mass = moles'; H2O labeled 18.02 g/mol." },
+    { "id": "fig-l2-hero", "file": "lesson2.png", "prompt": "A balanced chemical equation with per-element atom-count bars equal on both sides (2 H2 + O2 -> 2 H2O)." },
+    { "id": "fig-l3-hero", "file": "lesson3.png", "prompt": "A dimensional-analysis railroad converting grams of a reactant to grams of a product through the mole ratio." },
+    { "id": "fig-l4-hero", "file": "lesson4.png", "prompt": "Two reactant consumption bars draining to reveal the limiting reagent and leftover excess, with the theoretical yield." },
+    { "id": "fig-l5-hero", "file": "lesson5.png", "prompt": "A titration curve of pH versus titrant volume with the equivalence point marked." },
+    { "id": "fig-l6-hero", "file": "lesson6.png", "prompt": "An ideal-gas PV explorer at STP showing one mole occupying 22.41 L and the PV = nRT relationship." }
+  ]
+}

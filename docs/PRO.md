@@ -16,6 +16,7 @@ the user guide copy from it. Change this file first, then the copy (see
 | Screens | Mac screenshots, iPhone screen snapshots, photos | |
 | Review | Marks, Rewind, search, Links, calendar and people | **Notes** (Make notes / Make again), automatic notes, **Follow-up email**, **Topics**, **Review guides** (Study guide for a class) with flashcards, practice quiz and CSV/Markdown export |
 | Ask | | **Chat** with your recordings, with citations |
+| Lessons | **Take** any lesson — the built-in Stoichiometry course and lessons you import — with interactive explainers, mastery, spaced-repetition review, the final exam and the printable certificate, fully offline | **Make a lesson** from a recording (the deferred Generate pipeline, docs/LESSONS.md §13) will be Pro when it ships; this build shows a coming-soon preview and makes no AI call |
 | Devices | One subscription covers iPhone, iPad and Mac | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code |
 | Your records | Edit, Delete and Strike from the record; share a recording as text; export everything as JSON | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault, by hand or automatically when it stops |
 

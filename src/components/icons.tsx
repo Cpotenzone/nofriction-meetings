@@ -196,3 +196,104 @@ export const StopCircleIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2
         <rect x="9" y="9" width="6" height="6" rx="1" />
     </svg>
 );
+
+// ── Lessons (interactive education, docs/LESSONS.md §2) ─────────────────────
+
+/** Graduation cap — the Lessons nav/tray glyph. */
+export const GraduationCapIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M3 9l9-4 9 4-9 4-9-4z" />
+        <path d="M7 11v4c0 1 2.2 2 5 2s5-1 5-2v-4" />
+        <path d="M21 9v5" />
+    </svg>
+);
+
+/** Atom — the lesson-set / science-course badge and library hero glyph. */
+export const AtomIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <circle cx="12" cy="12" r="1.4" />
+        <ellipse cx="12" cy="12" rx="10" ry="4.2" />
+        <ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(60 12 12)" />
+        <ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(120 12 12)" />
+    </svg>
+);
+
+/** Flask — chemistry / limiting-reagent / titration explainers. */
+export const FlaskIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M9 3h6" />
+        <path d="M10 3v6l-5 8.5A2 2 0 0 0 6.8 20h10.4a2 2 0 0 0 1.8-2.5L14 9V3" />
+        <path d="M7.5 14h9" />
+    </svg>
+);
+
+/** Scale (balance) — equation balancer and mole-ratio explainers. */
+export const ScaleIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M12 3v18M7 21h10" />
+        <path d="M4 7h16" />
+        <path d="M4 7l-2.5 5a3 3 0 0 0 5 0z" />
+        <path d="M20 7l-2.5 5a3 3 0 0 0 5 0z" />
+    </svg>
+);
+
+/** Route — the dimensional-analysis railroad builder. */
+export const RouteIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <circle cx="6" cy="18" r="2.5" />
+        <circle cx="18" cy="6" r="2.5" />
+        <path d="M8.5 18H14a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5" />
+    </svg>
+);
+
+/** Gauge — ideal-gas PV explorer and the mastery / readiness meter. */
+export const GaugeIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M3.5 15a9 9 0 1 1 17 0" />
+        <path d="M12 13l4-3" />
+        <circle cx="12" cy="13" r="1" />
+    </svg>
+);
+
+/** Trophy — exam pass / mastery-complete and the dashboard hero. */
+export const TrophyIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M7 4h10v4a5 5 0 0 1-10 0z" />
+        <path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3" />
+        <path d="M12 13v4M9 21h6M10 17h4" />
+    </svg>
+);
+
+/** Certificate — the certificate surface and its share/print action. */
+export const CertificateIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <rect x="3" y="4" width="18" height="12" rx="2" />
+        <path d="M7 8h10M7 11h5" />
+        <circle cx="12" cy="18.5" r="2.2" />
+        <path d="M10.4 20l-.9 2.5 2.5-1.2 2.5 1.2-.9-2.5" />
+    </svg>
+);
+
+/** Target — adaptive trainer and the "Review due" surface. */
+export const TargetIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <circle cx="12" cy="12" r="8.5" />
+        <circle cx="12" cy="12" r="4.5" />
+        <circle cx="12" cy="12" r="1" />
+    </svg>
+);
+
+/** Import — a tray with a down arrow ("Import a lesson…"). */
+export const ImportIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M12 3v10M8 9l4 4 4-4" />
+        <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </svg>
+);
+
+/** Cross — a wrong answer or misconception mark. */
+export const CrossIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+);

@@ -1,0 +1,435 @@
+/* Lessons subsystem (docs/LESSONS.md). Tokens from DESIGN.md only — never a
+   raw hex (except as a token fallback). The font is the app's bundled Inter via
+   the system stack; this file imports NO remote asset and declares NO remote
+   @font-face / @import, which the offline guard (scripts/check-lessons-offline.mjs)
+   verifies on the compiled bundle (owner-decision D5, FR-OFF-2). */
+
+.lessons {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    color: var(--text-primary, #f5f5f5);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.lessons__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: var(--hud-border, 1px solid #262626);
+}
+
+.lessons__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.lessons__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.lessons__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.lessons-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 13px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #262626);
+    background: var(--bg-card, #0d0d0d);
+    color: var(--text-primary, #f5f5f5);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.lessons-btn:hover:not(:disabled) {
+    border-color: #404040;
+}
+.lessons-btn:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 2px;
+}
+.lessons-btn.is-primary {
+    border-color: var(--hazard-yellow, #facc15);
+    color: var(--hazard-yellow, #facc15);
+}
+.lessons-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Library ─────────────────────────────────────────────────────────── */
+
+.lessons-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+
+.lesson-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border-radius: 12px;
+    border: var(--hud-border, 1px solid #262626);
+    background: var(--bg-card, #0d0d0d);
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+}
+.lesson-card:hover {
+    border-color: var(--hazard-yellow-dim, rgba(250, 204, 21, 0.5));
+}
+.lesson-card:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 2px;
+}
+.lesson-card__badge {
+    color: var(--hazard-yellow, #facc15);
+}
+.lesson-card__title {
+    font-size: 15px;
+    font-weight: 600;
+}
+.lesson-card__meta {
+    font-size: 12px;
+    color: var(--text-secondary, #a3a3a3);
+}
+.lesson-card__tag {
+    align-self: flex-start;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color, #262626);
+    color: var(--text-secondary, #a3a3a3);
+}
+
+/* ── Empty / loading / error states ──────────────────────────────────── */
+
+.lessons-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-secondary, #a3a3a3);
+}
+.lessons-state__hero {
+    color: var(--hazard-yellow, #facc15);
+}
+.lessons-state.is-error {
+    color: var(--accent-danger, #ef4444);
+}
+
+/* ── Player ──────────────────────────────────────────────────────────── */
+
+.lesson-player__nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.lesson-player__section {
+    margin-bottom: 24px;
+    padding: 16px;
+    border-radius: 12px;
+    border: var(--hud-border, 1px solid #262626);
+    background: var(--bg-card, #0d0d0d);
+}
+.lesson-player__section h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: var(--hazard-yellow, #facc15);
+}
+.lesson-figure {
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #262626);
+    display: block;
+}
+.lesson-figure__caption {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-secondary, #a3a3a3);
+}
+
+/* ── Explainers (SVG / interactive) ──────────────────────────────────── */
+
+.explainer {
+    margin-top: 10px;
+}
+.explainer__a11y {
+    font-size: 12px;
+    color: var(--text-secondary, #a3a3a3);
+    margin-top: 6px;
+}
+.explainer svg {
+    max-width: 100%;
+    height: auto;
+}
+.bar-track {
+    height: 14px;
+    border-radius: 7px;
+    background: var(--tactical-gray, #171717);
+    overflow: hidden;
+}
+.bar-fill {
+    height: 100%;
+    background: var(--hazard-yellow, #facc15);
+}
+.bar-fill.is-match {
+    background: var(--accent-success, #34d399);
+}
+.explainer-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0;
+}
+.explainer-row__label {
+    min-width: 90px;
+    font-size: 12px;
+    color: var(--text-secondary, #a3a3a3);
+}
+.explainer input[type="range"] {
+    accent-color: var(--hazard-yellow, #facc15);
+}
+.explainer input[type="number"] {
+    width: 80px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #262626);
+    background: var(--bg-main, #050505);
+    color: var(--text-primary, #f5f5f5);
+    font: inherit;
+}
+/* A dependable visible focus ring on the interactive explainer controls (the
+   equation balancer number field and the titration / ideal-gas sliders), which
+   otherwise fall through to the UA default and are unreliable on matte black
+   (WCAG 2.4.7). Reuses the 2px hazard-yellow pattern from .lessons-btn. */
+.explainer input[type="number"]:focus-visible,
+.explainer input[type="range"]:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 2px;
+}
+
+/* ── Quiz / exam ─────────────────────────────────────────────────────── */
+
+.quiz-item {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color, #262626);
+}
+.quiz-item__prompt {
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+.quiz-choice {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    margin: 5px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #262626);
+    background: var(--bg-main, #050505);
+    color: var(--text-primary, #f5f5f5);
+    font: inherit;
+    cursor: pointer;
+}
+.quiz-choice:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 1px;
+}
+.quiz-choice.is-selected {
+    border-color: var(--hazard-yellow, #facc15);
+}
+.quiz-feedback.is-correct {
+    color: var(--accent-success, #34d399);
+}
+.quiz-feedback.is-wrong {
+    color: var(--accent-danger, #ef4444);
+}
+.quiz-solution {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--tactical-gray, #171717);
+    font-size: 13px;
+}
+.quiz-steps {
+    list-style: decimal;
+    margin: 6px 0 0;
+    padding-left: 22px;
+}
+.quiz-step {
+    margin-bottom: 12px;
+}
+.quiz-step .quiz-item__prompt {
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--text-secondary, #a3a3a3);
+}
+
+/* ── Dashboard / mastery ─────────────────────────────────────────────── */
+
+.mastery-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0;
+}
+.mastery-row__name {
+    flex: 1;
+    font-size: 13px;
+}
+.mastery-row__check {
+    color: var(--accent-success, #34d399);
+    vertical-align: -2px;
+}
+.misconception-mark {
+    color: var(--accent-danger, #ef4444);
+}
+/* Visually hidden but readable by assistive tech (scoped to Lessons so no new
+   global utility is introduced). Used to voice state that an aria-hidden icon
+   conveys visually. */
+.lessons-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.readiness-meter {
+    margin: 16px 0;
+}
+.readiness-meter__label {
+    font-size: 13px;
+    color: var(--hazard-yellow, #facc15);
+    margin-bottom: 6px;
+}
+
+/* ── Certificate ─────────────────────────────────────────────────────── */
+
+.certificate {
+    border: 2px solid var(--hazard-yellow, #facc15);
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    background: var(--bg-card, #0d0d0d);
+    max-width: 520px;
+    margin: 0 auto;
+}
+.certificate__title {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 10px 0;
+}
+.certificate__hash {
+    margin-top: 16px;
+    font-size: 10px;
+    color: var(--text-secondary, #a3a3a3);
+    word-break: break-all;
+}
+
+/* ── Generate stub preview ───────────────────────────────────────────── */
+
+.generate-preview {
+    max-width: 560px;
+    margin: 0 auto;
+    text-align: center;
+    padding: 40px 24px;
+}
+.generate-preview__hero {
+    color: var(--hazard-yellow, #facc15);
+}
+.generate-preview p {
+    color: var(--text-secondary, #a3a3a3);
+    line-height: 1.6;
+}
+
+/* ── Interactive explainer extras (sim + railroad builder) ───────────── */
+
+/* A depleted reactant bar in the limiting-reagent simulator. */
+.bar-fill.is-depleted {
+    background: var(--accent-danger, #ef4444);
+}
+
+/* The dimensional-analysis railroad builder. */
+.railroad {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 6px 0 10px;
+}
+.railroad__tile {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #262626);
+    background: var(--bg-card, #0d0d0d);
+}
+.railroad__tile.is-start {
+    border-color: var(--hazard-yellow, #facc15);
+}
+.railroad__times {
+    color: var(--text-secondary, #a3a3a3);
+}
+.railroad__frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.1;
+}
+.railroad__bar {
+    width: 100%;
+    height: 1px;
+    background: var(--text-secondary, #a3a3a3);
+    margin: 1px 0;
+}
+.railroad__den.is-cancelled {
+    text-decoration: line-through;
+    color: var(--text-secondary, #a3a3a3);
+}
+.railroad__tray {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0;
+}
+
+/* ── Reduced motion: no explainer transitions ───────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .bar-fill,
+    .explainer * {
+        transition: none !important;
+        animation: none !important;
+    }
+}

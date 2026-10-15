@@ -1,5 +1,5 @@
-// The window: top bar, one banner slot under it, one of three views
-// (Record · Recordings · Chat), and the Settings and Help windows.
+// The window: top bar, one banner slot under it, one of four views
+// (Record / Recordings / Lessons / Chat), and the Settings and Help windows.
 
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -8,6 +8,7 @@ import { TopBar } from "./TopBar";
 import { RecordView } from "./views/RecordView";
 import { RecordingsView } from "./views/RecordingsView";
 import { RecordingsChat } from "./chat/RecordingsChat";
+import { LessonsView } from "./views/LessonsView";
 import { SettingsWindow } from "./SettingsWindow";
 import { HelpWindow } from "./HelpWindow";
 import { MeetingEndBanner } from "./MeetingEndBanner";
@@ -20,7 +21,7 @@ import { segmentCarryOver } from "../lib/recordPlan";
 import { getTimedRecordingStatus } from "../lib/timedRecording";
 import "./Shell.css";
 
-export type AppMode = "record" | "recordings" | "chat";
+export type AppMode = "record" | "recordings" | "lessons" | "chat";
 
 interface ShellProps {
     activeMode: AppMode;
@@ -124,6 +125,7 @@ export function Shell({
                         recordingMeetingId={recording.meetingId}
                     />
                 )}
+                {activeMode === "lessons" && <LessonsView />}
                 {activeMode === "chat" && <RecordingsChat selectedMeetingId={selectedMeetingId} onOpenRecording={onSelectMeeting} />}
             </main>
 

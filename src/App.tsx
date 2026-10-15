@@ -1,7 +1,7 @@
 // noFriction - the app
 //
-// Three views (Record · Recordings · Chat), the Record sheet, the setup
-// screens on first run, and the native menu / tray / shortcut events.
+// Four views (Record · Recordings · Lessons · Chat), the Record sheet, the
+// setup screens on first run, and the native menu / tray / shortcut events.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AiConsentModal } from "./components/AiConsentModal";
 import { PaywallModal } from "./components/PaywallModal";
@@ -81,6 +81,7 @@ function App() {
       add(await listen("menu:view_settings", () => openSettings("recording")));
       add(await listen("menu:view_record", () => setActiveMode("record")));
       add(await listen("menu:view_recordings", () => setActiveMode("recordings")));
+      add(await listen("menu:view_lessons", () => setActiveMode("lessons")));
       add(await listen("menu:view_chat", () => setActiveMode("chat")));
       add(await listen("menu:search", () => { setActiveMode("recordings"); requestSearchFocus(); }));
       add(await listen("menu:help", () => openHelp()));

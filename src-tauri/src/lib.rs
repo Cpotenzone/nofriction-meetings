@@ -90,6 +90,8 @@ pub mod meeting_links;
 // Students: moment markers and study guides (docs/STUDY_TOOLS.md)
 pub mod markers;
 pub mod study;
+// Interactive education: portable offline lesson sets (docs/LESSONS.md)
+pub mod lessons;
 // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
 pub mod chat;
 pub mod topics;
@@ -192,6 +194,16 @@ impl AppState {
         let settings = SettingsManager::new(database.get_pool());
         settings.init().await?;
         log::info!("Settings Manager initialized.");
+
+        // Lessons: load the shipped seed stoichiometry course on first run
+        // (docs/LESSONS.md §5.4). Runs after the settings table exists (it
+        // keeps the seed version + removal tombstone). Local-only: reads a
+        // bundled resource, no network. A deliberate removal stays removed.
+        match lessons::seed::ensure_seeded(database.pool()).await {
+            Ok(true) => log::info!("Lessons: seed course loaded"),
+            Ok(false) => {}
+            Err(e) => log::warn!("Lessons: couldn't load the seed course: {}", e),
+        }
 
         // One-time: move any plaintext secrets (SQLite rows, legacy
         // ~/.nofriction-meetings/.env) into the Keychain and delete the
@@ -919,6 +931,27 @@ pub fn run() {
             notebooks::set_meeting_notebook,
             notebooks::list_recent_notebooks,
             recording_kind::set_meeting_recording_kind,
+            // Interactive education (docs/LESSONS.md). lessons_make_from_recording
+            // is deferred (§13) and intentionally NOT registered.
+            lessons::commands::lessons_list_catalog,
+            lessons::commands::lessons_import_bundle,
+            lessons::commands::lessons_remove_set,
+            lessons::commands::lessons_get_set,
+            lessons::commands::lessons_get_lesson,
+            lessons::commands::lessons_save_progress,
+            lessons::commands::lessons_submit_checkpoint,
+            lessons::commands::lessons_next_trainer_item,
+            lessons::commands::lessons_submit_trainer_item,
+            lessons::commands::lessons_review_due,
+            lessons::commands::lessons_start_diagnostic,
+            lessons::commands::lessons_submit_diagnostic,
+            lessons::commands::lessons_dashboard,
+            lessons::commands::lessons_start_exam,
+            lessons::commands::lessons_submit_exam,
+            lessons::commands::lessons_export_certificate,
+            lessons::commands::lessons_reset_progress,
+            lessons::commands::lessons_set_dir,
+            lessons::commands::lessons_get_progress,
         ])
         .on_window_event(|window, event| {
             match event {
