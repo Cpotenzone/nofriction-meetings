@@ -161,7 +161,7 @@ function BalancerExplainer({ data }: { data: Record<string, any> }) {
                     );
                 })}
             </div>
-            <p className="explainer__a11y">
+            <p className="explainer__a11y" aria-live="polite">
                 {balanced
                     ? `Balanced — every element matches. The coefficients are ${answer.join(", ")}.`
                     : "Not balanced yet. Adjust the coefficients until every element's left and right counts match."}
@@ -206,7 +206,7 @@ function MoleRatioExplainer({ data }: { data: Record<string, any> }) {
 
     return (
         <div>
-            <p className="explainer__a11y">
+            <p className="explainer__a11y" aria-live="polite">
                 Given {given.amount} {given.unit} of {given.species}, find {want.unit} of {want.species}.
                 {done ? "" : " Reveal each step to work it through."}
             </p>
@@ -288,7 +288,7 @@ function LimitingReagentExplainer({ data }: { data: Record<string, any> }) {
                     onChange={(e) => setPct(Number(e.target.value))}
                 />
             </div>
-            <p className="explainer__a11y">
+            <p className="explainer__a11y" aria-live="polite">
                 {atCompletion
                     ? `${limiting?.species ?? "one reactant"} empties first, so it is the limiting reagent; the others are left in excess.`
                     : "Drag to run the reaction forward and watch which reactant empties first."}
@@ -371,7 +371,7 @@ function DimensionalAnalysisExplainer({ data }: { data: Record<string, any> }) {
                     Remove last factor
                 </button>
             )}
-            <p className="explainer__a11y">
+            <p className="explainer__a11y" aria-live="polite">
                 {complete
                     ? `All units cancel to leave ${target.unit}: the result is ${product.toFixed(3)} ${target.unit ?? ""}.`
                     : `Place each conversion factor so its denominator cancels the unit carried in. ${placedCount} of ${tiles.length} placed.`}
@@ -413,7 +413,7 @@ function MoleculeDiagramExplainer({ data }: { data: Record<string, any> }) {
                     </g>
                 ))}
             </svg>
-            <ul className="explainer__a11y">
+            <ul className="explainer__a11y" aria-live="polite">
                 {atoms.map((a) => (
                     <li key={a.id}>{a.element}</li>
                 ))}
@@ -467,13 +467,13 @@ function TitrationExplainer({ data }: { data: Record<string, any> }) {
                 <input
                     type="range"
                     min={0}
-                    max={points.length - 1}
+                    max={Math.max(0, points.length - 1)}
                     value={idx}
                     aria-label="titrant volume"
                     onChange={(e) => setIdx(Number(e.target.value))}
                 />
             </div>
-            <p className="explainer__a11y">
+            <p className="explainer__a11y" aria-live="polite">
                 At {cur?.volAdded} mL the pH is {cur?.pH}. Equivalence at {equiv} mL.
             </p>
         </div>
@@ -501,7 +501,7 @@ function IdealGasExplainer({ data }: { data: Record<string, any> }) {
                     onChange={(e) => setP(Number(e.target.value))}
                 />
             </div>
-            <p className="explainer__a11y">
+            <p className="explainer__a11y" aria-live="polite">
                 PV = nRT: at {p.toFixed(2)} atm, n = {n}, T = {T} K, the volume is {v.toFixed(2)} L.
             </p>
         </div>

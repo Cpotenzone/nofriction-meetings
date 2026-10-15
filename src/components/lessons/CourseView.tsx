@@ -3,6 +3,7 @@
 // checkpoints), and the printable certificate. All local and offline.
 
 import { useEffect, useState } from "react";
+import { ask } from "@tauri-apps/plugin-dialog";
 import type { LessonSet, Dashboard as DashboardT, StartedExam, Certificate as CertT } from "../../lib/lessons";
 import { dashboard as fetchDashboard, startExam, submitExam, exportCertificate, getLesson, resetProgress } from "../../lib/lessons";
 import { GaugeIcon, TrophyIcon, CertificateIcon, LockIcon, CheckIcon } from "../icons";
@@ -26,9 +27,11 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
     useEffect(refresh, [set.id]);
 
     const startOver = async () => {
-        if (!window.confirm("Start this course over? This clears your progress, mastery, exam attempts and certificate for this course.")) {
-            return;
-        }
+        const ok = await ask(
+            "This clears your progress, mastery, exam attempts and certificate for this course.",
+            { title: "Start this course over?", okLabel: "Start over", cancelLabel: "Cancel", kind: "warning" },
+        ).catch(() => false);
+        if (!ok) return;
         try {
             await resetProgress(set.id);
             refresh();
@@ -195,6 +198,9 @@ function ExamScreen({ set, onDone, onCertificate }: { set: LessonSet; onDone: ()
                     ← Back
                 </button>
                 <h2 className="lessons__title">Final exam — {set.title}</h2>
+            </div>
+            <div className="lessons-sr-only" role="status" aria-live="polite">
+                {result ? `You scored ${result.pct.toFixed(0)}%. ${result.passed ? "You passed!" : "80% is needed to pass."}` : ""}
             </div>
             {result ? (
                 <div className="lesson-player__section">

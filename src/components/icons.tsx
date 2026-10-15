@@ -290,3 +290,10 @@ export const ImportIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 1.5, 
         <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
     </svg>
 );
+
+/** Cross — a wrong answer or misconception mark. */
+export const CrossIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, className }) => (
+    <svg {...base(size, className)} strokeWidth={strokeWidth}>
+        <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+);

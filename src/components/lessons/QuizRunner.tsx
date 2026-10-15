@@ -129,7 +129,7 @@ export function QuizRunner({ items, onSubmit, submitLabel }: QuizRunnerProps) {
                                 style={{ maxWidth: 220 }}
                             />
                             {!graded && numeric[it.id] && it.answer != null && it.tolerance && (
-                                <span className="explainer__a11y">
+                                <span className="explainer__a11y" aria-live="polite">
                                     {" "}
                                     {hintLabel(previewNumeric(numeric[it.id], it.answer, it.unit ?? null, it.tolerance))}
                                 </span>
@@ -148,6 +148,9 @@ export function QuizRunner({ items, onSubmit, submitLabel }: QuizRunnerProps) {
                             onStep={(si, patch) => setStepAnswer(it.id, si, patch)}
                         />
                     )}
+                    <span className="lessons-sr-only" role="status" aria-live="polite">
+                        {graded && graded[it.id] ? (graded[it.id].correct ? "Correct" : "Not quite") : ""}
+                    </span>
                     {graded && graded[it.id] && (
                         <div>
                             <p className={`quiz-feedback ${graded[it.id].correct ? "is-correct" : "is-wrong"}`}>

@@ -13,6 +13,7 @@ import { getLesson, submitCheckpoint, saveProgress, getProgress } from "../../li
 import { resumeExplainerIndex } from "../../lib/lessonLogic";
 import { ExplainerView } from "./Explainers";
 import { QuizRunner } from "./QuizRunner";
+import { CrossIcon } from "../icons";
 
 interface LessonPlayerProps {
     set: LessonSet;
@@ -193,6 +194,11 @@ export function LessonPlayer({ set, lessonId, figureDir, onBack, onCheckpoint }:
 
             <section className="lesson-player__section">
                 <h3>Checkpoint</h3>
+                <div className="lessons-sr-only" role="status" aria-live="polite">
+                    {result
+                        ? `You scored ${result.pct.toFixed(0)}%. ${result.passed ? "Checkpoint passed." : "Below 80%, this lesson needs review before the exam unlocks."}`
+                        : ""}
+                </div>
                 {result ? (
                     <div>
                         <p className={result.passed ? "quiz-feedback is-correct" : "quiz-feedback is-wrong"}>
@@ -322,7 +328,7 @@ function MisconceptionCard({ claim, why, correct }: { claim: string; why: string
                 style={{ width: "100%", textAlign: "left" }}
             >
                 <span className="misconception-mark" aria-hidden="true">
-                    ✗
+                    <CrossIcon size={13} />
                 </span>{" "}
                 {claim}
             </button>
