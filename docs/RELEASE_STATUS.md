@@ -1,7 +1,7 @@
 # Release status and agent coordination
 
 Read this before starting work. Several agents work in this repo at once.
-Last updated 2026-10-10 by the release/distribution session
+Last updated 2026-10-14 by the release/distribution session
 (`nofriction-meetings-39`). Update it when you change any of the facts below.
 
 ## In the stores now (updated 2026-10-14)
@@ -12,7 +12,8 @@ Last updated 2026-10-10 by the release/distribution session
 | App Store, iPhone update | 1.0.2 (11) | Waiting for review, releases automatically | Search jumps to the line; new iPhone preview video |
 | Mac App Store | 3.7.1 (44) | Waiting for review (resubmitted 2026-10-14), releases automatically | 3.7.0 was rejected under 2.4.5: automated check couldn't see a use for `network.server`. Explained Sync in the review notes and a reply to App Review. |
 | Subscriptions (Pro Monthly/Yearly) | — | **Approved** | |
-| TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10, 11 · Mac 43, 44 | In beta testing | |
+| Mac App Store next | 3.8.0 (45) | TestFlight beta review (submitted 2026-10-14); App Store submission after 3.7.1 is approved | Lessons tab + built-in stoichiometry course (PR #75). Apple allows one Mac version in review at a time. |
+| TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10, 11 · Mac 43, 44, 45 | In beta testing | |
 
 Website: App Store badges go live when the public listing URL resolves (PR #72);
 the Mac badge stays hidden (`macLive: false` in `site/js/store.js`) until Mac
@@ -23,7 +24,8 @@ is approved.
 | Train | Contents | Owner |
 |---|---|---|
 | iPhone 1.0.2 / Mac 3.7.1 | **Merged (#60, #63, #64)**, building for TestFlight: macOS 13 minimum, Pro label only for non-Pro, full screen names, SHA-256 on the speech model, 12 unused crates removed, iPhone search jumps to the line | release session |
-| Mac 3.8.0 / iOS 1.1.0 | Lessons (`docs/LESSONS.md`, `.worktrees/lessons-stoichiometry`) | Lessons agent |
+| Mac 3.8.0 | **Merged (#75, #76)**, build 45 on TestFlight: Lessons tab, stoichiometry course, import limits. Make lesson is a "coming soon" stub. | release session (took over from Kiro 2026-10-14) |
+| iOS 1.1.0 | Lessons on iPhone (not started) | unassigned |
 
 ## Rules for every agent
 
@@ -40,10 +42,9 @@ is approved.
   key in both `src/lib/pro.ts` and `ios/NoFriction/Store/ProFeature.swift`; a
   test checks that they match. AI goes through `ai::client::complete`. Gate
   non-AI Mac features with `entitlement::require_pro_feature`.
-- **Navigation.** It is Record ⌘1, Recordings ⌘2, Chat ⌘3 today. **Owner
-  approved (2026-10-10)** a Lessons tab (Record · Recordings · Lessons · Chat,
-  ⌘1–⌘4) and a **Make lesson** generate button. That PR updates DESIGN.md's
-  three-view rule.
+- **Navigation.** On the Mac (3.8.0+) it is Record · Recordings · Lessons ·
+  Chat, ⌘1–⌘4, with a **Make lesson** button (owner decision 2026-10-10).
+  DESIGN.md has the four-view rule.
 - **Invariants.** Follow the CLAUDE.md noFriction section: client-only, sync
   device to device, Delete/Strike purge everywhere, no logging of transcript
   text, and both Mac flavors build.
@@ -55,8 +56,6 @@ is approved.
 
 ## Owner to-dos (Casey)
 
-- After approval, press Release:
-  https://appstoreconnect.apple.com/apps/6818838861/distribution
 - Test on real devices via TestFlight: screen capture, iPhone↔Mac sync, and the
   Watch.
 - Sign in to GoDaddy in the gstack browser so the release session can revoke
