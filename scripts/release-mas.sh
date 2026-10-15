@@ -121,6 +121,11 @@ have_identity() { security find-identity -v -p "$2" 2>/dev/null | grep -qF "\"$1
 preflight() {
     "$AUDIT_PYTHON" "$SCRIPT_DIR/check-ai-provider-policy.py" || log_error "AI source policy failed"
     check_min_macos_sources
+    # About and the AI user agent read the Cargo version, so it must match.
+    local cargo_version
+    cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$TAURI_DIR/Cargo.toml" | head -1)
+    [[ "$cargo_version" == "$APP_VERSION" ]] \
+        || log_error "Version mismatch: tauri.conf.json=$APP_VERSION Cargo.toml=$cargo_version"
     "$AUDIT_PYTHON" -c "import brotli" || log_error "Credential audit needs Python Brotli; set NF_AUDIT_PYTHON to an interpreter that has it"
     for tool in npx cargo codesign xcrun productbuild pkgutil python3 security /usr/libexec/PlistBuddy; do
         command -v "$tool" >/dev/null 2>&1 || log_error "$tool not found"

@@ -111,6 +111,10 @@ validate_env() {
     command -v xcrun >/dev/null 2>&1 || log_error "xcrun not found"
     command -v hdiutil >/dev/null 2>&1 || log_error "hdiutil not found"
     check_min_macos_sources
+    # About and the AI user agent read the Cargo version, so it must match.
+    CARGO_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$TAURI_DIR/Cargo.toml" | head -1)
+    [[ "$CARGO_VERSION" == "$APP_VERSION" ]] \
+        || log_error "Version mismatch: tauri.conf.json=$APP_VERSION Cargo.toml=$CARGO_VERSION"
     
     log_success "Environment validated"
 }
