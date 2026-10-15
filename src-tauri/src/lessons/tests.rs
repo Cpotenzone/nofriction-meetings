@@ -1293,3 +1293,23 @@ async fn backup_purge_reaches_a_generated_set_across_job_arms() {
         .unwrap();
     assert_eq!(n, 0, "backup purge removed the generated set");
 }
+
+#[test]
+fn oversized_unzipped_bundle_is_rejected_before_it_fills_memory() {
+    let (zip, _id) = sample_bundle();
+    let mut map = unzip_to_map(&zip);
+    // 65 MB of zeros deflates to a tiny zip: a classic bomb.
+    map.insert("figures/bomb.png".into(), vec![0u8; 65 * 1024 * 1024]);
+    let err = bundle::validate_bytes(&rebuild_zip(&map)).err().expect("bomb must be rejected");
+    assert!(err.contains("too large"), "{}", err);
+}
+
+#[tokio::test]
+async fn url_import_requires_https_for_public_hosts() {
+    let f = fx().await;
+    let pool = f.db.get_pool();
+    let err = bundle::import_from_url(&pool, "http://example.com/course.lesson").await.unwrap_err();
+    assert!(err.contains("https"), "{}", err);
+    let err = bundle::import_from_url(&pool, "ftp://example.com/course.lesson").await.unwrap_err();
+    assert!(err.contains("only http(s)"), "{}", err);
+}

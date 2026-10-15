@@ -87,11 +87,20 @@ struct RawBundle {
 }
 
 /// Read a `.lesson` zip into memory (manifest + files), validating entry paths.
+/// Limits for an imported `.lesson` (the built-in course is about 170 KB).
+const MAX_BUNDLE_ENTRIES: usize = 512;
+const MAX_BUNDLE_UNZIPPED_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_BUNDLE_DOWNLOAD_BYTES: usize = 32 * 1024 * 1024;
+
 fn read_zip(bytes: &[u8]) -> Result<RawBundle, BundleError> {
     let reader = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("not a valid .lesson zip: {}", e))?;
+    if archive.len() > MAX_BUNDLE_ENTRIES {
+        return Err(format!("bundle has too many files (limit {})", MAX_BUNDLE_ENTRIES));
+    }
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut manifest_raw: Option<Vec<u8>> = None;
+    let mut total: u64 = 0;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| format!("zip read error: {}", e))?;
         if entry.is_dir() {
@@ -99,8 +108,18 @@ fn read_zip(bytes: &[u8]) -> Result<RawBundle, BundleError> {
         }
         let name = entry.name().to_string();
         safe_entry_path(&name)?;
+        // Bound what is actually inflated, not the size the header claims,
+        // so a zip bomb stops at the limit.
+        let remaining = MAX_BUNDLE_UNZIPPED_BYTES - total;
         let mut buf = Vec::new();
-        entry.read_to_end(&mut buf).map_err(|e| format!("zip entry read error: {}", e))?;
+        (&mut entry)
+            .take(remaining + 1)
+            .read_to_end(&mut buf)
+            .map_err(|e| format!("zip entry read error: {}", e))?;
+        total += buf.len() as u64;
+        if total > MAX_BUNDLE_UNZIPPED_BYTES {
+            return Err("bundle is too large once unzipped (limit 64 MB)".into());
+        }
         if name == "manifest.json" {
             manifest_raw = Some(buf);
         } else {
@@ -429,18 +448,32 @@ pub async fn import_from_folder(pool: &Pool<Sqlite>, dir: &Path) -> Result<Strin
 /// shipped. After download the bundle runs fully offline.
 pub async fn import_from_url(pool: &Pool<Sqlite>, url: &str) -> Result<String, BundleError> {
     let parsed = url::Url::parse(url).map_err(|_| "that doesn't look like a valid URL".to_string())?;
-    if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        return Err("only http(s) URLs can be imported".into());
+    match parsed.scheme() {
+        "https" => {}
+        // Plain http only to a private host, same rule as AI endpoints.
+        "http" if parsed.host_str().is_some_and(crate::ai::providers::is_private_host) => {}
+        "http" => return Err("use an https:// address (plain http is only allowed on your own network)".into()),
+        _ => return Err("only http(s) URLs can be imported".into()),
     }
-    let resp = reqwest::Client::new()
-        .get(url)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("couldn't start the download: {}", e))?;
+    let mut resp = client
+        .get(parsed)
         .send()
         .await
         .map_err(|e| format!("couldn't download the lesson: {}", e))?;
     if !resp.status().is_success() {
         return Err(format!("the download failed ({})", resp.status()));
     }
-    let bytes = resp.bytes().await.map_err(|e| format!("the download was interrupted: {}", e))?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("the download was interrupted: {}", e))? {
+        if bytes.len() + chunk.len() > MAX_BUNDLE_DOWNLOAD_BYTES {
+            return Err("that file is too large to be a lesson (limit 32 MB)".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     import_bundle_bytes(pool, &bytes).await
 }
 
