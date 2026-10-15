@@ -1,7 +1,0 @@
-{
-  "task_id": "lessons-stoichiometry",
-  "task_description": "Implement the Lessons interactive-education subsystem per the finalized docs/LESSONS.md (revision 5) and owner-decisions D1-D5: a Rust backend (lessons module: schema, zip .lesson bundle, grading/explain/mastery/review/trainer/exam, purge, commands), the six authored stoichiometry seed lessons with required AI-authored figures, a first-class fourth top-bar Lessons React surface (library, player, interactive explainers, exam, dashboard, certificate, deferred Generate stub), and the docs + offline/policy guards. Fully offline + free to take; zero runtime AI/image network; both Mac flavors build.",
-  "status": "pending",
-  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
-  "blocked_reason": null
-}
