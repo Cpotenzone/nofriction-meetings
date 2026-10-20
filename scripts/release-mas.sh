@@ -107,6 +107,15 @@ check_min_macos_sources() {
         || log_error "Minimum macOS mismatch (want $MIN_MACOS): tauri.conf.json=$conf Info.plist=$plist build.rs=$rs"
 }
 # The built binary must not require a newer macOS than MIN_MACOS.
+# App Review 2.5.1 rejects any load command for a private framework. Mac
+# 3.7.1 (44) was rejected because cidre's default features (via cpal) linked
+# MobileDevice.framework; see src-tauri/vendor/cpal/Cargo.toml.
+check_private_frameworks() {
+    local bin="$1" hits
+    hits=$(otool -L "$bin" | grep -E '/System/Library/PrivateFrameworks/' || true)
+    [[ -z "$hits" ]] || { echo "$hits"; log_error "Binary links a private framework (App Review 2.5.1, above)"; }
+}
+
 check_min_macos_binary() {
     local bin="$1" minos
     for minos in $(otool -l "$bin" | awk '/LC_BUILD_VERSION/{f=1} f&&$1=="minos"{print $2; f=0}'); do
@@ -284,6 +293,7 @@ verify() {
     local hits; hits=$(strings -a "$bin" | grep -E -i 'ffmpeg|ffprobe|osascript|ioreg -l|System Events|plugin:shell|tauri-plugin-shell|/opt/homebrew' || true)
     [[ -z "$hits" ]] || { echo "$hits" | head -20; log_error "Binary still references sandbox-incompatible tools (above)"; }
     check_min_macos_binary "$bin"
+    check_private_frameworks "$bin"
     if strings -a "$bin" | grep -q 'AXUIElementCopyAttributeValue'; then
         log_error "Binary still links the Accessibility (AX) API"
     fi

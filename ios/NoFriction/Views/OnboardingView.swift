@@ -246,7 +246,7 @@ struct OnboardingView: View {
                 .font(.largeTitle.weight(.bold))
                 .accessibilityAddTraits(.isHeader)
                 .padding(.top, 8)
-            Text("Allow what you'd like now. iOS asks once for each; you can change them later in the Settings app.")
+            Text("Choose what to set up now. iOS asks once for each; you can change them later in the Settings app.")
                 .foregroundStyle(.secondary)
             VStack(spacing: 12) {
                 ForEach(PermissionsModel.Kind.allCases) { kind in
@@ -284,7 +284,7 @@ struct OnboardingView: View {
                 .buttonStyle(.bordered)
                 .accessibilityLabel("\(kind.title) is off. Open Settings")
             case .notAsked:
-                Button("Allow") {
+                Button("Continue") {
                     Task {
                         await permissions.request(kind)
                         if kind == .calendar, permissions.state(.calendar) == .granted {
@@ -294,7 +294,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(.black)
-                .accessibilityLabel("Allow \(kind.title)")
+                .accessibilityLabel("Continue with \(kind.title)")
                 .accessibilityHint(kind.reason)
             }
         }

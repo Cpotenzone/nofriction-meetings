@@ -183,6 +183,16 @@ these rules apply.
   mid-migration, and one could keep a stale schema ("no such table" on fresh
   installs, about 30% under load). To reproduce flaky DB bugs, run the lib test
   binary with `--test-threads=32` 10+ times.
+- **Private frameworks:** App Review 2.5.1 rejects a binary with any
+  `/System/Library/PrivateFrameworks/` load command, even if nothing calls it.
+  The cpal ScreenCaptureKit fork pulled in `cidre` with default features, whose
+  `am` module links `MobileDevice.framework`. cpal is vendored at
+  `src-tauri/vendor/cpal` with cidre limited to the ScreenCaptureKit feature set
+  (no `am`, no `private`); the release scripts check `otool -L`. Check that before adding any
+  crate that binds Apple frameworks.
+- **Permission pre-prompts** (5.1.1): a button shown before a system
+  permission dialog must not say "Allow". Use "Continue" (Setup screen on the
+  Mac, Permissions page on iPhone).
 - **Signing:** a custom "Always Trust" on the Developer ID cert makes codesign
   emit a non-Apple-anchored requirement. The app then fails its own signature
   check, macOS can't attach permission grants to it, and the mic and screen

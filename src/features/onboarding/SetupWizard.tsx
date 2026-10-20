@@ -1,7 +1,8 @@
 // First run: one screen. Microphone, Screen & System Audio and Calendar
-// with one Allow each, while the speech model downloads in the background
-// (a progress line; "Smaller model" for older Macs). Continue lands on the
-// Record screen. AI and noFriction Pro come up the first time they're
+// with one Continue each (App Review 5.1.1: a button on a pre-permission
+// screen must not say "Allow"), while the speech model downloads in the
+// background (a progress line; "Smaller model" for older Macs). Done lands
+// on the Record screen. AI and noFriction Pro come up the first time they're
 // needed (Make notes, Chat), never here.
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -45,7 +46,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             <div className="setup-actions">
                 <div className="spacer" />
                 <button className="setup-btn primary" onClick={finish}>
-                    Continue
+                    Done
                 </button>
             </div>
         </div>
@@ -129,7 +130,7 @@ function PermissionsStep() {
                         </button>
                     ) : (
                         <button className="setup-btn primary perm-btn" onClick={() => grant("microphone")} disabled={requesting === "microphone"}>
-                            {requesting === "microphone" ? "Asking…" : "Allow"}
+                            {requesting === "microphone" ? "Asking…" : "Continue"}
                         </button>
                     )}
                 </PermRow>
@@ -151,7 +152,7 @@ function PermissionsStep() {
                             onClick={() => grant("screen_recording")}
                             disabled={requesting === "screen_recording"}
                         >
-                            {requesting === "screen_recording" ? "Asking…" : "Allow"}
+                            {requesting === "screen_recording" ? "Asking…" : "Continue"}
                         </button>
                         {askedScreen && (
                             <button className="setup-btn secondary perm-btn" onClick={() => openPane("screen_recording")}>
@@ -179,7 +180,7 @@ function PermissionsStep() {
                         </button>
                     ) : (
                         <button className="setup-btn primary perm-btn" onClick={() => grant("calendar")} disabled={requesting === "calendar"}>
-                            {requesting === "calendar" ? "Asking…" : "Allow"}
+                            {requesting === "calendar" ? "Asking…" : "Continue"}
                         </button>
                     )}
                 </PermRow>

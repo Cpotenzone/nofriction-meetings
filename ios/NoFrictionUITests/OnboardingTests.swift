@@ -33,7 +33,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["permission-notifications"].exists, "Notifications is not asked in onboarding")
         XCTAssertTrue(app.staticTexts["To record. Audio stays on this device."].exists)
         saveShot("onboarding-2-permissions")
-        let allowCalendar = app.buttons["Allow Calendar"]
+        let allowCalendar = app.buttons["Continue with Calendar"]
         if allowCalendar.exists {
             allowCalendar.tap()
             allowSystemAlert()

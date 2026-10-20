@@ -70,6 +70,15 @@ check_min_macos_sources() {
         || log_error "Minimum macOS mismatch (want $MIN_MACOS): tauri.conf.json=$conf Info.plist=$plist build.rs=$rs"
 }
 # The built binary must not require a newer macOS than MIN_MACOS.
+# App Review 2.5.1 rejects any load command for a private framework. Mac
+# 3.7.1 (44) was rejected because cidre's default features (via cpal) linked
+# MobileDevice.framework; see src-tauri/vendor/cpal/Cargo.toml.
+check_private_frameworks() {
+    local bin="$1" hits
+    hits=$(otool -L "$bin" | grep -E '/System/Library/PrivateFrameworks/' || true)
+    [[ -z "$hits" ]] || { echo "$hits"; log_error "Binary links a private framework (App Review 2.5.1, above)"; }
+}
+
 check_min_macos_binary() {
     local bin="$1" minos
     for minos in $(otool -l "$bin" | awk '/LC_BUILD_VERSION/{f=1} f&&$1=="minos"{print $2; f=0}'); do
@@ -197,7 +206,9 @@ sign_app() {
         || log_error "Designated requirement is not Apple-anchored — the signing cert has a custom trust override in Keychain Access; set it back to 'Use System Defaults'"
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PATH/Contents/Info.plist")" == "$MIN_MACOS" ]] \
         || log_error "LSMinimumSystemVersion in the built app is not $MIN_MACOS"
-    check_min_macos_binary "$APP_PATH/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
+    local bin="$APP_PATH/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
+    check_min_macos_binary "$bin"
+    check_private_frameworks "$bin"
     
     log_success "Application signed"
 }

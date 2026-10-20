@@ -33,7 +33,7 @@ up yourself. It works on iPhone, iPad and Mac. There's no account to create.
 ### Mac (macOS 13 Ventura or later)
 
 1. Install noFriction from the Mac App Store and open it.
-2. Setup is one screen. Click **Allow** next to **Microphone**, **Screen &
+2. Setup is one screen. Click **Continue** next to **Microphone**, **Screen &
    System Audio** (so the other people on a call are captured, and screens can
    be saved) and **Calendar** (optional). If you miss a prompt, open System
    Settings → Privacy & Security.
