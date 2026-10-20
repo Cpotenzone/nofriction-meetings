@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Mac App Review 2.5.1 (private API).** The Mac binary no longer loads
+  `MobileDevice.framework`. The ScreenCaptureKit fork of `cpal` pulled in
+  `cidre` with its default `full` feature set, whose `am` module links that
+  private framework even though nothing calls it. `cpal` is now vendored at
+  `src-tauri/vendor/cpal` (Kree0 fork, commit e851e41) with `cidre` limited
+  to the ScreenCaptureKit set (`sc`, `av`, `cv`, `cg`, `cat`,
+  `dispatch`, `blocks`, `async`). Both release scripts now refuse a
+  binary with any `/System/Library/PrivateFrameworks/` load command.
+- **Mac App Review 5.1.1(iv) (permission pre-prompts).** The Setup screen's
+  Microphone, Screen & System Audio and Calendar buttons say **Continue**
+  instead of **Allow**, and the screen's own button is **Done**. The iPhone
+  Permissions page gets the same change before Apple asks.
+
 ### Added
 - **Lessons — interactive education (Mac 3.8.0).** A new fourth top-bar view
   (Record / Recordings / Lessons / Chat, ⌘1–4) that ships a six-lesson

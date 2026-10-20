@@ -35,7 +35,10 @@ whisper-rs = { version = "0.14", features = ["metal"] }
 futures-util = "0.3"
 
 # Audio capture - using fork with ScreenCaptureKit support for system audio
-cpal = { git = "https://github.com/Kree0/cpal.git", branch = "master" }
+# Vendored copy of the Kree0 fork (commit e851e41) with cidre's default
+# features turned off: the default set links the private MobileDevice
+# framework, which App Review rejects (2.5.1). See vendor/cpal/Cargo.toml.
+cpal = { path = "vendor/cpal" }
 
 # Screen capture
 xcap = "0.8"

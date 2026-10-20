@@ -318,3 +318,22 @@ the local network for the paired iPhone. Keep the **ENTITLEMENT** section at
 the top of the Mac review notes (`docs/APP_STORE_LISTING.md` §8). If the check
 fires again, reply to App Review with the same explanation, mark the rejected
 item resolved, and resubmit (§5.9).
+
+### 5.12 Mac: private frameworks and "Allow" buttons (2026-10-20)
+
+Mac 3.7.1 (44) was rejected twice over:
+
+- **2.5.1**, the binary loaded `/System/Library/PrivateFrameworks/MobileDevice.framework`.
+  Nothing in the app calls it; the ScreenCaptureKit fork of `cpal` depends on
+  `cidre` with its default `full` features, and cidre's `am` module carries a
+  `#[link(name = "MobileDevice", kind = "framework")]`. The fix vendors cpal at
+  `src-tauri/vendor/cpal` with cidre's features limited to the ScreenCaptureKit
+  set. Both release scripts now fail on any `PrivateFrameworks` load command,
+  so check a new native dependency with `otool -L` before it reaches a build.
+- **5.1.1(iv)**, the Setup screen's per-permission buttons said "Allow". Apple
+  wants "Continue" or "Next" on anything shown before the system prompt. The
+  same rule applies to the iPhone Permissions page, changed in the same PR.
+
+Resubmission: one Mac version can be in review at a time, so the open
+submission moves from 3.7.1 (44) to 3.8.0 (46) (§5.9: mark the rejected item
+resolved, replace the build, resubmit).
