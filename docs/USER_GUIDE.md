@@ -457,8 +457,31 @@ Mac.
 
 ## Export your recordings
 
-- **iPhone/iPad:** in a recording, tap the **Share** button to send it
-  as text (Markdown) to Notes, Mail, Files or any app.
+**Export…** turns one recording into a package you can hand to someone: the
+recording as a document and as a web page (open it in a browser and print to
+PDF), the photos and screens you pick, the transcript, and the review guide
+and flashcards if you made them.
+
+1. Open the recording. **Mac:** click **Export…** at the right of the tabs.
+   **iPhone/iPad:** tap the **Share** button, then **Export…**.
+2. Under **What goes in**, tick what to include.
+3. Pick the photos and screens to keep: click or tap them. Every photo and a
+   spread of screens are picked to start. Type a caption under any of them.
+4. Let the AI help (noFriction Pro, with your AI set up): **Find highlights**
+   (the key moments, quoted from the transcript), **Pick with AI** (the
+   pictures worth keeping, with captions), **Write captions**, **Make notes**,
+   **Draft email**, or **Fill with AI** for whatever is missing. Edit anything
+   it writes before you save.
+5. **Mac:** **Save as Zip…** or **Save to Folder…**, then **Show in Finder**.
+   **iPhone/iPad:** **Share…**, then Save to Files, AirDrop or Mail.
+
+Exporting is free. Text you struck from the record exports as
+"[stricken from the record]".
+
+Other ways out:
+
+- **iPhone/iPad:** **Share → Share as Text** sends the recording as text
+  (Markdown) to Notes, Mail, Files or any app.
 - **Mac:** **Export everything as JSON** in **Settings → Recording** saves
   one file you choose (free). **Export to Obsidian** (noFriction Pro), in the
   same place, picks your vault folder; the switch beside it exports each

@@ -193,9 +193,11 @@ exist on the platform:
      Delete all reach a generated set in every backup. In this build no code
      path writes `generated`, so this is dormant-but-wired until the deferred
      recording→lesson pipeline ships.
-6. **Exports.** Share/export/Markdown/Obsidian output from now on renders the
-   marker. Files already exported outside the app can't be recalled; the Strike
-   confirmation says so in one line.
+6. **Exports.** Share/export/Markdown/Obsidian output and Export… packages
+   (docs/EXPORT.md) from now on render the marker. Files already exported
+   outside the app can't be recalled; the Strike confirmation says so in one
+   line. The iPhone's package working copy (`tmp/Export`) is emptied by every
+   Delete or Strike.
 7. **Database backups made by the app.** On the Mac there's a `backups/`
    folder in app data. Purge the same content from every backup, or delete any
    backup that contains it, and say so in the confirmation.

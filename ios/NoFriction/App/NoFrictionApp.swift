@@ -21,6 +21,8 @@ struct NoFrictionApp: App {
 
     init() {
         Storage.prepare()
+        // A package left from an export the app didn't finish (docs/EXPORT.md)
+        ExportPackage.clearWorkFolder()
         // Meeting-end prompt actions can arrive while recording in the background
         MeetingEndNotifier.shared.install()
         let session = RecordingSession()

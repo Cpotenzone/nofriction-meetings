@@ -794,6 +794,59 @@ function handle(cmd: string, args: Args): unknown {
             }
             return null;
 
+        // Export (src-tauri/src/export_package, docs/EXPORT.md)
+        case "get_export_draft": {
+            const row = meetingById(a.meetingId);
+            const t = timelineFor(a.meetingId);
+            const study = studyFor(a.meetingId);
+            const start = row ? new Date(row.started_at) : new Date();
+            const pad = (n: number) => String(n).padStart(2, "0");
+            const mins = Math.round((row?.duration_seconds ?? 0) / 60);
+            const notes = notesFor(a.meetingId);
+            return {
+                meeting_id: a.meetingId,
+                title: row?.title ?? "",
+                kind: row?.recording_kind ?? "meeting",
+                when: start.toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+                duration: mins ? `${mins} min` : null,
+                folder: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())} ${(row?.title ?? "Recording").replace(/[^\p{L}\p{N} _-]+/gu, " ").replace(/\s+/g, " ").trim()}`,
+                notes: notes ? { generated_at: notes.generated_at, stale: false, summary: notes.summary } : null,
+                guide_parts: Object.keys(study.materials),
+                marks: study.markers.length,
+                links: linksFor(a.meetingId).links.length,
+                transcript_lines: t.transcripts.length,
+                fingerprint: `fp-${t.transcripts.length}`,
+                items: t.frames.map((f: { id: string; timestamp_ms: number }, i: number) => ({
+                    id: f.id,
+                    ms: f.timestamp_ms,
+                    source: i === 1 ? "photo" : "screen",
+                    label: i === 1 ? null : "Keynote — " + (row?.title ?? ""),
+                })),
+            };
+        }
+        case "get_export_image": {
+            const image = imageOfFrame(String(a.itemId));
+            if (!image) throw "That picture is gone.";
+            return imageBase64(`/frames/${image}${a.small ? "-thumb" : ""}.jpg`);
+        }
+        case "export_highlights": {
+            if (!isPro) throw "PRO_REQUIRED: noFriction Pro unlocks the AI features.";
+            const lines = timelineFor(a.meetingId).transcripts;
+            const pick = [0, Math.floor(lines.length / 2), lines.length - 1].filter((v, i, arr) => v >= 0 && arr.indexOf(v) === i);
+            return pick.map((i) => ({ ms: lines[i].timestamp_ms, label: ["How it started", "The key decision", "Next steps agreed"][pick.indexOf(i)], quote: lines[i].text.split(" ").slice(0, 12).join(" ") }));
+        }
+        case "export_captions": {
+            if (!isPro) throw "PRO_REQUIRED: noFriction Pro unlocks the AI features.";
+            const frames = timelineFor(a.meetingId).frames as { id: string }[];
+            const ids: string[] = a.itemIds?.length ? a.itemIds : frames.map((f) => f.id);
+            const chosen = a.pick ? ids.filter((_, i) => i % 2 === 0).slice(0, a.pick) : ids;
+            return chosen.map((id, i) => ({ id, caption: ["The plan as presented", "The numbers behind the decision", "What happens next", "The open questions"][i % 4] }));
+        }
+        case "save_export_package":
+            return `/Users/demo/Desktop/${a.destination === "zip" ? "export.zip" : "export"}`;
+        case "reveal_export":
+            return null;
+
         // Chat (chat.rs)
         case "list_chat_threads":
             return chatThreads;

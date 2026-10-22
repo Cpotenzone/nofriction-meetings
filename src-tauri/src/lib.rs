@@ -99,6 +99,8 @@ pub mod topics;
 pub mod search;
 // Sync with your iPhone, device to device on the local network (docs/SYNC.md)
 pub mod sync;
+// Export a recording as a package: Markdown, web page, screens, transcript (docs/EXPORT.md)
+pub mod export_package;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -899,6 +901,12 @@ pub fn run() {
             study::commands::generate_study_guide,
             study::commands::export_study_flashcards,
             study::commands::export_study_guide,
+            export_package::commands::get_export_draft,
+            export_package::commands::get_export_image,
+            export_package::commands::export_highlights,
+            export_package::commands::export_captions,
+            export_package::commands::save_export_package,
+            export_package::commands::reveal_export,
             // Topics and chat with your recordings (docs/TOPICS_AND_CHAT.md)
             topics::commands::list_topics,
             topics::commands::get_meeting_topics,

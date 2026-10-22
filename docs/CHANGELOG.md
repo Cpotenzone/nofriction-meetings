@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Export… a recording as a package (Mac and iPhone; docs/EXPORT.md).** A
+  zip or folder with the recording as Markdown and as a printable web page,
+  the photos and screens you pick (with captions), marks, links, the
+  follow-up email, the review guide and flashcards, and the transcript. AI
+  tools fill it in: **Find highlights** (key moments quoted word for word from
+  the transcript; invented quotes are dropped), **Pick with AI** and **Write
+  captions** for the pictures, **Make notes**, **Draft email**, and **Fill
+  with AI** for whatever is missing. Exporting is free; the AI tools are Pro.
+  Nothing the AI writes in the sheet is stored, and stricken text exports as
+  the marker. The iPhone's share button becomes a menu: Export… and Share as
+  Text.
+
 ### Fixed
 - **Mac App Review 2.5.1 (private API).** The Mac binary no longer loads
   `MobileDevice.framework`. The ScreenCaptureKit fork of `cpal` pulled in

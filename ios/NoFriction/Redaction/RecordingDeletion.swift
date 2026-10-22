@@ -8,6 +8,8 @@ import SwiftData
 enum RecordingDeletion {
     static func delete(_ meeting: Meeting, context: ModelContext, redactions: RedactionCenter?, screenCapture: ScreenCaptureCenter?) {
         redactions?.discardPending(for: meeting)
+        // A package made for sharing holds a copy of it (docs/EXPORT.md)
+        ExportPackage.clearWorkFolder()
         if let name = meeting.audioFileName { try? FileManager.default.removeItem(at: Storage.audio.appending(path: name)) }
         // An Apple Watch recording: any copy still staged from the watch goes
         // too, and the import log keeps a re-delivery from bringing it back
