@@ -26,6 +26,10 @@ enum StoreHygiene {
 
     @MainActor
     static func scrub(_ context: ModelContext) -> Result {
+        // A package made for sharing (docs/EXPORT.md) holds a copy of the
+        // transcript and photos in the app's temporary folder: never let it
+        // outlive a Delete or Strike
+        ExportPackage.clearWorkFolder()
         var history = false
         do {
             try context.deleteHistory(HistoryDescriptor<DefaultHistoryTransaction>())

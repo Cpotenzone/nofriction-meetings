@@ -16,6 +16,8 @@ struct MeetingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewing: Snapshot?
     @State private var confirmDelete = false
+    /// Export… (docs/EXPORT.md)
+    @State private var showExport = false
     @State private var player = AudioPlayback()
     @State private var aiWorking: String?
     @State private var aiError: String?
@@ -103,6 +105,8 @@ struct MeetingDetailView: View {
             }
         }
         .sheet(isPresented: $showStudy) { StudyGuideView(meeting: meeting, onJump: jump) }
+        // The package's working copy goes when the sheet closes (docs/EXPORT.md)
+        .sheet(isPresented: $showExport, onDismiss: { ExportPackage.clearWorkFolder() }) { ExportSheet(meeting: meeting) }
         .background(Theme.background)
         .safeAreaInset(edge: .bottom) { selectionBar }
         .navigationBarTitleDisplayMode(.inline)
@@ -122,11 +126,17 @@ struct MeetingDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                ShareLink(item: MeetingExport.markdown(meeting), subject: Text(meeting.title), preview: SharePreview(meeting.title)) {
+                Menu {
+                    Button("Export…", systemImage: "shippingbox") { showExport = true }
+                        .accessibilityHint("A package with notes, highlights, the photos and screens you pick, and the transcript")
+                    ShareLink(item: MeetingExport.markdown(meeting), subject: Text(meeting.title), preview: SharePreview(meeting.title)) {
+                        Label("Share as Text", systemImage: "doc.plaintext")
+                    }
+                } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Share recording")
-                .accessibilityHint("Shares the title, people, notes and transcript as text")
+                .accessibilityIdentifier("share-menu")
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button("Delete Recording", systemImage: "trash", role: .destructive) { confirmDelete = true }

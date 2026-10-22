@@ -1,6 +1,6 @@
 // Recordings: one search field, the list (filtered by Notebook), and the
-// selected recording with its title block and four views: Rewind · Notes
-// · Links · Review.
+// selected recording with its title block, four views (Rewind · Notes ·
+// Links · Review) and Export… (docs/EXPORT.md).
 
 import { useEffect, useState } from "react";
 import { onRecordingSeek, takeRecordingSeek } from "../../lib/navigation";
@@ -11,6 +11,7 @@ import { MeetingLinksPanel } from "../MeetingLinksPanel";
 import { MeetingPeople } from "../People";
 import { RecordingTitleBlock } from "../Notebook";
 import { StudyPanel } from "../study/StudyPanel";
+import { ExportSheet } from "../export/ExportSheet";
 import { useRecordingKind } from "../../hooks/useRecordingKind";
 import { guideTitle } from "../../lib/recordingKind";
 
@@ -31,6 +32,7 @@ export function RecordingsView({ onSelectMeeting, selectedMeetingId, refreshKey,
     // Links → "first said at 12:03", Review → "Jump to this moment", Chat citations
     // and search results show the moment in Rewind
     const [seek, setSeek] = useState<RewindSeek | null>(null);
+    const [exporting, setExporting] = useState<string | null>(null);
     const kind = useRecordingKind(selectedMeetingId);
     const jumpTo = (meetingId: string, ms: number) => {
         setSeek({ meetingId, ms, n: Date.now() });
@@ -86,6 +88,15 @@ export function RecordingsView({ onSelectMeeting, selectedMeetingId, refreshKey,
                                 {t.label}
                             </button>
                         ))}
+                        <span className="deck-tabs__spacer" />
+                        <button
+                            className="deck-tabs__export"
+                            onClick={() => setExporting(selectedMeetingId)}
+                            disabled={live}
+                            title={live ? "Stop the recording to export it" : "Export this recording with its notes, screens and photos"}
+                        >
+                            Export…
+                        </button>
                     </div>
                     <div className="recording-detail__body">
                         {meetingView === "rewind" ? (
@@ -100,6 +111,7 @@ export function RecordingsView({ onSelectMeeting, selectedMeetingId, refreshKey,
                     </div>
                 </div>
             )}
+            {exporting && <ExportSheet meetingId={exporting} onClose={() => setExporting(null)} />}
         </div>
     );
 }

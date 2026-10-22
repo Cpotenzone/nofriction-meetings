@@ -18,10 +18,10 @@ the user guide copy from it. Change this file first, then the copy (see
 | Ask | | **Chat** with your recordings, with citations |
 | Lessons | **Take** any lesson — the built-in Stoichiometry course and lessons you import — with interactive explainers, mastery, spaced-repetition review, the final exam and the printable certificate, fully offline | **Make a lesson** from a recording (the deferred Generate pipeline, docs/LESSONS.md §13) will be Pro when it ships; this build shows a coming-soon preview and makes no AI call |
 | Devices | One subscription covers iPhone, iPad and Mac | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code |
-| Your records | Edit, Delete and Strike from the record; share a recording as text; export everything as JSON | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault, by hand or automatically when it stops |
+| Your records | Edit, Delete and Strike from the record; share a recording as text; **Export…** a recording as a package (Markdown, web page, picked photos and screens, transcript; docs/EXPORT.md); export everything as JSON | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault, by hand or automatically when it stops. The Export sheet's AI tools (highlights, captions, Pick with AI, Fill with AI) are AI features |
 
 Never Pro: recording, microphone transcription, search, Delete and Strike,
-sharing and JSON export (data portability). The Mac's system audio (the
+sharing, Export… and JSON export (data portability). The Mac's system audio (the
 other people on a call) is part of recording a meeting on the Mac and stays
 free; **Transcribe what's playing** is the new iPhone capability.
 
