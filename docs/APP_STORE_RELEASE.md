@@ -337,3 +337,10 @@ Mac 3.7.1 (44) was rejected twice over:
 Resubmission: one Mac version can be in review at a time, so the open
 submission moves from 3.7.1 (44) to 3.8.0 (46) (§5.9: mark the rejected item
 resolved, replace the build, resubmit).
+
+Web flow used on 2026-10-21 (the API helper was unavailable): on the rejected
+version page, change the Version field, Delete the old build, Add Build, Save,
+then **Update Review** (this is the web form of "mark the item resolved": the
+item flips to Ready for Review), then **Resubmit to App Review** on the
+submission page. Build 46 was uploaded with `xcrun altool --upload-package`
+using the API key 4P7KR7ARNT. Result: 3.8.0 (46) Waiting for Review.

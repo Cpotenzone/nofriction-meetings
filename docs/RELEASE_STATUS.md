@@ -9,9 +9,8 @@ Last updated 2026-10-20 by the release/distribution session. Update it when you 
 |---|---|---|---|
 | App Store, iPhone/iPad (+ Watch) | 1.0.1 (10) | **Released 2026-10-14** (Ready for Sale) | First public release |
 | App Store, iPhone update | 1.0.2 (11) | Waiting for review, releases automatically | Search jumps to the line; new iPhone preview video |
-| Mac App Store | 3.7.1 (44) | **Rejected 2026-10-20** (2.5.1 private API: `MobileDevice.framework` via cidre/cpal; 5.1.1: pre-prompt buttons said Allow). Fixed on `main`; the resubmission is Mac 3.8.0 (46), see below. | 3.7.0 was rejected under 2.4.5 (`network.server`); explained Sync in the review notes, which passed. |
+| Mac App Store | 3.8.0 (46) | **Waiting for review** (resubmitted 2026-10-21 23:20, submission 5d72d952), releases automatically | Replaces 3.7.1 (44), rejected 2026-10-20 under 2.5.1 (`MobileDevice.framework` via cidre/cpal) and 5.1.1 (pre-prompt buttons said Allow). Fixed in #78. 3.7.0 was rejected under 2.4.5 (`network.server`); the review-notes explanation passed. |
 | Subscriptions (Pro Monthly/Yearly) | — | **Approved** | |
-| Mac App Store next | 3.8.0 (46) | **Built 2026-10-20** (`dist-mas/noFriction-3.8.0-46.pkg`, no PrivateFrameworks load command, verified with `otool -L`). Upload blocked on the API key's issuer ID (not stored on this Mac); then it replaces 3.7.1 in the open review submission | Lessons tab + built-in stoichiometry course (PR #75) plus the review fixes. Apple allows one Mac version in review at a time, so 3.7.1 is dropped rather than fixed separately. |
 | TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10, 11 · Mac 43, 44, 45 | In beta testing | |
 
 Website: App Store badges go live when the public listing URL resolves (PR #72);
