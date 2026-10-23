@@ -3,7 +3,7 @@
 // Links · Review) and Export… (docs/EXPORT.md).
 
 import { useEffect, useState } from "react";
-import { onRecordingSeek, takeRecordingSeek } from "../../lib/navigation";
+import { onExportRequest, onRecordingSeek, takeExport, takeRecordingSeek } from "../../lib/navigation";
 import { MeetingHistory } from "../MeetingHistory";
 import { RewindGallery, type RewindSeek } from "../RewindGallery";
 import { MeetingNotesPanel } from "../MeetingNotesPanel";
@@ -52,6 +52,18 @@ export function RecordingsView({ onSelectMeeting, selectedMeetingId, refreshKey,
 
     // Opening the recording that is still being recorded shows it live
     const live = isRecording && selectedMeetingId !== null && selectedMeetingId === recordingMeetingId;
+
+    // File → Export Recording… (⌘E): the selected recording, once it's stopped
+    useEffect(() => {
+        const open = () => {
+            if (selectedMeetingId && !live) setExporting(selectedMeetingId);
+        };
+        if (takeExport()) open();
+        return onExportRequest(() => {
+            takeExport();
+            open();
+        });
+    }, [selectedMeetingId, live]);
 
     const tabs: { id: MeetingView; label: string }[] = [
         { id: "rewind", label: "Rewind" },

@@ -2582,7 +2582,8 @@ pub async fn generate_catch_up(
             .map(|m| m.title.clone())
             .unwrap_or_default(),
         description: None,
-        attendees: Vec::new(), // TODO: Get from calendar
+        // The catch-up summary works from the transcript alone
+        attendees: Vec::new(),
         scheduled_duration_min: None,
     };
 
@@ -2710,14 +2711,9 @@ pub async fn pin_insight(
     _timestamp_ms: i64,
     _state: State<'_, AppState>,
 ) -> Result<(), String> {
-    // Store pinned insight in database
-    // TODO: Add pinned_insights table
-    log::info!(
-        "Pinning insight for meeting {}: {} - {}",
-        meeting_id,
-        insight_type,
-        insight_text
-    );
+    // Legacy live-intel command; nothing in the app calls it and nothing is
+    // stored. Never log the insight's text (it is drawn from the transcript).
+    log::info!("Pin insight ({}, {} chars) for meeting {} ignored: not stored", insight_type, insight_text.len(), meeting_id);
     Ok(())
 }
 
@@ -2729,13 +2725,9 @@ pub async fn mark_decision(
     _context: Option<String>,
     _state: State<'_, AppState>,
 ) -> Result<(), String> {
-    // Store decision in database
-    // TODO: Add decisions table
-    log::info!(
-        "Marking decision for meeting {}: {}",
-        meeting_id,
-        decision_text
-    );
+    // Legacy live-intel command; nothing in the app calls it and nothing is
+    // stored (decisions live in the notes). Never log the decision's text.
+    log::info!("Mark decision ({} chars) for meeting {} ignored: not stored", decision_text.len(), meeting_id);
     Ok(())
 }
 

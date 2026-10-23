@@ -14,7 +14,7 @@ import { isOffline } from "./lib/offline";
 import { useRecording } from "./hooks/useRecording";
 import { useTranscripts } from "./hooks/useTranscripts";
 import { Shell, type AppMode } from "./components/Shell";
-import { openHelp, openSettings, requestSearchFocus } from "./lib/navigation";
+import { openHelp, openSettings, requestExport, requestSearchFocus } from "./lib/navigation";
 import { RecordPicker, RecordPickerContext } from "./components/RecordPicker";
 import { ClassRecordingNotice } from "./components/TimedRecording";
 import { CLASS_NOTICE_EVENT, TIMED_EVENTS, type TimedAutoStop } from "./lib/timedRecording";
@@ -84,6 +84,7 @@ function App() {
       add(await listen("menu:view_lessons", () => setActiveMode("lessons")));
       add(await listen("menu:view_chat", () => setActiveMode("chat")));
       add(await listen("menu:search", () => { setActiveMode("recordings"); requestSearchFocus(); }));
+      add(await listen("menu:export_recording", () => { setActiveMode("recordings"); requestExport(); }));
       add(await listen("menu:help", () => openHelp()));
       add(await listen("menu:new_recording", async () => {
         if (!recording.isRecording) {

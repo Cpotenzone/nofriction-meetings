@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **File → Export Recording… (⌘E)** on the Mac opens Export… for the open recording.
 - **Connecting AI is one step (Mac and iPhone; docs/AI_PROVIDERS.md
   "Connecting").** **Sign in with OpenRouter**: the browser opens, you sign
   in, and the key comes back on its own (OAuth PKCE over a loopback callback);
@@ -33,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Text.
 
 ### Fixed
+- Rewind's transcript lines report how long each was spoken (it was always 0).
+- Two unused live-intel commands no longer write insight or decision text to the log.
 - **Mac App Review 2.5.1 (private API).** The Mac binary no longer loads
   `MobileDevice.framework`. The ScreenCaptureKit fork of `cpal` pulled in
   `cidre` with its default `full` feature set, whose `am` module links that

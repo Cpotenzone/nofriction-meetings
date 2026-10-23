@@ -2754,14 +2754,16 @@ impl DatabaseManager {
                 // A line before the meeting start shows at 0:00, where no
                 // time range from the timeline can reach it: no span
                 let extent = extents.remove(&t.id).filter(|_| ms >= 0);
+                let end_ms = extent.as_ref().map(|e| e.end_ms.max(ms));
                 TimelineTranscript {
                     id: t.id.to_string(),
                     timestamp_ms: ms.max(0),
                     text: t.text,
                     speaker: t.speaker,
                     is_final: t.is_final,
-                    duration_seconds: 0.0, // TODO: Store actual duration from Deepgram
-                    end_ms: extent.as_ref().map(|e| e.end_ms.max(ms)),
+                    // How long the line was spoken, from its word timings (0 if unknown)
+                    duration_seconds: end_ms.map(|e| (e - ms.max(0)).max(0) as f64 / 1000.0).unwrap_or(0.0),
+                    end_ms,
                     word_mids_ms: extent.and_then(|e| e.word_mids_ms),
                 }
             })

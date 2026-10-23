@@ -14,6 +14,8 @@ pub mod menu_ids {
     pub const PAUSE_RECORDING: &str = "mode_pause";
     /// ★ the current moment of the recording (markers.rs)
     pub const MARK_MOMENT: &str = "mark_moment";
+    /// Export… the open recording as a package (docs/EXPORT.md)
+    pub const EXPORT_RECORDING: &str = "export_recording";
 
     pub const VIEW_RECORD: &str = "view_record";
     pub const VIEW_RECORDINGS: &str = "view_recordings";
@@ -69,6 +71,12 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(
             &MenuItemBuilder::with_id(menu_ids::MARK_MOMENT, "Mark")
                 .accelerator(crate::markers::MENU_ACCELERATOR)
+                .build(app)?,
+        )
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::EXPORT_RECORDING, "Export Recording…")
+                .accelerator("CmdOrCtrl+E")
                 .build(app)?,
         )
         .separator()
@@ -154,6 +162,7 @@ pub fn handle_menu_event(app: &AppHandle<Wry>, event_id: &str) {
             crate::markers::commands::mark_from_shortcut(app);
             return;
         }
+        menu_ids::EXPORT_RECORDING => "menu:export_recording",
         menu_ids::VIEW_RECORD => "menu:view_record",
         menu_ids::VIEW_RECORDINGS => "menu:view_recordings",
         menu_ids::VIEW_LESSONS => "menu:view_lessons",

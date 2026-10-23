@@ -7,7 +7,7 @@ if you made them. The AI can fill it in: summary and notes, highlights,
 captions for the pictures, picking the pictures, and the follow-up email.
 
 Mac: Recordings → a recording → **Export…** (right of the Rewind · Notes ·
-Links · Review tabs). iPhone/iPad: a recording → Share button → **Export…**
+Links · Review tabs), or **File → Export Recording…** (⌘E). iPhone/iPad: a recording → Share button → **Export…**
 (**Share as Text** is still there).
 
 ## What's in a package
