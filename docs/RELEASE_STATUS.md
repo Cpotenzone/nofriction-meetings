@@ -1,14 +1,15 @@
 # Release status and agent coordination
 
 Read this before starting work. Several agents work in this repo at once.
-Last updated 2026-10-20 by the release/distribution session. Update it when you change any of the facts below.
+Last updated 2026-10-23 by the release/distribution session. Update it when you change any of the facts below.
 
 ## In the stores now (updated 2026-10-14)
 
 | What | Version (build) | State | Notes |
 |---|---|---|---|
 | App Store, iPhone/iPad (+ Watch) | 1.0.1 (10) | **Released 2026-10-14** (Ready for Sale) | First public release |
-| App Store, iPhone update | 1.0.2 (11) | Waiting for review, releases automatically | Search jumps to the line; new iPhone preview video |
+| App Store, iPhone | 1.0.2 (11) | **Released** (Ready for Sale) | Search jumps to the line; new iPhone preview video |
+| App Store, iPhone next | 1.1.0 (12) | Building 2026-10-23 for submission | Export… (#81), one-step AI connect with Sign in with OpenRouter (#82) |
 | Mac App Store | 3.8.0 (46) | **Waiting for review** (resubmitted 2026-10-21 23:20, submission 5d72d952), releases automatically | Replaces 3.7.1 (44), rejected 2026-10-20 under 2.5.1 (`MobileDevice.framework` via cidre/cpal) and 5.1.1 (pre-prompt buttons said Allow). Fixed in #78. 3.7.0 was rejected under 2.4.5 (`network.server`); the review-notes explanation passed. |
 | Subscriptions (Pro Monthly/Yearly) | — | **Approved** | |
 | TestFlight external (https://testflight.apple.com/join/4JnJD3Fk) | iOS 10, 11 · Mac 43, 44, 45 | In beta testing | |
@@ -23,7 +24,8 @@ is approved.
 |---|---|---|
 | iPhone 1.0.2 / Mac 3.7.1 | **Merged (#60, #63, #64)**, building for TestFlight: macOS 13 minimum, Pro label only for non-Pro, full screen names, SHA-256 on the speech model, 12 unused crates removed, iPhone search jumps to the line | release session |
 | Mac 3.8.0 | **Merged (#75, #76)**, build 45 on TestFlight: Lessons tab, stoichiometry course, import limits. Make lesson is a "coming soon" stub. | release session (took over from Kiro 2026-10-14) |
-| iOS 1.1.0 | Lessons on iPhone (not started) | unassigned |
+| iOS 1.1.0 | Export… and one-step AI connect (#81, #82) | release session |
+| iOS 1.2.0 | Lessons on iPhone (not started) | unassigned |
 
 ## Rules for every agent
 

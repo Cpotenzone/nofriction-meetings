@@ -365,6 +365,19 @@ Welcome to noFriction for iPhone and iPad.
 
 ---
 
+### What's New in iOS 1.1.0 (limit 4000)
+
+**631 / 4000 characters**
+
+```text
+Export a recording, and connect your AI in one step.
+• Export…: a package with your notes, highlights, the photos and screens you pick (with captions), marks, links and the transcript, as a document and a web page you can print to PDF. Free, always.
+• Fill with AI: highlights quoted word for word from what was said, captions for your photos and screens, notes and a follow-up email, in one tap (noFriction Pro)
+• Sign in with OpenRouter: one sign-in for ChatGPT, Claude, Gemini, Grok and more
+• Or Get a key and tap Paste for ChatGPT, Claude, Grok, Mistral or Muse: saved, checked and ready in one step
+• Smaller fixes and polish
+```
+
 ## 6. macOS version page
 
 The Mac app's first App Store version is **3.6.0** (`tauri.conf.json`),
