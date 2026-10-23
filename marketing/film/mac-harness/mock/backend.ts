@@ -10,6 +10,11 @@ import { mockConvertFileSrc, mockIPC, mockWindows } from "@tauri-apps/api/mocks"
 import { DEMO_MEETINGS, LIVE_SCRIPTS, RECENT_NOTEBOOKS, type DemoMeeting, type Kind } from "./mock-data";
 // The fictional pairing code for Settings → Sync (encodes PAIRING_LINK below)
 import pairingQrSvg from "./pairing-qr.svg?raw";
+// A lesson set made by Make lesson from "BIO 101: Cell Biology": produced by
+// the real generate → validate pipeline with demo answers (docs/LESSONS.md §13)
+import demoLessonSet from "./lesson-demo/set.json";
+import demoLesson1 from "./lesson-demo/lesson-l1.json";
+import demoLesson2 from "./lesson-demo/lesson-l2.json";
 
 type Args = Record<string, any> | undefined;
 
@@ -20,6 +25,8 @@ type Args = Record<string, any> | undefined;
 const flags = new URLSearchParams(location.search);
 const FIRST_RUN = flags.get("setup") === "1";
 let isPro = flags.get("pro") !== "0";
+/** Make lesson has made the demo course (?lessons=1 starts with it) */
+let lessonsMade = flags.get("lessons") === "1";
 const AI_NONE = flags.get("ai") === "none";
 // ?ai=openai: the ChatGPT card saved with a key, not yet allowed (the
 // consent dialog names api.openai.com on the first AI action)
@@ -336,8 +343,8 @@ const CAPABILITIES = {
     pro_gating: true,
     apple_intelligence: true,
     apple_intelligence_reason: "",
-    version: "3.7.0",
-    build: "43",
+    version: "3.9.0",
+    build: "47",
 };
 
 const AI_STATUS = {
@@ -804,6 +811,49 @@ function handle(cmd: string, args: Args): unknown {
             }
             return null;
 
+        // Lessons (src-tauri/src/lessons): one course made with Make lesson
+        case "lessons_list_catalog":
+            return lessonsMade
+                ? [{ id: demoLessonSet.id, title: demoLessonSet.title, subtitle: demoLessonSet.subtitle ?? null, level: demoLessonSet.level ?? null, provenance: "generated", sourceRecordingId: "m-bio-membrane", contentFingerprint: "demo", schemaMajor: 1, importedAt: new Date().toISOString() }]
+                : [];
+        case "lessons_get_set":
+            return demoLessonSet;
+        case "lessons_set_dir":
+            return "/demo/lessons/gen-bio-101-cell";
+        case "lessons_get_lesson":
+            return a.lessonId === "l2" ? demoLesson2 : demoLesson1;
+        case "lessons_get_progress":
+            if (a.lessonId === "l1") return { explainersSeen: ["l1-e1", "l1-e2"], workedExamplesSeen: [], checkpointBestPct: 83, checkpointPassed: true, lastViewedExplainerId: null };
+            if (a.lessonId === "l2") return { explainersSeen: ["l2-e1"], workedExamplesSeen: [], checkpointBestPct: 0, checkpointPassed: false, lastViewedExplainerId: "l2-e1" };
+            return null;
+        case "lessons_export_certificate":
+            return null;
+        case "lessons_save_progress":
+            return null;
+        case "lessons_review_due":
+            return [];
+        case "lessons_dashboard":
+            return {
+                setId: demoLessonSet.id,
+                concepts: (demoLessonSet.concepts as { id: string; name: string }[]).map((c, i) => ({ conceptId: c.id, name: c.name, score: [92, 88, 46, 20][i] ?? 0, mastered: i < 2 })),
+                checkpointsPassed: 1,
+                totalLessons: (demoLessonSet.lessons as unknown[]).length,
+                examUnlocked: false,
+                readinessPct: 58,
+                readinessLabel: "Getting there",
+            };
+        case "lessons_make_from_recording": {
+            if (!isPro) throw "PRO_REQUIRED: noFriction Pro unlocks the AI features.";
+            const steps = ["Naming the concepts", "Planning the lessons", "Writing the explanations", "Writing the checkpoint", "Writing the exam"];
+            return new Promise((resolve) => {
+                steps.forEach((label, i) => setTimeout(() => emitEvent("lessons_progress", { meeting_id: a.meetingId, done: i, total: steps.length, label }), 300 * i));
+                setTimeout(() => {
+                    lessonsMade = true;
+                    resolve({ setId: demoLessonSet.id, title: demoLessonSet.title, lessons: (demoLessonSet.lessons as unknown[]).length, failed: [] });
+                }, 300 * steps.length + 200);
+            });
+        }
+
         // Export (src-tauri/src/export_package, docs/EXPORT.md)
         case "get_export_draft": {
             const row = meetingById(a.meetingId);
@@ -850,7 +900,18 @@ function handle(cmd: string, args: Args): unknown {
             const frames = timelineFor(a.meetingId).frames as { id: string }[];
             const ids: string[] = a.itemIds?.length ? a.itemIds : frames.map((f) => f.id);
             const chosen = a.pick ? ids.filter((_, i) => i % 2 === 0).slice(0, a.pick) : ids;
-            return chosen.map((id, i) => ({ id, caption: ["The plan as presented", "The numbers behind the decision", "What happens next", "The open questions"][i % 4] }));
+            // One caption per slide of the demo deck, as the AI would write them from what was said
+            const CAPTIONS = [
+                "Today's agenda: roadmap, beta feedback and onboarding",
+                "The Q4 roadmap: the private beta wraps up on the 24th",
+                "Plan names are locked; billing moves to the week after",
+                "Sign-ups are up 24% week over week since the waitlist opened",
+                "What the beta teams said: setup still takes too long",
+                "The new onboarding: workspace, first project, invite your team",
+                "Launch checklist: three of eight items done",
+                "Open risks: billing load, help center content and plan names",
+            ];
+            return chosen.map((id) => ({ id, caption: CAPTIONS[frames.findIndex((f) => f.id === id) % CAPTIONS.length] }));
         }
         case "save_export_package":
             return `/Users/demo/Desktop/${a.destination === "zip" ? "export.zip" : "export"}`;

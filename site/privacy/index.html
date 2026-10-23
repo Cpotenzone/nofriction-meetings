@@ -89,9 +89,9 @@
   <h2>Deleting and striking content</h2>
   <p>
     You can delete a whole recording, or select words, lines, photos or screenshots and choose <strong>Delete</strong> or <strong>Strike from the record</strong>.
-    Either one removes the content from the transcript, search, the saved audio recording on iPhone and iPad (replaced with silence), photos and screenshots, the links found in it, and future exports. AI notes made from it are flagged for regeneration, distinctive phrases are also removed from them, and the recording's review guide is deleted.
+    Either one removes the content from the transcript, search, the saved audio recording on iPhone and iPad (replaced with silence), photos and screenshots, the links found in it, and future exports. AI notes made from it are flagged for regeneration, distinctive phrases are also removed from them, and the recording's review guide, and on the Mac the lesson made from it, are deleted.
     On the Mac it is also purged from the app's own database backups. <strong>Strike</strong> can't be undone and leaves only a marker with the time, the date and an optional reason, never the content.
-    Deleting a recording also deletes its marks, references and review guide.
+    Deleting a recording also deletes its marks, references, review guide and the lesson made from it, with that lesson's progress and certificate.
     Copies you already exported, shared or sent to an AI endpoint, photos still in your Photos library, and device backups (such as iCloud or Time Machine) are outside the app's control.
   </p>
   <p>Use the app's deletion controls to remove local recordings before uninstalling. Removing a Mac app does not necessarily remove its application data, Keychain entries, exports or backups. Content already sent to an AI endpoint remains subject to its operator's retention and deletion policies.</p>
@@ -99,7 +99,7 @@
   <h2>What leaves your device, and only when you choose</h2>
   <h3>AI features, with the AI you choose</h3>
   <p>
-    AI features are optional and need noFriction Pro. On iPhone and iPad: notes for each recording in the style of its type (meeting notes, lecture notes, or a summary with key points and to-dos), follow-up emails for meetings, and review guides. On the Mac: the same notes and review guides, plus chat across your recordings, live insights, reports, meeting prep briefs and screenshot analysis.
+    AI features are optional and need noFriction Pro. On iPhone and iPad: notes for each recording in the style of its type (meeting notes, lecture notes, or a summary with key points and to-dos), follow-up emails for meetings, and review guides. On the Mac: the same notes and review guides, plus <strong>Make lesson</strong> (a lesson made from a class recording), chat across your recordings, live insights, reports, meeting prep briefs and screenshot analysis.
     With Apple's on-device model, AI runs on your device and nothing leaves it.
     noFriction offers no hosted AI models. Local and Apple on-device models support offline AI after setup and downloads. No remote service or credential is preconfigured, and no provider is active until you set one up. If you enter an OpenAI-compatible endpoint and model, the app sends the content it needs straight from your device to <strong>that endpoint</strong>, using an optional API key you supply. Provider presets (OpenRouter, OpenAI, Anthropic, Meta, xAI, Mistral) only fill in that endpoint and a model for you; the key is always your own, from your own account, and the preset's name is shown next to the real destination. <strong>Connect</strong> and <strong>Test connection</strong> send only the word "Hi" to check your key; they never send recording content. <strong>Paste key and connect</strong> reads your clipboard only when you tap or click it, keeps the key only if it looks like one, and puts it straight into the Keychain.
     If you choose <strong>Sign in with OpenRouter</strong>, you sign in on OpenRouter's own website (in your browser, or Apple's sign-in sheet on iPhone and iPad). OpenRouter then issues an API key from your own OpenRouter account and hands it back to the app through a one-time link that only works on your device; the app stores that key in the Keychain like any other. noFriction never sees your OpenRouter password, and OpenRouter's privacy policy governs your account.
@@ -125,13 +125,14 @@
   </p>
 
   <h3>Exports and sharing</h3>
-  <p>When you share a recording as text, use <strong>Export…</strong> to save a recording as a package (its notes, highlights, the photos and screens you pick, marks, links and transcript), export flashcards (CSV) or a review guide (Markdown), or export recordings to a folder on the Mac, the copy goes only where you send it. On iPhone and iPad an export package is assembled in the app's temporary folder for sharing and removed when you close Export, at the next launch, or when you delete or strike something. Export is free and never needs a subscription.</p>
+  <p>When you share a recording as text, save it as a package with <strong>Export…</strong> (its notes, highlights, the photos and screens you pick, marks, links and transcript), export flashcards (CSV) or a review guide (Markdown), or export recordings to a folder on the Mac, the copy goes only where you send it. On iPhone and iPad an export package is assembled in the app's temporary folder for sharing and removed when you close Export, at the next launch, or when you delete or strike something. Export is free and never needs a subscription.</p>
 
   <h3>Downloads and links</h3>
   <p>
     The Mac app downloads its speech-recognition model once from Hugging Face. No recording data is sent.
     Links you choose to open, such as a LinkedIn search for an attendee, a link in a recording's Links list or the support page, open in your browser and are governed by those sites' policies.
     In Lessons, if you choose <strong>Import a lesson…</strong> and paste a web address, the app makes that one download from the address you supplied; there is no built-in catalog or default address, and taking a lesson afterwards is fully offline. No recording data is sent.
+    On the Mac, <strong>Make lesson</strong> (noFriction Pro) sends a class recording's transcript, title, Notebook and your marks to the AI you set up, exactly like a study guide, and with the same permission prompt for a public endpoint. Screenshots aren't sent. The lesson it makes is stored on your Mac, and taking it is offline.
   </p>
 
   <h2>Purchases</h2>

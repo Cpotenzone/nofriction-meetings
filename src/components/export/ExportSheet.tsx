@@ -618,9 +618,13 @@ export function ExportSheet({ meetingId, onClose }: { meetingId: string; onClose
                                                 <button className="xp-zoom" aria-label={`Show larger, ${clock(it.ms)}`} onClick={() => openPreview(it)}>
                                                     ⤢
                                                 </button>
-                                                {it.label && <span className="xp-tile__label" title={it.label}>{it.label}</span>}
+                                                {/* Always a line, so every tile's caption starts at the same height */}
+                                                <span className="xp-tile__label" title={it.label ?? undefined}>
+                                                    {it.label ?? "\u00a0"}
+                                                </span>
                                                 {on && (
-                                                    <input
+                                                    <textarea
+                                                        rows={2}
                                                         className="xp-input xp-caption"
                                                         placeholder="Caption (optional)"
                                                         aria-label={`Caption for ${clock(it.ms)}`}

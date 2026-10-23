@@ -30,6 +30,8 @@ const JOBS = [
     ["mac-03-review", join(MAC, "mac-03-review.png"), 1400],
     ["mac-04-links", join(MAC, "mac-04-links.png"), 1400],
     ["mac-05-notebooks", join(MAC, "mac-05-notebooks.png"), 1400],
+    ["mac-09-export", join(MAC, "mac-09-export.png"), 1400],
+    ["mac-10-lessons", join(MAC, "mac-10-lessons.png"), 1400],
     ["iphone-01-record", join(IPHONE, "01-record.png"), 600],
     ["iphone-02-notes", join(IPHONE, "02-meeting-notes.png"), 600],
     ["iphone-03-stricken", join(IPHONE, "03-stricken.png"), 600],
