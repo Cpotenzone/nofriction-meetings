@@ -57,6 +57,29 @@ export function onSearchFocus(fn: () => void): () => void {
     return () => window.removeEventListener(SEARCH_FOCUS_EVENT, fn);
 }
 
+// ── Export the open recording (File → Export Recording…, ⌘E) ──────────────
+
+const EXPORT_EVENT = "nf:export-recording";
+let pendingExport = false;
+
+/** Ask the Recordings view to open Export… for the selected recording. */
+export function requestExport(): void {
+    pendingExport = true;
+    window.dispatchEvent(new Event(EXPORT_EVENT));
+}
+
+/** Consume a pending export request (true once): the view may mount after it. */
+export function takeExport(): boolean {
+    const r = pendingExport;
+    pendingExport = false;
+    return r;
+}
+
+export function onExportRequest(fn: () => void): () => void {
+    window.addEventListener(EXPORT_EVENT, fn);
+    return () => window.removeEventListener(EXPORT_EVENT, fn);
+}
+
 // ── Open a recording at a moment ────────────────────────────────────────
 //
 // Chat's citation chips and search results open the recording in Rewind at

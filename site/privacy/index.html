@@ -45,7 +45,7 @@
 <main id="content" class="doc">
 
   <h1>Privacy Policy</h1>
-  <p class="meta">Effective October 6, 2026 · applies to noFriction for iPhone, iPad, Apple Watch and Mac</p>
+  <p class="meta">Effective October 23, 2026 · applies to noFriction for iPhone, iPad, Apple Watch and Mac</p>
 
   <p class="lede"><strong>noFriction doesn't collect any data from you.</strong> Recording and transcription work offline, and nothing leaves your device unless you want it to. noFriction has no app accounts and runs no servers for your recordings or for AI. Your recordings are stored on your device. If you choose optional AI with your own endpoint, the app sends content straight to the destination you set up; the details are below.</p>
 
@@ -101,7 +101,9 @@
   <p>
     AI features are optional and need noFriction Pro. On iPhone and iPad: notes for each recording in the style of its type (meeting notes, lecture notes, or a summary with key points and to-dos), follow-up emails for meetings, and review guides. On the Mac: the same notes and review guides, plus chat across your recordings, live insights, reports, meeting prep briefs and screenshot analysis.
     With Apple's on-device model, AI runs on your device and nothing leaves it.
-    noFriction offers no hosted AI models. Local and Apple on-device models support offline AI after setup and downloads. No remote service or credential is preconfigured, and no provider is active until you set one up. If you enter an OpenAI-compatible endpoint and model, the app sends the content it needs straight from your device to <strong>that endpoint</strong>, using an optional API key you supply. Provider presets (OpenAI, Anthropic, xAI, Mistral) only fill in that endpoint and a model for you; you still supply your own key from your own account, and the preset's name is shown next to the real destination. The "Test connection" button sends only the word "Hi" to check your key; it never sends recording content.
+    noFriction offers no hosted AI models. Local and Apple on-device models support offline AI after setup and downloads. No remote service or credential is preconfigured, and no provider is active until you set one up. If you enter an OpenAI-compatible endpoint and model, the app sends the content it needs straight from your device to <strong>that endpoint</strong>, using an optional API key you supply. Provider presets (OpenRouter, OpenAI, Anthropic, Meta, xAI, Mistral) only fill in that endpoint and a model for you; the key is always your own, from your own account, and the preset's name is shown next to the real destination. <strong>Connect</strong> and <strong>Test connection</strong> send only the word "Hi" to check your key; they never send recording content. <strong>Paste key and connect</strong> reads your clipboard only when you tap or click it, keeps the key only if it looks like one, and puts it straight into the Keychain.
+    If you choose <strong>Sign in with OpenRouter</strong>, you sign in on OpenRouter's own website (in your browser, or Apple's sign-in sheet on iPhone and iPad). OpenRouter then issues an API key from your own OpenRouter account and hands it back to the app through a one-time link that only works on your device; the app stores that key in the Keychain like any other. noFriction never sees your OpenRouter password, and OpenRouter's privacy policy governs your account.
+    On the Mac, <strong>Find AI on this Mac</strong> asks AI servers already running on your Mac (such as Ollama or LM Studio) which models they have; it doesn't leave your Mac.
     That content can include the transcript, the recording's title, type and Notebook, your moment marks and their notes, attendee names, email addresses, companies and roster details, calendar invite notes and, for screen features on the Mac, screenshots. Deleted and stricken words are never sent.
     The app asks for your permission before it first sends recording content to a public endpoint, and you can revoke that permission in Settings. Changing the endpoint clears its previous consent and stored key; a new destination must be reviewed again.
   </p>
@@ -123,7 +125,7 @@
   </p>
 
   <h3>Exports and sharing</h3>
-  <p>When you share a recording as text, export flashcards (CSV) or a review guide (Markdown), or export recordings to a folder on the Mac, the copy goes only where you send it.</p>
+  <p>When you share a recording as text, use <strong>Export…</strong> to save a recording as a package (its notes, highlights, the photos and screens you pick, marks, links and transcript), export flashcards (CSV) or a review guide (Markdown), or export recordings to a folder on the Mac, the copy goes only where you send it. On iPhone and iPad an export package is assembled in the app's temporary folder for sharing and removed when you close Export, at the next launch, or when you delete or strike something. Export is free and never needs a subscription.</p>
 
   <h3>Downloads and links</h3>
   <p>

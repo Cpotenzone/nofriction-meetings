@@ -474,7 +474,8 @@ recording as a document and as a web page (open it in a browser and print to
 PDF), the photos and screens you pick, the transcript, and the review guide
 and flashcards if you made them.
 
-1. Open the recording. **Mac:** click **Export…** at the right of the tabs.
+1. Open the recording. **Mac:** click **Export…** at the right of the tabs (or
+   **File → Export Recording…**, ⌘E).
    **iPhone/iPad:** tap the **Share** button, then **Export…**.
 2. Under **What goes in**, tick what to include.
 3. Pick the photos and screens to keep: click or tap them. Every photo and a

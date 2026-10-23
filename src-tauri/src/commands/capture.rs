@@ -84,7 +84,7 @@ pub struct AlwaysOnSettings {
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_always_on_settings() -> Result<AlwaysOnSettings, String> {
-    // TODO: Load from persistent settings
+    // Always-on capture isn't offered in this version: fixed defaults, off
     Ok(AlwaysOnSettings {
         enabled: false,
         idle_timeout_mins: 5,
@@ -99,7 +99,7 @@ pub async fn get_always_on_settings() -> Result<AlwaysOnSettings, String> {
 #[tauri::command(rename_all = "camelCase")]
 pub async fn set_always_on_enabled(enabled: bool) -> Result<(), String> {
     log::info!("Setting Always-On enabled: {}", enabled);
-    // TODO: Persist and actually start/stop services
+    // Always-on capture isn't offered in this version; nothing to start
     Ok(())
 }
 
@@ -262,8 +262,7 @@ pub async fn end_dork_session(
     let materials =
         crate::dork_mode::generate_study_materials(&ai_client, &session_id, &content).await?;
 
-    // Save to database (if we add the table)
-    // TODO: state.database.save_study_materials(...).await?;
+    // Not stored: review guides (study.rs) are the saved study materials
 
     // Emit completion event
     let _ = app.emit("dork:materials_ready", &materials);
@@ -281,7 +280,7 @@ pub async fn get_study_materials(
     state: State<'_, AppState>,
     meeting_id: String,
 ) -> Result<Option<crate::dork_mode::StudyMaterials>, String> {
-    // TODO: Implement database retrieval
+    // Legacy: review guides (study.rs) replaced these session materials
     let _ = state;
     let _ = meeting_id;
     Ok(None)
