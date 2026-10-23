@@ -207,7 +207,7 @@ Every async operation MUST have an error state that includes:
 |------|---------|
 | **Record** (⌘1) | Idle: a title, the privacy promise, one Record button. Recording: the capture bar (time left, Mark, Capture screen), the live transcript, the screens. No AI runs here. |
 | **Recordings** (⌘2) | One search field (⌘K), Notebook chips, the list by day; the open recording's title block and **Rewind · Notes · Links · Review guide**. |
-| **Lessons** (⌘3) | The local library of lesson sets (non-empty on first run: the built-in Stoichiometry course), **Import a lesson…**, and the **Generate** affordance. A course opens to its lessons, mastery dashboard, final exam and certificate. Taking a lesson is fully offline and free. |
+| **Lessons** (⌘3) | The local library of lesson sets (non-empty on first run: the built-in Stoichiometry course), **Import a lesson…**, and **Make lesson** (a Class recording → a lesson, with your AI; also on a Class recording in Recordings). A course opens to its lessons, mastery dashboard, final exam and certificate. Taking a lesson is fully offline and free. |
 | **Chat** (⌘4) | Ask your recordings, scoped to all, a notebook, a topic or one recording, with citations. |
 
 Right side of the bar: **Stop** while recording, and the Settings gear.
@@ -244,15 +244,14 @@ Settings has six sections: Recording, Transcription, AI, Sync, Subscription
 | AI | AI (section), endpoint (the URL), connection (saved) | AI Engine, provider (in UI) |
 | A unit of study | lesson | module, chapter |
 | A course | lesson set / course | class (that is a recording type) |
-| Make one from a recording (deferred) | **Make lesson** (verb); the button is labelled **Generate** per owner-decision D2 | — |
+| Make one from a recording | **Make lesson** (verb and button, Lessons and a Class recording in Recordings; owner decision 2026-10-10); **Make again** to replace it | Generate |
 | Add someone else's lesson | **Import a lesson…** | Download, Install |
 | Settings / Help | Settings, Help | System, Overlay, Admin Console, Docs |
 
-Note: "Generate" is forbidden as a label for **AI notes** (use *Make notes*),
-but is the owner-chosen label for the Lessons **Make lesson** affordance
-(owner-decision D2, verbatim *"generate button"*). The two never collide: Notes
-says *Make notes*; the Lessons button says *Generate* and *Make lesson* is its
-vocabulary verb.
+Note: the 3.8.0 preview button said *Generate* (owner-decision D2, verbatim
+*"generate button"*). Since the feature shipped (owner decision 2026-10-10) the
+button says **Make lesson**, matching *Make notes* and *Make review guide*;
+"Generate" is no longer a label anywhere.
 
 ---
 

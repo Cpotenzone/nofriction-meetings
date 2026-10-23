@@ -53,6 +53,9 @@ export function ExplainerView({
         case "ideal_gas_pv":
             body = <IdealGasExplainer data={d} />;
             break;
+        case "text":
+            body = <TextExplainer data={d} />;
+            break;
         default:
             body = <p className="explainer__a11y">{explainer.caption}</p>;
     }
@@ -64,6 +67,21 @@ export function ExplainerView({
                     {explainer.a11yState}
                 </p>
             )}
+        </div>
+    );
+}
+
+// A plain-text explanation (a lesson made from a recording, docs/LESSONS.md
+// §13): validated, cleaned paragraphs rendered as text nodes — never HTML.
+function TextExplainer({ data }: { data: Record<string, any> }) {
+    const paragraphs: string[] = Array.isArray(data.paragraphs)
+        ? data.paragraphs.filter((p: unknown): p is string => typeof p === "string" && p.trim() !== "")
+        : [];
+    return (
+        <div className="explainer-text">
+            {paragraphs.map((p, i) => (
+                <p key={i}>{p}</p>
+            ))}
         </div>
     );
 }

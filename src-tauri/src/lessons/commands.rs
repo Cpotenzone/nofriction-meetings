@@ -1,7 +1,8 @@
 //! Tauri commands for the Lessons subsystem (docs/LESSONS.md §17). Taking a
 //! lesson is 100% offline and free; the only network command is
 //! `lessons_import_bundle` with a URL source (user-initiated, no default URL).
-//! `lessons_make_from_recording` is deferred (§13) and is NOT registered.
+//! Make lesson (`lessons_make_from_recording`, §13) lives in
+//! `lessons::generate::commands`; it is the one AI command.
 //!
 //! Correctness/grading is authoritative here in Rust. The frontend renders the
 //! typed structures and calls these commands to grade and persist.
@@ -73,12 +74,12 @@ async fn dir_path_of(pool: &Pool<Sqlite>, set_id: &str) -> Result<PathBuf, Strin
     Ok(PathBuf::from(row.get::<String, _>("dir_path")))
 }
 
-fn load_set(dir: &PathBuf) -> Result<LessonSet, String> {
+pub(crate) fn load_set(dir: &PathBuf) -> Result<LessonSet, String> {
     let bytes = std::fs::read(dir.join("lessonset.json")).map_err(|e| format!("Couldn't read the lesson: {}", e))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("The lesson is corrupt: {}", e))
 }
 
-fn load_lesson(dir: &PathBuf, lesson_id: &str) -> Result<Lesson, String> {
+pub(crate) fn load_lesson(dir: &PathBuf, lesson_id: &str) -> Result<Lesson, String> {
     let bytes = std::fs::read(dir.join("lessons").join(format!("{}.json", lesson_id)))
         .map_err(|e| format!("Couldn't read the lesson: {}", e))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("The lesson is corrupt: {}", e))

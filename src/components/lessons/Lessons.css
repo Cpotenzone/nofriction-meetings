@@ -356,19 +356,94 @@
     word-break: break-all;
 }
 
-/* ── Generate stub preview ───────────────────────────────────────────── */
-
-.generate-preview {
-    max-width: 560px;
-    margin: 0 auto;
-    text-align: center;
-    padding: 40px 24px;
-}
+/* Hero glyph (the certificate's trophy). */
 .generate-preview__hero {
     color: var(--hazard-yellow, #facc15);
 }
-.generate-preview p {
+
+/* ── Make lesson (docs/LESSONS.md §13) ───────────────────────────────── */
+
+.make-lesson {
+    max-width: 720px;
+}
+.make-lesson__intro {
     color: var(--text-secondary, #a3a3a3);
+    line-height: 1.6;
+    margin: 0 0 14px;
+}
+.make-lesson__busy {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    border-radius: 12px;
+    border: 1px solid var(--hazard-yellow-dim, rgba(250, 204, 21, 0.5));
+    background: var(--bg-card, #0d0d0d);
+}
+.make-lesson__busy-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+.make-lesson__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.make-lesson__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+    min-height: 44px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: var(--hud-border, 1px solid #262626);
+    background: var(--bg-card, #0d0d0d);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.make-lesson__item:hover:not(:disabled) {
+    border-color: #404040;
+}
+.make-lesson__item.is-selected {
+    border-color: var(--hazard-yellow, #facc15);
+}
+.make-lesson__item:focus-visible {
+    outline: 2px solid var(--hazard-yellow, #facc15);
+    outline-offset: 2px;
+}
+.make-lesson__item:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.make-lesson__actions {
+    margin: 14px 0 8px;
+}
+.make-lesson__notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    margin: 0 0 14px;
+    border-radius: 10px;
+    border: 1px solid var(--hazard-yellow-dim, rgba(250, 204, 21, 0.5));
+    color: var(--text-secondary, #a3a3a3);
+    line-height: 1.5;
+}
+.make-lesson__source {
+    margin: 0 0 12px;
+}
+
+/* A plain-text explainer (a lesson made from a recording). */
+.explainer-text p {
+    margin: 0 0 8px;
     line-height: 1.6;
 }
 

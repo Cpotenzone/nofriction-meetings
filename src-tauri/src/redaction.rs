@@ -2458,6 +2458,13 @@ async fn ai_preview(conn: &mut SqliteConnection, meeting_id: &str) -> Vec<String
                 .into(),
         );
     }
+    // Make lesson output (docs/LESSONS.md §11.4): deleted with its progress
+    if crate::lessons::count_for_meeting(conn, meeting_id).await > 0 {
+        items.push(
+            "The lesson made from this recording in LESSONS, with its progress and certificate: deleted; make it again after the edit"
+                .into(),
+        );
+    }
     let topics = crate::topics::count_for_meeting(conn, meeting_id).await;
     if topics > 0 {
         items.push(format!(

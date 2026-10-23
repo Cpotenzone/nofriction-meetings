@@ -34,6 +34,7 @@ test("a paywall opened by a feature says which feature", () => {
     assert.equal(paywallHeadline("sync"), "Sync is part of noFriction Pro");
     assert.equal(paywallHeadline("obsidian"), "Export to Obsidian is part of noFriction Pro");
     assert.equal(paywallHeadline("transcribe_playing"), "Transcribe what's playing is part of noFriction Pro");
+    assert.equal(paywallHeadline("lessons"), "Making lessons is part of noFriction Pro");
     assert.equal(paywallHeadline(null), "noFriction Pro");
     for (const k of PRO_FEATURE_KEYS) assert.match(paywallHeadline(k), /part of noFriction Pro$/);
 });
@@ -42,6 +43,15 @@ test("every feature maps to a listed group", () => {
     const ids = new Set(PRO_GROUPS.map((g) => g.id));
     for (const k of PRO_FEATURE_KEYS) assert.ok(ids.has(groupFor(k)!), k);
     assert.equal(groupFor(undefined), null);
+    // Make lesson is part of Notes and review; the paywall says so
+    assert.equal(groupFor("lessons"), "study");
+    assert.match(PRO_GROUPS.find((g) => g.id === "study")!.detail, /lessons made from a class/);
+});
+
+test("making a lesson has its own key (iOS ProFeature.swift has the same one)", () => {
+    assert.ok(PRO_FEATURE_KEYS.includes("lessons"));
+    // A Rust gate naming it would open the paywall titled for it
+    assert.equal(proFeatureFromError("PRO_REQUIRED:lessons: Making lessons is part of noFriction Pro."), "lessons");
 });
 
 test("copy: Free keeps recording, microphone transcription, search, Delete/Strike and export", () => {

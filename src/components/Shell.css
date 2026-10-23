@@ -511,3 +511,15 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* Make lesson on a Class recording (docs/LESSONS.md §13): the primary action */
+.deck-tabs__make-lesson {
+  margin-right: 8px;
+  border-color: var(--hazard-yellow, #facc15);
+  color: var(--hazard-yellow, #facc15);
+}
+
+.deck-tabs__export:focus-visible {
+  outline: 2px solid var(--hazard-yellow, #facc15);
+  outline-offset: 2px;
+}

@@ -16,7 +16,10 @@ export type ExplainerKind =
     | "molecule_diagram"
     | "titration_curve"
     | "ideal_gas_pv"
-    | "misconceptions";
+    | "misconceptions"
+    // Plain-text paragraphs (`data.paragraphs`): what a lesson made from a
+    // recording teaches with (docs/LESSONS.md §13).
+    | "text";
 
 export interface Explainer {
     id: string;
@@ -42,7 +45,10 @@ export interface WorkedExample {
     prompt: string;
     conceptIds: string[];
     steps: Step[];
-    finalAnswer: { value: number; unit?: string | null };
+    /** The verified numeric key (authored courses); absent in a lesson made from a recording */
+    finalAnswer?: { value: number; unit?: string | null } | null;
+    /** The answer in words (a lesson made from a recording) */
+    answerText?: string | null;
 }
 
 export interface MisconceptionItem {
@@ -111,6 +117,8 @@ export interface LessonSet {
     subtitle?: string | null;
     level: string;
     provenance: "seed" | "imported" | "generated";
+    /** The recording a generated set was made from */
+    sourceRecordingId?: string | null;
     lessons: string[];
     concepts: Concept[];
     diagnostic?: { items: QuizItem[] } | null;
@@ -268,3 +276,36 @@ export const submitTrainerItem = (
     given: string,
     firstTry: boolean,
 ): Promise<TrainerGrade> => invoke("lessons_submit_trainer_item", { setId, attemptIndex, given, firstTry });
+
+// ── Make lesson (docs/LESSONS.md §13) ───────────────────────────────────────
+// The one AI call in Lessons: a Class recording's transcript → a lesson set,
+// with the user's own AI (noFriction Pro, consent for a public endpoint).
+
+export interface MakeLessonFailure {
+    /** concepts | outline | explanations | checkpoint | worked_examples | mistakes | exam */
+    part: string;
+    /** 1-based lesson number, for a per-lesson part */
+    lesson?: number | null;
+    error: string;
+}
+
+export interface MakeLessonResult {
+    setId: string;
+    title: string;
+    lessons: number;
+    /** Parts that were unusable twice; the lesson was made without them */
+    failed: MakeLessonFailure[];
+}
+
+export interface MakeLessonProgress {
+    meeting_id: string;
+    done: number;
+    total: number;
+    label: string;
+}
+
+/** Progress events from `lessons_make_from_recording`. */
+export const LESSONS_PROGRESS_EVENT = "lessons_progress";
+
+export const makeFromRecording = (meetingId: string): Promise<MakeLessonResult> =>
+    invoke("lessons_make_from_recording", { meetingId });

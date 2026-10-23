@@ -166,31 +166,38 @@ export function LessonPlayer({ set, lessonId, figureDir, onBack, onCheckpoint }:
                         }}
                     >
                         <strong>{ex.title}</strong>
-                        <p className="lesson-figure__caption">{ex.caption}</p>
+                        {ex.caption && <p className="lesson-figure__caption">{ex.caption}</p>}
                         <ExplainerView explainer={ex} figureDir={figureDir} onSeen={() => markExplainerSeen(ex.id)} />
                     </div>
                 ))}
             </section>
 
-            <section className="lesson-player__section">
-                <h3>Worked examples</h3>
-                {lesson.workedExamples.map((w) => (
-                    <WorkedExampleView
-                        key={w.id}
-                        prompt={w.prompt}
-                        steps={w.steps}
-                        final={w.finalAnswer}
-                        onReveal={() => markWorkedSeen(w.id)}
-                    />
-                ))}
-            </section>
+            {/* A lesson made from a recording may have no worked examples or
+                common mistakes (the lecture had none, or the part failed). */}
+            {lesson.workedExamples.length > 0 && (
+                <section className="lesson-player__section">
+                    <h3>Worked examples</h3>
+                    {lesson.workedExamples.map((w) => (
+                        <WorkedExampleView
+                            key={w.id}
+                            prompt={w.prompt}
+                            steps={w.steps}
+                            final={w.finalAnswer ?? null}
+                            answerText={w.answerText ?? null}
+                            onReveal={() => markWorkedSeen(w.id)}
+                        />
+                    ))}
+                </section>
+            )}
 
-            <section className="lesson-player__section">
-                <h3>Common mistakes</h3>
-                {lesson.misconceptions.items.map((m, i) => (
-                    <MisconceptionCard key={i} claim={m.claim} why={m.whyWrong} correct={m.correct} />
-                ))}
-            </section>
+            {lesson.misconceptions.items.length > 0 && (
+                <section className="lesson-player__section">
+                    <h3>Common mistakes</h3>
+                    {lesson.misconceptions.items.map((m, i) => (
+                        <MisconceptionCard key={i} claim={m.claim} why={m.whyWrong} correct={m.correct} />
+                    ))}
+                </section>
+            )}
 
             <section className="lesson-player__section">
                 <h3>Checkpoint</h3>
@@ -278,11 +285,15 @@ function WorkedExampleView({
     prompt,
     steps,
     final,
+    answerText,
     onReveal,
 }: {
     prompt: string;
     steps: { text: string; expression?: string | null; result?: string | null; unit?: string | null }[];
-    final: { value: number; unit?: string | null };
+    /** The verified numeric key (authored courses) */
+    final: { value: number; unit?: string | null } | null;
+    /** The answer in words (a lesson made from a recording) */
+    answerText: string | null;
     onReveal?: () => void;
 }) {
     const [shown, setShown] = useState(0);
@@ -307,11 +318,13 @@ function WorkedExampleView({
                 <button className="lessons-btn" type="button" onClick={advance}>
                     Next step
                 </button>
-            ) : (
+            ) : final ? (
                 <p className="lesson-card__badge">
                     Answer: {final.value} {final.unit}
                 </p>
-            )}
+            ) : answerText ? (
+                <p className="lesson-card__badge">Answer: {answerText}</p>
+            ) : null}
         </div>
     );
 }

@@ -943,8 +943,10 @@ pub fn run() {
             notebooks::set_meeting_notebook,
             notebooks::list_recent_notebooks,
             recording_kind::set_meeting_recording_kind,
-            // Interactive education (docs/LESSONS.md). lessons_make_from_recording
-            // is deferred (§13) and intentionally NOT registered.
+            // Interactive education (docs/LESSONS.md). Make lesson (§13) goes
+            // through ai::client::complete like every AI feature (Pro gate,
+            // configured endpoint, consent).
+            lessons::generate::commands::lessons_make_from_recording,
             lessons::commands::lessons_list_catalog,
             lessons::commands::lessons_import_bundle,
             lessons::commands::lessons_remove_set,

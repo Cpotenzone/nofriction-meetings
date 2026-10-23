@@ -32,7 +32,7 @@ const LESSONS_MARKERS = [
     "LessonLibrary",
     "lessons__header",
     "lesson-player",
-    "GeneratePreview",
+    "make-lesson__intro",
     "lessons_list_catalog",
 ];
 

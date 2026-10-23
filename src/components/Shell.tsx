@@ -9,13 +9,14 @@ import { RecordView } from "./views/RecordView";
 import { RecordingsView } from "./views/RecordingsView";
 import { RecordingsChat } from "./chat/RecordingsChat";
 import { LessonsView } from "./views/LessonsView";
+import { MakeLessonPanel } from "./MakeLessonPanel";
 import { SettingsWindow } from "./SettingsWindow";
 import { HelpWindow } from "./HelpWindow";
 import { MeetingEndBanner } from "./MeetingEndBanner";
 import { TimeLimitBanner } from "./TimedRecording";
 import { useRecording } from "../hooks/useRecording";
 import { useTranscripts } from "../hooks/useTranscripts";
-import { onOpenHelp, onOpenSettings, type SettingsCategory } from "../lib/navigation";
+import { onMakeLessonRequest, onOpenHelp, onOpenSettings, type SettingsCategory } from "../lib/navigation";
 import { getMeeting } from "../lib/tauri";
 import { segmentCarryOver } from "../lib/recordPlan";
 import { getTimedRecordingStatus } from "../lib/timedRecording";
@@ -58,6 +59,8 @@ export function Shell({
         [],
     );
     useEffect(() => onOpenHelp(() => setHelpOpen(true)), []);
+    // Recordings → Make lesson opens Lessons, which takes the request
+    useEffect(() => onMakeLessonRequest(() => onModeChange("lessons")), [onModeChange]);
 
     // Long recordings: at 75 minutes, offer a new segment (native dialog)
     useEffect(() => {
@@ -125,7 +128,7 @@ export function Shell({
                         recordingMeetingId={recording.meetingId}
                     />
                 )}
-                {activeMode === "lessons" && <LessonsView />}
+                {activeMode === "lessons" && <LessonsView makePanel={(p) => <MakeLessonPanel {...p} />} />}
                 {activeMode === "chat" && <RecordingsChat selectedMeetingId={selectedMeetingId} onOpenRecording={onSelectMeeting} />}
             </main>
 

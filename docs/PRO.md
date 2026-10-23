@@ -16,7 +16,7 @@ the user guide copy from it. Change this file first, then the copy (see
 | Screens | Mac screenshots, iPhone screen snapshots, photos | |
 | Review | Marks, Rewind, search, Links, calendar and people | **Notes** (Make notes / Make again), automatic notes, **Follow-up email**, **Topics**, **Review guides** (Study guide for a class) with flashcards, practice quiz and CSV/Markdown export |
 | Ask | | **Chat** with your recordings, with citations |
-| Lessons | **Take** any lesson — the built-in Stoichiometry course and lessons you import — with interactive explainers, mastery, spaced-repetition review, the final exam and the printable certificate, fully offline | **Make a lesson** from a recording (the deferred Generate pipeline, docs/LESSONS.md §13) will be Pro when it ships; this build shows a coming-soon preview and makes no AI call |
+| Lessons | **Take** any lesson — the built-in Stoichiometry course, lessons you import and lessons you made — with interactive explainers, mastery, spaced-repetition review, the final exam and the printable certificate, fully offline | **Make lesson** (Mac): turn a Class recording into a lesson with your AI (docs/LESSONS.md §13) |
 | Devices | One subscription covers iPhone, iPad and Mac | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code |
 | Your records | Edit, Delete and Strike from the record; share a recording as text; **Export…** a recording as a package (Markdown, web page, picked photos and screens, transcript; docs/EXPORT.md); export everything as JSON | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault, by hand or automatically when it stops. The Export sheet's AI tools (highlights, captions, Pick with AI, Fill with AI) are AI features |
 
@@ -56,7 +56,7 @@ notes vault), not from taking away what free users have.
 
 | | Mac | iPhone and iPad |
 |---|---|---|
-| AI (notes, follow-up email, topics, review guides, chat, automatic notes) | `entitlement::require_pro()` in `ai::client::complete`, the single AI gate | `store.isPro` before every AI action (`MeetingDetailView.requestAI`, `ChatView.ask`) |
+| AI (notes, follow-up email, topics, review guides, chat, automatic notes, Make lesson) | `entitlement::require_pro()` in `ai::client::complete`, the single AI gate | `store.isPro` before every AI action (`MeetingDetailView.requestAI`, `ChatView.ask`) |
 | Sync | `entitlement::require_pro_feature(ProFeature::Sync)` | `store.isPro` |
 | Transcribe what's playing | (iPhone only) | `store.isPro` through `ScreenAudioPolicy`: the app tells the broadcast extension to write app audio only for Pro with the switch on, and the import deletes app audio otherwise ([SCREEN_CAPTURE_IOS.md](SCREEN_CAPTURE_IOS.md)) |
 | Export to Obsidian | `require_pro_feature(ProFeature::Obsidian)` in every vault-writing command, turning on auto-export, and the auto-export on Stop | (Mac only) |
@@ -86,6 +86,7 @@ On iOS, `PaywallView(feature: .sync)` does the same (`ProFeature.swift`).
 | `sync` | `ProFeature::Sync` / `"sync"` | `.sync` | Sync is part of noFriction Pro |
 | `transcribe_playing` | | `.transcribePlaying` | Transcribe what's playing is part of noFriction Pro |
 | `obsidian` | `ProFeature::Obsidian` / `"obsidian"` | `.obsidian` | Export to Obsidian is part of noFriction Pro |
+| `lessons` | `withAiConsent(…, "lessons")` (Make lesson; AI gate) | `.lessons` (no iPhone Lessons yet) | Making lessons is part of noFriction Pro |
 
 Tests keep these in step: `entitlement::tests`, `commands::vault::tests`,
 `src/lib/pro.test.ts`, `ios/NoFrictionTests/ProFeatureTests.swift` (which

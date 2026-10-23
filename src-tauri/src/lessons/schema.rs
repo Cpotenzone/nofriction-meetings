@@ -33,6 +33,64 @@ pub const MIN_EXAM_MULTISTEP: u32 = 9;
 pub const MIN_WORKED_EXAMPLES: usize = 3;
 pub const MAX_LESSONS: usize = 64;
 pub const MAX_CONCEPTS: usize = 128;
+/// A `text` explainer carries 1..=6 plain-text paragraphs.
+pub const MAX_TEXT_PARAGRAPHS: usize = 6;
+
+// ════════════════════════════════════════════════════════════════════════
+// Validation profiles: authored courses vs lessons made from a recording
+// ════════════════════════════════════════════════════════════════════════
+
+/// Which floors a set is held to. The profile follows the set's provenance
+/// (`Profile::for_provenance`); only the counts and allowed kinds differ.
+/// Every other check (text cleaning, referential integrity, the acyclic
+/// concept graph, MC answer indexes in range, upper bounds) applies to both.
+///
+/// - `Authored` (seed and imported bundles): the authored-course floors of
+///   docs/LESSONS.md §4.6/§10.1b, including the owner-decision D4 figure
+///   floor (≥1 decoding `figure` explainer per lesson), ≥3 worked examples
+///   with a numeric `finalAnswer`, 2..=6 misconceptions, a checkpoint of
+///   8..=10 drawn from a bank ≥ 2× that, and an exam bank ≥ 60 with per-kind
+///   and per-concept quotas.
+/// - `Generated` (provenance `generated`, made from a Class recording by
+///   `lessons::generate`, §13): the model's numbers are never stored (§6
+///   HIGH-2), so a generated lesson carries only content that needs no
+///   closed-form recompute: `text` explainers (no figures — there is no
+///   runtime image generation — and no interactive closed-form kinds),
+///   worked examples whose steps are text (no `finalAnswer` number, no
+///   step `expression`/`result`/`unit`), misconceptions, and
+///   multiple-choice checkpoint/exam items whose answer is a resolved index.
+///   The floors fit one recording: ≥1 explainer, 0..=6 worked examples,
+///   0..=6 misconceptions, a checkpoint of ≥3 from a bank of ≥4, and an MC
+///   exam of ≥4 items (its own questions plus the checkpoints', so one
+///   lesson's checkpoint is always enough for an exam).
+///
+/// A hostile bundle that claims `generated` is still stored as `imported`
+/// (§4.7); claiming it only buys the narrower generated content rules
+/// (text and MC only), never a closed-form shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Profile {
+    Authored,
+    Generated,
+}
+
+impl Profile {
+    pub fn for_provenance(provenance: &str) -> Profile {
+        if provenance == "generated" {
+            Profile::Generated
+        } else {
+            Profile::Authored
+        }
+    }
+}
+
+/// The only explainer kind a generated lesson may carry.
+pub const GEN_EXPLAINER_KINDS: &[&str] = &["text"];
+pub const GEN_MIN_EXPLAINERS: usize = 1;
+pub const GEN_MAX_WORKED_EXAMPLES: usize = 6;
+pub const GEN_MIN_PRESENT: usize = 3;
+pub const GEN_MIN_CHECKPOINT_BANK: usize = 4;
+pub const GEN_MIN_EXAM_BANK: usize = GEN_MIN_CHECKPOINT_BANK;
+pub const GEN_MAX_LESSONS: usize = 6;
 
 // ════════════════════════════════════════════════════════════════════════
 // Authored content
@@ -125,6 +183,9 @@ pub const EXPLAINER_KINDS: &[&str] = &[
     "titration_curve",
     "ideal_gas_pv",
     "misconceptions",
+    // Plain-text explanation: `data = {"paragraphs": [String]}` (schema
+    // minor 1). The kind a generated lesson teaches with.
+    "text",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -155,7 +216,14 @@ pub struct WorkedExample {
     #[serde(default)]
     pub concept_ids: Vec<String>,
     pub steps: Vec<Step>,
-    pub final_answer: FinalAnswer,
+    /// The verified numeric key. Required for authored courses; never
+    /// present in a generated lesson (a model's number is never stored, §6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_answer: Option<FinalAnswer>,
+    /// The answer in words (schema minor 1): how a generated worked example
+    /// ends ("So the cell enters S phase next.").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -360,10 +428,22 @@ fn finite(x: f64) -> bool {
 /// Test-only accessor for the item validator (used by lessons::tests).
 #[cfg(test)]
 pub fn validate_item_pub(item: &mut QuizItem, concepts: &HashSet<String>) -> Result<(), ValidateError> {
-    validate_item(item, concepts)
+    validate_item(item, concepts, Profile::Authored)
 }
 
-fn validate_item(item: &mut QuizItem, concepts: &HashSet<String>) -> Result<(), ValidateError> {
+/// Text-only steps: the `expression`/`result`/`unit` of a step are where a
+/// number would be presented as a computed result, so a generated lesson
+/// keeps only the narration (§6 HIGH-2).
+fn text_only_steps(steps: &mut Vec<Step>) {
+    steps.retain_mut(|s| clean_in_place(&mut s.text, MEDIUM));
+    for s in steps.iter_mut() {
+        s.expression = None;
+        s.result = None;
+        s.unit = None;
+    }
+}
+
+pub(crate) fn validate_item(item: &mut QuizItem, concepts: &HashSet<String>, profile: Profile) -> Result<(), ValidateError> {
     if !clean_in_place(&mut item.prompt, MEDIUM) {
         return Err("item has no prompt".into());
     }
@@ -375,6 +455,24 @@ fn validate_item(item: &mut QuizItem, concepts: &HashSet<String>) -> Result<(), 
     }
     for step in &mut item.solution {
         clean_in_place(&mut step.text, MEDIUM);
+    }
+    if profile == Profile::Generated {
+        // Multiple choice only: its key is a resolved index, never a number
+        // the model computed. Everything a non-MC kind would carry is cleared
+        // so only the cleaned MC structure is stored.
+        if item.kind != "mc" {
+            return Err("a generated lesson only has multiple-choice items".into());
+        }
+        text_only_steps(&mut item.solution);
+        item.answer = None;
+        item.unit = None;
+        item.tolerance = None;
+        item.sig_figs = None;
+        item.equation = None;
+        item.answer_coefficients = None;
+        item.steps = None;
+        item.gated = None;
+        item.generator = None;
     }
     match item.kind.as_str() {
         "mc" => {
@@ -467,10 +565,11 @@ fn validate_item(item: &mut QuizItem, concepts: &HashSet<String>) -> Result<(), 
     Ok(())
 }
 
-fn validate_explainer(
+pub(crate) fn validate_explainer(
     e: &mut Explainer,
     concepts: &HashSet<String>,
     figure_ids: &HashSet<String>,
+    profile: Profile,
 ) -> Result<(), ValidateError> {
     if !clean_in_place(&mut e.title, SHORT) {
         return Err("explainer has no title".into());
@@ -482,8 +581,26 @@ fn validate_explainer(
     if !EXPLAINER_KINDS.contains(&e.kind.as_str()) {
         return Err(format!("unknown explainer kind {}", e.kind));
     }
+    // A generated lesson never carries a figure (no runtime image
+    // generation) or a closed-form interactive kind (its numbers would be
+    // the model's, §6 HIGH-2): only plain text.
+    if profile == Profile::Generated && !GEN_EXPLAINER_KINDS.contains(&e.kind.as_str()) {
+        return Err(format!("a generated lesson can't carry a {} explainer", e.kind));
+    }
     e.concept_ids.retain(|c| concepts.contains(c));
-    if e.kind == "figure" {
+    if e.kind == "text" {
+        // Plain-text paragraphs, each cleaned; nothing else in `data` is kept.
+        let paragraphs: Vec<String> = e
+            .data
+            .get("paragraphs")
+            .and_then(|p| p.as_array())
+            .map(|ps| ps.iter().filter_map(|p| parse::clean_value(p, LONG)).take(MAX_TEXT_PARAGRAPHS).collect())
+            .unwrap_or_default();
+        if paragraphs.is_empty() {
+            return Err("text explainer has no paragraphs".into());
+        }
+        e.data = serde_json::json!({ "paragraphs": paragraphs });
+    } else if e.kind == "figure" {
         let fid = e
             .data
             .get("figureId")
@@ -503,34 +620,40 @@ fn validate_lesson(
     lesson: &mut Lesson,
     concepts: &HashSet<String>,
     figure_ids: &HashSet<String>,
+    profile: Profile,
 ) -> Result<(), ValidateError> {
+    let generated = profile == Profile::Generated;
     if !clean_in_place(&mut lesson.title, SHORT) {
         return Err("lesson has no title".into());
     }
+    lesson.objectives.retain_mut(|o| clean_in_place(&mut o.text, MEDIUM) || !generated);
     for o in &mut lesson.objectives {
-        clean_in_place(&mut o.text, MEDIUM);
         o.concept_ids.retain(|c| concepts.contains(c));
     }
     lesson.concept_ids.retain(|c| concepts.contains(c));
 
-    // Explainers: drop a bad one; keep count in bounds; enforce the figure floor.
+    // Explainers: drop a bad one; keep count in bounds; enforce the figure
+    // floor (authored courses only — a generated lesson has no figures).
     let mut kept = Vec::new();
     for mut e in std::mem::take(&mut lesson.explainers) {
-        if validate_explainer(&mut e, concepts, figure_ids).is_ok() {
+        if validate_explainer(&mut e, concepts, figure_ids, profile).is_ok() {
             kept.push(e);
         }
     }
     lesson.explainers = kept;
-    let figure_count = lesson.explainers.iter().filter(|e| e.kind == "figure").count();
-    if figure_count < 1 {
-        return Err(format!("lesson {} has no figure-kind explainer (D4 floor)", lesson.index));
+    let min_explainers = if generated { GEN_MIN_EXPLAINERS } else { MIN_EXPLAINERS };
+    if !generated {
+        let figure_count = lesson.explainers.iter().filter(|e| e.kind == "figure").count();
+        if figure_count < 1 {
+            return Err(format!("lesson {} has no figure-kind explainer (D4 floor)", lesson.index));
+        }
     }
-    if lesson.explainers.len() < MIN_EXPLAINERS || lesson.explainers.len() > MAX_EXPLAINERS {
+    if lesson.explainers.len() < min_explainers || lesson.explainers.len() > MAX_EXPLAINERS {
         return Err(format!(
             "lesson {} has {} explainers (want {}..={})",
             lesson.index,
             lesson.explainers.len(),
-            MIN_EXPLAINERS,
+            min_explainers,
             MAX_EXPLAINERS
         ));
     }
@@ -538,93 +661,142 @@ fn validate_lesson(
     // Worked examples: drop a bad one, enforce the floor, recompute-verify.
     let mut we = Vec::new();
     for mut w in std::mem::take(&mut lesson.worked_examples) {
-        if validate_worked_example(&mut w, concepts).is_ok() {
+        if validate_worked_example(&mut w, concepts, profile).is_ok() {
             we.push(w);
         }
     }
     lesson.worked_examples = we;
-    if lesson.worked_examples.len() < MIN_WORKED_EXAMPLES {
+    if generated {
+        if lesson.worked_examples.len() > GEN_MAX_WORKED_EXAMPLES {
+            return Err(format!("lesson {} has too many worked examples", lesson.index));
+        }
+    } else if lesson.worked_examples.len() < MIN_WORKED_EXAMPLES {
         return Err(format!("lesson {} has too few worked examples", lesson.index));
     }
 
-    // Misconceptions: 2..=6.
-    lesson.misconceptions.items.retain_mut(|m| {
-        clean_in_place(&mut m.claim, MEDIUM)
-            && clean_in_place(&mut m.why_wrong, MEDIUM)
-            && clean_in_place(&mut m.correct, MEDIUM)
-    });
-    for m in &mut lesson.misconceptions.items {
-        m.concept_ids.retain(|c| concepts.contains(c));
-    }
+    // Misconceptions: 2..=6 (0..=6 for a generated lesson).
+    lesson.misconceptions.items.retain_mut(|m| validate_misconception(m, concepts));
     let n = lesson.misconceptions.items.len();
-    if n < MIN_MISCONCEPTIONS || n > MAX_MISCONCEPTIONS {
+    let min_misconceptions = if generated { 0 } else { MIN_MISCONCEPTIONS };
+    if n < min_misconceptions || n > MAX_MISCONCEPTIONS {
         return Err(format!("lesson {} misconceptions out of range ({})", lesson.index, n));
     }
 
     // Trainer: validate static items; drop generators with an unknown template.
+    // A generated lesson has no generator-backed drills.
+    if generated {
+        lesson.trainer.generators.clear();
+    }
     lesson
         .trainer
         .generators
         .retain(|g| crate::lessons::generators::is_known_template(&g.template));
     let mut statics = Vec::new();
     for mut it in std::mem::take(&mut lesson.trainer.static_items) {
-        if validate_item(&mut it, concepts).is_ok() {
+        if validate_item(&mut it, concepts, profile).is_ok() {
             statics.push(it);
         }
     }
     lesson.trainer.static_items = statics;
 
-    // Checkpoint: present_count 8..=10, bank present_count*2 ..= 40.
+    // Checkpoint: authored present_count 8..=10 from a bank present_count*2
+    // ..= 40; generated present_count 3..=10 from a bank of at least
+    // max(present_count, 4) (one recording rarely supports 16+ questions).
     let pc = lesson.checkpoint.present_count as usize;
-    if !(8..=10).contains(&pc) {
+    let pc_range = if generated { GEN_MIN_PRESENT..=10 } else { 8..=10 };
+    if !pc_range.contains(&pc) {
         return Err(format!("lesson {} checkpoint presentCount out of range", lesson.index));
     }
     let mut items = Vec::new();
     for mut it in std::mem::take(&mut lesson.checkpoint.items) {
-        if validate_item(&mut it, concepts).is_ok() {
+        if validate_item(&mut it, concepts, profile).is_ok() {
             items.push(it);
         }
     }
     lesson.checkpoint.items = items;
     let bank = lesson.checkpoint.items.len();
-    if bank < pc * 2 || bank > MAX_CHECKPOINT_BANK {
+    let min_bank = if generated { pc.max(GEN_MIN_CHECKPOINT_BANK) } else { pc * 2 };
+    if bank < min_bank || bank > MAX_CHECKPOINT_BANK {
         return Err(format!(
             "lesson {} checkpoint bank {} not in {}..={}",
-            lesson.index,
-            bank,
-            pc * 2,
-            MAX_CHECKPOINT_BANK
+            lesson.index, bank, min_bank, MAX_CHECKPOINT_BANK
         ));
     }
     Ok(())
 }
 
-fn validate_worked_example(w: &mut WorkedExample, concepts: &HashSet<String>) -> Result<(), ValidateError> {
+/// Clean one "common mistake" in place; false → drop it.
+pub(crate) fn validate_misconception(m: &mut MisconceptionItem, concepts: &HashSet<String>) -> bool {
+    let ok = clean_in_place(&mut m.claim, MEDIUM)
+        && clean_in_place(&mut m.why_wrong, MEDIUM)
+        && clean_in_place(&mut m.correct, MEDIUM);
+    m.concept_ids.retain(|c| concepts.contains(c));
+    ok
+}
+
+pub(crate) fn validate_worked_example(
+    w: &mut WorkedExample,
+    concepts: &HashSet<String>,
+    profile: Profile,
+) -> Result<(), ValidateError> {
     if !clean_in_place(&mut w.prompt, MEDIUM) {
         return Err("worked example has no prompt".into());
     }
     w.concept_ids.retain(|c| concepts.contains(c));
+    if let Some(t) = w.answer_text.as_mut() {
+        if !clean_in_place(t, MEDIUM) {
+            w.answer_text = None;
+        }
+    }
+    if profile == Profile::Generated {
+        // Steps are text; a model's number is never stored as the key (§6).
+        text_only_steps(&mut w.steps);
+        w.final_answer = None;
+        if w.steps.is_empty() {
+            return Err("worked example has no steps".into());
+        }
+        return Ok(());
+    }
     for s in &mut w.steps {
         clean_in_place(&mut s.text, MEDIUM);
     }
     if w.steps.is_empty() {
         return Err("worked example has no steps".into());
     }
-    if !finite(w.final_answer.value) {
+    let value = w.final_answer.as_ref().map(|f| f.value).ok_or("worked example has no final answer")?;
+    if !finite(value) {
         return Err("worked example final answer not finite".into());
     }
     Ok(())
 }
 
-fn validate_exam(exam: &mut Exam, concepts: &HashSet<String>) -> Result<(), ValidateError> {
+fn validate_exam(exam: &mut Exam, concepts: &HashSet<String>, profile: Profile) -> Result<(), ValidateError> {
     let mut items = Vec::new();
     for mut it in std::mem::take(&mut exam.items) {
-        if validate_item(&mut it, concepts).is_ok() {
+        if validate_item(&mut it, concepts, profile).is_ok() {
             items.push(it);
         }
     }
     exam.items = items;
     let n = exam.items.len();
+    if profile == Profile::Generated {
+        // A generated exam is multiple choice, drawn from a bank of >= 4
+        // (its own questions plus the lessons' checkpoint questions).
+        if !(GEN_MIN_EXAM_BANK..=MAX_EXAM_BANK).contains(&n) {
+            return Err(format!("exam bank {} not in {}..={}", n, GEN_MIN_EXAM_BANK, MAX_EXAM_BANK));
+        }
+        let m = &exam.mix;
+        if m.numeric != 0 || m.balance != 0 || m.multistep != 0 || m.mc != exam.question_count {
+            return Err("a generated exam is multiple choice only (mix.mc == questionCount)".into());
+        }
+        if (exam.question_count as usize) < GEN_MIN_EXAM_BANK || exam.question_count as usize > n {
+            return Err("exam questionCount out of range for its bank".into());
+        }
+        if exam.pass_pct == 0 || exam.pass_pct > 100 {
+            return Err("exam passPct out of range".into());
+        }
+        return Ok(());
+    }
     if n < MIN_EXAM_BANK || n > MAX_EXAM_BANK {
         return Err(format!("exam bank {} not in {}..={}", n, MIN_EXAM_BANK, MAX_EXAM_BANK));
     }
@@ -668,7 +840,7 @@ fn validate_exam(exam: &mut Exam, concepts: &HashSet<String>) -> Result<(), Vali
 
 /// Detect a cycle in the concept prerequisite graph (DFS). Returns Err on a
 /// cycle or a prerequisite referencing a missing concept.
-fn validate_concept_dag(concepts: &[Concept]) -> Result<(), ValidateError> {
+pub(crate) fn validate_concept_dag(concepts: &[Concept]) -> Result<(), ValidateError> {
     let ids: HashSet<&str> = concepts.iter().map(|c| c.id.as_str()).collect();
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
     for c in concepts {
@@ -742,11 +914,18 @@ pub fn validate_set(
     if !matches!(set.provenance.as_str(), "seed" | "imported" | "generated") {
         return Err("lesson set has an unknown provenance".into());
     }
+    let profile = Profile::for_provenance(&set.provenance);
     if set.concepts.is_empty() || set.concepts.len() > MAX_CONCEPTS {
         return Err("lesson set concept count out of range".into());
     }
-    if set.lessons.is_empty() || set.lessons.len() > MAX_LESSONS {
+    let max_lessons = if profile == Profile::Generated { GEN_MAX_LESSONS } else { MAX_LESSONS };
+    if set.lessons.is_empty() || set.lessons.len() > max_lessons {
         return Err("lesson set lesson count out of range".into());
+    }
+    // There is no runtime image generation, so a generated set never has
+    // figures (docs/LESSONS.md §13, OQ-7).
+    if profile == Profile::Generated && !figures.is_empty() {
+        return Err("a generated lesson set can't carry figures".into());
     }
 
     let concept_ids: HashSet<String> = set.concepts.iter().map(|c| c.id.clone()).collect();
@@ -774,15 +953,18 @@ pub fn validate_set(
         if &lesson.id != lid {
             return Err(format!("lesson file id mismatch for {}", lid));
         }
-        validate_lesson(&mut lesson, &concept_ids, &figure_ids)?;
+        validate_lesson(&mut lesson, &concept_ids, &figure_ids, profile)?;
         lessons.push(lesson);
     }
 
-    // Diagnostic (optional).
+    // Diagnostic (optional; a generated set has none).
+    if profile == Profile::Generated {
+        set.diagnostic = None;
+    }
     if let Some(d) = set.diagnostic.as_mut() {
         let mut items = Vec::new();
         for mut it in std::mem::take(&mut d.items) {
-            if validate_item(&mut it, &concept_ids).is_ok() {
+            if validate_item(&mut it, &concept_ids, profile).is_ok() {
                 items.push(it);
             }
         }
@@ -792,7 +974,7 @@ pub fn validate_set(
         }
     }
 
-    validate_exam(&mut set.exam, &concept_ids)?;
+    validate_exam(&mut set.exam, &concept_ids, profile)?;
 
     Ok(ValidatedSet { set, lessons, figures })
 }

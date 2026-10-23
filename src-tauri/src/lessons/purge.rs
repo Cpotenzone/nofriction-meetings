@@ -2,8 +2,8 @@
 //! §11.4). A generated set paraphrases a recording's transcript, so on any
 //! Delete/Strike of that transcript text it is DELETED, not rewritten — exactly
 //! like a study guide. Seed and imported sets are NEVER touched (the
-//! `WHERE provenance = 'generated'` guard). In this build no `generated` set is
-//! produced, so this is dormant but fully wired for the deferred §13 pipeline.
+//! `WHERE provenance = 'generated'` guard). Generated sets are written by
+//! Make lesson (`lessons::generate`, §13).
 //!
 //! Ordering (idempotent, keyed by meeting_id, safe under the non-transactional
 //! `delete_meeting`): resolve dir_paths first, delete learner rows then
@@ -37,12 +37,26 @@ pub async fn count_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) ->
 /// Returns the number of DB rows affected. Schema-tolerant: an old backup may
 /// lack the tables.
 pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> Result<u64, sqlx::Error> {
+    let (changed, dirs) = purge_rows_for_meeting(conn, meeting_id).await?;
+    remove_dirs(&dirs);
+    Ok(changed)
+}
+
+/// Steps 1 and 2 of the purge: resolve the generated sets' dir paths, then
+/// delete their learner rows and catalog rows. Returns (rows affected, the
+/// on-disk dirs to remove once the caller's transaction is safe). The lesson
+/// maker uses this inside its save transaction to replace the previous
+/// generated set for a recording, removing the old dirs only after commit.
+pub(crate) async fn purge_rows_for_meeting(
+    conn: &mut SqliteConnection,
+    meeting_id: &str,
+) -> Result<(u64, Vec<String>), sqlx::Error> {
     let exists: Option<i64> =
         sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lesson_sets'")
             .fetch_optional(&mut *conn)
             .await?;
     if exists.is_none() {
-        return Ok(0);
+        return Ok((0, Vec::new()));
     }
 
     // 1. Resolve first: ids + dir paths, BEFORE deleting any row.
@@ -52,7 +66,7 @@ pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) ->
             .fetch_all(&mut *conn)
             .await?;
     if rows.is_empty() {
-        return Ok(0);
+        return Ok((0, Vec::new()));
     }
     let targets: Vec<(String, String)> = rows
         .iter()
@@ -85,9 +99,13 @@ pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) ->
         .await?
         .rows_affected();
 
-    // 3. Remove on-disk dirs last, tolerating ENOENT. A dir-removal failure
-    // after the DB delete is logged-and-ignored (orphaned bytes are harmless).
-    for (_, dir_path) in &targets {
+    Ok((changed, targets.into_iter().map(|(_, dir)| dir).collect()))
+}
+
+/// Step 3: remove on-disk dirs last, tolerating ENOENT. A dir-removal failure
+/// after the DB delete is logged-and-ignored (orphaned bytes are harmless).
+pub(crate) fn remove_dirs(dirs: &[String]) {
+    for dir_path in dirs {
         if dir_path.is_empty() {
             continue;
         }
@@ -97,6 +115,4 @@ pub async fn purge_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) ->
             Err(e) => log::warn!("Lessons: couldn't remove on-disk dir after purge: {}", e),
         }
     }
-
-    Ok(changed)
 }
