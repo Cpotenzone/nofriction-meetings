@@ -4,8 +4,8 @@
 
 import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { LessonSet, Dashboard as DashboardT, StartedExam, Certificate as CertT } from "../../lib/lessons";
-import { dashboard as fetchDashboard, startExam, submitExam, exportCertificate, getLesson, resetProgress } from "../../lib/lessons";
+import type { LessonSet, Dashboard as DashboardT, StartedExam, Certificate as CertT, LessonProgress } from "../../lib/lessons";
+import { dashboard as fetchDashboard, startExam, submitExam, exportCertificate, getLesson, getProgress, resetProgress } from "../../lib/lessons";
 import { GaugeIcon, TrophyIcon, CertificateIcon, LockIcon, CheckIcon } from "../icons";
 import { QuizRunner } from "./QuizRunner";
 import { LessonPlayer } from "./LessonPlayer";
@@ -18,11 +18,20 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
     const [dash, setDash] = useState<DashboardT | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [lessonTitles, setLessonTitles] = useState<Record<string, { index: number; title: string; passed?: boolean }>>({});
+    // Each lesson's progress (for its card) and whether a certificate was earned
+    const [progress, setProgress] = useState<Record<string, LessonProgress | null>>({});
+    const [hasCert, setHasCert] = useState(false);
 
     const conceptName = (id: string) => set.concepts.find((c) => c.id === id)?.name ?? id;
 
     const refresh = () => {
         fetchDashboard(set.id).then(setDash).catch((e) => setError(String(e)));
+        Promise.all(set.lessons.map((id) => getProgress(set.id, id).catch(() => null))).then((ps) =>
+            setProgress(Object.fromEntries(set.lessons.map((id, i) => [id, ps[i]]))),
+        );
+        exportCertificate(set.id)
+            .then((c) => setHasCert(!!c))
+            .catch(() => setHasCert(false));
     };
     useEffect(refresh, [set.id]);
 
@@ -96,6 +105,7 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
 
             <section className="lesson-player__section">
                 <h3>Lessons</h3>
+                <div className="lessons-grid">
                 {set.lessons.map((id) => {
                     const meta = lessonTitles[id];
                     return (
@@ -103,15 +113,16 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                             key={id}
                             type="button"
                             className="lesson-card"
-                            style={{ marginBottom: 8 }}
                             onClick={() => setScreen({ lessonId: id })}
                         >
                             <span className="lesson-card__title">
                                 {meta ? `Lesson ${meta.index}: ${meta.title}` : id}
                             </span>
+                            <span className="lesson-card__meta">{lessonStatus(progress[id])}</span>
                         </button>
                     );
                 })}
+                </div>
             </section>
 
             {dash && (
@@ -156,18 +167,22 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                 <h3>
                     <TrophyIcon size={15} /> Final exam
                 </h3>
-                {dash?.examUnlocked ? (
-                    <button className="lessons-btn is-primary" type="button" onClick={() => setScreen("exam")}>
-                        Start the {set.exam.questionCount}-question exam
-                    </button>
-                ) : (
-                    <p className="lesson-card__meta">
-                        <LockIcon size={14} /> Pass every lesson checkpoint (80%+) to unlock the exam.
-                    </p>
-                )}
-                <button className="lessons-btn" type="button" style={{ marginLeft: 8 }} onClick={() => setScreen("certificate")}>
-                    <CertificateIcon size={14} /> View certificate
-                </button>
+                <div className="lessons__actions" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                    {dash?.examUnlocked ? (
+                        <button className="lessons-btn is-primary" type="button" onClick={() => setScreen("exam")}>
+                            Start the {set.exam.questionCount}-question exam
+                        </button>
+                    ) : (
+                        <p className="lesson-card__meta" style={{ margin: 0 }}>
+                            <LockIcon size={14} /> Pass every lesson checkpoint (80%+) to unlock the exam.
+                        </p>
+                    )}
+                    {hasCert && (
+                        <button className="lessons-btn" type="button" onClick={() => setScreen("certificate")}>
+                            <CertificateIcon size={14} /> View certificate
+                        </button>
+                    )}
+                </div>
             </section>
 
             <section className="lesson-player__section">
@@ -181,6 +196,15 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
             </section>
         </div>
     );
+}
+
+/** A lesson card's status line: passed with its best score, in progress, or not started. */
+function lessonStatus(p: LessonProgress | null | undefined): string {
+    if (!p) return "Not started";
+    if (p.checkpointPassed) return `Checkpoint passed · ${Math.round(p.checkpointBestPct)}%`;
+    if (p.checkpointBestPct > 0) return `Checkpoint ${Math.round(p.checkpointBestPct)}% · 80% passes`;
+    if (p.explainersSeen.length > 0 || p.workedExamplesSeen.length > 0) return "In progress";
+    return "Not started";
 }
 
 function ExamScreen({ set, onDone, onCertificate }: { set: LessonSet; onDone: () => void; onCertificate: () => void }) {

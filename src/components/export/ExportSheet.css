@@ -383,9 +383,11 @@
 }
 
 .xp-check {
+  /* Bottom right, like Photos: the top left is where a slide's title sits,
+     the top right is the ⤢ preview, the bottom left the time */
   position: absolute;
-  top: 6px;
-  left: 6px;
+  bottom: 6px;
+  right: 6px;
   width: 20px;
   height: 20px;
   border-radius: 50%;

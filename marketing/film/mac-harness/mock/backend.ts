@@ -823,7 +823,11 @@ function handle(cmd: string, args: Args): unknown {
         case "lessons_get_lesson":
             return a.lessonId === "l2" ? demoLesson2 : demoLesson1;
         case "lessons_get_progress":
-            return a.lessonId === "l1" ? { explainersSeen: ["l1-e1", "l1-e2"], workedExamplesSeen: [], checkpointBestPct: 83, checkpointPassed: true, lastViewedExplainerId: null } : null;
+            if (a.lessonId === "l1") return { explainersSeen: ["l1-e1", "l1-e2"], workedExamplesSeen: [], checkpointBestPct: 83, checkpointPassed: true, lastViewedExplainerId: null };
+            if (a.lessonId === "l2") return { explainersSeen: ["l2-e1"], workedExamplesSeen: [], checkpointBestPct: 0, checkpointPassed: false, lastViewedExplainerId: "l2-e1" };
+            return null;
+        case "lessons_export_certificate":
+            return null;
         case "lessons_save_progress":
             return null;
         case "lessons_review_due":
