@@ -424,7 +424,8 @@ fn assemble(
     for l in &lessons {
         lesson_json.insert(l.id.clone(), serde_json::to_string(l).map_err(|e| e.to_string())?);
     }
-    schema::validate_set(set, Vec::new(), &lesson_json)
+    // The one caller of the generated profile (schema::Profile).
+    schema::validate_set(set, Vec::new(), &lesson_json, schema::Profile::Generated)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -476,35 +477,59 @@ pub async fn save_generated(
         return Err(e);
     }
 
-    let mut conn = pool.acquire().await.map_err(|e| format!("Database busy: {}", e))?;
-    if let Err(e) = sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await {
-        let _ = std::fs::remove_dir_all(&staging);
-        return Err(format!("Database busy: {}", e));
+    let outcome = commit_generated(pool, meeting_id, fingerprint, set, &content_fingerprint, &staging, &final_dir).await;
+    // Whatever happened, the staging dir never outlives the call.
+    let _ = std::fs::remove_dir_all(&staging);
+    match outcome {
+        Ok(old_dirs) => {
+            // The previous generated set's files go once its rows are gone (a
+            // crash before this leaves folders no row points to; the startup
+            // sweep, `purge::sweep_orphans`, removes them).
+            crate::lessons::purge::remove_dirs(&old_dirs);
+            Ok(set.id.clone())
+        }
+        Err(e) => {
+            // Files placed for a row that didn't commit are removed; a row
+            // that did commit (only possible if COMMIT reported an error
+            // after succeeding) keeps its files.
+            let committed: Option<i64> = sqlx::query_scalar("SELECT 1 FROM lesson_sets WHERE id = ?")
+                .bind(&set.id)
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(Some(1));
+            if committed.is_none() {
+                let _ = std::fs::remove_dir_all(&final_dir);
+            }
+            Err(e)
+        }
     }
-    let result = save_locked(&mut conn, meeting_id, fingerprint, set, &content_fingerprint, &staging, &final_dir).await;
+}
+
+/// The transaction of `save_generated`: one connection, `BEGIN IMMEDIATE`,
+/// the re-checks and writes (`save_locked`), then COMMIT or ROLLBACK. Returns
+/// the replaced set's dirs to remove after commit.
+async fn commit_generated(
+    pool: &Pool<Sqlite>,
+    meeting_id: &str,
+    fingerprint: &str,
+    set: &LessonSet,
+    content_fingerprint: &str,
+    staging: &Path,
+    final_dir: &Path,
+) -> Result<Vec<String>, String> {
+    let mut conn = pool.acquire().await.map_err(|e| format!("Database busy: {}", e))?;
+    sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await.map_err(|e| format!("Database busy: {}", e))?;
+    let result = save_locked(&mut conn, meeting_id, fingerprint, set, content_fingerprint, staging, final_dir).await;
     let end = if result.is_ok() { "COMMIT" } else { "ROLLBACK" };
     if let Err(e) = sqlx::query(end).execute(&mut *conn).await {
         // Never hand a connection with an open transaction back to the pool
         let _ = conn.close().await;
-        let _ = std::fs::remove_dir_all(&final_dir);
-        let _ = std::fs::remove_dir_all(&staging);
         return Err(match result {
             Err(r) => r,
             Ok(_) => format!("Couldn't save the lesson: {}", e),
         });
     }
-    match result {
-        Ok(old_dirs) => {
-            // The previous generated set's files go once its rows are gone.
-            crate::lessons::purge::remove_dirs(&old_dirs);
-            Ok(set.id.clone())
-        }
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&final_dir);
-            let _ = std::fs::remove_dir_all(&staging);
-            Err(e)
-        }
-    }
+    result
 }
 
 /// Inside the save transaction: re-check, replace, insert, place the files.

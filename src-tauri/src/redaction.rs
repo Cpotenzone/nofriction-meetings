@@ -545,6 +545,11 @@ impl RedactionEnv {
     fn logs_dir(&self) -> PathBuf {
         self.app_data_dir.join("logs")
     }
+
+    /// `lessons::lessons_root()` for this data folder: the lesson sets' files.
+    pub fn lessons_dir(&self) -> PathBuf {
+        self.app_data_dir.join("lessons")
+    }
 }
 
 /// Result of a committed action. `warnings` are post-commit steps that
@@ -666,8 +671,10 @@ pub async fn redact_ai_outputs(
 ) -> Result<u64, sqlx::Error> {
     let mut changed = crate::study::purge_for_meeting(conn, meeting_id).await?;
     // Recording-derived (generated) lesson sets are deleted on any Delete/Strike
-    // of this recording's transcript text (docs/LESSONS.md §11.4).
-    changed += crate::lessons::purge_for_meeting(conn, meeting_id).await?;
+    // of this recording's transcript text (docs/LESSONS.md §11.4). Rows only:
+    // this runs inside the action's transaction, so the set's folder goes in
+    // post_commit_purge, once the deletion is durable (a rollback keeps both).
+    changed += crate::lessons::purge::purge_rows_for_meeting(conn, meeting_id).await?.0;
     // AI topics name what the transcript was about, and chat answers quote
     // it: both are deleted outright; the user's own topics stay
     // (docs/TOPICS_AND_CHAT.md)
@@ -1328,8 +1335,10 @@ async fn purge_one_backup(path: &Path, meeting_id: &str, jobs: &[BackupJob]) -> 
     }
     // Job-kind-independent: purge recording-derived (generated) lesson sets from
     // this backup regardless of the arm, so a time-range or whole-recording
-    // Delete reaches them too (docs/LESSONS.md §11.4, MEDIUM-3).
-    crate::lessons::purge_for_meeting(&mut tx, meeting_id).await.map_err(err("lessons"))?;
+    // Delete reaches them too (docs/LESSONS.md §11.4, MEDIUM-3). Rows only: a
+    // backup's rows point at the live folders, which the live purge removes
+    // after its own commit (post_commit_purge).
+    crate::lessons::purge::purge_rows_for_meeting(&mut tx, meeting_id).await.map_err(err("lessons"))?;
     tx.commit().await.map_err(err("commit"))?;
     if tables.contains("transcripts_fts") {
         sqlx::query("INSERT INTO transcripts_fts(transcripts_fts) VALUES('rebuild')")
@@ -1494,6 +1503,13 @@ async fn post_commit_purge(
         if let Err(e) = fts_optimize(pool).await {
             out.warnings.push(e);
         }
+    }
+    // The folders of the generated lessons whose rows the action just deleted
+    // (redact_ai_outputs runs inside the transaction and deletes rows only)
+    if let Err(e) =
+        crate::lessons::purge::remove_unreferenced_dirs_for_meeting(pool, &env.lessons_dir(), meeting_id).await
+    {
+        out.warnings.push(e);
     }
     for l in lines {
         // Logs and the meeting-wide backup check only for distinctive

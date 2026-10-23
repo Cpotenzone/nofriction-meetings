@@ -90,11 +90,28 @@ pub async fn lessons_list_catalog(state: State<'_, AppState>) -> Result<Vec<Cata
     catalog_rows(&pool_of(&state)).await
 }
 
+/// The set as stored, with `provenance` and `sourceRecordingId` taken from
+/// its catalog row — the authority (§4.7) — so the course, the trainer and
+/// the certificate never trust a file's own claim (an import from before
+/// `commit_bundle_at` rewrote it could still say `generated`).
+pub(crate) async fn load_set_as_cataloged(pool: &Pool<Sqlite>, set_id: &str) -> Result<LessonSet, String> {
+    let dir = dir_path_of(pool, set_id).await?;
+    let mut set = load_set(&dir)?;
+    if let Some(r) = sqlx::query("SELECT provenance, source_recording_id FROM lesson_sets WHERE id = ?")
+        .bind(set_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Database busy: {}", e))?
+    {
+        set.provenance = r.get("provenance");
+        set.source_recording_id = r.get("source_recording_id");
+    }
+    Ok(set)
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn lessons_get_set(state: State<'_, AppState>, set_id: String) -> Result<LessonSet, String> {
-    let pool = pool_of(&state);
-    let dir = dir_path_of(&pool, &set_id).await?;
-    load_set(&dir)
+    load_set_as_cataloged(&pool_of(&state), &set_id).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -859,8 +876,8 @@ pub async fn lessons_submit_exam(
     answers: Vec<SubmittedAnswer>,
 ) -> Result<ExamResult, String> {
     let pool = pool_of(&state);
-    let dir = dir_path_of(&pool, &set_id).await?;
-    let set = load_set(&dir)?;
+    // The certificate's issuer line comes from the catalog row's provenance
+    let set = load_set_as_cataloged(&pool, &set_id).await?;
     let by_id: HashMap<&str, &QuizItem> = set.exam.items.iter().map(|i| (i.id.as_str(), i)).collect();
 
     // Load the server-known selection drawn at `lessons_start_exam`. The exam is

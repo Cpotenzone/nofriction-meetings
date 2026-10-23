@@ -40,8 +40,11 @@ pub const MAX_TEXT_PARAGRAPHS: usize = 6;
 // Validation profiles: authored courses vs lessons made from a recording
 // ════════════════════════════════════════════════════════════════════════
 
-/// Which floors a set is held to. The profile follows the set's provenance
-/// (`Profile::for_provenance`); only the counts and allowed kinds differ.
+/// Which floors a set is held to. The CALLER chooses it, never the set's
+/// own `provenance` claim: bundle import and the seed loader always validate
+/// with `Authored` (`bundle::validate_bundle`), and only Make lesson's save
+/// path (`lessons::generate::assemble`) uses `Generated`. Only the counts and
+/// allowed kinds differ.
 /// Every other check (text cleaning, referential integrity, the acyclic
 /// concept graph, MC answer indexes in range, upper bounds) applies to both.
 ///
@@ -64,23 +67,13 @@ pub const MAX_TEXT_PARAGRAPHS: usize = 6;
 ///   exam of ≥4 items (its own questions plus the checkpoints', so one
 ///   lesson's checkpoint is always enough for an exam).
 ///
-/// A hostile bundle that claims `generated` is still stored as `imported`
-/// (§4.7); claiming it only buys the narrower generated content rules
-/// (text and MC only), never a closed-form shortcut.
+/// A bundle that claims `generated` gains nothing: it is validated with the
+/// authored floors and stored as `imported` (§4.7), with its stored
+/// `lessonset.json` rewritten to say so (`bundle::commit_bundle_at`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
     Authored,
     Generated,
-}
-
-impl Profile {
-    pub fn for_provenance(provenance: &str) -> Profile {
-        if provenance == "generated" {
-            Profile::Generated
-        } else {
-            Profile::Authored
-        }
-    }
 }
 
 /// The only explainer kind a generated lesson may carry.
@@ -894,11 +887,14 @@ pub struct ValidatedSet {
 /// Validate the whole set: structural bounds, referential integrity, acyclic
 /// DAG, item/explainer/exam validation. A structurally unusable set fails.
 /// `figures` are the manifest-declared figures (already byte/hash-checked by
-/// `bundle`). `lesson_json` maps lessonId → raw JSON string.
+/// `bundle`). `lesson_json` maps lessonId → raw JSON string. `profile` is
+/// the caller's (see [`Profile`]): `Authored` for every bundle, `Generated`
+/// only for a set Make lesson just assembled.
 pub fn validate_set(
     mut set: LessonSet,
     figures: Vec<Figure>,
     lesson_json: &HashMap<String, String>,
+    profile: Profile,
 ) -> Result<ValidatedSet, ValidateError> {
     if set.schema_major != crate::lessons::SCHEMA_MAJOR {
         return Err("This lesson needs a newer version of noFriction.".into());
@@ -914,7 +910,9 @@ pub fn validate_set(
     if !matches!(set.provenance.as_str(), "seed" | "imported" | "generated") {
         return Err("lesson set has an unknown provenance".into());
     }
-    let profile = Profile::for_provenance(&set.provenance);
+    if profile == Profile::Generated && set.provenance != "generated" {
+        return Err("only a set made from a recording is checked as generated".into());
+    }
     if set.concepts.is_empty() || set.concepts.len() > MAX_CONCEPTS {
         return Err("lesson set concept count out of range".into());
     }

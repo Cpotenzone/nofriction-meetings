@@ -74,6 +74,31 @@ export function failedPartsSummary(failed: MakeLessonFailure[]): string | null {
     return `${s}. Make it again to try those parts once more, or choose a larger model in Settings → AI.`;
 }
 
+/** The parts of a Make lesson run the panel decides on (lib/lessonMake.ts). */
+export interface MakeLessonJobState {
+    meetingId: string;
+    status: "running" | "done" | "failed";
+    error?: unknown;
+}
+
+/**
+ * Whether a finished or failed run no longer applies and should be forgotten
+ * (so its error doesn't come back): another recording is chosen, or the run
+ * failed only because AI wasn't set up and now it is. A running job is never
+ * stale. `isNoProvider` is `isNoProviderError` (lib/ai), passed in to keep
+ * this file free of Tauri imports.
+ */
+export function isStaleMakeLessonJob(
+    job: MakeLessonJobState | null,
+    selected: string | null,
+    aiConfigured: boolean | null,
+    isNoProvider: (e: unknown) => boolean,
+): boolean {
+    if (!job || job.status === "running") return false;
+    if (selected !== null && selected !== job.meetingId) return true;
+    return job.status === "failed" && aiConfigured === true && isNoProvider(job.error);
+}
+
 /** "48 min", "1 h 05 min", or "" when unknown. */
 export function durationLabel(seconds: number | null | undefined): string {
     if (!seconds || seconds <= 0) return "";

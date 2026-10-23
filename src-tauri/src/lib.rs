@@ -201,6 +201,14 @@ impl AppState {
         // (docs/LESSONS.md §5.4). Runs after the settings table exists (it
         // keeps the seed version + removal tombstone). Local-only: reads a
         // bundled resource, no network. A deliberate removal stays removed.
+        // First remove what an interrupted import, Make lesson or purge left
+        // on disk (staging dirs, set folders no catalog row points to), once
+        // per launch and before anything can start a new one.
+        match lessons::purge::sweep_orphans(database.pool(), &lessons::lessons_root()).await {
+            Ok(0) => {}
+            Ok(n) => log::info!("Lessons: removed {} orphaned folder(s)", n),
+            Err(e) => log::warn!("{}", e),
+        }
         match lessons::seed::ensure_seeded(database.pool()).await {
             Ok(true) => log::info!("Lessons: seed course loaded"),
             Ok(false) => {}

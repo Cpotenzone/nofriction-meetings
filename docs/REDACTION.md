@@ -196,7 +196,11 @@ exist on the platform:
      which also refuses to start while a Delete of the recording is in its
      undo window. The Mac preview says "The lesson made from this recording in
      LESSONS, with its progress and certificate: deleted; make it again after
-     the edit".
+     the edit". Inside the action's transaction (and each backup's) only the
+     rows are deleted; the set's folder is removed after the live commit
+     (`post_commit_purge` → `lessons::purge::remove_unreferenced_dirs_for_meeting`),
+     so a rollback never leaves a row without its files, and a crash's
+     leftovers are removed at the next launch (`lessons::purge::sweep_orphans`).
 6. **Exports.** Share/export/Markdown/Obsidian output and Export… packages
    (docs/EXPORT.md) from now on render the marker. Files already exported
    outside the app can't be recalled; the Strike confirmation says so in one

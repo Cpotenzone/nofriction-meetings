@@ -12,7 +12,9 @@
 //! - a reference to an unknown concept is dropped; an element left with no
 //!   concept is tagged with its lesson's concepts;
 //! - a multiple-choice answer given as a letter or as the choice's text is
-//!   resolved into a 0-based `answerIndex` (`study::parse::answer_index`).
+//!   resolved into a 0-based `answerIndex` (`study::parse::answer_index`);
+//!   one whose index/letter reading and choice-text match disagree is
+//!   ambiguous and the question is dropped (`resolve_answer`).
 //!
 //! Anything that can't be repaired (no concepts, no lessons, too few usable
 //! questions) is an error for that part, which is asked for once more.
@@ -473,9 +475,67 @@ pub fn mistakes(raw: &str, scope: &LessonScope) -> Result<Vec<MisconceptionItem>
     Ok(out)
 }
 
+/// The answer read as a position: a JSON number is a 0-based index; a
+/// one-character string (after a trailing `)`, `.` or `:`) is a letter
+/// (A = 0) or a digit index. Anything else has no positional reading.
+fn positional_answer(v: &Value, n: usize) -> Option<usize> {
+    let i = match v {
+        Value::Number(x) => x.as_u64()? as usize,
+        Value::String(s) => {
+            let t = s.trim().trim_end_matches(|c| c == ')' || c == '.' || c == ':').trim();
+            let mut cs = t.chars();
+            let c = cs.next()?;
+            if cs.next().is_some() {
+                return None;
+            }
+            let c = c.to_ascii_uppercase();
+            if c.is_ascii_uppercase() {
+                (c as u8 - b'A') as usize
+            } else {
+                c.to_digit(10)? as usize
+            }
+        }
+        _ => return None,
+    };
+    (i < n).then_some(i)
+}
+
+/// The choice whose text the answer equals exactly (ignoring case,
+/// punctuation and spaces), if any.
+fn textual_answer(v: &Value, choices: &[String]) -> Option<usize> {
+    let key = match v {
+        Value::String(s) => norm_key(s),
+        Value::Number(x) => norm_key(&x.to_string()),
+        _ => return None,
+    };
+    if key.is_empty() {
+        return None;
+    }
+    choices.iter().position(|c| norm_key(c) == key)
+}
+
+/// Resolve a multiple-choice answer into the stored index with study's
+/// `answer_index` (index, letter, or the choice's text) — unless it is
+/// ambiguous: when the answer read as an index/letter and the choice whose
+/// text it equals are different choices (choices `["3","4","5","6"]` with
+/// answer `"3"`, or `["B","A","O","AB"]` with `"A"`), nobody can say which
+/// was meant, so the question is dropped rather than stored with a guess.
+/// A one-letter answer whose letter is past the last choice ("O" among four)
+/// falls back to the choice's text. (Study's quiz keeps `answer_index`
+/// unchanged.)
+pub fn resolve_answer(v: &Value, choices: &[String]) -> Option<usize> {
+    let text = textual_answer(v, choices);
+    match (positional_answer(v, choices.len()), text) {
+        (Some(a), Some(b)) if a != b => None,
+        // A number is only ever an index; text matching is for strings
+        _ => answer_index(v, choices).or(if v.is_string() { text } else { None }),
+    }
+}
+
 /// Multiple-choice questions (a checkpoint or the exam). Each answer is
 /// resolved into a stored 0-based index from an index, a letter or the
-/// choice's text; a question whose answer can't be resolved is dropped.
+/// choice's text ([`resolve_answer`]); a question whose answer can't be
+/// resolved, or is ambiguous, is dropped.
 pub fn questions(
     raw: &str,
     id_prefix: &str,
@@ -504,7 +564,7 @@ pub fn questions(
             continue;
         }
         let Some(idx) = field(o, &["answer", "correct", "correct_index", "answer_index", "answerIndex"])
-            .and_then(|a| answer_index(a, &choices))
+            .and_then(|a| resolve_answer(a, &choices))
         else {
             continue;
         };

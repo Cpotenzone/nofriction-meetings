@@ -5,12 +5,22 @@
 //! `WHERE provenance = 'generated'` guard). Generated sets are written by
 //! Make lesson (`lessons::generate`, §13).
 //!
-//! Ordering (idempotent, keyed by meeting_id, safe under the non-transactional
-//! `delete_meeting`): resolve dir_paths first, delete learner rows then
-//! lesson_sets rows, remove on-disk dirs last tolerating ENOENT.
+//! Ordering (idempotent, keyed by meeting_id): resolve dir_paths first, delete
+//! learner rows then lesson_sets rows, remove on-disk dirs last tolerating
+//! ENOENT — and only once the rows' deletion is durable:
+//! - `purge_for_meeting` (rows, then dirs right away) is for a caller that is
+//!   NOT inside a transaction (`DatabaseManager::delete_meeting`, autocommit).
+//! - Inside a transaction (a Delete/Strike, a backup purge) use
+//!   `purge_rows_for_meeting` only; after the live commit
+//!   `redaction::post_commit_purge` calls `remove_unreferenced_dirs_for_meeting`,
+//!   so a rollback never leaves a row whose files are gone.
+//! - `sweep_orphans` (at startup) removes what a crash left: staging dirs and
+//!   set folders no catalog row points to.
 
 use sqlx::sqlite::SqliteConnection;
-use sqlx::Row;
+use sqlx::{Pool, Row, Sqlite};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 /// Rows a purge would delete (for the Delete/Strike preview). Schema-tolerant.
 pub async fn count_for_meeting(conn: &mut SqliteConnection, meeting_id: &str) -> i64 {
@@ -115,4 +125,118 @@ pub(crate) fn remove_dirs(dirs: &[String]) {
             Err(e) => log::warn!("Lessons: couldn't remove on-disk dir after purge: {}", e),
         }
     }
+}
+
+/// The folder names the catalog points to (row ids and the last component of
+/// each `dir_path`). Schema-tolerant: no table → nothing is referenced.
+async fn referenced_folders(pool: &Pool<Sqlite>) -> Result<HashSet<String>, String> {
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lesson_sets'")
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Lessons: couldn't read the catalog: {}", e))?;
+    let mut out = HashSet::new();
+    if exists.is_none() {
+        return Ok(out);
+    }
+    let rows = sqlx::query("SELECT id, dir_path FROM lesson_sets")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Lessons: couldn't read the catalog: {}", e))?;
+    for r in rows {
+        out.insert(r.get::<String, _>("id"));
+        let dir: String = r.get("dir_path");
+        if let Some(name) = Path::new(&dir).file_name() {
+            out.insert(name.to_string_lossy().to_string());
+        }
+    }
+    Ok(out)
+}
+
+/// The set folders under `root` and, separately, its `.tmp-*` staging dirs
+/// (directories only).
+fn folders(root: &Path) -> (Vec<(String, PathBuf)>, Vec<PathBuf>) {
+    let mut sets = Vec::new();
+    let mut staging = Vec::new();
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return (sets, staging);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with(".tmp-") {
+            staging.push(path);
+        } else {
+            sets.push((name, path));
+        }
+    }
+    (sets, staging)
+}
+
+fn remove_folder(path: &Path, what: &str) -> bool {
+    match std::fs::remove_dir_all(path) {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => {
+            log::warn!("Lessons: couldn't remove {}: {}", what, e);
+            false
+        }
+    }
+}
+
+/// After a Delete/Strike has committed: remove the folders of `meeting_id`'s
+/// generated sets that no catalog row points to any more. A folder counts as
+/// that recording's generated set when its `lessonset.json` says so
+/// (`provenance: "generated"`, `sourceRecordingId`). Staging dirs and folders
+/// a row still points to are never touched, so a rolled-back purge keeps its
+/// files and an import or Make lesson in flight is safe. Returns how many
+/// folders were removed.
+pub async fn remove_unreferenced_dirs_for_meeting(
+    pool: &Pool<Sqlite>,
+    root: &Path,
+    meeting_id: &str,
+) -> Result<usize, String> {
+    let referenced = referenced_folders(pool).await?;
+    let mut removed = 0;
+    for (name, path) in folders(root).0 {
+        if referenced.contains(&name) {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(path.join("lessonset.json")) else { continue };
+        let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else { continue };
+        let generated = v.get("provenance").and_then(|p| p.as_str()) == Some("generated");
+        let from_it = v.get("sourceRecordingId").and_then(|s| s.as_str()) == Some(meeting_id);
+        if generated && from_it && remove_folder(&path, "a purged lesson's folder") {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+/// At startup, before anything can import or make a lesson: remove what an
+/// interrupted import, Make lesson or purge left behind — every `.tmp-*`
+/// staging dir, and every set folder no catalog row points to (a crash
+/// between moving files into place and the commit, or between a commit and
+/// removing the replaced or purged set's folder). The seed course is imported
+/// through the catalog like any bundle, so its folder has a row; a seed folder
+/// without one is garbage, and the seed loader (which runs after this)
+/// imports the course again when it should. Returns how many were removed.
+pub async fn sweep_orphans(pool: &Pool<Sqlite>, root: &Path) -> Result<usize, String> {
+    let referenced = referenced_folders(pool).await?;
+    let (sets, staging) = folders(root);
+    let mut removed = 0;
+    for path in staging {
+        if remove_folder(&path, "a staging folder") {
+            removed += 1;
+        }
+    }
+    for (name, path) in sets {
+        if !referenced.contains(&name) && remove_folder(&path, "an orphaned lesson folder") {
+            removed += 1;
+        }
+    }
+    Ok(removed)
 }

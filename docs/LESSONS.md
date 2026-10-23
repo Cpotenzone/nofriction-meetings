@@ -602,16 +602,26 @@ untrusted on load, exactly as `study::parse` treats model output:
   set at the **catalog-write** step, not at parse: `import_bundle`
   unconditionally overwrites a user-imported bundle's provenance to `imported`
   before persisting (§4.7); seed loading is the only path that persists `seed`;
-  `generated` is written only by the deferred generation pipeline (§13). A
-  hostile bundle that claims `generated` therefore parses fine and is still
-  stored as `imported`, so the "strict validation" and "import forces imported"
-  rules never fight.
+  `generated` is written only by Make lesson (§13). A hostile bundle that
+  claims `generated` therefore parses fine and is still stored as `imported`,
+  so the "strict validation" and "import forces imported" rules never fight.
+  The stored copy says so too: `bundle::commit_bundle_at` rewrites
+  `provenance`, `sourceRecordingId` and `transcriptFingerprint` in the
+  `lessonset.json` it writes to the catalog row's values, and
+  `commands::load_set_as_cataloged` takes them from the row when the course
+  is shown or a certificate issued, so the UI never says a Strike would
+  delete an imported course (purge skips imported rows) and its certificate
+  never says "Generated from your recording".
 - **Validation profiles (built 2026-10-23, `schema::Profile`).** The floors
-  above are the **authored** profile (seed and imported). A set whose
-  provenance is `generated` is held to the **generated** profile instead,
-  which keeps every safety check (cleaning, referential integrity, the
-  acyclic graph, upper bounds, MC `answerIndex` in range) and changes only
-  what a set made from one recording can carry:
+  above are the **authored** profile. The **caller** chooses the profile,
+  never the set's own claim: every bundle — file, folder or URL import, and
+  the seed loader — is validated with `Authored` (`bundle::validate_bundle`),
+  and only Make lesson's assembly (`lessons::generate::assemble`, before
+  `save_generated`) uses `Generated`, which also requires the set to say
+  `provenance: "generated"`. The generated profile keeps every safety check
+  (cleaning, referential integrity, the acyclic graph, upper bounds, MC
+  `answerIndex` in range) and changes only what a set made from one
+  recording can carry:
 
   | | Authored (seed, imported) | Generated (§13) |
   |---|---|---|
@@ -625,10 +635,11 @@ untrusted on load, exactly as `study::parse` treats model output:
   | Trainer generators, diagnostic | allowed | cleared |
   | Lessons | ≤64 | ≤6 |
 
-  The relaxation is keyed by the claimed provenance. A hostile bundle that
-  claims `generated` is still stored as `imported` (§4.7) and only buys the
-  *narrower* content rules (text and MC), never a closed-form shortcut. Tests:
-  `lessons::generate::tests::generated_profile_*`.
+  So claiming `generated` in a bundle buys nothing: it is held to the
+  authored floors (a figure-free "generated" bundle fails D4) and stored as
+  `imported`. Tests: `lessons::generate::tests::generated_profile_*`,
+  `lessons::tests::a_bundle_claiming_generated_is_held_to_the_authored_floors`,
+  `lessons::tests::an_import_claiming_generated_is_stored_and_shown_as_imported`.
 - **Content rigor for seed (owner-decision D3, "high end"):** the seed-validation test
   additionally recomputes and asserts every explainer/worked-example/item answer
   key is numerically self-consistent (balanced equations balance, molar masses
@@ -1224,6 +1235,29 @@ The Delete/Strike preview says "The lesson made from this recording in
 LESSONS, with its progress and certificate: deleted" when there is one
 (`redaction::ai_preview`).
 
+**Files go only after the deletion is durable (review fix, 2026-10-23).**
+Inside a Delete/Strike's transaction (`redact_ai_outputs`, every word, line,
+time-range and synced edit) and inside each backup's transaction
+(`purge_one_backup`), only the rows are deleted
+(`purge::purge_rows_for_meeting`); a rollback therefore restores rows that
+still have their files. After the live commit, `redaction::post_commit_purge`
+calls `purge::remove_unreferenced_dirs_for_meeting`, which removes the folders
+whose `lessonset.json` names this recording as a generated source and that no
+catalog row points to any more (never a `.tmp-*` staging dir, never a folder
+a row still points to). `DatabaseManager::delete_meeting` is not
+transactional (autocommit), so it keeps `purge_for_meeting` (rows, then
+folders). What a crash leaves — a staging dir, files placed before a COMMIT
+that never happened, a replaced or purged set's folder whose removal didn't
+run — is removed once per launch by `purge::sweep_orphans`, at startup in
+`lib.rs` before the seed loader and before anything can start an import or
+Make lesson: every `.tmp-*` dir and every set folder no `lesson_sets` row
+points to (by id or `dir_path`). The seed course is cataloged like any
+bundle, so its folder has a row and is kept. Tests:
+`a_purge_inside_a_transaction_keeps_the_files_until_it_commits`,
+`sweep_at_startup_removes_staging_and_unreferenced_folders_only`,
+`a_failed_save_never_leaves_its_staging_dir`,
+`line_delete_and_whole_recording_delete_purge_it_too`.
+
 - A **`generated`** lesson set is recording-derived: it would paraphrase a user
   recording exactly like a study guide, so it is **deleted, not rewritten**, on
   any Delete or Strike of that recording's transcript text (words, lines, time
@@ -1287,9 +1321,10 @@ LESSONS, with its progress and certificate: deleted" when there is one
   converges to the same clean state. A **`seed` or `imported` set is never
   touched** by this path — the `WHERE provenance = 'generated'` clause is the
   guard (FR-PURGE-4), so a recording delete can only ever remove recording-
-  derived lessons. The identical resolve→delete-rows→remove-dirs ordering is used
-  by the standalone Strike/Delete hook (`redact_ai_outputs`) and the backup hook
-  (`purge_one_backup`); only the connection/transaction they run on differs.
+  derived lessons. The Strike/Delete hook (`redact_ai_outputs`) and the backup
+  hook (`purge_one_backup`) run inside transactions, so they delete the rows
+  only and the folders go after the live commit (see "Files go only after the
+  deletion is durable" above).
 - **`seed` and `imported` sets are NOT recording-derived and are exempt from
   recording purge** (FR-PURGE-4). The `WHERE provenance = 'generated'` clause
   guarantees a Strike/Delete of a recording can never touch a seed or imported
@@ -1511,9 +1546,15 @@ them); with no lesson left the run fails with the first reason.
   (`dangling_references_are_dropped_or_the_part_fails`).
 - **MC answers** given as an index, a letter ("B", "d)") or the choice's text
   are resolved into the stored 0-based `answerIndex` by
-  `study::parse::answer_index` (MEDIUM-4); a question whose answer can't be
-  resolved, with duplicate or empty choices, or repeating an earlier question,
-  is dropped.
+  `study::parse::answer_index` (MEDIUM-4) through
+  `generate::parse::resolve_answer`, which first rejects an **ambiguous**
+  answer: when the answer read as an index/letter and the choice whose text
+  it equals are different choices (`["3","4","5","6"]` with `"3"`;
+  `["B","A","O","AB"]` with `"A"`), the question is dropped rather than
+  stored with a guess (`ambiguous_mc_answers_are_dropped_not_guessed`; the
+  study guide's quiz keeps `answer_index` as it was). A question whose answer
+  can't be resolved, with duplicate or empty choices, or repeating an earlier
+  question, is dropped too.
 
 **HIGH-2 correctness precondition — met by construction.** The model's numbers
 are never stored. A generated lesson uses only content that needs no
@@ -1548,6 +1589,9 @@ recording's previous generated set and its learner rows
 (`purge::purge_rows_for_meeting` — **Make again replaces it**), inserts the
 catalog row (content fingerprint via `bundle::fingerprint_for`), moves the
 files into place and commits; the old set's dir is removed after commit. The
+staging dir never outlives the call (it is removed on every path, including
+a database that can't be reached), placed files whose row didn't commit are
+removed, and anything a crash leaves is swept at the next launch (§11.4). The
 new set is an ordinary catalog entry: it appears in the library and plays
 through the existing commands. Round trip:
 `generate_validate_store_load_purge_round_trip` (make → stored files

@@ -1,7 +1,14 @@
 // Run with `npm test` (node's test runner; Node strips the types).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classRecordings, durationLabel, failedPartsSummary, isClassRecording, madeLessonFor } from "./lessonMakeLogic.ts";
+import {
+    classRecordings,
+    durationLabel,
+    failedPartsSummary,
+    isClassRecording,
+    isStaleMakeLessonJob,
+    madeLessonFor,
+} from "./lessonMakeLogic.ts";
 
 const rec = (id: string, kind: string | undefined, started: string) => ({
     id,
@@ -61,4 +68,24 @@ test("durations read plainly", () => {
     assert.equal(durationLabel(20), "1 min");
     assert.equal(durationLabel(48 * 60), "48 min");
     assert.equal(durationLabel(65 * 60), "1 h 05 min");
+});
+
+test("an old failed or finished run is forgotten when it no longer applies", () => {
+    const noProvider = (e: unknown) => String(e).includes("AI_NO_PROVIDER");
+    const failedNoAi = { meetingId: "m1", status: "failed" as const, error: "AI_NO_PROVIDER: set up AI" };
+    const failedOther = { meetingId: "m1", status: "failed" as const, error: "AI_UNREACHABLE: down" };
+    const done = { meetingId: "m1", status: "done" as const };
+    const running = { meetingId: "m1", status: "running" as const };
+    // AI set up after a "no provider" failure: the setup notice and error go
+    assert.equal(isStaleMakeLessonJob(failedNoAi, "m1", true, noProvider), true);
+    assert.equal(isStaleMakeLessonJob(failedNoAi, "m1", false, noProvider), false, "still not set up");
+    assert.equal(isStaleMakeLessonJob(failedNoAi, "m1", null, noProvider), false, "status still loading");
+    // Another failure for the same recording stays visible…
+    assert.equal(isStaleMakeLessonJob(failedOther, "m1", true, noProvider), false);
+    // …until another recording is chosen
+    assert.equal(isStaleMakeLessonJob(failedOther, "m2", true, noProvider), true);
+    assert.equal(isStaleMakeLessonJob(done, "m2", true, noProvider), true);
+    // A running job is never forgotten; nothing to forget is not stale
+    assert.equal(isStaleMakeLessonJob(running, "m2", true, noProvider), false);
+    assert.equal(isStaleMakeLessonJob(null, "m1", true, noProvider), false);
 });

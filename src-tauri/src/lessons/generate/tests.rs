@@ -561,7 +561,7 @@ fn gen_set(provenance: &str) -> (schema::LessonSet, HashMap<String, String>) {
 #[test]
 fn generated_profile_allows_a_figure_free_text_lesson_and_strips_model_numbers() {
     let (set, lessons) = gen_set("generated");
-    let v = schema::validate_set(set, vec![], &lessons).unwrap();
+    let v = schema::validate_set(set, vec![], &lessons, Profile::Generated).unwrap();
     let l = &v.lessons[0];
     // Only the text explainer is kept; the closed-form one is dropped
     assert_eq!(l.explainers.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), vec!["text"]);
@@ -576,15 +576,19 @@ fn generated_profile_allows_a_figure_free_text_lesson_and_strips_model_numbers()
     assert!(l.checkpoint.items.iter().all(|q| q.kind == "mc"));
     assert!(l.trainer.generators.is_empty());
 
-    // The same content claiming an authored provenance fails the authored
-    // floors (D4 figure floor first)
-    for p in ["imported", "seed"] {
+    // The caller picks the profile, not the set: with the authored profile
+    // (every import and the seed loader) the same content fails the authored
+    // floors (D4 figure floor first) — even when it claims `generated`
+    for p in ["generated", "imported", "seed"] {
         let (set, lessons) = gen_set(p);
-        let e = schema::validate_set(set, vec![], &lessons).unwrap_err();
+        let e = schema::validate_set(set, vec![], &lessons, Profile::Authored).unwrap_err();
         assert!(e.contains("figure"), "{}: {}", p, e);
     }
-    assert_eq!(Profile::for_provenance("generated"), Profile::Generated);
-    assert_eq!(Profile::for_provenance("imported"), Profile::Authored);
+    // …and the generated profile only takes a set that says it was made from a recording
+    for p in ["imported", "seed"] {
+        let (set, lessons) = gen_set(p);
+        assert!(schema::validate_set(set, vec![], &lessons, Profile::Generated).is_err(), "{}", p);
+    }
 }
 
 #[test]
@@ -592,12 +596,12 @@ fn generated_profile_rejects_figures_numbers_and_thin_banks() {
     // Figures: no runtime image generation, so a generated set has none
     let (set, lessons) = gen_set("generated");
     let fig = schema::Figure { id: "f".into(), path: "figures/f.png".into(), sha256: "x".into(), width: 1, height: 1, alt: "a".into(), reviewed_by: String::new() };
-    assert!(schema::validate_set(set, vec![fig], &lessons).unwrap_err().contains("figures"));
+    assert!(schema::validate_set(set, vec![fig], &lessons, Profile::Generated).unwrap_err().contains("figures"));
 
     // A non-MC exam mix
     let (mut set, lessons) = gen_set("generated");
     set.exam.mix = schema::ExamMix { mc: 3, numeric: 2, balance: 0, multistep: 0 };
-    assert!(schema::validate_set(set, vec![], &lessons).is_err());
+    assert!(schema::validate_set(set, vec![], &lessons, Profile::Generated).is_err());
 
     // Too few checkpoint questions (bank < 4)
     let (set, _) = gen_set("generated");
@@ -605,7 +609,7 @@ fn generated_profile_rejects_figures_numbers_and_thin_banks() {
     lesson["checkpoint"]["items"] = json!([gen_mc("q1"), gen_mc("q2"), gen_mc("q3")]);
     let mut lessons = HashMap::new();
     lessons.insert("l1".to_string(), lesson.to_string());
-    assert!(schema::validate_set(set, vec![], &lessons).unwrap_err().contains("checkpoint bank"));
+    assert!(schema::validate_set(set, vec![], &lessons, Profile::Generated).unwrap_err().contains("checkpoint bank"));
 
     // No text left after the closed-form explainer is dropped
     let (set, _) = gen_set("generated");
@@ -613,7 +617,7 @@ fn generated_profile_rejects_figures_numbers_and_thin_banks() {
     lesson["explainers"] = json!([lesson["explainers"][1].clone()]);
     let mut lessons = HashMap::new();
     lessons.insert("l1".to_string(), lesson.to_string());
-    assert!(schema::validate_set(set, vec![], &lessons).unwrap_err().contains("explainers"));
+    assert!(schema::validate_set(set, vec![], &lessons, Profile::Generated).unwrap_err().contains("explainers"));
 }
 
 #[test]
@@ -662,7 +666,7 @@ async fn fx() -> Fx {
     db.create_meeting("m1", "Biology 101").await.unwrap();
     sqlx::query("UPDATE meetings SET recording_kind = 'class' WHERE id = 'm1'").execute(db.pool()).await.unwrap();
     let env = RedactionEnv { app_data_dir: data, cache_dir: dir.join("cache"), video_enabled: false, recording_meetings: Vec::new() };
-    let root = dir.join("lessons");
+    let root = env.lessons_dir();
     Fx { db: Arc::new(db), dir, env, root }
 }
 
@@ -719,7 +723,7 @@ async fn generate_validate_store_load_purge_round_trip() {
         assert!(l.explainers.iter().all(|e| e.kind == "text"));
         lesson_json.insert(lid.clone(), serde_json::to_string(&l).unwrap());
     }
-    let again = schema::validate_set(set.clone(), vec![], &lesson_json).unwrap();
+    let again = schema::validate_set(set.clone(), vec![], &lesson_json, Profile::Generated).unwrap();
     assert_eq!(again.set, set, "stored data is already clean");
     // The stored JSON never carries a worked-example number
     let raw = std::fs::read_to_string(dir.join("lessons/l1.json")).unwrap();
@@ -775,8 +779,22 @@ async fn line_delete_and_whole_recording_delete_purge_it_too() {
     // …and Make lesson refuses to save while that Delete is pending
     let e = make(&f, "gen-d").await.unwrap_err();
     assert_eq!(e, TRANSCRIPT_CHANGED);
+    assert!(f.root.join("gen-c").is_dir(), "and its files");
     rd::commit_pending(f.db.pool(), &f.env, &p.id).await.unwrap();
     assert!(generated_rows(&f).await.is_empty(), "line delete purges it");
+    assert!(!f.root.join("gen-c").exists(), "its folder goes after the commit (post_commit_purge)");
+
+    // A time-range Delete reaches it too (rows in the transaction, files after)
+    line_at(&f, 30, "active transport uses ATP").await;
+    make(&f, "gen-r").await.unwrap();
+    let ranges = [crate::redaction::time_range::MsRange { start_ms: 25_000, end_ms: 35_000 }];
+    let preview = crate::redaction::time_range::preview_time_ranges(f.db.pool(), &f.env, "m1", &ranges).await.unwrap();
+    let p = crate::redaction::time_range::request_delete_time_ranges(f.db.pool(), &f.env, "m1", &ranges, Some(preview.counts))
+        .await
+        .unwrap();
+    rd::commit_pending(f.db.pool(), &f.env, &p.id).await.unwrap();
+    assert!(generated_rows(&f).await.is_empty(), "time range purges it");
+    assert!(!f.root.join("gen-r").exists());
 
     // Deleting the whole recording cascades to its lesson
     make(&f, "gen-e").await.unwrap();
@@ -833,4 +851,126 @@ async fn prompts_never_carry_stricken_or_deleted_words() {
         assert!(!t.contains("strickenid"), "marker ids never leave");
         assert!(t.contains("[stricken from the record]"));
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Review fixes: no orphaned files, purge only after commit, ambiguous answers
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn ambiguous_mc_answers_are_dropped_not_guessed() {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
+    // An index/letter reading and a choice-text match that disagree
+    assert_eq!(parse::resolve_answer(&json!("3"), &s(&["3", "4", "5", "6"])), None, "index 3 or the choice \"3\"?");
+    assert_eq!(parse::resolve_answer(&json!("A"), &s(&["B", "A", "O", "AB"])), None, "letter A or the choice \"A\"?");
+    assert_eq!(parse::resolve_answer(&json!(2), &s(&["1", "2", "3", "4"])), None, "index 2 or the choice \"2\"?");
+    assert_eq!(parse::resolve_answer(&json!("b)"), &s(&["a", "b", "c"])), Some(1), "letter and text agree");
+    // Unambiguous readings resolve as before (study's answer_index)
+    assert_eq!(parse::resolve_answer(&json!(0), &s(&["3", "4", "5", "6"])), Some(0));
+    assert_eq!(parse::resolve_answer(&json!("AB"), &s(&["B", "A", "O", "AB"])), Some(3));
+    assert_eq!(parse::resolve_answer(&json!("O"), &s(&["B", "A", "O", "AB"])), Some(2), "letter O is out of range; the text matches");
+    assert_eq!(parse::resolve_answer(&json!("C"), &s(&["Mitosis", "Meiosis", "Fission"])), Some(2));
+    assert_eq!(parse::resolve_answer(&json!("meiosis"), &s(&["Mitosis", "Meiosis", "Fission"])), Some(1));
+    assert_eq!(parse::resolve_answer(&json!("9"), &s(&["Mitosis", "Meiosis"])), None);
+    // In a checkpoint answer the ambiguous question is dropped, the rest kept
+    let concepts = vec![ConceptDraft { id: "c1".into(), name: "Numbers".into(), summary: String::new(), prerequisites: vec![] }];
+    let lookup = ConceptLookup::new(&concepts);
+    let raw = json!({"questions": [
+        {"question": "How many?", "choices": ["3", "4", "5", "6"], "answer": "3"},
+        {"question": "Blood type?", "choices": ["B", "A", "O", "AB"], "answer": "A"},
+        {"question": "Which is even?", "choices": ["3", "4", "5", "7"], "answer": 1},
+        {"question": "Universal donor?", "choices": ["B", "A", "O", "AB"], "answer": "O"}
+    ]})
+    .to_string();
+    let qs = parse::questions(&raw, "q", &["c1".to_string()], &lookup, 1).unwrap();
+    assert_eq!(
+        qs.iter().map(|q| (q.prompt.as_str(), q.answer_index.unwrap())).collect::<Vec<_>>(),
+        vec![("Which is even?", 1), ("Universal donor?", 2)]
+    );
+    // Study's own quiz behaviour is unchanged
+    assert_eq!(crate::study::parse::answer_index(&json!("3"), &s(&["3", "4", "5", "6"])), Some(3));
+}
+
+#[tokio::test]
+async fn sweep_at_startup_removes_staging_and_unreferenced_folders_only() {
+    let f = fx().await;
+    line_at(&f, 10, "the cell cycle").await;
+    make(&f, "gen-kept").await.unwrap();
+    let root = &f.root;
+    // What a crash can leave: a staging dir, a placed set with no row (died
+    // before COMMIT), a replaced set whose folder outlived its row
+    for d in [".tmp-crashed/lessons", "never-committed/lessons", "replaced-set"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(root.join("never-committed/lessonset.json"), b"{}").unwrap();
+    std::fs::write(root.join("notes.txt"), b"not a folder").unwrap();
+    // A row whose folder name differs from its id is still referenced
+    std::fs::create_dir_all(root.join("moved-folder")).unwrap();
+    sqlx::query(
+        "INSERT INTO lesson_sets (id, title, provenance, content_fingerprint, schema_major, dir_path, imported_at) \
+         VALUES ('other-id', 'I', 'imported', 'fp', 1, ?, 'now')",
+    )
+    .bind(root.join("moved-folder").to_string_lossy().to_string())
+    .execute(f.db.pool())
+    .await
+    .unwrap();
+
+    let removed = crate::lessons::purge::sweep_orphans(f.db.pool(), root).await.unwrap();
+    assert_eq!(removed, 3);
+    assert!(!root.join(".tmp-crashed").exists() && !root.join("never-committed").exists() && !root.join("replaced-set").exists());
+    assert!(root.join("gen-kept/lessonset.json").is_file(), "a cataloged set stays");
+    assert!(root.join("moved-folder").is_dir(), "a folder a row points to stays");
+    assert!(root.join("notes.txt").is_file(), "files are left alone");
+    // A missing root is nothing to do
+    assert_eq!(crate::lessons::purge::sweep_orphans(f.db.pool(), &f.dir.join("nope")).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn a_failed_save_never_leaves_its_staging_dir() {
+    let f = fx().await;
+    line_at(&f, 10, "the cell cycle").await;
+    let input = study::load_input(f.db.pool(), "m1").await.unwrap();
+    let made = generate(&Mock::new(32_768), &input, "m1", "gen-x", &no_progress()).await.unwrap();
+    // The database goes away after the files are staged (pool.acquire fails)
+    f.db.pool().close().await;
+    let err = save_generated(f.db.pool(), &f.root, "m1", &input.fingerprint(), &made.validated).await.unwrap_err();
+    assert!(err.contains("Database busy"), "{}", err);
+    let left: Vec<String> = std::fs::read_dir(&f.root)
+        .map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "left behind: {:?}", left);
+}
+
+#[tokio::test]
+async fn a_purge_inside_a_transaction_keeps_the_files_until_it_commits() {
+    let f = fx().await;
+    line_at(&f, 10, "the cell cycle has interphase").await;
+    make(&f, "gen-tx").await.unwrap();
+    let dir = f.root.join("gen-tx");
+    assert!(dir.is_dir());
+
+    // A Delete/Strike's transaction that rolls back keeps the row AND its files
+    let mut tx = f.db.pool().begin().await.unwrap();
+    rd::redact_ai_outputs(&mut tx, "m1", "interphase", rd::STRICKEN_PLACEHOLDER).await.unwrap();
+    assert!(dir.is_dir(), "no folder is removed inside the transaction");
+    tx.rollback().await.unwrap();
+    assert_eq!(generated_rows(&f).await.len(), 1);
+    assert!(dir.join("lessonset.json").is_file(), "a rollback never leaves a row without files");
+
+    // Committed: the row goes in the transaction, the folder after the commit
+    let mut tx = f.db.pool().begin().await.unwrap();
+    rd::redact_ai_outputs(&mut tx, "m1", "interphase", rd::STRICKEN_PLACEHOLDER).await.unwrap();
+    tx.commit().await.unwrap();
+    assert!(generated_rows(&f).await.is_empty());
+    // Other folders the post-commit step must leave alone: another
+    // recording's unreferenced lesson, and a staging dir in flight
+    for (d, rec) in [("other-rec", "m2"), (".tmp-inflight", "m1")] {
+        std::fs::create_dir_all(f.root.join(d)).unwrap();
+        let v = json!({"provenance": "generated", "sourceRecordingId": rec});
+        std::fs::write(f.root.join(d).join("lessonset.json"), v.to_string()).unwrap();
+    }
+    let n = crate::lessons::purge::remove_unreferenced_dirs_for_meeting(f.db.pool(), &f.root, "m1").await.unwrap();
+    assert_eq!(n, 1);
+    assert!(!dir.exists(), "removed once the deletion is durable");
+    assert!(f.root.join("other-rec").is_dir() && f.root.join(".tmp-inflight").is_dir());
 }

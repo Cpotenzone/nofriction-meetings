@@ -20,7 +20,14 @@ import { useCapabilities, useIsPro } from "../lib/build";
 import { proSuffix } from "../lib/pro";
 import { getMeetings, type Meeting } from "../lib/tauri";
 import { listCatalog, makeFromRecording, type CatalogEntry } from "../lib/lessons";
-import { classRecordings, durationLabel, failedPartsSummary, madeLessonFor, type MakeLessonPanelProps } from "../lib/lessonMakeLogic";
+import {
+    classRecordings,
+    durationLabel,
+    failedPartsSummary,
+    isStaleMakeLessonJob,
+    madeLessonFor,
+    type MakeLessonPanelProps,
+} from "../lib/lessonMakeLogic";
 import {
     clearMakeLessonJob,
     currentMakeLessonJob,
@@ -61,6 +68,16 @@ export function MakeLessonPanel({ request, onOpenSet, onBack }: MakeLessonPanelP
     const startedFor = useRef<number | null>(null);
 
     useEffect(() => onMakeLessonJob(setJob), []);
+    // Leaving the panel (← All courses, the top bar, another view) forgets a
+    // finished or failed run, so its error doesn't come back next time; a
+    // running one keeps going and the library shows it
+    useEffect(() => () => clearMakeLessonJob(), []);
+    // A finished or failed run that no longer applies is forgotten too:
+    // another recording was chosen, or AI was set up after a "no AI" failure
+    // (the setup notice then goes and Make lesson is enabled again)
+    useEffect(() => {
+        if (isStaleMakeLessonJob(job, selected, configured, isNoProviderError)) clearMakeLessonJob();
+    }, [job, selected, configured]);
 
     const load = useCallback(() => {
         setLoadError(null);
@@ -107,15 +124,11 @@ export function MakeLessonPanel({ request, onOpenSet, onBack }: MakeLessonPanelP
 
     const error = job?.status === "failed" && !needsAi ? failureText(job.error) : null;
     const progress = running ? job?.progress : null;
-    const back = () => {
-        clearMakeLessonJob(); // forgets a failed run; a running one keeps going
-        onBack();
-    };
 
     return (
         <div className="make-lesson">
             <div className="lesson-player__nav">
-                <button className="lessons-btn" type="button" onClick={back}>
+                <button className="lessons-btn" type="button" onClick={onBack}>
                     ← All courses
                 </button>
                 <h2 className="lessons__title">
