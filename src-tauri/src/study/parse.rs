@@ -253,7 +253,7 @@ fn time_field(o: &Map<String, Value>, duration_ms: i64) -> Option<i64> {
     (ms >= 0 && (duration_ms <= 0 || ms <= duration_ms + 60_000)).then_some(ms)
 }
 
-fn norm_key(s: &str) -> String {
+pub(crate) fn norm_key(s: &str) -> String {
     s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
@@ -336,8 +336,9 @@ fn flashcards(v: &Value) -> Result<Value, ParseError> {
 }
 
 /// The correct choice: a 0-based index, a letter ("B", "b)"), or the
-/// choice's own text.
-fn answer_index(v: &Value, choices: &[String]) -> Option<usize> {
+/// choice's own text. The lesson maker resolves its multiple-choice answers
+/// into a stored index with this too (lessons::generate, docs/LESSONS.md §13).
+pub(crate) fn answer_index(v: &Value, choices: &[String]) -> Option<usize> {
     match v {
         Value::Number(n) => n.as_u64().map(|i| i as usize).filter(|i| *i < choices.len()),
         Value::String(s) => {

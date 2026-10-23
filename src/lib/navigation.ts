@@ -121,3 +121,39 @@ export function onRecordingSeek(fn: (req: RecordingSeekRequest) => void): () => 
 
 /** Key in localStorage that marks the first-run setup as done. */
 export const SETUP_COMPLETE_KEY = "nofriction_setup_complete";
+
+// ── Make lesson from a recording ────────────────────────────────────────
+//
+// Recordings → Make lesson on a Class recording opens Lessons, which makes
+// the lesson from that recording (docs/LESSONS.md §12.3/§13). Lessons isn't
+// mounted when the request is made, so it is kept until the view takes it.
+
+export interface MakeLessonRequest {
+    meetingId: string;
+    /** Makes each request new, so the same recording can be asked for again */
+    n: number;
+}
+
+const MAKE_LESSON_EVENT = "nf:make-lesson";
+let pendingMakeLesson: MakeLessonRequest | null = null;
+
+export function requestMakeLesson(meetingId: string): void {
+    pendingMakeLesson = { meetingId, n: Date.now() };
+    window.dispatchEvent(new CustomEvent<MakeLessonRequest>(MAKE_LESSON_EVENT, { detail: pendingMakeLesson }));
+}
+
+/** The pending request (consumed), or null. */
+export function takeMakeLessonRequest(): MakeLessonRequest | null {
+    const r = pendingMakeLesson;
+    pendingMakeLesson = null;
+    return r;
+}
+
+export function onMakeLessonRequest(fn: (req: MakeLessonRequest) => void): () => void {
+    const handler = (e: Event) => {
+        const d = (e as CustomEvent<MakeLessonRequest>).detail;
+        if (d) fn(d);
+    };
+    window.addEventListener(MAKE_LESSON_EVENT, handler);
+    return () => window.removeEventListener(MAKE_LESSON_EVENT, handler);
+}

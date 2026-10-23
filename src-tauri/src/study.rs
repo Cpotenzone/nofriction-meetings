@@ -389,11 +389,11 @@ impl From<GenError> for String {
 
 /// Errors that are about the answer, not about reaching the AI: retried,
 /// then reported for that part only.
-fn answer_error(e: &AiError) -> bool {
+pub(crate) fn answer_error(e: &AiError) -> bool {
     matches!(e, AiError::Truncated | AiError::Other(_))
 }
 
-fn short(e: &AiError) -> String {
+pub(crate) fn short(e: &AiError) -> String {
     match e {
         AiError::Truncated => "the answer was cut off".into(),
         AiError::Other(m) => m.chars().take(160).collect(),
@@ -449,6 +449,23 @@ async fn fit_material(
         .map(|k| prompt::body_budget(ctx, prompt::max_tokens(*k, ctx), &prompt::system_for(*k, input.kind), &fixed))
         .min()
         .unwrap_or(600);
+    condense_to_budget(c, input, final_budget, total, done, progress).await
+}
+
+/// The map step on its own: condense the transcript chunk by chunk into
+/// time-stamped notes until it fits `final_budget` characters (up to three
+/// rounds). Shared with the lesson maker (`lessons::generate`), which works
+/// out its budget from its own prompts. Returns the material to send and
+/// whether it is condensed.
+pub(crate) async fn condense_to_budget(
+    c: &dyn Completer,
+    input: &StudyInput,
+    final_budget: usize,
+    total: &mut usize,
+    done: &mut usize,
+    progress: &(dyn Fn(Progress) + Send + Sync),
+) -> Result<(String, bool), GenError> {
+    let ctx = c.context_tokens();
     let mut lines = input.transcript_lines();
     let mut condensed = false;
     for round in 0..3 {

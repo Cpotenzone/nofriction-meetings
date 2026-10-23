@@ -1,9 +1,10 @@
 // Recordings: one search field, the list (filtered by Notebook), and the
 // selected recording with its title block, four views (Rewind · Notes ·
-// Links · Review) and Export… (docs/EXPORT.md).
+// Links · Review), Make lesson on a Class recording (docs/LESSONS.md §13)
+// and Export… (docs/EXPORT.md).
 
 import { useEffect, useState } from "react";
-import { onExportRequest, onRecordingSeek, takeExport, takeRecordingSeek } from "../../lib/navigation";
+import { onExportRequest, onRecordingSeek, requestMakeLesson, takeExport, takeRecordingSeek } from "../../lib/navigation";
 import { MeetingHistory } from "../MeetingHistory";
 import { RewindGallery, type RewindSeek } from "../RewindGallery";
 import { MeetingNotesPanel } from "../MeetingNotesPanel";
@@ -101,6 +102,22 @@ export function RecordingsView({ onSelectMeeting, selectedMeetingId, refreshKey,
                             </button>
                         ))}
                         <span className="deck-tabs__spacer" />
+                        {kind === "class" && (
+                            // Make lesson (docs/LESSONS.md §13): opens Lessons and makes an
+                            // interactive lesson from this lecture's transcript
+                            <button
+                                className="deck-tabs__export deck-tabs__make-lesson"
+                                onClick={() => requestMakeLesson(selectedMeetingId)}
+                                disabled={live}
+                                title={
+                                    live
+                                        ? "Stop the recording to make a lesson from it"
+                                        : "Turn this lecture into an interactive lesson in Lessons"
+                                }
+                            >
+                                Make lesson
+                            </button>
+                        )}
                         <button
                             className="deck-tabs__export"
                             onClick={() => setExporting(selectedMeetingId)}

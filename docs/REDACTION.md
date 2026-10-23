@@ -190,9 +190,17 @@ exist on the platform:
      `BEGIN IMMEDIATE` recheck the study guide uses). The backup purge runs
      job-kind-independently in `purge_one_backup` (after the `for job in jobs`
      match, before commit), so a Words / Screens / time-range / whole-recording
-     Delete all reach a generated set in every backup. In this build no code
-     path writes `generated`, so this is dormant-but-wired until the deferred
-     recording→lesson pipeline ships.
+     Delete all reach a generated set in every backup. Generated sets are
+     written by **Make lesson** (`lessons::generate::save_generated`, Mac;
+     [LESSONS.md §13](LESSONS.md#13-ai-generation-pipeline-make-lesson--implemented-2026-10-23)),
+     which also refuses to start while a Delete of the recording is in its
+     undo window. The Mac preview says "The lesson made from this recording in
+     LESSONS, with its progress and certificate: deleted; make it again after
+     the edit". Inside the action's transaction (and each backup's) only the
+     rows are deleted; the set's folder is removed after the live commit
+     (`post_commit_purge` → `lessons::purge::remove_unreferenced_dirs_for_meeting`),
+     so a rollback never leaves a row without its files, and a crash's
+     leftovers are removed at the next launch (`lessons::purge::sweep_orphans`).
 6. **Exports.** Share/export/Markdown/Obsidian output and Export… packages
    (docs/EXPORT.md) from now on render the marker. Files already exported
    outside the app can't be recalled; the Strike confirmation says so in one

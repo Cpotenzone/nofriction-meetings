@@ -16,13 +16,15 @@
 //! free — no AI, no image, no font/CDN fetch, no telemetry. The only network is
 //! a user-initiated URL import (`bundle::import_from_url`); no default URL ships.
 //! Generated-provenance sets join the Delete/Strike purge (`purge`); seed and
-//! imported sets are exempt. AI generation from a recording is deferred (§13)
-//! and is NOT built here.
+//! imported sets are exempt. **Make lesson** (`generate`, §13) turns a Class
+//! recording's transcript into a generated set with the user's own AI
+//! (noFriction Pro, through `ai::client::complete`).
 
 pub mod bundle;
 pub mod commands;
 pub mod exam;
 pub mod explain;
+pub mod generate;
 pub mod generators;
 pub mod grade;
 pub mod mastery;
@@ -43,7 +45,10 @@ pub use purge::{count_for_meeting, purge_for_meeting};
 /// The bundle schema major this build reads. Import rejects an unknown major.
 pub const SCHEMA_MAJOR: u32 = 1;
 /// The bundle schema minor this build writes. A newer minor is read tolerantly.
-pub const SCHEMA_MINOR: u32 = 0;
+/// Minor 1 (Make lesson) adds the `text` explainer kind, the optional
+/// `WorkedExample.answerText`, and an optional `finalAnswer` (required for
+/// authored courses, absent from generated ones).
+pub const SCHEMA_MINOR: u32 = 1;
 
 /// `<app data>/lessons/` — the on-disk catalog of imported/seeded bundles.
 pub fn lessons_root() -> std::path::PathBuf {

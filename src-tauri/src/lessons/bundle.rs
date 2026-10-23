@@ -320,7 +320,10 @@ fn validate_bundle(raw: RawBundle) -> Result<PreparedBundle, BundleError> {
         }
     }
 
-    let validated = schema::validate_set(set, raw.manifest.figures.clone(), &lesson_json)?;
+    // Every bundle (import, folder, URL, seed) is held to the authored floors,
+    // whatever provenance it claims; commit_bundle_at then stores it as what
+    // it is (`imported` / `seed`).
+    let validated = schema::validate_set(set, raw.manifest.figures.clone(), &lesson_json, schema::Profile::Authored)?;
     Ok(PreparedBundle {
         validated,
         manifest: raw.manifest,
@@ -344,17 +347,39 @@ pub async fn commit_bundle(
     provenance_override: &str,
     source_recording_id: Option<&str>,
 ) -> Result<String, BundleError> {
-    let set_id = prepared.validated.set.id.clone();
-    let root = crate::lessons::lessons_root();
+    commit_bundle_at(pool, &crate::lessons::lessons_root(), prepared, provenance_override, source_recording_id).await
+}
+
+/// `commit_bundle` under an explicit catalog root (tests use a temp dir).
+///
+/// What is stored says what the set is: `provenance` (and the source fields)
+/// in the written `lessonset.json` are rewritten to the catalog row's values
+/// before anything is written, so a bundle that *claims* `generated` (or a
+/// source recording) is stored, shown and certified as what it is — an
+/// imported or seed course, never purged by a recording edit (§4.7).
+pub async fn commit_bundle_at(
+    pool: &Pool<Sqlite>,
+    root: &Path,
+    prepared: &PreparedBundle,
+    provenance_override: &str,
+    source_recording_id: Option<&str>,
+) -> Result<String, BundleError> {
+    let mut set = prepared.validated.set.clone();
+    set.provenance = provenance_override.to_string();
+    set.source_recording_id = source_recording_id.map(str::to_string);
+    if set.source_recording_id.is_none() {
+        set.transcript_fingerprint = None;
+    }
+    let set_id = set.id.clone();
     let final_dir = root.join(&set_id);
-    // Stage in a temp dir, then rename into place after the DB commit.
+    // Stage in a temp dir, then rename into place before the DB commit.
     let staging = root.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(staging.join("figures")).map_err(|e| format!("couldn't create staging dir: {}", e))?;
-    std::fs::create_dir_all(staging.join("lessons")).map_err(|e| format!("couldn't create staging dir: {}", e))?;
 
     let write_result = (|| -> Result<(), BundleError> {
+        std::fs::create_dir_all(staging.join("figures")).map_err(|e| format!("couldn't create staging dir: {}", e))?;
+        std::fs::create_dir_all(staging.join("lessons")).map_err(|e| format!("couldn't create staging dir: {}", e))?;
         // lessonset.json (re-serialize the validated, cleaned structure).
-        let set_json = serde_json::to_vec_pretty(&prepared.validated.set).map_err(|e| e.to_string())?;
+        let set_json = serde_json::to_vec_pretty(&set).map_err(|e| e.to_string())?;
         std::fs::write(staging.join("lessonset.json"), &set_json).map_err(|e| e.to_string())?;
         for lesson in &prepared.validated.lessons {
             let bytes = serde_json::to_vec_pretty(lesson).map_err(|e| e.to_string())?;
@@ -377,9 +402,14 @@ pub async fn commit_bundle(
 
     let now = chrono::Utc::now().to_rfc3339();
     let dir_path = final_dir.to_string_lossy().to_string();
-    let set = &prepared.validated.set;
 
-    let mut tx = pool.begin().await.map_err(|e| format!("db busy: {}", e))?;
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(format!("db busy: {}", e));
+        }
+    };
     let db_result = async {
         sqlx::query(
             "INSERT OR REPLACE INTO lesson_sets \
@@ -391,8 +421,8 @@ pub async fn commit_bundle(
         .bind(&set.title)
         .bind(&set.subtitle)
         .bind(&set.level)
-        .bind(provenance_override)
-        .bind(source_recording_id)
+        .bind(&set.provenance)
+        .bind(&set.source_recording_id)
         .bind(&set.transcript_fingerprint)
         .bind(&prepared.content_fingerprint)
         .bind(SCHEMA_MAJOR as i64)

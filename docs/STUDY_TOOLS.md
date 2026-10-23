@@ -98,7 +98,9 @@ ms from the meeting start; the UI links to it ("Jump to this moment").
   is condensed chunk by chunk into time-stamped notes (map step, up to three
   rounds), and every part is written from those notes. Budgets use the same
   3.2 characters/token estimate as the clients, with a 15% margin, so the
-  clients never have to trim the middle out.
+  clients never have to trim the middle out. The Mac's **Make lesson**
+  (docs/LESSONS.md §13) uses the same input and the same map step
+  (`study::condense_to_budget`).
 - **Output is untrusted**: the model is asked for one JSON object. The
   answer is parsed tolerantly (think blocks, code fences, prose around it,
   trailing commas), then every field is checked and cleaned: text trimmed to

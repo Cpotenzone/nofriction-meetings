@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **File → Export Recording… (⌘E)** on the Mac opens Export… for the open recording.
+- **Make lesson (Mac; docs/LESSONS.md §13).** The Lessons "coming soon"
+  preview is now the real thing: **Make lesson** on a Class recording in
+  Recordings, or in Lessons with a Class-recording picker, turns the
+  transcript into a playable course with your own AI (Apple on-device or your
+  endpoint): a concept graph, one to four lessons with plain-text
+  explanations, worked examples in words, common mistakes and a
+  multiple-choice checkpoint, and a final exam that also draws on the
+  checkpoints. Each part is asked for, parsed tolerantly, checked by the
+  lessons validators and asked for once more if unusable; a cyclic concept
+  graph or a reference to a missing concept is repaired, and a part that
+  still fails is reported while the rest is kept. No figures, no interactive
+  simulators and no AI-computed number as an answer key (multiple-choice keys
+  are resolved to an index). Long lectures are condensed to fit Apple's
+  4K-token model. The lesson is stored as a `generated` set tied to the
+  recording and is deleted by any Delete or Strike in it (live and backups,
+  with its progress and certificate); making it again replaces it. Making a
+  lesson is noFriction Pro (new `lessons` paywall key on Mac and iOS);
+  taking lessons stays free and offline. Lesson bundles gain schema minor 1
+  (`text` explainers, `answerText`).
 - **Connecting AI is one step (Mac and iPhone; docs/AI_PROVIDERS.md
   "Connecting").** **Sign in with OpenRouter**: the browser opens, you sign
   in, and the key comes back on its own (OAuth PKCE over a loopback callback);

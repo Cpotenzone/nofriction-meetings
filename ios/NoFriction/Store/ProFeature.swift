@@ -17,6 +17,9 @@ enum ProFeature: String, CaseIterable, Identifiable, Sendable {
     case sync
     case transcribePlaying = "transcribe_playing"
     case obsidian
+    /// Make lesson (Mac today; the iPhone has no Lessons yet). Taking a
+    /// lesson stays free.
+    case lessons
 
     var id: String { rawValue }
 
@@ -32,12 +35,13 @@ enum ProFeature: String, CaseIterable, Identifiable, Sendable {
         case .sync: "Sync is part of noFriction Pro"
         case .transcribePlaying: "Transcribe what's playing is part of noFriction Pro"
         case .obsidian: "Export to Obsidian is part of noFriction Pro"
+        case .lessons: "Making lessons is part of noFriction Pro"
         }
     }
 
     var group: ProGroup {
         switch self {
-        case .ai, .notes, .followUp, .reviewGuide, .topics: .study
+        case .ai, .notes, .followUp, .reviewGuide, .topics, .lessons: .study
         case .chat: .chat
         case .sync: .sync
         case .transcribePlaying: .playing

@@ -18,7 +18,16 @@ import type { DueConcept, TrainerItem } from "../../lib/lessons";
 import { reviewDue, nextTrainerItem, submitTrainerItem } from "../../lib/lessons";
 import { TargetIcon, RouteIcon } from "../icons";
 
-export function TrainerPanel({ setId, conceptName }: { setId: string; conceptName: (id: string) => string }) {
+export function TrainerPanel({
+    setId,
+    conceptName,
+    canTrain = true,
+}: {
+    setId: string;
+    conceptName: (id: string) => string;
+    /** False for a lesson made from a recording: it has no generated drills */
+    canTrain?: boolean;
+}) {
     const [due, setDue] = useState<DueConcept[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [training, setTraining] = useState(false);
@@ -62,11 +71,21 @@ export function TrainerPanel({ setId, conceptName }: { setId: string; conceptNam
                     ))}
                 </>
             ) : (
-                <p className="lesson-card__meta">Nothing is due for review right now. Train anytime to stay sharp.</p>
+                <p className="lesson-card__meta">
+                    {canTrain
+                        ? "Nothing is due for review right now. Train anytime to stay sharp."
+                        : "Nothing is due for review right now."}
+                </p>
             )}
-            <button className="lessons-btn is-primary" type="button" onClick={() => setTraining(true)}>
-                <RouteIcon size={14} /> Start an adaptive training set
-            </button>
+            {canTrain ? (
+                <button className="lessons-btn is-primary" type="button" onClick={() => setTraining(true)}>
+                    <RouteIcon size={14} /> Start an adaptive training set
+                </button>
+            ) : (
+                <p className="lesson-card__meta">
+                    Courses made from a recording have no drills. To practice, retake a lesson's checkpoint.
+                </p>
+            )}
         </section>
     );
 }

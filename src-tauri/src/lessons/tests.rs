@@ -1313,3 +1313,88 @@ async fn url_import_requires_https_for_public_hosts() {
     let err = bundle::import_from_url(&pool, "ftp://example.com/course.lesson").await.unwrap_err();
     assert!(err.contains("only http(s)"), "{}", err);
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// A bundle that claims to be generated (docs/LESSONS.md §4.6/§4.7)
+// ════════════════════════════════════════════════════════════════════════
+
+/// Replace files in a bundle, keeping the per-file hashes right and dropping
+/// the declared content fingerprint (tolerated when empty), so the test
+/// exercises schema and provenance, not integrity.
+fn rezip_with(zip: &[u8], edits: &[(&str, Value)]) -> Vec<u8> {
+    let mut map = unzip_to_map(zip);
+    for (path, v) in edits {
+        let bytes = serde_json::to_vec(v).unwrap();
+        update_manifest_hash(&mut map, path, &bytes);
+        map.insert(path.to_string(), bytes);
+    }
+    let mut manifest: Manifest = serde_json::from_slice(&map["manifest.json"]).unwrap();
+    manifest.content_fingerprint = String::new();
+    map.insert("manifest.json".into(), serde_json::to_vec(&manifest).unwrap());
+    rebuild_zip(&map)
+}
+
+fn claiming_generated(zip: &[u8]) -> Value {
+    let map = unzip_to_map(zip);
+    let mut set: Value = serde_json::from_slice(&map["lessonset.json"]).unwrap();
+    set["provenance"] = json!("generated");
+    set["sourceRecordingId"] = json!("m1");
+    set["transcriptFingerprint"] = json!("abc");
+    set
+}
+
+#[test]
+fn a_bundle_claiming_generated_is_held_to_the_authored_floors() {
+    let (zip, _) = sample_bundle();
+    // Authored-valid content claiming `generated` still validates (as authored)
+    let ok = rezip_with(&zip, &[("lessonset.json", claiming_generated(&zip))]);
+    assert!(bundle::validate_bytes(&ok).is_ok());
+    // Figure-free content (enough for the generated profile) claiming
+    // `generated` fails the D4 figure floor: the claim buys nothing
+    let map = unzip_to_map(&zip);
+    let mut lesson: Value = serde_json::from_slice(&map["lessons/l1.json"]).unwrap();
+    let text = json!({"id": "ex-text", "title": "Moles", "conceptIds": ["c-mole"], "kind": "text", "data": {"paragraphs": ["A mole counts particles."]}});
+    lesson["explainers"] = json!([text, lesson["explainers"][1].clone()]);
+    let bad = rezip_with(&zip, &[("lessonset.json", claiming_generated(&zip)), ("lessons/l1.json", lesson)]);
+    let err = bundle::validate_bytes(&bad).err().expect("no generated shortcut on import");
+    assert!(err.contains("figure"), "{}", err);
+}
+
+#[tokio::test]
+async fn an_import_claiming_generated_is_stored_and_shown_as_imported() {
+    let f = fx().await;
+    let root = f.dir.join("catalog");
+    let (zip, set_id) = sample_bundle();
+    let claimed = rezip_with(&zip, &[("lessonset.json", claiming_generated(&zip))]);
+    let prepared = bundle::validate_bytes(&claimed).unwrap();
+    bundle::commit_bundle_at(f.db.pool(), &root, &prepared, "imported", None).await.unwrap();
+
+    // The stored file says what the catalog says
+    let stored: Value = serde_json::from_slice(&std::fs::read(root.join(&set_id).join("lessonset.json")).unwrap()).unwrap();
+    assert_eq!(stored["provenance"], "imported");
+    assert!(stored.get("sourceRecordingId").map_or(true, |v| v.is_null()), "{}", stored);
+    assert!(stored.get("transcriptFingerprint").map_or(true, |v| v.is_null()), "{}", stored);
+    let row = sqlx::query("SELECT provenance, source_recording_id FROM lesson_sets WHERE id = ?")
+        .bind(&set_id)
+        .fetch_one(f.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(row.get::<String, _>("provenance"), "imported");
+    assert_eq!(row.get::<Option<String>, _>("source_recording_id"), None);
+    // The course, trainer and certificate read the catalog's provenance
+    let shown = super::commands::load_set_as_cataloged(f.db.pool(), &set_id).await.unwrap();
+    assert_eq!((shown.provenance.as_str(), shown.source_recording_id.as_deref()), ("imported", None));
+
+    // A file left from before the rewrite that still claims `generated` is
+    // shown as the catalog row says
+    std::fs::write(root.join(&set_id).join("lessonset.json"), serde_json::to_vec(&claiming_generated(&zip)).unwrap()).unwrap();
+    let shown = super::commands::load_set_as_cataloged(f.db.pool(), &set_id).await.unwrap();
+    assert_eq!((shown.provenance.as_str(), shown.source_recording_id.as_deref()), ("imported", None));
+
+    // …and a recording edit never purges it (rows or files)
+    let mut conn = f.db.pool().acquire().await.unwrap();
+    assert_eq!(super::purge_for_meeting(&mut conn, "m1").await.unwrap(), 0);
+    drop(conn);
+    assert_eq!(super::purge::remove_unreferenced_dirs_for_meeting(f.db.pool(), &root, "m1").await.unwrap(), 0);
+    assert!(root.join(&set_id).join("lessonset.json").is_file());
+}

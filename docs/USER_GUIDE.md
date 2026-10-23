@@ -456,8 +456,39 @@ you've learned come back on a spaced-repetition schedule so they stick.
 
 Everything about taking a lesson is **free and works fully offline** — no AI, no
 network. Use **Import a lesson…** to add a `.lesson` file, folder, or a URL you
-paste. The **Generate** button previews a coming-soon feature that will turn a
-Class recording into a lesson; it makes no AI call yet.
+paste.
+
+### Make a lesson from a class (noFriction Pro)
+
+**Make lesson** turns a Class recording into a course you can take like the
+built-in one, made from its transcript by Apple's on-device model or the AI
+endpoint you set up (Settings → AI). Two ways in:
+
+- **Recordings**: open a Class recording and click **Make lesson** (next to
+  **Export…**). Lessons opens and starts making it. Only Class recordings show
+  the button; change a recording's type under its title.
+- **Lessons**: click **Make lesson** at the top, choose a Class recording, then
+  **Make lesson**.
+
+You get one to four lessons, each with explanations, worked examples whose
+steps are in words, common mistakes, and a multiple-choice checkpoint, plus a
+final exam that also draws on the checkpoints. The concepts it found feed the
+mastery dashboard and spaced-repetition review. There are no figures or
+interactive simulators in a lesson made from a recording, and no number the
+AI worked out is used as an answer key. Progress shows while it's being made
+(a long lecture on the on-device model takes a few minutes); you can leave
+Lessons and come back. When it's done, the course opens. If a part couldn't
+be made after a second try, the course opens without it and says which part.
+
+- Deleted or stricken text is never sent, and nothing is made while the
+  recording is still recording or while a Delete is in its 5-second undo.
+- Any Delete or Strike in that recording later deletes the lesson, with its
+  progress and certificate, everywhere the app keeps it. Make it again
+  afterwards.
+- **Make again** (Lessons → Make lesson, with the recording chosen) replaces
+  the recording's lesson and its progress.
+- In the Mac App Store version, making a lesson is part of noFriction Pro.
+  Taking any lesson, including one you made, stays free.
 
 ### QA appendix — performance (NFR-4)
 
@@ -571,6 +602,7 @@ decision 2026-10-10).
 | Edit, Delete and Strike from the record | **Sync with your Mac**: recordings, transcripts, notes, marks and screens move between iPhone and Mac directly on your Wi-Fi. No server; pair once with a QR code ([details](#sync-your-iphone-and-mac)) |
 | Share a recording as text; export everything as JSON (Mac) | **Transcribe what's playing** (iPhone): while you capture the screen, noFriction also transcribes the audio of the video or call you're watching |
 | | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault |
+| Taking lessons (Mac): the built-in course, imported lessons and lessons you made, with mastery, the exam and the certificate | **Make lesson** (Mac): turn a Class recording into a lesson ([details](#make-a-lesson-from-a-class-nofriction-pro)) |
 
 When you reach a Pro feature without Pro, the paywall says which one ("Sync
 is part of noFriction Pro").

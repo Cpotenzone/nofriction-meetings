@@ -13,6 +13,18 @@ Related: `docs/STUDY_TOOLS.md` (the pattern this extends), `docs/AI_PROVIDERS.md
 `docs/REDACTION.md`, `docs/ARCHITECTURE.md`, `DESIGN.md`, `CLAUDE.md`,
 `docs/PRO.md`
 Revision note: see §18 for the point-by-point response to the design review.
+
+> **Status update 2026-10-23 — Make lesson is built (Mac).** The Source Path A
+> pipeline that D2 deferred now ships, per the owner decision of 2026-10-10
+> (a visible **Make lesson** button; making a lesson is noFriction Pro;
+> taking lessons, mastery, exam and certificate stay free). §12.3 and §13
+> describe what is implemented: `lessons::generate`
+> (`lessons_make_from_recording`), the **generated validation profile**
+> (`schema::Profile::Generated`, §4.6), schema minor 1 (`text` explainers,
+> optional `finalAnswer`, `answerText`), and the purge of generated sets
+> (§11.4, now live). Sections below that still say "deferred", "stub",
+> "coming soon" or "Generate button" describe the 3.8.0 build and the design
+> history (§18); where they disagree with §12.3/§13, §12.3/§13 win.
 **Revision 5** closes the four findings the revision-4 review left open when it
 hit its iteration ceiling, in one pass, each against a durable owner decision:
 - **Finding 1 [MEDIUM] — AI-authored figures were required by the requirements
@@ -148,8 +160,9 @@ are embedded PNGs authored offline).
   small TS mirror exists **only for live, non-authoritative UI hints** and never
   decides pass/fail or writes a stored score (MEDIUM-6).
 - **AI**: `ai::client::complete` (Mac) / `AIClient` (iOS) only, and **only in
-  the deferred §13 pipeline** — not wired in this build. No image API client in
-  the shipped app, in any flavor.
+  the §13 Make lesson pipeline** (`lessons::generate`, through
+  `study::Completer` → `ai::complete_text`). Taking a lesson never calls AI.
+  No image API client in the shipped app, in any flavor.
 
 ---
 
@@ -296,9 +309,9 @@ schemaMajor: u32                   // bundle major schema; import rejects an unk
 title: String                      // "Stoichiometry"
 subtitle: String?                  // "AP Chem / college level"
 level: String                      // free-text level label
-provenance: "seed" | "imported" | "generated"   // "generated" never produced in this build (§12/§13)
-sourceRecordingId: Uuid?           // reserved for provenance=generated (deferred §13)
-transcriptFingerprint: String?     // reserved for generated (deferred §13; purge link)
+provenance: "seed" | "imported" | "generated"   // "generated" = made by Make lesson (§13)
+sourceRecordingId: Uuid?           // provenance=generated: the Class recording it was made from
+transcriptFingerprint: String?     // generated: SHA-256 of the transcript as sent (save re-check; purge link)
 lessons: [Uuid]                    // ordered lesson ids
 concepts: [Concept]
 diagnostic: Diagnostic?            // optional placement pre-test (§8.4)
@@ -342,6 +355,9 @@ kind: ExplainerKind                // "figure" | "equation_balancer" | "mole_rat
                                    // | "limiting_reagent" | "dimensional_analysis"
                                    // | "molecule_diagram" | "titration_curve"
                                    // | "ideal_gas_pv" | "misconceptions"
+                                   // | "text" (schema minor 1: data = { paragraphs: [String] },
+                                   //   1..=6 cleaned plain-text paragraphs; the only kind a
+                                   //   generated lesson carries, §13)
 data: <kind-specific validated structured object>   // §6
 ```
 
@@ -356,7 +372,9 @@ id: Uuid
 prompt: String                     // "How many grams of H2O form from 4.0 g H2?"
 conceptIds: [Uuid]
 steps: [{ text: String, expression: String?, result: String?, unit: String? }]  // revealed one at a time
-finalAnswer: { value: f64, unit: String? }   // the verified key (§4.6 rigor; recomputed-checkable, §6)
+finalAnswer: { value: f64, unit: String? }?  // the verified key (§4.6 rigor; recomputed-checkable, §6);
+                                             //   REQUIRED for seed/imported, NEVER present in a generated set
+answerText: String?                          // schema minor 1: the answer in words (generated sets)
 ```
 
 **Misconceptions** (the "common mistakes" explainer; `kind: "misconceptions"`)
@@ -584,10 +602,44 @@ untrusted on load, exactly as `study::parse` treats model output:
   set at the **catalog-write** step, not at parse: `import_bundle`
   unconditionally overwrites a user-imported bundle's provenance to `imported`
   before persisting (§4.7); seed loading is the only path that persists `seed`;
-  `generated` is written only by the deferred generation pipeline (§13). A
-  hostile bundle that claims `generated` therefore parses fine and is still
-  stored as `imported`, so the "strict validation" and "import forces imported"
-  rules never fight.
+  `generated` is written only by Make lesson (§13). A hostile bundle that
+  claims `generated` therefore parses fine and is still stored as `imported`,
+  so the "strict validation" and "import forces imported" rules never fight.
+  The stored copy says so too: `bundle::commit_bundle_at` rewrites
+  `provenance`, `sourceRecordingId` and `transcriptFingerprint` in the
+  `lessonset.json` it writes to the catalog row's values, and
+  `commands::load_set_as_cataloged` takes them from the row when the course
+  is shown or a certificate issued, so the UI never says a Strike would
+  delete an imported course (purge skips imported rows) and its certificate
+  never says "Generated from your recording".
+- **Validation profiles (built 2026-10-23, `schema::Profile`).** The floors
+  above are the **authored** profile. The **caller** chooses the profile,
+  never the set's own claim: every bundle — file, folder or URL import, and
+  the seed loader — is validated with `Authored` (`bundle::validate_bundle`),
+  and only Make lesson's assembly (`lessons::generate::assemble`, before
+  `save_generated`) uses `Generated`, which also requires the set to say
+  `provenance: "generated"`. The generated profile keeps every safety check
+  (cleaning, referential integrity, the acyclic graph, upper bounds, MC
+  `answerIndex` in range) and changes only what a set made from one
+  recording can carry:
+
+  | | Authored (seed, imported) | Generated (§13) |
+  |---|---|---|
+  | Explainers | 2..=5, ≥1 decoding `figure` (D4) | 1..=5, `text` only (figures and closed-form kinds are dropped) |
+  | Figures | manifest PNGs | none (a set with figures fails) |
+  | Worked examples | ≥3, numeric `finalAnswer` required | 0..=6, steps are text (`expression`/`result`/`unit` cleared), `finalAnswer` cleared, `answerText` kept |
+  | Misconceptions | 2..=6 | 0..=6 |
+  | Checkpoint | `presentCount` 8..=10, bank ≥ 2× | `presentCount` 3..=10, bank ≥ max(presentCount, 4) |
+  | Items | mc, numeric, balance, multistep | mc only (other kinds dropped; non-MC fields cleared) |
+  | Exam | bank 60..=300, ≥18 mc / ≥18 numeric / ≥9 multistep, ≥2 items per concept | bank 4..=300, mix all MC (`mix.mc == questionCount`, 4 ≤ questionCount ≤ bank) |
+  | Trainer generators, diagnostic | allowed | cleared |
+  | Lessons | ≤64 | ≤6 |
+
+  So claiming `generated` in a bundle buys nothing: it is held to the
+  authored floors (a figure-free "generated" bundle fails D4) and stored as
+  `imported`. Tests: `lessons::generate::tests::generated_profile_*`,
+  `lessons::tests::a_bundle_claiming_generated_is_held_to_the_authored_floors`,
+  `lessons::tests::an_import_claiming_generated_is_stored_and_shown_as_imported`.
 - **Content rigor for seed (owner-decision D3, "high end"):** the seed-validation test
   additionally recomputes and asserts every explainer/worked-example/item answer
   key is numerically self-consistent (balanced equations balance, molar masses
@@ -612,8 +664,9 @@ is set by the producer: the seed build sets `seed`; `import_bundle` from a user
 source sets `imported` and **forces the catalog row to `imported` regardless of
 the manifest value**, so a hostile bundle can't claim purge-exempt provenance it
 isn't entitled to; `generated` is only ever written by the local generation
-pipeline (deferred §13) and is **never** accepted from an imported file. In this
-build no code path writes `generated`.
+pipeline (§13) and is **never** accepted from an imported file. The only code
+path that writes `generated` is `lessons::generate::save_generated` (Make
+lesson).
 
 ---
 
@@ -1101,16 +1154,17 @@ produced **locally and offline** (AC 4.5.6):
   diagnostic, trainers, review, mastery dashboard, exam, and certificate are all
   **free and offline** (FR-PRO-2). The six seed lessons — including exam and
   certificate — are fully usable by free users (FR-PRO-3).
-- **Generating** a lesson from a recording *will* require **Pro** through
-  `ai::client::complete` (which already performs `entitlement::require_pro().await`
-  first — verified at `ai/client.rs:644` — then endpoint policy, then consent,
-  the identical chain study guides use). In **this build the Generate affordance
-  is a non-AI stub** (§12.3) and performs no entitlement check and no AI call; it
-  is a visible preview, not a gated feature that looks broken (owner-decision
-  D2). The Pro → configured → consent gate is specified in the deferred §13 so it
-  is added unchanged when the pipeline is built (FR-PRO-1). When built, Making a
-  lesson is a Pro feature per `docs/PRO.md` and COORDINATION.md §3 (taking,
-  mastery, exam, and certificate stay free).
+- **Making** a lesson from a recording (**Make lesson**, §13) requires **Pro**
+  through `ai::client::complete`, which performs `entitlement::require_pro()`
+  first, then endpoint policy, then consent — the identical chain study guides
+  use; nothing in `lessons::generate` adds or skips a gate. The frontend runs
+  it through `withAiConsent(…, "lessons")`, so a Mac App Store user without
+  Pro sees the paywall titled "Making lessons is part of noFriction Pro"
+  (feature key `lessons` in `src/lib/pro.ts` and
+  `ios/NoFriction/Store/ProFeature.swift`, docs/PRO.md). Lessons made from a
+  recording are taken like any other: free and offline, including the exam
+  and certificate. (In the 3.8.0 build the button was a non-AI coming-soon
+  preview, owner-decision D2.)
 
 ### 11.2 Offline (FR-OFF)
 
@@ -1119,8 +1173,13 @@ produced **locally and offline** (AC 4.5.6):
   carries everything, including figure PNGs; fonts come from the app's bundled
   Inter, never a CDN (FR-OFF-2). Spaced repetition, trainers, diagnostic,
   dashboard, exam, and certificate are all local.
-- Only acquisition (a user-initiated URL import, §5.3) — and, in the deferred
-  §13, generation — touch the network. Proven by a test (OQ-11, §14).
+- Only acquisition (a user-initiated URL import, §5.3) and Make lesson (§13,
+  the user's own AI endpoint, or none with Apple on-device) touch the network.
+  Proven by a test (OQ-11, §14). The Make lesson panel
+  (`src/components/MakeLessonPanel.tsx`) lives outside
+  `src/components/lessons/` and the shell hands it to `LessonsView` as a
+  prop, so the Lessons chunk never bundles the AI and legal-link modules and
+  the grep guard below still passes on the shipped bytes.
 
 **Frontend-path enforcement of zero runtime network (owner-decision D5,
 revision-5 review Finding 2).** The Rust network-stub take-test (OQ-11, §15)
@@ -1166,10 +1225,38 @@ gap, with one named **authoritative**:
 
 ### 11.4 Purge (FR-PURGE) — the seed/imported vs generated distinction
 
-**Provenance decides purge behavior.** In this build no `generated` set is ever
-produced, so purge of generated lessons is **dormant but fully wired** so the
-deferred pipeline (§13) is safe the moment it lands and the backup tests pass
-now.
+**Provenance decides purge behavior.** Make lesson (§13) produces `generated`
+sets; the purge below was wired before it landed and is now live. Tests:
+`lessons::generate::tests::generate_validate_store_load_purge_round_trip`
+(Strike), `line_delete_and_whole_recording_delete_purge_it_too` (line Delete
+after its undo window, whole-recording Delete, and the preview line), plus the
+earlier `lessons::tests` purge tests (live, cascade, backups across job arms).
+The Delete/Strike preview says "The lesson made from this recording in
+LESSONS, with its progress and certificate: deleted" when there is one
+(`redaction::ai_preview`).
+
+**Files go only after the deletion is durable (review fix, 2026-10-23).**
+Inside a Delete/Strike's transaction (`redact_ai_outputs`, every word, line,
+time-range and synced edit) and inside each backup's transaction
+(`purge_one_backup`), only the rows are deleted
+(`purge::purge_rows_for_meeting`); a rollback therefore restores rows that
+still have their files. After the live commit, `redaction::post_commit_purge`
+calls `purge::remove_unreferenced_dirs_for_meeting`, which removes the folders
+whose `lessonset.json` names this recording as a generated source and that no
+catalog row points to any more (never a `.tmp-*` staging dir, never a folder
+a row still points to). `DatabaseManager::delete_meeting` is not
+transactional (autocommit), so it keeps `purge_for_meeting` (rows, then
+folders). What a crash leaves — a staging dir, files placed before a COMMIT
+that never happened, a replaced or purged set's folder whose removal didn't
+run — is removed once per launch by `purge::sweep_orphans`, at startup in
+`lib.rs` before the seed loader and before anything can start an import or
+Make lesson: every `.tmp-*` dir and every set folder no `lesson_sets` row
+points to (by id or `dir_path`). The seed course is cataloged like any
+bundle, so its folder has a row and is kept. Tests:
+`a_purge_inside_a_transaction_keeps_the_files_until_it_commits`,
+`sweep_at_startup_removes_staging_and_unreferenced_folders_only`,
+`a_failed_save_never_leaves_its_staging_dir`,
+`line_delete_and_whole_recording_delete_purge_it_too`.
 
 - A **`generated`** lesson set is recording-derived: it would paraphrase a user
   recording exactly like a study guide, so it is **deleted, not rewritten**, on
@@ -1199,7 +1286,10 @@ now.
   re-checks the fingerprint and pending deletes inside `BEGIN IMMEDIATE`,
   refusing during a Delete's undo window (FR-PURGE-2). The same `BEGIN IMMEDIATE`
   + fingerprint-recheck code from `study.rs::save_locked` (verified `study.rs:225`)
-  is reused. (Dormant until §13.)
+  is reused (`lessons::generate::save_generated` → `save_locked`, with
+  `study::has_pending_delete` and `study::load_input_conn`). The same
+  transaction replaces the recording's previous generated set
+  (`purge::purge_rows_for_meeting`; its dir is removed after commit).
 - Deleting a whole recording cascades to its `generated` lessons (FR-PURGE-3)
   via `DatabaseManager::delete_meeting` (verified `database.rs:1337`). **Exact
   ordering and atomicity for the live path (MEDIUM-3).** `delete_meeting` is
@@ -1231,9 +1321,10 @@ now.
   converges to the same clean state. A **`seed` or `imported` set is never
   touched** by this path — the `WHERE provenance = 'generated'` clause is the
   guard (FR-PURGE-4), so a recording delete can only ever remove recording-
-  derived lessons. The identical resolve→delete-rows→remove-dirs ordering is used
-  by the standalone Strike/Delete hook (`redact_ai_outputs`) and the backup hook
-  (`purge_one_backup`); only the connection/transaction they run on differs.
+  derived lessons. The Strike/Delete hook (`redact_ai_outputs`) and the backup
+  hook (`purge_one_backup`) run inside transactions, so they delete the rows
+  only and the folders go after the live commit (see "Files go only after the
+  deletion is durable" above).
 - **`seed` and `imported` sets are NOT recording-derived and are exempt from
   recording purge** (FR-PURGE-4). The `WHERE provenance = 'generated'` clause
   guarantees a Strike/Delete of a recording can never touch a seed or imported
@@ -1254,7 +1345,7 @@ now.
 
 ---
 
-## 12. Figures (authoring-time only) and the Make lesson / Generate stub
+## 12. Figures (authoring-time only) and Make lesson
 
 ### 12.1 Figure authoring invariant + manifest (FR-FIG, owner-decision D3)
 
@@ -1318,101 +1409,203 @@ OQ-9 is resolved as a **two-part gate with no surviving ambiguity**:
   and mechanically present, and names who owns the judgment. This removes the
   OQ-9 ambiguity the review flagged.
 
-### 12.3 The Generate affordance — deferred stub (owner-decision D2)
+### 12.3 The Make lesson affordance (built 2026-10-23)
 
-The affordance appears in **two** places (owner-decision D2 + COORDINATION.md
-§0): a **first-class, visible Generate button** at the top of the Lessons
-library/catalog (icon `SparkleIcon`, label **Generate**), **and** a **Make
-lesson** action on a **Class-type recording in Recordings** (sentence case,
-beside that recording's existing "Make notes / Make review guide"; non-Class
-recordings do not show it, OQ-2). Neither is **a dead button or an error**.
-Clicking either opens the same intentional **"coming soon" preview panel** that:
+History: in 3.8.0 this was an honest "coming soon" preview (owner-decision D2,
+"add a generate button that we will make work later"); the owner decision of
+2026-10-10 makes it a working, visible **Make lesson** button. It appears in
+**two** places:
 
-- reads as a deliberate preview of a planned capability, styled in the normal
-  design language (not a disabled/greyed control, not an error toast);
-- describes what it will do in plain language: **"Turn a Class recording into an
-  interactive lesson — explainers, worked examples, a checkpoint, and a trainer,
-  generated from your recording's transcript and screenshots. Coming soon."**;
-- states honestly that it is a preview and will require Pro and an AI provider
-  when it ships, and points the user to the working path today (**Import a
-  lesson…** and the seed course);
-- makes **no AI call, no entitlement check, no network request** in this build.
+- **Recordings**: a primary **Make lesson** button in an open recording's tab
+  bar, next to **Export…**, shown **only for a Class-type recording** (OQ-2)
+  and disabled while that recording is still recording. It asks the shell to
+  open Lessons (`navigation::requestMakeLesson`), which opens the Make lesson
+  panel with that recording chosen and **starts right away** — unless the
+  recording already has a generated lesson, in which case the panel offers
+  **Open its lesson** or **Make again**.
+- **Lessons**: a primary **Make lesson** button (icon `SparkleIcon`) in the
+  library header (and in the empty state). It opens the panel with a
+  **Class-recording picker** (`get_meetings` filtered to `recording_kind =
+  class`, newest first, each marked "Has a lesson" when one exists), then
+  **Make lesson** / **Make again**.
 
-UI states for the affordance: **default** (the visible Generate button in Lessons
-and the Make lesson action on a Class recording), **preview/coming-soon** (the
-panel above), and — reserved for §13 when built — **picker / generating / done /
-per-part-error**. Only default and preview exist in this build. The preview is a
-pure client view; there is **no `lessons_make_from_recording` command wired in
-this build** (it is listed in §17 as deferred). When §13 ships, the Recordings
-action generates from that recording directly and the Lessons button opens a
-Class-recording picker first.
+The panel (`src/components/MakeLessonPanel.tsx`, handed to `LessonsView` by
+the shell so the Lessons chunk stays free of the AI modules, §11.2) says what
+it makes and from what, that deleted or stricken text is never sent, that a
+later Delete or Strike deletes the lesson, that taking it is free and offline,
+and (Mac App Store, non-subscriber) that making it is Pro. States:
+
+- **default** — picker + primary button; **AI not set up** — `AiSetupNotice`
+  ("Making a lesson needs AI", Open Settings) and the button disabled;
+- **making** — spinner, the backend's progress label and bar (`lessons_progress`
+  events: "Reading the recording (2 of 5)…", "Finding the concepts…",
+  "Planning the lessons…", "Lesson 2 of 3: writing the checkpoint…", "Writing
+  the final exam…", "Checking the lesson…"). The run lives in
+  `src/lib/lessonMake.ts`, outside any component: leaving Lessons doesn't stop
+  it, the library shows "Making a lesson from “…”: …" with **Show progress**,
+  and a lesson finished while you were away is offered ("“…” is ready. Open
+  it") or opened when you come back to Lessons;
+- **done** — the new course opens, with a one-line note naming any part it was
+  made without ("Made without the common mistakes for lesson 1. Make it again
+  to try those parts once more…");
+- **error** — the existing AI helpers: `withAiConsent(…, "lessons")` opens the
+  paywall or the consent dialog and retries; `aiErrorClass` /
+  `friendlyAiError` word the rest ("Making lessons is part of noFriction Pro.",
+  "…needs your permission to send this recording's transcript…", wrong key,
+  unreachable…); a no-provider error shows `AiSetupNotice`; backend refusals
+  are shown as they come ("Stop the recording first…", "An edit to this
+  transcript is still in its 5-second undo window…", "A lesson for this
+  recording is already being made.").
+
+A generated course shows "Made from your recording “…” with your AI. A Delete
+or Strike in that recording deletes this course…", its library card is tagged
+**Made from a recording**, its trainer has no drills (none are generated; the
+panel says to retake a checkpoint), and its certificate's issuer line reads
+"Generated from your recording".
 
 ---
 
-## 13. Deferred: AI generation pipeline (vNext) — contract, not implemented this build
+## 13. AI generation pipeline (Make lesson) — implemented 2026-10-23
 
-This section captures the intended Source-Path-A contract at a high level so the
-Generate stub (§12.3) is an honest preview and the future work has a spec to grow
-from. **None of §13 is implemented in this build** — the deferral is owner-
-decision D2 (`owner-decisions.md`), which the design review (HIGH-1) correctly
-required be a verifiable authority rather than an inference. It also restates the
-§6 correctness contract as a **hard, enforced precondition** on the deferred
-work: no AI-generated explainer may be marked playable until Rust recomputes and
-replaces its numbers (the model's own numbers are never stored).
+The Source-Path-A contract, as built. Code: `src-tauri/src/lessons/generate.rs`
+(+ `generate/prompt.rs`, `generate/parse.rs`, `generate/tests.rs`); command
+`lessons::generate::commands::lessons_make_from_recording` (registered in
+`lib.rs`). It reuses the study-guide machinery rather than a parallel copy:
+`study::Completer` / `LiveCompleter`, `study::load_input`,
+`study::condense_to_budget` (the map step, extracted from `fit_material`),
+`study::prompt::{user_message, body_budget, …}`, `study::answer_error`,
+`study::parse::{extract_json, clean_text, answer_index}`, and the lessons
+validators (`schema::validate_item`, `validate_explainer`,
+`validate_worked_example`, `validate_misconception`, `validate_set`).
 
-**Intended shape (mirrors `study.rs` generation, verified patterns):**
+**Entry point and gates.** `lessons_make_from_recording(meetingId)` refuses
+while that recording is being recorded ("Stop the recording first: the lesson
+is made from the whole recording."), while a Delete of it is in its undo window
+(`study::has_pending_delete` → `study::PENDING_EDIT`), when another run for the
+same recording is going (a `RUNNING` set + drop guard, like study), for a
+non-Class recording ("Make lesson works on Class recordings…"), and for an
+empty transcript (no AI call). Every model request goes through
+`ai::complete_text` → `ai::client::complete`: the unchanged **Pro → configured
+→ consent** chain. Consent, Pro, configuration, key and network errors
+(`GenError::Ai`) stop the whole run at the request that hit them.
 
-- **Entry point (deferred):** `lessons::generate::from_recording` behind a Pro
-  gate, invoked for a **Class-type** recording only (OQ-2), through
-  `ai::client::complete` with the unchanged **Pro → configured → consent** chain
-  (verified `ai/client.rs:644`). Consent/Pro/config/key/network errors stop the
-  whole run; a single bad part is retried once then reported for that part while
-  the others proceed — exactly the `study::generate` loop that returns
-  `Vec<(part, Result<..>)>` (verified `study.rs:507`, test
-  `bad_answer_is_retried_once_then_reported_for_that_part`).
-- **Input contract (deferred):** the same filtered transcript study uses —
-  Whisper hallucinations already dropped and never re-fed, stricken spans as
-  `[stricken from the record]`, deleted words gone, each line time-stamped, plus
-  screenshot references for grounding. Transcript text and model output are never
-  logged.
-- **Per-part JSON contract (deferred):** a part table like `STUDY_TOOLS.md`'s,
-  each part validated by a named `lessons::schema::validate_*`:
-  `concepts` (the DAG), `lesson.objectives`, `lesson.explainers[]`,
-  `lesson.workedExamples[]`, `lesson.misconceptions`, `checkpoint.items[]`,
-  `exam.items[]`. Each is tolerantly parsed then strictly validated (the §4.6
-  path), unknown fields ignored.
-- **Small-context handling (deferred):** reuse study's map/condense step —
-  `chunk_lines` + `body_budget` using `CHARS_PER_TOKEN` and the `SAFETY = 0.85`
-  margin (the "15% margin"; verified `study/prompt.rs`), condensing to
-  time-stamped notes in up to the same round cap study uses, then writing each
-  part from the notes.
-- **Graph repair (deferred):** a model-produced cyclic concept graph or a
-  dangling `conceptId/figureId/lessonId` reference is **repaired by dropping the
-  offending edge/element** where that leaves a valid DAG, else the part fails and
-  is retried once then reported — never stored cyclic.
-- **HIGH-2 correctness precondition (hard gate on this deferred work):** for
-  every explainer kind with a closed form (§6 table), the shared Rust function
-  **recomputes the authoritative values from the structural inputs and stores the
-  recomputed result**; the model's own numeric outputs are **never stored**. An
-  explainer whose structural inputs don't yield a valid computation
-  (unbalanceable equation, units that don't reduce, non-monotonic titration
-  points) is **dropped** from the generated lesson. A generated lesson may not be
-  marked playable until all its explainer data passes the §6 Rust validation and
-  this recompute-and-replace step. MC answers are resolved from
-  index/letter/choice-text **into** the stored `answerIndex` by reusing
-  `study/parse.rs::answer_index` (verified) at this step (MEDIUM-4); stored
-  bundles always contain a resolved index.
-- **WorkedExample (deferred, NIT-9):** worked examples are part of the generated
-  part table above; their steps/`finalAnswer` are recomputed and verified like
-  any other closed-form content before storage.
-- **Provenance + purge (deferred):** a generated set is written with provenance
-  `generated`, `sourceRecordingId`, and `transcriptFingerprint`, and is subject
-  to the full purge wiring already landed in §11.4.
+**Input.** Exactly what the study guide sends: the stored transcript
+(Whisper/recognizer hallucinations were filtered at transcription time; filtered
+text is never stored, so it is never re-fed), stricken spans as `[stricken from
+the record]`, deleted words gone, each line `[m:ss]`-stamped, the student's
+marks under STUDENT MARKS (✎ On the test first), and the recording title and
+notebook. Screenshots are not sent. Transcript text and model output are never
+logged (only counts: lines, lessons, reported parts, repaired edges).
 
-Figures for a generated lesson: **deterministic diagrams only at runtime**, no
-runtime image generation ever (OQ-7); a generated lesson renders its structured
-diagrams through the §6 explainer components and reuses any applicable seeded
-figure library.
+**Small context.** `generate::prompt::final_budget` works out, for every part,
+how much material fits beside its system prompt, a reserved 2,000-character
+context block (`DYNAMIC_RESERVE`; each block is capped to it) and its answer
+(`max_tokens(part, ctx)`, at most 30% of the window), using the same 3.2
+characters/token estimate and 15% margin as study. If the transcript doesn't
+fit, `study::condense_to_budget` condenses it chunk by chunk into time-stamped
+notes (up to three rounds; a chunk unusable twice fails the run), and every part
+is written from those notes. Large cloud models get the whole transcript in
+every request. Test: `long_lecture_is_condensed_to_fit_a_small_window` (4K
+window: every request leaves room for its own answer).
+
+**Parts.** Each part is asked for with its own system prompt, parsed
+tolerantly (think blocks, code fences, prose, trailing commas), cleaned,
+checked by the lessons validators (generated profile, §4.6), and asked for
+**once more** with a retry note if unusable (the note says why, never echoes
+the answer):
+
+| # | Part | Asked | Answer shape (the model's) | Becomes | If unusable twice |
+|---|---|---|---|---|---|
+| 1 | `concepts` | once | `{title, concepts: [{id, name, summary, prerequisites}]}` (3–12) | `LessonSet.concepts` (ids `c1…`, ≤16), course title | run fails |
+| 2 | `outline` | once | `{lessons: [{title, objectives, concepts}]}` (1–4) | `Lesson` titles, objectives, `conceptIds`, `Concept.lessonIds` | run fails |
+| 3 | `explanations` | per lesson | `{explanations: [{title, concepts, paragraphs}]}` (2–4) | `text` explainers | lesson left out, reported |
+| 4 | `checkpoint` | per lesson | `{questions: [{question, choices, answer, explanation, concepts}]}` (6–10) | MC `checkpoint.items` (≥4), `presentCount = min(bank, 10)` | lesson left out, reported |
+| 5 | `worked_examples` | per lesson | `{examples: [{prompt, steps, answer, concepts}]}` (0–3) | `WorkedExample` with text steps + `answerText` | made without, reported |
+| 6 | `mistakes` | per lesson | `{mistakes: [{claim, why_wrong, correct, concepts}]}` (2–4) | `misconceptions.items` | made without, reported |
+| 7 | `exam` | once | same shape as 4 (8–15, cumulative) | exam bank = these + a copy of every checkpoint question (`x-…`), MC mix, `questionCount = min(bank, 20)`, pass 80% | exam built from the checkpoint questions, reported |
+
+A part that is unusable twice is reported (`PartFailure {part, lesson, error}`)
+and the others go on, exactly like `study::generate`
+(`bad_part_is_retried_once_then_reported_for_that_part`). A lesson without
+explanations or a checkpoint is left out, with its concepts (and the edges to
+them); with no lesson left the run fails with the first reason.
+
+**Repairs** (`generate::parse`; never stored broken):
+- A **cyclic concept graph** loses the edges that close a cycle: a prerequisite
+  taught earlier is always kept (those edges can't form a cycle), a
+  prerequisite taught later is kept unless it would close one, so in "A needs
+  B, B needs A" the forward edge goes. Self-loops and prerequisites naming no
+  concept are dropped; a concept named twice is kept once. The result passes
+  `schema::validate_concept_dag` (`cyclic_concept_graph_is_repaired_into_a_dag`,
+  `a_model_made_cyclic_graph_still_makes_a_valid_set`).
+- **Dangling ids**: a reference to an unknown concept (by our id, the model's
+  id, or the concept's name) is dropped; an element left with none is tagged
+  with its lesson's concepts; an outline lesson naming no known concept is
+  dropped; a concept no lesson lists joins the last lesson; if nothing usable
+  is left the part fails and is retried once, then reported
+  (`dangling_references_are_dropped_or_the_part_fails`).
+- **MC answers** given as an index, a letter ("B", "d)") or the choice's text
+  are resolved into the stored 0-based `answerIndex` by
+  `study::parse::answer_index` (MEDIUM-4) through
+  `generate::parse::resolve_answer`, which first rejects an **ambiguous**
+  answer: when the answer read as an index/letter and the choice whose text
+  it equals are different choices (`["3","4","5","6"]` with `"3"`;
+  `["B","A","O","AB"]` with `"A"`), the question is dropped rather than
+  stored with a guess (`ambiguous_mc_answers_are_dropped_not_guessed`; the
+  study guide's quiz keeps `answer_index` as it was). A question whose answer
+  can't be resolved, with duplicate or empty choices, or repeating an earlier
+  question, is dropped too.
+
+**HIGH-2 correctness precondition — met by construction.** The model's numbers
+are never stored. A generated lesson uses only content that needs no
+closed-form recompute: `text` explainers, worked examples whose steps are
+words (no `finalAnswer` number; `expression`/`result`/`unit` cleared;
+`answerText` holds the answer in words), misconceptions, and
+**multiple-choice** checkpoint and exam items whose key is a resolved index.
+It emits **no interactive closed-form explainer** (balancer, mole-ratio,
+limiting-reagent, dimensional-analysis, ideal-gas — whose values would have to
+be recomputed-and-replaced in Rust) and no numeric, balance or multistep item;
+the generated validation profile drops any that appear, so the guarantee holds
+even for a hostile bundle claiming `generated`
+(`generated_profile_allows_a_figure_free_text_lesson_and_strips_model_numbers`).
+Lifting this (generated closed-form explainers recomputed from structural
+inputs per §6.1) is future work; the §6.1 table remains its contract.
+
+**Figures.** None generated, ever (no runtime image generation, OQ-7); a
+generated set with figures fails validation. Generated lessons render through
+the `text` explainer component.
+
+**Assembly and storage.** The parts are assembled into a `LessonSet`
+(provenance `generated`, `sourceRecordingId`, `transcriptFingerprint` = SHA-256
+of the transcript as sent, level = the recording's notebook, subtitle = its
+title, no diagnostic) and its `Lesson`s, then validated again as a whole by
+`schema::validate_set` (generated profile) — only that cleaned structure is
+stored. `save_generated` writes `lessonset.json` + `lessons/<id>.json` to a
+staging dir under `<app data>/lessons/`, then in one `BEGIN IMMEDIATE`
+transaction re-checks the transcript fingerprint and pending Deletes (a
+lesson made from text removed meanwhile is never written:
+`a_lesson_made_before_an_edit_is_never_saved_after_it`), deletes the
+recording's previous generated set and its learner rows
+(`purge::purge_rows_for_meeting` — **Make again replaces it**), inserts the
+catalog row (content fingerprint via `bundle::fingerprint_for`), moves the
+files into place and commits; the old set's dir is removed after commit. The
+staging dir never outlives the call (it is removed on every path, including
+a database that can't be reached), placed files whose row didn't commit are
+removed, and anything a crash leaves is swept at the next launch (§11.4). The
+new set is an ordinary catalog entry: it appears in the library and plays
+through the existing commands. Round trip:
+`generate_validate_store_load_purge_round_trip` (make → stored files
+re-validate to themselves → make again replaces → Strike purges rows and
+files; an imported set tied to the same recording survives).
+
+**Purge.** Live as specified in §11.4: any Delete or Strike of the recording's
+transcript text (words, lines, time ranges) and a whole-recording Delete
+delete the generated set, its learner records and its files, in the live
+database and every app backup.
+
+**Not in this build:** iPhone Lessons (iOS 1.2.0) — the `lessons` Pro key is
+already in `ProFeature.swift`; generated closed-form explainers (above);
+screenshot grounding; exporting a generated set (no export command exists).
 
 ---
 
@@ -1644,7 +1837,11 @@ lessons/purge.rs               // purge_for_meeting + save-time fingerprint rech
 lessons/seed.rs                // ensure_seeded on first run (§5.4)
 lessons/commands.rs            // Tauri commands, registered in lib.rs invoke_handler
 lessons/tests.rs               // §15
-// lessons/generate.rs         // DEFERRED (§13): recording → per-part lesson JSON; not in this build
+lessons/generate.rs            // Make lesson (§13): Class recording → validated generated set,
+                               //   save_generated, lessons_make_from_recording
+lessons/generate/prompt.rs     // per-part prompts, small-context budget
+lessons/generate/parse.rs      // tolerant parse + repair (concept DAG, refs, MC answers)
+lessons/generate/tests.rs      // mock-AI tests (§13)
 ```
 
 New commands (registered next to the `study::commands::*` block in `lib.rs`
@@ -1654,8 +1851,8 @@ New commands (registered next to the `study::commands::*` block in `lib.rs`
 `lessons_submit_trainer_item`, `lessons_review_due`, `lessons_start_diagnostic`,
 `lessons_submit_diagnostic`, `lessons_dashboard`, `lessons_start_exam`,
 `lessons_submit_exam`, `lessons_export_certificate`, `lessons_reset_progress`.
-**Deferred (not wired this build):** `lessons_make_from_recording`. Seed loading
-is called at startup (not a command).
+Make lesson: `lessons_make_from_recording` (in `lessons::generate::commands`,
+§13). Seed loading is called at startup (not a command).
 
 `Cargo.toml`: add `zip = "=2.2.0"` (pure-Rust, MIT/Apache-2.0; §1). `sha2`,
 `serde_json`, `uuid`, `sqlx`, `async-trait` are already present (verified).
@@ -1663,9 +1860,11 @@ is called at startup (not a command).
 ### Frontend — `src/components/lessons/` + `src/lib/lessonLogic.ts` + a view
 
 ```
-src/components/views/LessonsView.tsx     // library + Generate affordance + routing
-src/components/lessons/LessonLibrary.tsx // catalog list, import + Generate(stub), empty/loading/error
-src/components/lessons/GeneratePreview.tsx // the "coming soon" preview panel (§12.3)
+src/components/views/LessonsView.tsx     // library + Make lesson + routing
+src/components/lessons/LessonLibrary.tsx // catalog list, import + Make lesson, empty/loading/error
+src/components/MakeLessonPanel.tsx       // Make lesson panel (§12.3); outside lessons/, passed in by Shell
+src/lib/lessonMake.ts                    // the Make lesson run (state + progress), survives leaving Lessons
+src/lib/lessonMakeLogic.ts (+ .test.ts)  // picker / result helpers (pure)
 src/components/lessons/LessonPlayer.tsx  // explainer sequence, worked examples, misconceptions, checkpoint
 src/components/lessons/ExamRunner.tsx    // 30-item exam, numeric input, multistep, solution reveal
 src/components/lessons/Certificate.tsx   // printable/exportable certificate view

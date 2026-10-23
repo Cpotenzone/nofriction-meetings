@@ -15,7 +15,8 @@ export type ProFeature =
     | "topics"
     | "sync"
     | "transcribe_playing"
-    | "obsidian";
+    | "obsidian"
+    | "lessons";
 
 export const PRO_FEATURE_KEYS: readonly ProFeature[] = [
     "ai",
@@ -27,6 +28,7 @@ export const PRO_FEATURE_KEYS: readonly ProFeature[] = [
     "sync",
     "transcribe_playing",
     "obsidian",
+    "lessons",
 ];
 
 export function isProFeature(k: string): k is ProFeature {
@@ -44,6 +46,8 @@ const HEADLINES: Record<ProFeature, string> = {
     sync: "Sync is part of noFriction Pro",
     transcribe_playing: "Transcribe what's playing is part of noFriction Pro",
     obsidian: "Export to Obsidian is part of noFriction Pro",
+    // Make lesson (Mac). Taking a lesson stays free (docs/PRO.md).
+    lessons: "Making lessons is part of noFriction Pro",
 };
 
 /** Title of the paywall: names the feature that opened it, if any. */
@@ -83,7 +87,7 @@ export const PRO_GROUPS: readonly ProGroup[] = [
     {
         id: "study",
         title: "Notes and review",
-        detail: "Notes in each recording's style, follow-up emails, topics, and review guides with flashcards and a practice quiz.",
+        detail: "Notes in each recording's style, follow-up emails, topics, review guides with flashcards and a practice quiz, and lessons made from a class.",
     },
     {
         id: "chat",
@@ -114,6 +118,7 @@ export function groupFor(feature?: ProFeature | null): ProGroup["id"] | null {
         case "follow_up":
         case "review_guide":
         case "topics":
+        case "lessons":
         case "ai":
             return "study";
         case "chat":

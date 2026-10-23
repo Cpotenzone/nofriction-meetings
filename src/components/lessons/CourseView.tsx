@@ -86,6 +86,12 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                 </button>
                 <h2 className="lessons__title">{set.title}</h2>
             </div>
+            {set.provenance === "generated" && (
+                <p className="lesson-card__meta make-lesson__source">
+                    Made from your recording{set.subtitle ? ` “${set.subtitle}”` : ""} with your AI. A Delete or Strike in
+                    that recording deletes this course; make it again from Lessons → Make lesson.
+                </p>
+            )}
             {error && <p className="quiz-feedback is-wrong">{error}</p>}
 
             <section className="lesson-player__section">
@@ -144,7 +150,7 @@ export function CourseView({ set, figureDir, onBack }: { set: LessonSet; figureD
                 </section>
             )}
 
-            <TrainerPanel setId={set.id} conceptName={conceptName} />
+            <TrainerPanel setId={set.id} conceptName={conceptName} canTrain={set.provenance !== "generated"} />
 
             <section className="lesson-player__section">
                 <h3>
