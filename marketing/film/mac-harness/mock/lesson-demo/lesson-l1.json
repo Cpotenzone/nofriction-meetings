@@ -1,0 +1,278 @@
+{
+  "id": "l1",
+  "index": 1,
+  "title": "The phospholipid bilayer",
+  "objectives": [
+    {
+      "text": "Describe the structure of the bilayer",
+      "conceptIds": [
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "text": "Explain why the tails face inward",
+      "conceptIds": [
+        "c1",
+        "c2"
+      ]
+    }
+  ],
+  "conceptIds": [
+    "c1",
+    "c2"
+  ],
+  "explainers": [
+    {
+      "id": "l1-x1",
+      "title": "A boundary that chooses",
+      "conceptIds": [
+        "c1"
+      ],
+      "caption": "",
+      "a11yState": null,
+      "kind": "text",
+      "data": {
+        "paragraphs": [
+          "The cell membrane is the boundary of every cell. It keeps the inside in and decides what comes through.",
+          "As the instructor put it, the membrane is less a wall than a doorman."
+        ]
+      }
+    },
+    {
+      "id": "l1-x2",
+      "title": "Heads out, tails in",
+      "conceptIds": [
+        "c2"
+      ],
+      "caption": "",
+      "a11yState": null,
+      "kind": "text",
+      "data": {
+        "paragraphs": [
+          "Each phospholipid has a water-loving head and two water-fearing tails.",
+          "In water they line up in two layers, heads facing the water on both sides and tails hidden in the middle."
+        ]
+      }
+    }
+  ],
+  "workedExamples": [
+    {
+      "id": "l1-w1",
+      "prompt": "Oxygen is small and nonpolar. Does it need a protein to cross the membrane?",
+      "conceptIds": [
+        "c2"
+      ],
+      "steps": [
+        {
+          "text": "Ask whether the molecule is small and nonpolar.",
+          "expression": null,
+          "result": null,
+          "unit": null
+        },
+        {
+          "text": "Small nonpolar molecules slip between the tails of the bilayer.",
+          "expression": null,
+          "result": null,
+          "unit": null
+        }
+      ],
+      "answerText": "No. Oxygen diffuses straight through the bilayer."
+    }
+  ],
+  "misconceptions": {
+    "items": [
+      {
+        "claim": "The membrane is a solid wall",
+        "whyWrong": "It is fluid: phospholipids and proteins move within it",
+        "correct": "Think of it as a fluid mosaic",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ]
+      },
+      {
+        "claim": "Anything small can cross",
+        "whyWrong": "Small ions are charged, so the tails repel them",
+        "correct": "Ions need channel proteins",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ]
+      }
+    ]
+  },
+  "trainer": {
+    "id": "l1-t",
+    "conceptIds": [
+      "c1",
+      "c2"
+    ],
+    "generators": [],
+    "staticItems": []
+  },
+  "checkpoint": {
+    "presentCount": 6,
+    "items": [
+      {
+        "id": "l1-q1",
+        "conceptIds": [
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Which part of a phospholipid faces the water?",
+        "solution": [],
+        "explanation": "The heads are water-loving.",
+        "choices": [
+          "The head",
+          "The tails",
+          "Both",
+          "Neither"
+        ],
+        "answerIndex": 0,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "l1-q2",
+        "conceptIds": [
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Why are the tails in the middle of the bilayer?",
+        "solution": [],
+        "explanation": "Hydrophobic tails avoid water.",
+        "choices": [
+          "They are heavier",
+          "They are water-fearing",
+          "They carry charge",
+          "They bind proteins"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "l1-q3",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Which molecule crosses the bilayer on its own?",
+        "solution": [],
+        "explanation": "Small and nonpolar.",
+        "choices": [
+          "Sodium ions",
+          "Glucose",
+          "Oxygen",
+          "Proteins"
+        ],
+        "answerIndex": 2,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "l1-q4",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "What lets potassium ions through the membrane?",
+        "solution": [],
+        "explanation": "Ions need a channel.",
+        "choices": [
+          "The tails",
+          "Channel proteins",
+          "Cholesterol",
+          "Nothing"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "l1-q5",
+        "conceptIds": [
+          "c1"
+        ],
+        "kind": "mc",
+        "prompt": "The membrane is best described as:",
+        "solution": [],
+        "explanation": "Its parts move.",
+        "choices": [
+          "A rigid wall",
+          "A fluid mosaic",
+          "A single layer",
+          "A sieve with fixed holes"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "l1-q6",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Selective permeability means the membrane:",
+        "solution": [],
+        "explanation": "It decides what comes through.",
+        "choices": [
+          "Lets everything through",
+          "Lets nothing through",
+          "Chooses what crosses",
+          "Only lets water through"
+        ],
+        "answerIndex": 2,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      }
+    ]
+  }
+}

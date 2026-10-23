@@ -1,0 +1,335 @@
+{
+  "id": "gen-bio-101-cell",
+  "schemaMajor": 1,
+  "title": "The cell membrane",
+  "subtitle": "BIO 101: Cell Biology",
+  "level": "BIO 101",
+  "provenance": "generated",
+  "sourceRecordingId": "m-bio-membrane",
+  "transcriptFingerprint": "ebe0ac30b19fa38b751912264edea9c43e39e90c16c24a36071a7fe3316a55eb",
+  "lessons": [
+    "l1",
+    "l2"
+  ],
+  "concepts": [
+    {
+      "id": "c1",
+      "name": "The cell membrane",
+      "summary": "The boundary that controls what enters and leaves the cell.",
+      "prerequisites": [],
+      "lessonIds": [
+        "l1"
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "Phospholipid bilayer",
+      "summary": "Two layers of phospholipids: water-loving heads out, water-fearing tails in.",
+      "prerequisites": [
+        "c1"
+      ],
+      "lessonIds": [
+        "l1"
+      ]
+    },
+    {
+      "id": "c3",
+      "name": "Selective permeability",
+      "summary": "Small nonpolar molecules cross easily; ions and large molecules don't.",
+      "prerequisites": [
+        "c2"
+      ],
+      "lessonIds": [
+        "l2"
+      ]
+    },
+    {
+      "id": "c4",
+      "name": "Channel proteins",
+      "summary": "Proteins that let specific ions through the bilayer.",
+      "prerequisites": [
+        "c3"
+      ],
+      "lessonIds": [
+        "l2"
+      ]
+    }
+  ],
+  "diagnostic": null,
+  "exam": {
+    "items": [
+      {
+        "id": "exam-q1",
+        "conceptIds": [
+          "c1"
+        ],
+        "kind": "mc",
+        "prompt": "What controls what enters a cell?",
+        "solution": [],
+        "explanation": "The membrane.",
+        "choices": [
+          "The nucleus",
+          "The cell membrane",
+          "Ribosomes",
+          "The cell wall"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "exam-q2",
+        "conceptIds": [
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Phospholipid tails are:",
+        "solution": [],
+        "explanation": "Water-fearing.",
+        "choices": [
+          "Hydrophilic",
+          "Hydrophobic",
+          "Charged",
+          "Proteins"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "exam-q3",
+        "conceptIds": [
+          "c3"
+        ],
+        "kind": "mc",
+        "prompt": "Carbon dioxide crosses the membrane by:",
+        "solution": [],
+        "explanation": "Small and nonpolar.",
+        "choices": [
+          "Channel proteins",
+          "Diffusing through the bilayer",
+          "Active transport only",
+          "It can't cross"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "exam-q4",
+        "conceptIds": [
+          "c4"
+        ],
+        "kind": "mc",
+        "prompt": "Channel proteins are needed for:",
+        "solution": [],
+        "explanation": "Charged particles.",
+        "choices": [
+          "Oxygen",
+          "Ions",
+          "Carbon dioxide",
+          "Fatty acids"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "x-l1-q1",
+        "conceptIds": [
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Which part of a phospholipid faces the water?",
+        "solution": [],
+        "explanation": "The heads are water-loving.",
+        "choices": [
+          "The head",
+          "The tails",
+          "Both",
+          "Neither"
+        ],
+        "answerIndex": 0,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "x-l1-q2",
+        "conceptIds": [
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Why are the tails in the middle of the bilayer?",
+        "solution": [],
+        "explanation": "Hydrophobic tails avoid water.",
+        "choices": [
+          "They are heavier",
+          "They are water-fearing",
+          "They carry charge",
+          "They bind proteins"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "x-l1-q3",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Which molecule crosses the bilayer on its own?",
+        "solution": [],
+        "explanation": "Small and nonpolar.",
+        "choices": [
+          "Sodium ions",
+          "Glucose",
+          "Oxygen",
+          "Proteins"
+        ],
+        "answerIndex": 2,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "x-l1-q4",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "What lets potassium ions through the membrane?",
+        "solution": [],
+        "explanation": "Ions need a channel.",
+        "choices": [
+          "The tails",
+          "Channel proteins",
+          "Cholesterol",
+          "Nothing"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "x-l1-q5",
+        "conceptIds": [
+          "c1"
+        ],
+        "kind": "mc",
+        "prompt": "The membrane is best described as:",
+        "solution": [],
+        "explanation": "Its parts move.",
+        "choices": [
+          "A rigid wall",
+          "A fluid mosaic",
+          "A single layer",
+          "A sieve with fixed holes"
+        ],
+        "answerIndex": 1,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      },
+      {
+        "id": "x-l1-q6",
+        "conceptIds": [
+          "c1",
+          "c2"
+        ],
+        "kind": "mc",
+        "prompt": "Selective permeability means the membrane:",
+        "solution": [],
+        "explanation": "It decides what comes through.",
+        "choices": [
+          "Lets everything through",
+          "Lets nothing through",
+          "Chooses what crosses",
+          "Only lets water through"
+        ],
+        "answerIndex": 2,
+        "answer": null,
+        "unit": null,
+        "tolerance": null,
+        "sigFigs": null,
+        "equation": null,
+        "answerCoefficients": null,
+        "steps": null,
+        "gated": null,
+        "generator": null
+      }
+    ],
+    "questionCount": 10,
+    "passPct": 80,
+    "mix": {
+      "mc": 10,
+      "numeric": 0,
+      "balance": 0,
+      "multistep": 0
+    }
+  },
+  "fingerprint": ""
+}

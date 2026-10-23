@@ -378,18 +378,17 @@ Export a recording, and connect your AI in one step.
 
 ## 6. macOS version page
 
-The Mac app's first App Store version is **3.6.0** (`tauri.conf.json`),
-not 1.0; versions are per platform. **3.6.0 (build 40) is in App Review with
-the 3.6.0 text.** The text below is for **3.7.0**, the Ive pass (one window
-with Record · Recordings · Chat, no AI while recording; see
-`docs/design/FADELL_AUDIT.md`). Paste it when 3.7.0 is submitted.
+The Mac app's App Store versions are per platform (3.x, not 1.0). **3.8.0
+(46)** is in App Review with the 3.8.0 text (the 3.7.0 text below with Lessons,
+before Make lesson and Export). The text below is for **3.9.0 (47)**: Make
+lesson, Export… and one-step AI connect. Paste it when 3.9.0 is submitted.
 
 ### Promotional text (limit 170)
 
-**158 / 170 characters**
+**148 / 170 characters**
 
 ```text
-Notes for meetings, classes and everyday life, transcribed on your Mac. Rewind shows the screen next to what was said; a hotkey marks the moments that matter.
+New: turn a class recording into a lesson, export any recording with the screens you pick, and connect your AI in one step. Transcribed on your Mac.
 ```
 
 ### Description (limit 4000)
@@ -397,49 +396,52 @@ Notes for meetings, classes and everyday life, transcribed on your Mac. Rewind s
 **3997 / 4000 characters**
 
 ```text
-noFriction keeps your Mac's recordings, transcripts, screenshots and notes in one place: meetings, classes and anything else worth keeping. Go back to any moment in Rewind, and turn the transcript into notes with the AI you choose.
+noFriction keeps your Mac's recordings, transcripts, screenshots and notes in one place: meetings, classes and anything else worth keeping. Go back to any moment in Rewind, turn the transcript into notes with the AI you choose, and turn a class into a lesson.
 
-WORK OFFLINE WITH LOCAL MODELS
-Download a speech model once; after that, transcription runs on your Mac without an internet connection. noFriction Pro can also use a local model for notes, review guides and Chat.
+WORKS OFFLINE
+Download a speech model once; after that, transcription runs on your Mac without an internet connection. Pro can use Apple on-device AI (Apple Intelligence Macs, macOS 26 or later) or a local model for notes, guides, lessons and Chat. Or connect your own AI in one step: sign in, paste a key, or let noFriction find a model running on your Mac.
 
-Apple on-device AI is available on compatible Apple Intelligence Macs running macOS 26 or later, with Apple Intelligence enabled and its model ready. You can also connect a model you run yourself through an OpenAI-compatible endpoint. A model on another computer needs a reachable local network. Finish setup and downloads before working offline.
-
-noFriction hosts no AI models and includes no cloud AI usage. An optional custom endpoint uses your own account and may charge you. Recording content goes straight to the endpoint you entered.
+noFriction hosts no AI models and includes no cloud AI usage. An endpoint you add uses your own account and may charge you. Recording content goes straight to the endpoint you chose.
 
 RECORD AND REWIND
-• Say what it is when you record: Meeting, Class or Personal. Notes, marks and the review guide follow the type
-• Choose how long to record (15 to 90 minutes, or no limit); it stops by itself after a warning with +15 min
+• Say what it is: Meeting, Class or Personal. Notes, marks and the review guide follow the type
+• Record for 15 to 90 minutes or no limit; it stops by itself after a warning with +15 min
 • Capture your microphone and your Mac's audio, with a live local transcript
-• Capture the displays or windows you choose, and see screenshots and transcript side by side in Rewind
-• Mark a moment with Control-Option-Command-M, even from another app: Important, Question, or the type's own mark, with a note, shown on the Rewind timeline
-• Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
+• Capture the displays or windows you choose, and see screens and transcript side by side in Rewind
+• Mark a moment with Control-Option-Command-M, even from another app
+• Group recordings into Notebooks, such as "Acme project" or "BIO 101"
 • Search titles, people, topics and every transcript from one field
-• See web addresses said in a recording and add your own references; nothing is fetched
+• See web addresses said in a recording; nothing is fetched
 
 FOR MEETINGS
-• Link recordings to calendar events and their attendees
-• Meeting notes (summary, key topics, decisions, action items) and follow-up email drafts
-• Mark Follow up as you go
+• Link recordings to calendar events and attendees
+• Meeting notes (summary, topics, decisions, action items) and follow-up email drafts
 
 FOR CLASSES
-• Lecture notes: key concepts, definitions and examples, and announcements and deadlines
+• Lecture notes: concepts, definitions, examples and deadlines
 • Mark On the test, then show only those marks before an exam
-• The review guide becomes a study guide, with questions to ask your instructor
+• A study guide with questions to ask your instructor
+• Make lesson turns a class into a short course: explanations, worked examples, common mistakes, checkpoint questions and a final exam
 
 FOR EVERYDAY LIFE
-• Personal covers everything else: conversations, appointments, talks, ideas
-• Notes with a summary, key points, and to-dos and reminders
-• Mark Remember on details you don't want to lose
+• Personal covers conversations, appointments, talks and ideas
+• Notes with a summary, key points and to-dos; mark Remember on details
+
+LESSONS
+Take lessons offline: the built-in Stoichiometry course, lessons you import and lessons you made. Track mastery, review what's due, pass the final exam and print a certificate.
 
 REVIEW AND ASK
-noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz with explanations, and questions to ask. Export flashcards as CSV for popular flashcard apps, or the guide as Markdown. Ask your transcripts questions in Chat. Check generated text before relying on it.
+Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz and questions to ask. Export flashcards as CSV for popular flashcard apps. Ask your transcripts questions in Chat. Check generated text before relying on it.
+
+EXPORT AND SHARE
+Export a recording (Command-E) as a folder or zip: a document and web page with your notes, the screens and photos you pick with captions, and the transcript. With Pro, your AI finds highlights and writes captions.
 
 YOUR RECORDS
-Keep recordings on your Mac, edit transcript text, remove unwanted material or use Strike from the record to leave a visible marker. Deleting or striking text also deletes that recording's review guide. Export everything as JSON. No noFriction account is required.
+Keep recordings on your Mac, edit the transcript, delete material or Strike it from the record with a visible marker. Deleting or striking text also removes it from notes and deletes the guide and lesson made from it. Export everything as JSON. No noFriction account is required.
 
 FREE AND PRO
-Free: recording, on-device transcription of your microphone and your Mac's audio, screenshots, timed recording, Notebooks, marks, links, calendar and people, search, editing, Delete and Strike, and JSON export.
-noFriction Pro adds notes, follow-up emails, topics, review guides and Chat; Sync with your iPhone over your Wi-Fi, no server; and automatic Markdown export to a notes folder. One subscription covers Mac, iPhone and iPad.
+Free: recording, on-device transcription, screenshots, timed recording, Notebooks, marks, links, calendar, search, editing, Delete and Strike, taking lessons, Export and JSON export.
+noFriction Pro adds notes, follow-up emails, review guides, Make lesson and Chat; Sync with your iPhone over your Wi-Fi, no server; and automatic Markdown export to a notes folder. One subscription covers Mac, iPhone and iPad.
 
 noFriction Pro is an auto-renewing monthly or yearly subscription charged to your Apple Account; it renews unless canceled 24 hours before the period ends. Manage it in Apple Account settings.
 Privacy Policy: https://nofriction.io/privacy
@@ -466,7 +468,20 @@ combines words across the name, subtitle and keywords ("meeting" + "notes",
 meeting,notes,transcription,recorder,slides,lecture,class,minutes,action items,flashcards,offline,AI
 ```
 
-### What's New in this version (limit 4000)
+### What's New in macOS 3.9.0 (limit 4000)
+
+**663 / 4000 characters**
+
+```text
+Make lesson, Export and one-step AI.
+• Make lesson (Pro): turn a Class recording into a short course with explanations, worked examples, common mistakes, checkpoint questions and a final exam. Start it from the recording or from Lessons
+• Export… (free): save any recording as a folder or zip with a document, a web page, the transcript and the screens and photos you pick, with captions. File > Export Recording… (Command-E)
+• With Pro, your AI can fill in an export: notes, highlights, picture picks, captions and the follow-up email
+• Connect your AI in one step: sign in, paste a key and connect, or find a model already running on this Mac
+• Fixes and polish
+```
+
+### What's New in macOS 3.7.0 (limit 4000, history)
 
 Not shown for the first macOS version either; use it for TestFlight.
 
@@ -614,39 +629,43 @@ Reviewer contact details will be supplied separately in App Store Connect.
 
 ### macOS
 
-**3978 / 4000 characters**
+Mac 3.9.0 (47). The 3.8.0 notes are the same without Make lesson, Export and the sign-in listener.
+
+**3963 / 4000 characters**
 
 ```text
-No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
+ENTITLEMENT com.apple.security.network.server
+noFriction listens in two cases only. (1) Sync with your iPhone (Pro): when the user turns on Settings → Sync and pairs an iPhone (Pair a device shows a QR code), the Mac advertises a Bonjour service (_nofriction._tcp) and accepts TLS connections from the paired iPhone on the local network; no server. It runs only while Sync is on and Pro is active, refuses non-local addresses and authenticates each session with a secret set at pairing. (2) Sign in with OpenRouter (Settings → AI): while the user signs in, a listener on 127.0.0.1 waits for the browser's OAuth callback, then closes (10-minute limit).
+
+No noFriction account or login is required. The app provides no hosted AI model or cloud-provider account.
 
 SETUP AND RECORDING
-1. Setup is one screen: allow Microphone, Screen & System Audio Recording and Calendar. The speech model downloads in the background (a progress line; complete it while online). Later transcription works offline. Click Continue.
-2. On Record, click Record. Keep Meeting in What is it?, pick a length in How long? (No limit is fine) and click Start recording. Speak or use a call to check the transcript. Choose displays/windows with Change and use Capture screen to save one.
+1. Setup is one screen: allow Microphone, Screen & System Audio Recording and Calendar. The speech model downloads in the background; complete it while online. Later transcription works offline. Click Continue.
+2. On Record, click Record. Keep Meeting in What is it?, pick a length in How long? (No limit is fine) and click Start recording. Choose displays/windows with Change and use Capture screen to save one.
 3. Click Stop (top right), then open Recordings and select the recording to see the transcript and screenshots in Rewind.
 
 PRO AND RESTORE
-4. Settings (gear) → Subscription offers plans, Restore Purchases and Manage subscription. Without Pro, an AI action, Sync or Settings → Recording → Export to Obsidian opens the paywall naming that feature. Pro also covers topics and review guides. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. All AI features, including local AI, require Pro.
+4. Settings (gear) → Subscription offers plans, Restore Purchases and Manage subscription. Without Pro, an AI action, Make lesson, Sync or Export to Obsidian opens the paywall naming that feature. Test with the App Store sandbox. Product IDs: com.nofriction.meetings.pro.monthly and com.nofriction.meetings.pro.yearly. All AI features, including local AI, require Pro.
 
 OFFLINE AI PATH
-Use an Apple Intelligence-compatible Mac running macOS 26 or later, with Apple Intelligence enabled and its model download complete. With no text provider configured, the app uses the available Apple on-device model automatically. No cloud account or API key is required for that path.
+On a Mac with macOS 26+ and Apple Intelligence enabled (model downloaded), the app uses Apple's on-device model automatically; no cloud account or API key needed. Or Settings → AI → Find AI on this Mac finds a local OpenAI-compatible server (it asks 127.0.0.1 only, on click).
 
-Alternatively enter a local OpenAI-compatible model server and model in Settings → AI → Custom endpoint.
+Open Chat and ask What did we decide? Or Recordings → a recording → Notes → Make notes. No AI runs during a recording.
 
-Open Chat and ask What did we decide? Or Recordings → select a recording → Notes → Make notes / Follow-up email. No AI runs during a recording. Apple on-device is text-only; screenshot capture and review do not require image analysis.
+CLASSES, MARKS AND SEARCH (free)
+5. Record again. In What is it?, choose Class and type a Notebook (BIO 101). The first Class recording shows a one-time school-policy notice. A timed recording stops by itself after a banner with +15 min.
+6. While recording, click Mark or press ⌃⌥⌘M with another app in front. Choose ✎ On the test and add a note.
+7. Stop. Marks show on the Rewind timeline. Type a word you said into the search field (⌘K); click a line to open that moment.
 
-RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS, LINKS AND SEARCH (free)
-5. Record again. In What is it?, choose Class. How long? offers 15 to 90 min or No limit (keys 1-5, Enter starts) and an optional Notebook (type BIO 101). The first Class recording shows a one-time school-policy notice. The recording stops by itself at the end, after a banner with +15 min and No limit (5 minutes before; 2 for 15 min).
-6. While recording, click Mark in the bar, or press ⌃⌥⌘M with another app in front (File → Mark and the menu-bar icon also work). Choose ? Question or ✎ On the test and add a note. Say a web address such as "example dot com".
-7. Stop. Recordings shows Notebook chips that filter the list, and marks on the Rewind timeline and in the transcript. Select the recording → Links lists the address as Said; use Add reference to add one. Links are never fetched.
-8. Type a word you said into the search field at the top of Recordings (⌘K); click a matching line to open the recording at that moment.
+REVIEW AND MAKE LESSON (Pro)
+8. Select the recording → Study guide and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask.
+9. On the Class recording, click Make lesson (next to Export…). Lessons opens and shows progress; the course has explanations, worked examples, common mistakes, checkpoints and a final exam. Taking lessons (Lessons tab, including the built-in course) is free and offline. Make lesson uses the same AI, Pro check and consent prompt as notes. Deleting or striking transcript text deletes the lesson made from it.
 
-REVIEW (Pro)
-9. Select the recording → Review guide (Study guide for a Class) and make it: Summary, Key terms, Flashcards, Practice quiz and Questions to ask. The flashcards export (CSV) and the guide export (Markdown) save to a file you choose. Review uses the same AI, Pro check and consent prompt as notes.
+EXPORT (free)
+10. Select a recording → Export… (or File → Export Recording…, ⌘E). Pick screens, tick parts, then Save as Zip… or Save to Folder…. Export never needs Pro; its AI buttons (Fill with AI, Find highlights, Write captions) do.
 
-SYNC (Pro)
-Settings → Sync → Pair a device shows a code to scan in noFriction on an iPhone (Settings → Sync with your Mac). Recordings, transcripts, notes, marks and screens sync both ways over the local network; no server. The network.server entitlement is for this listener, which runs only while Sync is on.
-
-The provider cards in Settings → AI only fill in the endpoint and model (OpenRouter's Sign in returns the user's own key); the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Connect and Test connection send only the word "Hi". No provider credential is supplied. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
+AI CONNECTION
+Settings → AI: Sign in with OpenRouter (OAuth PKCE in the default browser; OpenRouter issues the user's own key, stored in the Keychain), Paste key and connect, or the ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards, which only fill in the endpoint and model. The user supplies their own key or sign-in, nothing is sent until they consent, and no provider is active by default. Connect and Test connection send only the word "Hi". No provider credential is supplied. The speech model is a data file (Whisper weights), not code.
 ```
 
 Optional attachment: a short screen recording of a recording → Make notes
@@ -776,6 +795,15 @@ names, course codes, instructor or classmate names.
 
 ### Mac (16:10: 2880 × 1800, 2560 × 1600, 1440 × 900 or 1280 × 800)
 
+**Current set (3.8.0 and later): rendered, not captured by hand.** The
+store stills are the real React UI in the film harness with invented data,
+2880 × 1800, in `marketing/film/stills/mac-3.7/` (run the harness, then
+`node marketing/film/mac-harness/capture-store-3.7.mjs`). Mac 3.9.0 uploads
+01–10 in this order: 01 lecture recording, 02 meeting notes, 03 search, 04
+study quiz, 05 Chat, 06 record sheet, 07 Settings → AI (one-step connect),
+08 Sync, 09 Export… filled with AI, 10 Lessons (a course made by Make
+lesson). The manual plan below is kept for a real-device capture.
+
 The Mac app has no demo-data mode, so capture from a clean, fake profile.
 Use a separate macOS user so none of your real calendars, keys or meetings
 can appear.
@@ -884,6 +912,10 @@ field whose text changed in this pass; "was" is its count before it.
 | Mac description | 3997 | 4000 | changed (was 3998): Free and Pro paragraph names Sync and Markdown export |
 | Mac keywords | 100 | 100 | |
 | Mac What's New 3.7.0 | 887 | 4000 | changed (was 793): new Pro line; provider brand names removed |
+| Mac promotional text 3.9.0 | 148 | 170 | 2026-10-23 (was 158): Make lesson, Export, one-step AI |
+| Mac description 3.9.0 | 3997 | 4000 | 2026-10-23: LESSONS and EXPORT AND SHARE sections; offline section shortened |
+| Mac What's New 3.9.0 | 663 | 4000 | 2026-10-23: new |
+| Mac review notes 3.9.0 | 3963 | 4000 | 2026-10-23: Make lesson, Export, sign-in loopback listener |
 | Group display name | 14 | 30 | |
 | Monthly display name | 11 | 30 | |
 | Monthly description | 44 | 45 | proposed (was 40) |

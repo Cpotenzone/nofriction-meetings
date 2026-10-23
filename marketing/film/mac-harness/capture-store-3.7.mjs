@@ -131,15 +131,16 @@ const SHOTS = {
         await sleep(600);
     },
 
-    // 7. Settings → AI: the connector cards
+    // 7. Settings → AI: Connect your AI (Sign in with OpenRouter, on this
+    // Mac, or a key card with Get a key → Paste key and connect)
     async "07-settings-ai"(page) {
         await load(page);
         await openSettings(page, "AI");
-        // Scroll down to Connect, the cards (Apple on-device, the presets,
-        // Custom), with the Models card above it whole
-        await page.waitForSelector(".ai-preset-grid .ai-preset-card", { timeout: 10000 });
+        await page.waitForSelector(".ai-quick .ai-quick-card", { timeout: 10000 });
+        await page.locator(".ai-preset-card", { hasText: "Anthropic" }).first().click();
+        await sleep(400);
         await page.evaluate(() => {
-            const h = [...document.querySelectorAll(".settings__body h3")].find((e) => e.textContent.trim() === "Models");
+            const h = [...document.querySelectorAll(".settings__body h3")].find((e) => e.textContent.trim() === "Connect your AI");
             const sec = h?.closest("section") ?? h;
             sec?.scrollIntoView({ block: "start" });
             const scroller = (el) => (el && el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== "visible" ? el : el?.parentElement ? scroller(el.parentElement) : null);
@@ -147,6 +148,25 @@ const SHOTS = {
             if (box) box.scrollTop -= 20;
         });
         await sleep(500);
+    },
+
+    // 9. Export…: the package filled with AI, screens picked and captioned
+    async "09-export"(page) {
+        await load(page);
+        await openRecording(page, "Acme project sync");
+        await page.click(".deck-tabs__export");
+        await page.waitForSelector(".xp-sheet .xp-rows", { timeout: 10000 });
+        await page.click('button:has-text("Fill with AI")');
+        await page.waitForSelector(".xp-highlights li", { timeout: 10000 });
+        await page.waitForFunction(() => [...document.querySelectorAll(".xp-caption")].some((i) => i.value), null, { timeout: 10000 });
+        await imagesLoaded(page, ".xp-tile__img img", 4);
+        // The highlights at the top, the picked screens with captions below
+        await page.evaluate(() => {
+            const body = document.querySelector(".xp-body");
+            const pics = document.querySelector(".xp-pics");
+            if (body && pics) body.scrollTop = Math.max(0, pics.offsetTop - body.clientHeight + pics.clientHeight * 0.95);
+        });
+        await sleep(600);
     },
 
     // 8. Settings → Sync: the pairing code
@@ -227,6 +247,10 @@ const SITE_SHOTS = {
         await page.locator(".recording-detail > .deck-tabs .deck-tab", { hasText: "Notes" }).first().click();
         await sleep(900);
     },
+    // (f) Export…: the package filled with AI (the App Store shot)
+    "mac-09-export": (page) => SHOTS["09-export"](page),
+    // (g) Lessons: the course Make lesson made from a class (the App Store shot)
+    "mac-10-lessons": (page) => SHOTS["10-lessons"](page),
 };
 
 let args = process.argv.slice(2);
