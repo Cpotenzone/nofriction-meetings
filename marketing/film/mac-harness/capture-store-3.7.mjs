@@ -169,6 +169,17 @@ const SHOTS = {
         await sleep(600);
     },
 
+    // 10. Lessons: the course Make lesson made from a BIO 101 class, with
+    // its source recording, readiness for the exam and mastery per concept
+    async "10-lessons"(page) {
+        await load(page, "?lessons=1");
+        await mode(page, "Lessons");
+        await page.locator(".lesson-card", { hasText: "The cell membrane" }).first().click();
+        await page.waitForSelector(".readiness-meter", { timeout: 10000 });
+        await page.waitForSelector(".mastery-row", { timeout: 10000 });
+        await sleep(700);
+    },
+
     // 8. Settings → Sync: the pairing code
     async "08-settings-sync"(page) {
         await load(page);
