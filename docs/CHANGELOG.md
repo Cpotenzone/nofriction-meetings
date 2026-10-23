@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [Mac 3.9.0 (47) · iOS 1.1.0 (12)] - 2026-10-23
+
+Export… and one-step AI connect are on both platforms (iOS 1.1.0 and Mac
+3.9.0); Make lesson and ⌘E are Mac only.
+
 ### Added
 - **File → Export Recording… (⌘E)** on the Mac opens Export… for the open recording.
 - **Make lesson (Mac; docs/LESSONS.md §13).** The Lessons "coming soon"
@@ -55,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Rewind's transcript lines report how long each was spoken (it was always 0).
 - Two unused live-intel commands no longer write insight or decision text to the log.
+
+## [Mac 3.8.0 (46) and earlier unreleased work] - 2026-10-21
+
+### Fixed
 - **Mac App Review 2.5.1 (private API).** The Mac binary no longer loads
   `MobileDevice.framework`. The ScreenCaptureKit fork of `cpal` pulled in
   `cidre` with its default `full` feature set, whose `am` module links that
