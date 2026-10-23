@@ -260,10 +260,10 @@ Copyright remains dependent on the confirmed legal seller name.
 
 ### Promotional text (limit 170)
 
-**159 / 170 characters**
+**149 / 170 characters**
 
 ```text
-Meetings, classes and everyday life: record and transcribe on your device, mark the moments that matter, then turn any recording into notes and a review guide.
+Record and transcribe meetings, classes and life on your device. New: export any recording with the photos you pick, and connect your AI in one step.
 ```
 
 ### Description (limit 4000)
@@ -278,7 +278,7 @@ noFriction records and transcribes on your iPhone or iPad so you can stay in the
 WORK OFFLINE WITH LOCAL AI
 Recording and transcription run on your device. On supported devices, noFriction Pro can use Apple's on-device model for notes and review guides without a cloud AI account or API key. Finish setup and model downloads before working offline.
 
-Apple on-device AI requires iOS 26 or later, compatible Apple Intelligence hardware, Apple Intelligence enabled and its model ready. You can also connect a model you run yourself through an OpenAI-compatible endpoint. A model on another computer needs a reachable local network.
+Apple on-device AI requires iOS 26 or later, compatible Apple Intelligence hardware, Apple Intelligence enabled and its model ready. Or connect cloud AI in one step: sign in with OpenRouter, or paste your key for ChatGPT, Claude, Grok, Mistral or Muse. A model you run yourself works through any OpenAI-compatible endpoint.
 
 noFriction hosts no AI models and includes no cloud AI usage. A cloud provider is optional, uses your own account and may charge you. The app asks permission before sending recording content to it.
 
@@ -290,12 +290,11 @@ RECORD ANYTHING, FIND WHAT MATTERS
 • Group recordings into Notebooks, such as "Acme project", "BIO 101" or "Health"
 • Play back audio and search everything you've recorded
 • Add photos of slides, whiteboards and handouts
-• See web addresses said in a recording and add your own references; nothing is fetched
+• See web addresses said in a recording; nothing is fetched
 
 FOR MEETINGS
 • Link recordings to calendar events and their attendees
 • Meeting notes (summary, key topics, decisions, action items) and follow-up email drafts
-• Mark Follow up as you go
 
 FOR CLASSES
 • Lecture notes: key concepts, definitions and examples, and announcements and deadlines
@@ -304,16 +303,15 @@ FOR CLASSES
 FOR EVERYDAY LIFE
 • Personal covers everything else: conversations, appointments, talks, ideas
 • Notes with a summary, key points, and to-dos and reminders
-• Mark Remember on details you don't want to lose
 
 REVIEW ANY RECORDING
-noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz and questions to ask. Each quiz answer has an explanation and can jump to its moment. Export flashcards as a CSV file that popular flashcard apps can import, or share the whole guide as Markdown. Check generated text before relying on it.
+noFriction Pro makes a review guide from any recording: summary, key terms, flashcards, a practice quiz and questions to ask. Export flashcards as a CSV file that popular flashcard apps can import, or share the whole guide as Markdown. Check generated text before relying on it.
 
 KEEP CONTROL OF THE RECORD
-Edit transcript text, remove unwanted material, or use Strike from the record to leave a visible marker. Deleting or striking text also deletes that recording's review guide. Share a recording as text. Recordings stay on your device; no account is needed.
+Edit transcript text, remove unwanted material, or use Strike from the record to leave a visible marker. Deleting or striking text also deletes that recording's review guide. Export any recording as a package: notes, highlights, the photos and screens you pick and the transcript, as a document and printable web page. Recordings stay on your device; no account is needed.
 
 FREE AND PRO
-Free: recording on iPhone, iPad, Mac and Apple Watch, on-device microphone transcription, photos and screen snapshots, timed recording, Notebooks, marks, links, calendar and people, search, editing, Delete and Strike, and sharing.
+Free: recording on iPhone, iPad, Mac and Apple Watch, on-device microphone transcription, photos and screen snapshots, timed recording, Notebooks, marks, links, calendar and people, search, editing, Delete and Strike, sharing and Export.
 noFriction Pro adds notes, follow-up emails, topics, review guides and Chat; Sync with your Mac over your own Wi-Fi, with no server; and Transcribe what's playing: the video or call on screen, transcribed while you capture it. One subscription covers iPhone, iPad and Mac.
 
 noFriction Pro is an auto-renewing monthly or yearly subscription charged to your Apple Account; it renews unless canceled at least 24 hours before the period ends. Manage it in your Apple Account settings.
