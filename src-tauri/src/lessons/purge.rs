@@ -128,8 +128,9 @@ pub(crate) fn remove_dirs(dirs: &[String]) {
 }
 
 /// The folder names the catalog points to (row ids and the last component of
-/// each `dir_path`). Schema-tolerant: no table → nothing is referenced.
-async fn referenced_folders(pool: &Pool<Sqlite>) -> Result<HashSet<String>, String> {
+/// each `dir_path`), or `None` when there is no catalog table yet (then no
+/// folder can be judged unreferenced).
+async fn referenced_folders(pool: &Pool<Sqlite>) -> Result<Option<HashSet<String>>, String> {
     let exists: Option<i64> =
         sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lesson_sets'")
             .fetch_optional(pool)
@@ -137,7 +138,7 @@ async fn referenced_folders(pool: &Pool<Sqlite>) -> Result<HashSet<String>, Stri
             .map_err(|e| format!("Lessons: couldn't read the catalog: {}", e))?;
     let mut out = HashSet::new();
     if exists.is_none() {
-        return Ok(out);
+        return Ok(None);
     }
     let rows = sqlx::query("SELECT id, dir_path FROM lesson_sets")
         .fetch_all(pool)
@@ -150,7 +151,7 @@ async fn referenced_folders(pool: &Pool<Sqlite>) -> Result<HashSet<String>, Stri
             out.insert(name.to_string_lossy().to_string());
         }
     }
-    Ok(out)
+    Ok(Some(out))
 }
 
 /// The set folders under `root` and, separately, its `.tmp-*` staging dirs
@@ -199,7 +200,8 @@ pub async fn remove_unreferenced_dirs_for_meeting(
     root: &Path,
     meeting_id: &str,
 ) -> Result<usize, String> {
-    let referenced = referenced_folders(pool).await?;
+    // No catalog table: no row was deleted, so there is nothing to remove
+    let Some(referenced) = referenced_folders(pool).await? else { return Ok(0) };
     let mut removed = 0;
     for (name, path) in folders(root).0 {
         if referenced.contains(&name) {
@@ -233,6 +235,9 @@ pub async fn sweep_orphans(pool: &Pool<Sqlite>, root: &Path) -> Result<usize, St
             removed += 1;
         }
     }
+    // Without a catalog table every set folder would look orphaned, imports
+    // included: keep them all rather than guess (only staging dirs go)
+    let Some(referenced) = referenced else { return Ok(removed) };
     for (name, path) in sets {
         if !referenced.contains(&name) && remove_folder(&path, "an orphaned lesson folder") {
             removed += 1;

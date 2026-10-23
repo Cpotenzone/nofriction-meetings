@@ -926,6 +926,21 @@ async fn sweep_at_startup_removes_staging_and_unreferenced_folders_only() {
 }
 
 #[tokio::test]
+async fn sweep_without_a_catalog_table_keeps_every_set_folder() {
+    let f = fx().await;
+    let root = &f.root;
+    for d in [".tmp-crashed/lessons", "an-import/lessons"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(root.join("an-import/lessonset.json"), b"{}").unwrap();
+    sqlx::query("DROP TABLE lesson_sets").execute(f.db.pool()).await.unwrap();
+    let removed = crate::lessons::purge::sweep_orphans(f.db.pool(), root).await.unwrap();
+    assert_eq!(removed, 1, "only the staging dir goes");
+    assert!(!root.join(".tmp-crashed").exists());
+    assert!(root.join("an-import/lessonset.json").is_file(), "no catalog: a set folder is never guessed to be garbage");
+}
+
+#[tokio::test]
 async fn a_failed_save_never_leaves_its_staging_dir() {
     let f = fx().await;
     line_at(&f, 10, "the cell cycle").await;
