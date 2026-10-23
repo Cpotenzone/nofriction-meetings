@@ -779,7 +779,17 @@ async fn loopback_pair_then_full_sync_session() {
     assert!(got.iter().any(|i| matches!(i, Item::Line(x) if x.id == mac_line)));
     assert_eq!(line_texts(&l.f, REC).await.len(), 2);
     assert_eq!(crate::markers::list(l.f.pool(), REC).await.unwrap().len(), 1);
-    assert!(store::list_devices(l.f.pool()).await.unwrap()[0].last_sync_at.is_some());
+    // The Mac records the sync time after it reads Done, which the phone
+    // sends without waiting for a reply: give it a moment under load
+    let mut synced = false;
+    for _ in 0..100 {
+        if store::list_devices(l.f.pool()).await.unwrap()[0].last_sync_at.is_some() {
+            synced = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(synced, "the Mac records when the session finished");
 
     // Session 2: the phone struck "Krebs cycle" in the Mac's line; the Mac
     // deleted the phone's line. Removals cross before content.
