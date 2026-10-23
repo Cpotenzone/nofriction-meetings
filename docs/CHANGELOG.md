@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Connecting AI is one step (Mac and iPhone; docs/AI_PROVIDERS.md
+  "Connecting").** **Sign in with OpenRouter**: the browser opens, you sign
+  in, and the key comes back on its own (OAuth PKCE over a loopback callback);
+  one account for ChatGPT, Claude, Gemini, Grok, Mistral and Llama. Key
+  services (ChatGPT, Claude, Muse, Grok, Mistral): **Get a key**, then **Paste
+  key and connect**, which saves, checks with one word and asks for permission
+  in one go; the key goes from the clipboard to the Keychain without being
+  shown. **Find AI on this Mac** finds Ollama, LM Studio, Jan or llama.cpp.
+  Failures say what to do next. OpenRouter is a curated preset again (owner
+  decision 2026-10-22).
 - **Export… a recording as a package (Mac and iPhone; docs/EXPORT.md).** A
   zip or folder with the recording as Markdown and as a printable web page,
   the photos and screens you pick (with captions), marks, links, the

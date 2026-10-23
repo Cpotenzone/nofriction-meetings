@@ -355,11 +355,12 @@ const AI_PROVIDERS = [
     { id: "custom", name: "Custom (OpenAI-compatible)", preset: null, protocol: "openai", base_url: null, key_url: "", key: "optional", local: false, editable_url: true, configured: false, last4: null, consent: false, needs_consent: false, model: null, vision_model: null, models: [], active_text: false, active_vision: false },
 ];
 const AI_PRESETS = [
-    { id: "openai", name: "ChatGPT (OpenAI)", base_url: "https://api.openai.com/v1", default_model: "gpt-6-luna", model_hint: "gpt-6.1-sol, gpt-6-astra", key_url: "https://platform.openai.com/api-keys", note: "Your OpenAI API key; billed by OpenAI." },
-    { id: "anthropic", name: "Anthropic (Claude)", base_url: "https://api.anthropic.com/v1", default_model: "claude-sonnet-5-5", model_hint: "claude-haiku-5-5, claude-opus-5-5", key_url: "https://platform.claude.com/settings/keys", note: "Your Claude API key; billed by Anthropic." },
-    { id: "meta", name: "Muse (Meta)", base_url: "https://api.meta.ai/v1", default_model: "muse-spark-1.3", model_hint: "muse-spark-1.1", key_url: "https://dev.meta.ai", note: "Your Meta Model API key; billed by Meta." },
-    { id: "xai", name: "Grok (xAI)", base_url: "https://api.x.ai/v1", default_model: "grok-4.7", model_hint: "grok-4.3", key_url: "https://console.x.ai", note: "Your xAI API key; billed by xAI." },
-    { id: "mistral", name: "Mistral", base_url: "https://api.mistral.ai/v1", default_model: "mistral-large-latest", model_hint: "mistral-small-latest", key_url: "https://console.mistral.ai/api-keys", note: "Your Mistral API key; billed by Mistral." },
+    { id: "openrouter", name: "OpenRouter (every model)", base_url: "https://openrouter.ai/api/v1", default_model: "anthropic/claude-sonnet-5.5", model_hint: "openai/gpt-6-luna, google/gemini-4-argon, x-ai/grok-4.7", key_url: "https://openrouter.ai/keys", note: "One sign-in for ChatGPT, Claude, Gemini, Grok and more; billed by OpenRouter.", sign_in_url: "https://openrouter.ai/auth", key_exchange_url: "https://openrouter.ai/api/v1/auth/keys" },
+    { id: "openai", name: "ChatGPT (OpenAI)", base_url: "https://api.openai.com/v1", default_model: "gpt-6-luna", model_hint: "gpt-6.1-sol, gpt-6-astra", key_url: "https://platform.openai.com/api-keys", note: "Your OpenAI API key; billed by OpenAI.", sign_in_url: "", key_exchange_url: "" },
+    { id: "anthropic", name: "Anthropic (Claude)", base_url: "https://api.anthropic.com/v1", default_model: "claude-sonnet-5-5", model_hint: "claude-haiku-5-5, claude-opus-5-5", key_url: "https://platform.claude.com/settings/keys", note: "Your Claude API key; billed by Anthropic.", sign_in_url: "", key_exchange_url: "" },
+    { id: "meta", name: "Muse (Meta)", base_url: "https://api.meta.ai/v1", default_model: "muse-spark-1.3", model_hint: "muse-spark-1.1", key_url: "https://dev.meta.ai", note: "Your Meta Model API key; billed by Meta.", sign_in_url: "", key_exchange_url: "" },
+    { id: "xai", name: "Grok (xAI)", base_url: "https://api.x.ai/v1", default_model: "grok-4.7", model_hint: "grok-4.3", key_url: "https://console.x.ai", note: "Your xAI API key; billed by xAI.", sign_in_url: "", key_exchange_url: "" },
+    { id: "mistral", name: "Mistral", base_url: "https://api.mistral.ai/v1", default_model: "mistral-large-latest", model_hint: "mistral-small-latest", key_url: "https://console.mistral.ai/api-keys", note: "Your Mistral API key; billed by Mistral.", sign_in_url: "", key_exchange_url: "" },
 ];
 
 function timelineFor(id: string) {
@@ -535,6 +536,15 @@ function handle(cmd: string, args: Args): unknown {
             return AI_PRESETS;
         case "ai_test":
             return { ok: true, class: "connected", message: "Connected. The endpoint answered." };
+        // Connecting in one step (src-tauri/src/ai/connect.rs)
+        case "ai_connect":
+            return { ok: true, class: "connected", message: "Connected.", needs_consent: false, name: AI_PRESETS.find((p) => p.base_url === a.baseUrl)?.name ?? "Custom (OpenAI-compatible)", model: a.model };
+        case "ai_sign_in":
+            return new Promise((r) => setTimeout(() => r({ ok: true, class: "connected", message: "Connected.", needs_consent: false, name: "OpenRouter (every model)", model: "anthropic/claude-sonnet-5.5" }), 1500));
+        case "ai_sign_in_cancel":
+            return null;
+        case "ai_find_local":
+            return [{ name: "Ollama", base_url: "http://127.0.0.1:11434/v1", models: ["llama3.2:3b", "qwen3:8b"] }];
         case "plugin:app|version":
             return CAPABILITIES.version;
         case "get_vault_status":

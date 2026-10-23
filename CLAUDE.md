@@ -117,8 +117,8 @@ these rules apply.
   shortcut for filling that endpoint in.** The choices are Apple Foundation
   Models (iOS/macOS 26+ with Apple Intelligence) or one OpenAI-compatible
   endpoint with a base URL, model and optional user-supplied key. Provider
-  preset cards (ChatGPT/OpenAI, Anthropic/Claude, Muse/Meta, Grok/xAI, Mistral; owner
-  decision 2026-10-09) are static data in exactly two tables
+  preset cards (OpenRouter, ChatGPT/OpenAI, Anthropic/Claude, Muse/Meta, Grok/xAI,
+  Mistral; owner decisions 2026-10-09 and 2026-10-22) are static data in exactly two tables
   (`src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS`,
   `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, docs cited beside each
   entry) that pre-fill the URL and model; the saved connection stays the
@@ -126,9 +126,13 @@ these rules apply.
   preset match is derived from the URL, never stored. Never add a default
   remote URL, a provider active at first run, a preset selected without a
   click, key-prefix detection, a startup provider probe, bundled keys or
-  hosted AI; provider hosts may appear nowhere but the two tables. The only
-  pre-consent request is the explicit "Test connection" button (the word
-  "Hi", one token, saved endpoint and key). Custom URL, model and key start
+  hosted AI; provider hosts (and OpenRouter's sign-in and key-exchange URLs)
+  may appear nowhere but the two tables. Pre-consent requests happen only on
+  their own explicit click: Connect / Paste key and connect / Test connection
+  (the word "Hi", one token), Sign in with OpenRouter (OAuth PKCE; loopback
+  callback on 127.0.0.1, the key it issues goes to the Keychain) and Find AI
+  on this Mac (loopback model lists). Connecting is one step on purpose
+  (owner: "stupid easy"); docs/AI_PROVIDERS.md "Connecting". Custom URL, model and key start
   empty; switching the endpoint deletes the old key and clears consent. A
   saved legacy named provider id fails closed (no fallback to another network
   service) and meetings are kept. `python3 scripts/check-ai-provider-policy.py`

@@ -327,3 +327,107 @@
   justify-content: flex-end;
   gap: 12px;
 }
+
+/* ─── Connect your AI: the quick ways first (docs/AI_PROVIDERS.md "Connecting") ─── */
+.ai-quick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+
+.ai-quick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+}
+
+.ai-quick-primary {
+  border-color: var(--accent-purple, #8b5cf6);
+  background: rgba(250, 204, 21, 0.04);
+}
+
+.ai-quick-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-purple, #8b5cf6);
+}
+
+.ai-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ai-wait {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ai-local-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ai-local-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-local-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ai-subhead {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ai-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-steps li {
+  display: grid;
+  grid-template-columns: 22px auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-step-n {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--accent-purple, #8b5cf6);
+  color: #0a0a0a;
+}
+
+@media (max-width: 720px) {
+  .ai-quick {
+    grid-template-columns: 1fr;
+  }
+}

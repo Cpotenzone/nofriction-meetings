@@ -559,7 +559,7 @@ review credential through App Review; never place a secret in the app or repo.
 
 ### iOS
 
-**3990 / 4000 characters**
+**3995 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -576,7 +576,7 @@ PRO AND RESTORE
 OFFLINE AI PATH
 Use an Apple Intelligence-compatible device running iOS 26 or later. Enable Apple Intelligence and finish its model download before going offline. In the AI setup sheet or Settings → Connect, choose Apple on-device, then return to Make notes or Follow-up email. This text-generation path runs on the device without a provider account or API key.
 
-Alternatively, enter your own local OpenAI-compatible model server and model in Settings. Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied.
+Alternatively, enter your own local OpenAI-compatible model server and model in Settings. Provider presets only fill in the endpoint and model (OpenRouter's Sign in returns the user's own key); the user supplies their own key, nothing is sent until they consent, and no provider is active by default. No provider credential is supplied.
 
 RECORDING TYPES, NOTEBOOKS, TIMED RECORDING, MARKS AND LINKS (free)
 6. Tap Record. In What is it?, choose Class. How long? offers 15 to 90 min or No limit, and an optional Notebook (type BIO 101). The recording stops by itself at the end; a warning with +15 min and No limit comes 5 minutes before (2 for 15 min).
@@ -603,7 +603,7 @@ Reviewer contact details will be supplied separately in App Store Connect.
 
 ### macOS
 
-**3982 / 4000 characters**
+**3978 / 4000 characters**
 
 ```text
 No noFriction account or app login is required. The app does not provide a hosted AI model or a cloud-provider account. An Apple Account is needed for App Store sandbox subscription testing.
@@ -635,7 +635,7 @@ REVIEW (Pro)
 SYNC (Pro)
 Settings → Sync → Pair a device shows a code to scan in noFriction on an iPhone (Settings → Sync with your Mac). Recordings, transcripts, notes, marks and screens sync both ways over the local network; no server. The network.server entitlement is for this listener, which runs only while Sync is on.
 
-The ChatGPT (OpenAI), Anthropic (Claude), Muse (Meta), Grok (xAI) and Mistral cards in Settings → AI only fill in the endpoint and model; the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Test connection sends only the word "Hi". No provider credential is supplied. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
+The provider cards in Settings → AI only fill in the endpoint and model (OpenRouter's Sign in returns the user's own key); the user supplies their own key, nothing is sent until they consent, and no provider is active by default. Connect and Test connection send only the word "Hi". No provider credential is supplied. The speech model is a data file (Whisper weights), not code. Reviewer contact details will be supplied separately in App Store Connect.
 ```
 
 Optional attachment: a short screen recording of a recording → Make notes

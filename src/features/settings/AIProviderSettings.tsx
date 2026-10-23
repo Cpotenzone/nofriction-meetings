@@ -10,7 +10,9 @@ import {
     friendlyAiError,
     notifyAiStatusChanged,
     requestConsent,
+    type AiConnectResult,
     type AiKind,
+    type AiLocalServer,
     type AiPreset,
     type AiProviderInfo,
     type AiStatus,
@@ -21,9 +23,13 @@ import {
     EMPTY_FORM,
     applyCustom,
     applyPreset,
+    connectMessage,
     hostOf,
     initialCard,
+    isSignInCancelled,
+    keyPresets,
     presetForUrl,
+    signInPresets,
     whatWillBeSent,
     type EndpointForm,
 } from "../../lib/aiPresets";
@@ -66,10 +72,10 @@ export function AIProviderSettings() {
     return (
         <div className="ai-settings">
             <ActiveSummary status={status} onChange={refresh} />
+            <ConnectProvider providers={providers} onChange={refresh} />
             <SavedProviders saved={saved} onChange={refresh} />
             <ModelPickers providers={providers} byId={byId} status={status} onChange={refresh} />
             <AutomaticNotes configured={!!status?.text} />
-            <ConnectProvider providers={providers} onChange={refresh} />
         </div>
     );
 }
@@ -95,8 +101,8 @@ function ActiveSummary({ status, onChange }: { status: AiStatus | null; onChange
         <section className="settings-section">
             <h3>Your AI</h3>
             <p className="section-desc">
-                Apple on-device, or one endpoint you enter (a preset fills in the address; the key is yours).
-                Nothing is set up until you choose. Keys stay in your Keychain, tied to the endpoint.
+                What noFriction uses for notes, review guides and chat. Connect one below; you can change it any
+                time. Keys stay in your Keychain, tied to the endpoint.
             </p>
             <div className="ai-active-grid">
                 <div className="ai-active-item">
@@ -425,11 +431,18 @@ function AutomaticNotes({ configured }: { configured: boolean }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Connect a provider: preset cards (Apple on-device, ChatGPT, Anthropic, Grok,
- * Mistral, Custom) over the one custom endpoint form. A card only fills the
- * URL and model; the user pastes their own key and clicks Save. Nothing is
- * selected until clicked, and "Test connection" is the only request that can
- * happen before consent (one fixed word, no meeting content).
+ * Connect your AI, as few clicks as each service allows:
+ * - **Sign in with OpenRouter**: the browser opens, the user signs in, the
+ *   key comes back on its own (OAuth PKCE, `ai::connect`). Every major model.
+ * - **Free, on this Mac**: Apple on-device, or **Find AI on this Mac** (Ollama,
+ *   LM Studio…) and Use.
+ * - **Use your own key** (ChatGPT, Claude, Muse, Grok, Mistral: services that
+ *   only issue keys): Get a key opens its page; **Paste key and connect**
+ *   reads the clipboard in the backend (the key never reaches this screen),
+ *   saves, and sends the one-word test.
+ * - **Custom endpoint**: the full form.
+ * Nothing is selected until clicked; nothing is sent until a Connect click,
+ * and meeting content only after the user allows it.
  */
 function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[]; onChange: () => void }) {
     const custom = providers.find((p) => p.id === "custom");
@@ -437,9 +450,12 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
     const [presets, setPresets] = useState<AiPreset[]>([]);
     const [card, setCard] = useState<string | null>(null);
     const [form, setForm] = useState<EndpointForm>(EMPTY_FORM);
-    const [busy, setBusy] = useState<"save" | "test" | "apple" | null>(null);
+    const [busy, setBusy] = useState<"save" | "test" | "apple" | "connect" | "paste" | "signin" | "local" | null>(null);
     const [feedback, setFeedback] = useState<Feedback>(null);
     const [testResult, setTestResult] = useState<Feedback>(null);
+    const [local, setLocal] = useState<AiLocalServer[] | null>(null);
+    const [localModel, setLocalModel] = useState<Record<string, string>>({});
+    const [showMore, setShowMore] = useState(false);
 
     // Static table from the backend: the only place provider URLs exist.
     useEffect(() => {
@@ -453,12 +469,15 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [custom?.base_url, custom?.model, presets]);
 
+    const quick = signInPresets(presets);
+    const keyed = keyPresets(presets);
     const selectedPreset = card && card !== CUSTOM_CARD && card !== APPLE_CARD ? presets.find((p) => p.id === card) ?? null : null;
     const formPreset = presetForUrl(presets, form.url);
 
     const choose = (id: string) => {
         setFeedback(null);
         setTestResult(null);
+        setShowMore(false);
         setCard(id);
         if (id === APPLE_CARD) return;
         if (id === CUSTOM_CARD) {
@@ -470,19 +489,55 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
         if (preset) setForm(applyPreset(preset));
     };
 
-    const useApple = async () => {
-        setBusy("apple");
+    /** After any connect: refresh, then ask before meeting content goes to a public endpoint. */
+    const finish = async (r: AiConnectResult, preset: AiPreset | null) => {
+        setFeedback(connectMessage(r, preset));
+        setForm((f) => ({ ...f, key: "" }));
+        onChange();
+        if (r.ok && r.needs_consent) await requestConsent("custom");
+    };
+
+    const run = async (what: NonNullable<typeof busy>, work: () => Promise<void>) => {
+        setBusy(what);
         setFeedback(null);
+        setTestResult(null);
         try {
-            await ai.setActive("apple", null, "text");
-            setFeedback({ ok: true, text: "Apple on-device is now used for text AI. Nothing leaves this Mac." });
-            onChange();
+            await work();
         } catch (e) {
-            setFeedback({ ok: false, text: friendlyAiError(e) });
+            if (!isSignInCancelled(e)) setFeedback({ ok: false, text: friendlyAiError(e) });
         } finally {
             setBusy(null);
         }
     };
+
+    const signIn = (p: AiPreset) =>
+        run("signin", async () => {
+            setCard(null);
+            await finish(await ai.signIn(p.id), p);
+        });
+
+    const pasteAndConnect = (p: AiPreset) =>
+        run("paste", async () => finish(await ai.connect(form.url || p.base_url, form.model || p.default_model, null, true), p));
+
+    const connectTyped = () =>
+        run("connect", async () => finish(await ai.connect(form.url, form.model, form.key.trim() || null, false), selectedPreset));
+
+    const findLocal = () =>
+        run("local", async () => {
+            const found = await ai.findLocal();
+            setLocal(found);
+            setLocalModel(Object.fromEntries(found.map((s) => [s.base_url, s.models[0] ?? ""])));
+        });
+
+    const useLocal = (s: AiLocalServer) =>
+        run("connect", async () => finish(await ai.connect(s.base_url, localModel[s.base_url] || s.models[0], null, false), null));
+
+    const useApple = () =>
+        run("apple", async () => {
+            await ai.setActive("apple", null, "text");
+            setFeedback({ ok: true, text: "Apple on-device is now used for text AI. Nothing leaves this Mac." });
+            onChange();
+        });
 
     const save = async () => {
         if (!custom) return;
@@ -526,27 +581,90 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
     const savedMatchesForm =
         !!custom?.base_url && form.url.trim() === custom.base_url && !!custom.model && form.model.trim() === custom.model;
     const canTest = !!custom?.configured && savedMatchesForm && !form.key.trim();
-
-    const cards: { id: string; name: string; note: string; disabled?: boolean }[] = [
-        {
-            id: APPLE_CARD,
-            name: "Apple on-device",
-            note: apple?.configured ? "Runs on this Mac. Nothing leaves it." : "Needs macOS 26 with Apple Intelligence.",
-            disabled: !apple?.configured,
-        },
-        ...presets.map((p) => ({ id: p.id, name: p.name, note: p.note })),
-        { id: CUSTOM_CARD, name: "Custom endpoint", note: "Any OpenAI-compatible server, local or remote." },
-    ];
+    const connectedTo = (p: AiPreset) => !!custom?.configured && custom.base_url === p.base_url;
 
     return (
         <section className="settings-section">
-            <h3>Connect</h3>
+            <h3>Connect your AI</h3>
             <p className="section-desc">
-                Pick one to fill in its endpoint and a model, then paste your own key. Nothing is active until
-                you save, and nothing is sent until you allow it.
+                Pick one. Nothing is sent until you connect, and your recordings only after you allow it. Keys stay in
+                your Keychain.
             </p>
-            <div className="ai-preset-grid" role="radiogroup" aria-label="AI">
-                {cards.map((c) => (
+
+            <div className="ai-quick">
+                {quick.map((p) => (
+                    <div className="ai-quick-card ai-quick-primary" key={p.id}>
+                        <span className="ai-quick-kicker">Easiest</span>
+                        <span className="ai-preset-name">{p.name}</span>
+                        <span className="ai-preset-note">{p.note}</span>
+                        <div className="ai-quick-actions">
+                            {busy === "signin" ? (
+                                <>
+                                    <span className="ai-wait">Finish signing in in your browser…</span>
+                                    <button className="ai-link-button" onClick={() => ai.signInCancel()}>
+                                        Cancel
+                                    </button>
+                                </>
+                            ) : (
+                                <button className="btn-primary" onClick={() => signIn(p)} disabled={busy !== null}>
+                                    {connectedTo(p) ? `Sign in to ${p.name.split(" (")[0]} again` : `Sign in with ${p.name.split(" (")[0]}`}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+                <div className="ai-quick-card">
+                    <span className="ai-quick-kicker">Free, private</span>
+                    <span className="ai-preset-name">On this Mac</span>
+                    <span className="ai-preset-note">
+                        {apple?.configured ? "Apple's on-device model, or AI you run here (Ollama, LM Studio). Nothing leaves this Mac." : "AI you run here (Ollama, LM Studio). Nothing leaves this Mac."}
+                    </span>
+                    <div className="ai-quick-actions">
+                        {apple?.configured && (
+                            <button className="btn-secondary" onClick={useApple} disabled={busy !== null || apple.active_text}>
+                                {apple.active_text ? "Apple on-device: in use" : busy === "apple" ? "Switching…" : "Use Apple on-device"}
+                            </button>
+                        )}
+                        <button className="btn-secondary" onClick={findLocal} disabled={busy !== null}>
+                            {busy === "local" ? "Looking…" : "Find AI on this Mac"}
+                        </button>
+                    </div>
+                    {local && (
+                        <div className="ai-local-list">
+                            {local.length === 0 ? (
+                                <p className="ai-preset-note">
+                                    None running. Install Ollama or LM Studio, start it with a model, then look again.
+                                </p>
+                            ) : (
+                                local.map((s) => (
+                                    <div className="ai-local-row" key={s.base_url}>
+                                        <span className="ai-local-name">{s.name}</span>
+                                        <select
+                                            className="ai-select"
+                                            value={localModel[s.base_url] ?? s.models[0]}
+                                            onChange={(e) => setLocalModel((m) => ({ ...m, [s.base_url]: e.target.value }))}
+                                            aria-label={`${s.name} model`}
+                                        >
+                                            {s.models.map((m) => (
+                                                <option key={m} value={m}>
+                                                    {m}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <button className="btn-primary" onClick={() => useLocal(s)} disabled={busy !== null}>
+                                            Use
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <h4 className="ai-subhead">Or use your own key</h4>
+            <div className="ai-preset-grid" role="radiogroup" aria-label="AI service">
+                {[...keyed.map((p) => ({ id: p.id, name: p.name, note: p.note })), { id: CUSTOM_CARD, name: "Custom endpoint", note: "Any OpenAI-compatible server, local or remote." }].map((c) => (
                     <button
                         key={c.id}
                         type="button"
@@ -554,25 +672,76 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
                         aria-checked={card === c.id}
                         className={`ai-preset-card${card === c.id ? " selected" : ""}`}
                         onClick={() => choose(c.id)}
-                        disabled={c.disabled}
                     >
                         <span className="ai-preset-name">{c.name}</span>
                         <span className="ai-preset-note">{c.note}</span>
                     </button>
                 ))}
             </div>
-            {card === APPLE_CARD && (
+
+            {selectedPreset && !selectedPreset.sign_in_url && (
                 <div className="ai-preset-form">
-                    <p className="ai-what-leaves">AI runs on Apple's on-device model. No key, no network, no consent needed.</p>
-                    <div className="ai-model-controls">
-                        <button className="btn-primary" onClick={useApple} disabled={busy !== null || apple?.active_text}>
-                            {apple?.active_text ? "In use" : busy === "apple" ? "Switching…" : "Use Apple on-device"}
-                        </button>
-                    </div>
-                    {feedback && <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</p>}
+                    <ol className="ai-steps">
+                        <li>
+                            <span className="ai-step-n">1</span>
+                            <button className="btn-secondary" onClick={() => openUrl(selectedPreset.key_url).catch(() => undefined)}>
+                                Get a key at {hostOf(selectedPreset.key_url)} ↗
+                            </button>
+                            <span className="ai-preset-note">Create a key there and copy it.</span>
+                        </li>
+                        <li>
+                            <span className="ai-step-n">2</span>
+                            <button className="btn-primary" onClick={() => pasteAndConnect(selectedPreset)} disabled={busy !== null}>
+                                {busy === "paste" ? "Connecting…" : "Paste key and connect"}
+                            </button>
+                            <span className="ai-preset-note">Takes the key you copied and checks it. Nothing else is read.</span>
+                        </li>
+                    </ol>
+                    <button className="ai-link-button" onClick={() => setShowMore((v) => !v)} aria-expanded={showMore}>
+                        {showMore ? "Hide" : "Type the key or change the model"}
+                    </button>
+                    {showMore && (
+                        <div className="ai-preset-fields">
+                            <label className="ai-field">
+                                <span>API key</span>
+                                <input
+                                    className="ai-text-input"
+                                    type="password"
+                                    placeholder={custom?.last4 && savedMatchesForm ? `Saved ••••${custom.last4}` : "Paste or type your key"}
+                                    value={form.key}
+                                    onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
+                                    autoComplete="off"
+                                    aria-label="API key"
+                                />
+                            </label>
+                            <label className="ai-field">
+                                <span>Model</span>
+                                <input
+                                    className="ai-text-input"
+                                    value={form.model}
+                                    onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                                    placeholder="Model id"
+                                    aria-label="Model id"
+                                    autoComplete="off"
+                                />
+                                {selectedPreset.model_hint && <small className="ai-field-hint">Also: {selectedPreset.model_hint}</small>}
+                            </label>
+                            <div className="ai-model-controls ai-preset-actions">
+                                <button
+                                    className="btn-primary"
+                                    onClick={connectTyped}
+                                    disabled={busy !== null || !form.model.trim() || (!form.key.trim() && !savedMatchesForm)}
+                                >
+                                    {busy === "connect" ? "Connecting…" : "Connect"}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    <p className="ai-what-leaves">{whatWillBeSent(form, formPreset)}</p>
                 </div>
             )}
-            {card && card !== APPLE_CARD && custom && (
+
+            {card === CUSTOM_CARD && custom && (
                 <div className="ai-preset-form">
                     <div className="ai-preset-fields">
                         <label className="ai-field">
@@ -596,30 +765,27 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
                                 aria-label="Model id"
                                 autoComplete="off"
                             />
-                            {selectedPreset?.model_hint && <small className="ai-field-hint">Also: {selectedPreset.model_hint}</small>}
                         </label>
                         <label className="ai-field">
                             <span>API key</span>
                             <input
                                 className="ai-text-input"
                                 type="password"
-                                placeholder={custom.last4 && savedMatchesForm ? `Saved ••••${custom.last4}` : selectedPreset ? "Paste your key" : "API key (optional)"}
+                                placeholder={custom.last4 && savedMatchesForm ? `Saved ••••${custom.last4}` : "API key (optional)"}
                                 value={form.key}
                                 onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
                                 autoComplete="off"
                                 aria-label="API key"
                             />
-                            {selectedPreset && (
-                                <button type="button" className="ai-link-button" onClick={() => openUrl(selectedPreset.key_url).catch(() => undefined)}>
-                                    Get a key from {hostOf(selectedPreset.key_url)}
-                                </button>
-                            )}
                         </label>
                     </div>
                     <p className="ai-what-leaves">{whatWillBeSent(form, formPreset)}</p>
                     <div className="ai-model-controls ai-preset-actions">
-                        <button className="btn-primary" onClick={save} disabled={busy !== null || !form.url.trim() || !form.model.trim()}>
-                            {busy === "save" ? "Saving…" : "Save connection"}
+                        <button className="btn-primary" onClick={connectTyped} disabled={busy !== null || !form.url.trim() || !form.model.trim()}>
+                            {busy === "connect" ? "Connecting…" : "Connect"}
+                        </button>
+                        <button className="btn-secondary" onClick={save} disabled={busy !== null || !form.url.trim() || !form.model.trim()}>
+                            {busy === "save" ? "Saving…" : "Save without testing"}
                         </button>
                         <button
                             className="btn-secondary"
@@ -630,9 +796,14 @@ function ConnectProvider({ providers, onChange }: { providers: AiProviderInfo[];
                             {busy === "test" ? "Testing…" : "Test connection"}
                         </button>
                     </div>
-                    {feedback && <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"}>{feedback.text}</p>}
                     {testResult && <p className={testResult.ok ? "ai-ok-text" : "ai-error-text"}>{testResult.text}</p>}
                 </div>
+            )}
+
+            {feedback && (
+                <p className={feedback.ok ? "ai-ok-text" : "ai-error-text"} role="status">
+                    {feedback.text}
+                </p>
             )}
         </section>
     );

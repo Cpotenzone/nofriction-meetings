@@ -39,8 +39,25 @@ struct AIPreset: Identifiable, Hashable, Sendable {
     let keyURL: String
     /// One line shown on the card
     let note: String
+    /// One-click sign-in that issues the user's own key (OAuth PKCE,
+    /// `ProviderSignIn`); "" for a service that only takes a pasted key
+    var signInURL: String = ""
+    /// Where the sign-in's code is exchanged for that key; "" with no sign-in
+    var keyExchangeURL: String = ""
+
+    var hasSignIn: Bool { !signInURL.isEmpty && !keyExchangeURL.isEmpty }
 
     static let all: [AIPreset] = [
+        // OpenRouter: one account and one key for every major model,
+        // OpenAI-compatible at https://openrouter.ai/api/v1 (Bearer). Its OAuth
+        // PKCE sign-in issues the user's own key with no app registration:
+        // https://openrouter.ai/auth?callback_url=…&code_challenge=…, then POST
+        // https://openrouter.ai/api/v1/auth/keys → {key}
+        // (https://openrouter.ai/docs/guides/overview/auth/oauth).
+        AIPreset(id: "openrouter", name: "OpenRouter (every model)", baseURL: "https://openrouter.ai/api/v1",
+                 defaultModel: "anthropic/claude-sonnet-5.5", modelHint: "openai/gpt-6-luna, google/gemini-4-argon, x-ai/grok-4.7",
+                 keyURL: "https://openrouter.ai/keys", note: "One sign-in for ChatGPT, Claude, Gemini, Grok and more; billed by OpenRouter.",
+                 signInURL: "https://openrouter.ai/auth", keyExchangeURL: "https://openrouter.ai/api/v1/auth/keys"),
         // OpenAI Chat Completions API (https://developers.openai.com/api/docs/changelog
         // lists gpt-6-luna, gpt-6.1-sol and gpt-6-astra under v1/chat/completions;
         // catalogue: https://developers.openai.com/api/docs/models).

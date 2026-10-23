@@ -538,6 +538,12 @@ pub fn parse_anthropic_response(v: &Value) -> Result<String, AiError> {
 // HTTP
 // ---------------------------------------------------------------------------
 
+/// The shared client (no redirects, connect timeout), for the sign-in's key
+/// exchange in `ai::connect`.
+pub(crate) fn http() -> &'static reqwest::Client {
+    &HTTP
+}
+
 static HTTP: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))

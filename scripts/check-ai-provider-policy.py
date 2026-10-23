@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Release source policy: noFriction has Apple on-device and one user-entered AI endpoint.
 
-Provider presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) are UI convenience over that
-endpoint: static data that pre-fills the base URL and model. This guard allows
-exactly that curated table (the same ids, hosts and default models on the Mac and
-iOS), and still fails on:
+Provider presets (OpenRouter, OpenAI, Anthropic, Meta Muse, xAI, Mistral) are UI
+convenience over that endpoint: static data that pre-fills the base URL and model.
+OpenRouter's entry also carries its one-click sign-in (OAuth PKCE) that issues the
+user's own key (owner decision 2026-10-22). This guard allows exactly that curated
+table (the same ids, hosts, sign-in URLs and default models on the Mac and iOS),
+and still fails on:
 
 - a credential literal anywhere in source (key shapes, `apiKey = "..."`, Bearer literals)
 - a provider marked default/active at first run, or a preset selected without a click
 - a provider or AI-service host anywhere other than the two preset tables
-- network calls at startup or on save (only the explicit test/refresh commands may probe)
+- network calls at startup or on save (only explicit clicks may reach the network: Connect,
+  Paste key and connect, Sign in, Find AI on this Mac, Test connection, model refresh)
+- a listening socket anywhere but Sync and the sign-in's loopback callback (127.0.0.1/::1)
 - retired cloud transcription modules, compile-time credential injection,
   bundled environment files, network/speech APIs in the watch app, and network
   APIs in the iPhone screen-capture broadcast extension
@@ -30,11 +34,13 @@ from pathlib import Path
 
 # The only provider presets allowed, and the only places their hosts may appear.
 CURATED = {
-    'openai':    {'base_url': 'https://api.openai.com/v1',    'key_host': 'platform.openai.com'},
-    'anthropic': {'base_url': 'https://api.anthropic.com/v1', 'key_host': 'platform.claude.com'},
-    'meta':      {'base_url': 'https://api.meta.ai/v1',       'key_host': 'dev.meta.ai'},
-    'xai':       {'base_url': 'https://api.x.ai/v1',          'key_host': 'console.x.ai'},
-    'mistral':   {'base_url': 'https://api.mistral.ai/v1',    'key_host': 'console.mistral.ai'},
+    'openrouter': {'base_url': 'https://openrouter.ai/api/v1', 'key_host': 'openrouter.ai',
+                   'sign_in': 'https://openrouter.ai/auth', 'exchange': 'https://openrouter.ai/api/v1/auth/keys'},
+    'openai':    {'base_url': 'https://api.openai.com/v1',    'key_host': 'platform.openai.com', 'sign_in': '', 'exchange': ''},
+    'anthropic': {'base_url': 'https://api.anthropic.com/v1', 'key_host': 'platform.claude.com', 'sign_in': '', 'exchange': ''},
+    'meta':      {'base_url': 'https://api.meta.ai/v1',       'key_host': 'dev.meta.ai', 'sign_in': '', 'exchange': ''},
+    'xai':       {'base_url': 'https://api.x.ai/v1',          'key_host': 'console.x.ai', 'sign_in': '', 'exchange': ''},
+    'mistral':   {'base_url': 'https://api.mistral.ai/v1',    'key_host': 'console.mistral.ai', 'sign_in': '', 'exchange': ''},
 }
 MAC_TABLE = ('src-tauri/src/ai/providers.rs', r'pub static ENDPOINT_PRESETS: &\[EndpointPreset\] = &\[', '\n];')
 IOS_TABLE = ('ios/NoFriction/AI/AIProvider.swift', r'static let all: \[AIPreset\] = \[', '\n    ]')
@@ -46,7 +52,7 @@ AI_HOSTS = re.compile(
     r'|platform\.openai\.com|platform\.claude\.com|console\.anthropic\.com|console\.x\.ai|console\.mistral\.ai|dev\.meta\.ai)', re.I)
 RETIRED_HOSTS = re.compile(
     r'(?:api\.(?:deepgram\.com|gladia\.io|groq\.com|deepseek\.com|perplexity\.ai|together\.xyz|together\.ai)'
-    r'|generativelanguage\.googleapis\.com|speech\.googleapis\.com|openrouter\.ai)', re.I)
+    r'|generativelanguage\.googleapis\.com|speech\.googleapis\.com)', re.I)
 
 # Credential literals. Thresholds sit above the short synthetic shapes used in
 # unit tests and below every real key format.
@@ -127,6 +133,8 @@ def audit(root):
             need(f.get('base_url') == want['base_url'], f'Mac preset {pid} base_url must be {want["base_url"]}')
             need(f.get('key_url', '').startswith('https://' + want['key_host']), f'Mac preset {pid} key_url must be on {want["key_host"]}')
             need(bool(f.get('default_model')), f'Mac preset {pid} needs a default_model')
+            need(f.get('sign_in_url', None) == want['sign_in'], f'Mac preset {pid} sign_in_url must be {want["sign_in"]!r}')
+            need(f.get('key_exchange_url', None) == want['exchange'], f'Mac preset {pid} key_exchange_url must be {want["exchange"]!r}')
         need(not re.search(r'\b(?:default|selected|active|preselected|is_default)\s*:', mac_block), 'Mac preset table must not mark any preset default/active/selected')
         need(not re.search(r'\b(?:key|api_key|token|secret)\s*:\s*"[^"]+"', mac_block), 'Mac preset table must not carry a key')
 
@@ -149,6 +157,8 @@ def audit(root):
             need(f.get('keyURL', '').startswith('https://' + want['key_host']), f'iOS preset {pid} keyURL must be on {want["key_host"]}')
             need(f.get('defaultModel') and f.get('defaultModel') == mac.get(pid, {}).get('default_model'),
                  f'iOS preset {pid} default model must match the Mac table')
+            need(f.get('signInURL', '') == want['sign_in'], f'iOS preset {pid} signInURL must be {want["sign_in"]!r}')
+            need(f.get('keyExchangeURL', '') == want['exchange'], f'iOS preset {pid} keyExchangeURL must be {want["exchange"]!r}')
         need(not re.search(r'\b(?:isDefault|selected|active|preselected)\s*:', ios_block), 'iOS preset table must not mark any preset default/active/selected')
         need(not re.search(r'\b(?:key|apiKey|token|secret)\s*:\s*"[^"]+"', ios_block), 'iOS preset table must not carry a key')
 
@@ -167,7 +177,15 @@ def audit(root):
     init_body = body_after(config_rs, r'pub async fn init\(')
     need(init_body is not None and not re.search(r'\bclient::|reqwest|list_models|probe\(', init_body), 'Mac AI config init must not touch the network')
     lib_rs = (root / 'src-tauri/src/lib.rs').read_text()
-    need(not re.search(r'ai::(?:client::(?:probe|list_models|run|complete)|commands::ai_(?:test|list_models))\s*\(', lib_rs), 'Mac startup must not call AI network functions')
+    need(not re.search(r'ai::(?:client::(?:probe|list_models|run|complete)|commands::ai_(?:test|list_models)|connect::\w+)\s*\(', lib_rs), 'Mac startup must not call AI network functions')
+    connect_rs = (root / 'src-tauri/src/ai/connect.rs').read_text()
+    connect_code = re.split(r'#\[cfg\(test\)\]\s*mod \w+\s*\{', connect_rs, maxsplit=1)[0]
+    binds = re.findall(r'TcpListener::bind\(([^)]*)\)', connect_code)
+    need(binds and all(re.search(r'"127\.0\.0\.1:0"|"\[::1\]:\{\}"', b) for b in binds),
+         'The sign-in callback may listen only on loopback (127.0.0.1 / ::1)')
+    need(not re.search(r'https?://(?!127\.0\.0\.1|localhost)', connect_code), 'ai/connect.rs must hold no service URL (sign-in URLs come from the preset table)')
+    for fn in ('ai_connect', 'ai_sign_in', 'ai_find_local'):
+        need(re.search(rf'#\[tauri::command[^\]]*\]\s*pub async fn {fn}\(', connect_rs), f'{fn} must be a command (runs only on a click)')
     set_endpoint = body_after((root / 'src-tauri/src/ai/commands.rs').read_text(), r'pub async fn ai_set_custom_endpoint\(')
     save_key = body_after((root / 'src-tauri/src/ai/commands.rs').read_text(), r'pub async fn ai_save_key\(')
     for name, body in (('ai_set_custom_endpoint', set_endpoint), ('ai_save_key', save_key)):
@@ -206,8 +224,10 @@ def audit(root):
         if sync_dir in path.parents:
             continue
         text = re.split(r'#\[cfg\(test\)\]\s*mod \w+\s*\{', path.read_text(), maxsplit=1)[0]
+        if path == root / 'src-tauri/src/ai/connect.rs':
+            text = re.sub(r'TcpListener::bind\((?:"127\.0\.0\.1:0"|format!\("\[::1\]:\{\}", port\))\)', '', text)
         need(not re.search(r'\bsync::start\(|TcpListener::bind|DNSServiceRegister', text),
-             f'Only the sync module may listen or advertise: {path.relative_to(root)}')
+             f'Only the sync module (and the sign-in loopback) may listen or advertise: {path.relative_to(root)}')
     need('sync::start_if_enabled(' in lib_rs, 'Mac startup may start sync only through sync::start_if_enabled')
     server_rs = (sync_dir / 'server.rs').read_text()
     need(re.search(r'if !is_local_addr\(&addr\.ip\(\)\)', server_rs), 'Mac sync listener must refuse non-local addresses')
@@ -220,6 +240,17 @@ def audit(root):
         need(not re.search(r'https?://', text), f'iOS sync code must not hold a URL: {rel}')
         need(not re.search(r'\b(?:URLSession|URLRequest|AIClient|NWListener)\b', text), f'iOS sync code must only connect to the paired Mac: {rel}')
     need(not re.search(r'syncNow\(|SyncSession\.run', app_swift), 'iOS app startup must not sync (only foreground, recording stop and Sync now)')
+    # The sign-in's loopback callback is the only listener on the iPhone
+    sign_in = root / 'ios/NoFriction/AI/ProviderSignIn.swift'
+    for path in (root / 'ios').rglob('*.swift'):
+        if 'Tests' in str(path.relative_to(root)) or path == sign_in:
+            continue
+        need('NWListener' not in path.read_text(), f'Only the sign-in callback may listen on the iPhone: {path.relative_to(root)}')
+    sign_in_text = sign_in.read_text() if sign_in.exists() else ''
+    need(re.search(r'requiredLocalEndpoint\s*=\s*NWEndpoint\.hostPort\(host:\s*\.ipv4\(\.loopback\)', sign_in_text),
+         'The iPhone sign-in listener must bind to 127.0.0.1')
+    need(not re.search(r'https?://(?!localhost)', sign_in_text.split('// MARK: Exchange')[0]),
+         'ProviderSignIn must hold no service URL (sign-in URLs come from the preset table)')
     need('_nofriction._tcp' in (root / 'ios/project.yml').read_text(), 'iOS must declare NSBonjourServices _nofriction._tcp')
 
     # --- Transcription stays local -----------------------------------------
@@ -295,8 +326,8 @@ def main():
     args = parser.parse_args()
     errors = audit(args.root.resolve())
     print(json.dumps({'status': 'FAIL' if errors else 'PASS',
-                      'policy': 'Apple/custom AI with curated presets (OpenAI, Anthropic, Meta Muse, xAI, Mistral) as UI data only; '
-                                'no keys, no default provider, no startup network, provider hosts only in the preset tables; local transcription',
+                      'policy': 'Apple/custom AI with curated presets (OpenRouter with its sign-in, OpenAI, Anthropic, Meta Muse, xAI, Mistral) as UI data only; '
+                                'no bundled keys, no default provider, no startup network, network only on explicit clicks, provider hosts only in the preset tables; local transcription',
                       'presets': list(CURATED), 'errors': errors}))
     return bool(errors)
 

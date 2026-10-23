@@ -4,11 +4,15 @@
 //! - `config`:    active text/vision provider + per-provider settings, consent
 //! - `client`:    OpenAI-compatible + Anthropic adapters with guardrails
 //! - `commands`:  Tauri commands for the settings UI
+//! - `connect`:   connecting in one step: Connect / Paste key and connect,
+//!                a preset's own sign-in (OpenRouter), and AI already running
+//!                on this Mac
 //!
 //! Keys live in the Keychain (`crate::secrets`). No servers of ours.
 
 pub mod client;
 pub mod commands;
+pub mod connect;
 pub mod config;
 pub mod providers;
 
