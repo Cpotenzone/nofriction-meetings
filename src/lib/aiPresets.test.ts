@@ -6,7 +6,11 @@ import {
     CUSTOM_CARD,
     applyCustom,
     applyPreset,
+    connectMessage,
     consentDestination,
+    isSignInCancelled,
+    keyPresets,
+    signInPresets,
     hostOf,
     initialCard,
     presetForUrl,
@@ -16,8 +20,9 @@ import {
 // Fixture table: shaped like the backend's, with fixture hosts (the real
 // table lives in src-tauri/src/ai/providers.rs and is policy-checked there).
 const presets: AiPreset[] = [
-    { id: "one", name: "Provider One", base_url: "https://one.example/v1", default_model: "one-large", model_hint: "one-small", key_url: "https://one.example/keys", note: "Your One key." },
-    { id: "two", name: "Provider Two", base_url: "https://two.example/v1", default_model: "two-fast", model_hint: "", key_url: "https://two.example/keys", note: "Your Two key." },
+    { id: "one", name: "Provider One", base_url: "https://one.example/v1", default_model: "one-large", model_hint: "one-small", key_url: "https://one.example/keys", note: "Your One key.", sign_in_url: "", key_exchange_url: "" },
+    { id: "two", name: "Provider Two", base_url: "https://two.example/v1", default_model: "two-fast", model_hint: "", key_url: "https://two.example/keys", note: "Your Two key.", sign_in_url: "", key_exchange_url: "" },
+    { id: "hub", name: "Hub", base_url: "https://hub.example/api/v1", default_model: "maker/model", model_hint: "", key_url: "https://hub.example/keys", note: "One sign-in.", sign_in_url: "https://hub.example/auth", key_exchange_url: "https://hub.example/api/v1/auth/keys" },
 ];
 
 function provider(over: Partial<AiProviderInfo>): AiProviderInfo {
@@ -91,5 +96,31 @@ describe("destination copy", () => {
         assert.ok(s.includes('"Hi"'));
         assert.ok(whatWillBeSent({ url: "", model: "", key: "" }, null).startsWith("Enter a base URL"));
         assert.ok(whatWillBeSent({ url: "http://box.local:1234/v1", model: "", key: "" }, null).includes("box.local:1234"));
+    });
+});
+
+describe("one-click connect", () => {
+    it("puts sign-in presets apart from key presets", () => {
+        assert.deepEqual(signInPresets(presets).map((p) => p.id), ["hub"]);
+        assert.deepEqual(keyPresets(presets).map((p) => p.id), ["one", "two"]);
+    });
+
+    it("says what happened and the one thing to do about it", () => {
+        const base = { needs_consent: true, name: "Provider One", model: "one-large", message: "" };
+        assert.deepEqual(connectMessage({ ...base, ok: true, class: "connected", message: "Connected." }, presets[0]), {
+            ok: true,
+            text: "Connected to Provider One · one-large.",
+        });
+        const wrong = connectMessage({ ...base, ok: false, class: "wrong_key", message: "one.example rejected the key." }, presets[0]);
+        assert.equal(wrong.ok, false);
+        assert.equal(wrong.text, "one.example rejected the key. Copy the key again on one.example, then click Paste key and connect.");
+        const down = connectMessage({ ...base, ok: false, class: "unreachable", message: "Couldn't reach x." }, null);
+        assert.match(down.text, /^Couldn't reach x\. Check your internet connection/);
+        assert.equal(connectMessage({ ...base, ok: false, class: "other", message: "Odd." }, null).text, "Odd.");
+    });
+
+    it("stays quiet when the user cancels a sign-in", () => {
+        assert.equal(isSignInCancelled("SIGN_IN_CANCELLED: Sign-in cancelled."), true);
+        assert.equal(isSignInCancelled(new Error("Couldn't open your browser.")), false);
     });
 });

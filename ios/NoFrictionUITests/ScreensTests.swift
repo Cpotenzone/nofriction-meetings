@@ -68,7 +68,7 @@ final class ScreensTests: XCTestCase {
         app.buttons["Settings"].firstMatch.tap()
         sleep(1)
         saveShot("\(device)-5-settings")
-        XCTAssertTrue(app.secureTextFields["api-key-field"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["sign-in-openrouter"].firstMatch.waitForExistence(timeout: 3), "Sign in with OpenRouter missing")
     }
 }
 
@@ -120,9 +120,9 @@ final class AppStoreScreenshots: XCTestCase {
         sleep(1)
         shot("04-people")
 
-        // 5. Settings: explicit endpoint and model setup
+        // 5. Settings: connect your AI (sign in, Apple on-device, or a key card)
         app.buttons["Settings"].firstMatch.tap()
-        XCTAssertTrue(app.secureTextFields["api-key-field"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["sign-in-openrouter"].firstMatch.waitForExistence(timeout: 5))
         sleep(1)
         shot("05-settings-ai")
 
@@ -227,6 +227,19 @@ final class AIEndpointSetupScreenshots: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["Settings"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["Settings"].firstMatch.tap()
+        // The quick ways first; nothing is selected or sent until tapped
+        XCTAssertTrue(app.buttons["sign-in-openrouter"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields["ai-endpoint-url"].exists, "no card is selected by default")
+        saveShot("ai-1-connect")
+        // A key card: Get a key, then Paste
+        let openai = app.descendants(matching: .any)["preset-openai"].firstMatch
+        XCTAssertTrue(openai.waitForExistence(timeout: 5))
+        openai.tap()
+        XCTAssertTrue(app.links["get-key-link"].firstMatch.waitForExistence(timeout: 3) || app.buttons["get-key-link"].firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["paste-and-connect"].firstMatch.exists, "Paste missing")
+        saveShot("ai-2-key-card")
+        // Custom endpoint: the full form, Save disabled until filled
+        app.descendants(matching: .any)["preset-custom"].firstMatch.tap()
         let endpoint = app.textFields["ai-endpoint-url"].firstMatch
         let model = app.textFields["ai-model-id"].firstMatch
         XCTAssertTrue(endpoint.waitForExistence(timeout: 5))

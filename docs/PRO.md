@@ -21,7 +21,10 @@ the user guide copy from it. Change this file first, then the copy (see
 | Your records | Edit, Delete and Strike from the record; share a recording as text; **Export…** a recording as a package (Markdown, web page, picked photos and screens, transcript; docs/EXPORT.md); export everything as JSON | **Export to Obsidian** (Mac): each recording saved as Markdown in your vault, by hand or automatically when it stops. The Export sheet's AI tools (highlights, captions, Pick with AI, Fill with AI) are AI features |
 
 Never Pro: recording, microphone transcription, search, Delete and Strike,
-sharing, Export… and JSON export (data portability). The Mac's system audio (the
+sharing, Export… and JSON export (data portability). **Export… is free and
+never expires** (owner decision 2026-10-22): it never checks a subscription, a
+trial or a lapsed Pro, so everything you recorded, including notes and guides
+made while you had Pro, can always be exported. The Mac's system audio (the
 other people on a call) is part of recording a meeting on the Mac and stays
 free; **Transcribe what's playing** is the new iPhone capability.
 

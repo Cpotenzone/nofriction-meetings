@@ -1,6 +1,6 @@
 # AI execution: shared contract (iOS + Mac)
 
-Updated 2026-10-03 for the owner's instruction: **no built-in AI services or API keys**. Updated 2026-10-09 (owner decision): **named provider presets** are back as a convenience layer over the one user-entered endpoint; the architecture below does not change.
+Updated 2026-10-03 for the owner's instruction: **no built-in AI services or API keys**. Updated 2026-10-09 (owner decision): **named provider presets** are back as a convenience layer over the one user-entered endpoint; the architecture below does not change. Updated 2026-10-22 (owner decision: "make it as easy as possible to integrate the AI providers"): **connecting takes one step** (Connect, Paste key and connect, Sign in with OpenRouter, Find AI on this Mac), and **OpenRouter** returns as a preset because it is the only provider with an official sign-in that issues the user's own key. Still no bundled keys, no hosted AI, no default provider.
 
 ## Supported choices
 
@@ -13,10 +13,11 @@ The custom URL, model and key begin empty. There is no default remote URL, key-p
 
 ## Provider presets (UI convenience, same invariants)
 
-The AI settings show text-only cards: **Apple on-device**, **ChatGPT (OpenAI)**, **Anthropic (Claude)**, **Muse (Meta)**, **Grok (xAI)**, **Mistral** and **Custom endpoint**. A preset is static data (name, base URL, default model, model hint, key-page URL, one-line note) kept in exactly two places, `src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS` and `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, with the documentation source cited beside each entry. The Mac UI fetches the table from the backend (`ai_list_presets`); it carries no URL of its own.
+The AI settings show **Sign in with OpenRouter** first, then **Apple on-device** and (Mac) **Find AI on this Mac**, then text-only key cards: **ChatGPT (OpenAI)**, **Anthropic (Claude)**, **Muse (Meta)**, **Grok (xAI)**, **Mistral** and **Custom endpoint**. A preset is static data (name, base URL, default model, model hint, key-page URL, one-line note) kept in exactly two places, `src-tauri/src/ai/providers.rs::ENDPOINT_PRESETS` and `ios/NoFriction/AI/AIProvider.swift::AIPreset.all`, with the documentation source cited beside each entry. The Mac UI fetches the table from the backend (`ai_list_presets`); it carries no URL of its own.
 
 | Preset | Base URL | Default model | Also | Key page |
 |---|---|---|---|---|
+| OpenRouter (every model) | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-5.5` | `openai/gpt-6-luna`, `google/gemini-4-argon`, `x-ai/grok-4.7` | openrouter.ai/keys; **sign-in** `openrouter.ai/auth` → key exchange `openrouter.ai/api/v1/auth/keys` |
 | ChatGPT (OpenAI) | `https://api.openai.com/v1` | `gpt-6-luna` | `gpt-6.1-sol`, `gpt-6-astra` | platform.openai.com/api-keys |
 | Anthropic (Claude) | `https://api.anthropic.com/v1` | `claude-sonnet-5-5` | `claude-haiku-5-5`, `claude-opus-5-5` | platform.claude.com/settings/keys |
 | Muse (Meta) | `https://api.meta.ai/v1` | `muse-spark-1.3` | `muse-spark-1.1` | dev.meta.ai → API keys |
@@ -31,9 +32,28 @@ What a preset does and does not do:
 - Anthropic needs no native adapter: its OpenAI SDK compatibility layer (`https://api.anthropic.com/v1/`, Bearer auth, `/chat/completions`) is used. Anthropic documents it as a compatibility layer rather than its primary API; if that ever changes, the unused `Protocol::Anthropic` adapter in `client.rs` can be wired in. xAI documents `/v1/chat/completions` as deprecated in favour of `/v1/responses` but keeps it available.
 - "Get a key" links open the provider's key page in the default browser; the app never creates accounts or keys.
 
-**Test connection.** The only request that can happen before consent. It POSTs the single user message `Hi` with `max_tokens: 1` (or `max_completion_tokens: 1` for models that require it) to the *saved* endpoint with the *saved* key, and reports the result in plain words: connected, wrong key (401/403), no credit or rate limit (402/429), no `/chat/completions` at that URL (404), unknown model, or unreachable (network error, with the key redacted from the message). It carries no meeting content, so it does not need consent; it runs only from the explicit "Test connection" button, never at startup, on save or on preset selection. Saving a connection still sends nothing.
+## Connecting (one step)
 
-**Policy guard.** `scripts/check-ai-provider-policy.py` allows exactly this curated table (same ids, hosts and default models on both platforms) and fails on: any credential-shaped literal, `apiKey = "…"` or Bearer literal in source; a provider or preset marked default/active/selected, or a card selection that does not start empty; any AI-service host outside the two preset tables (retired hosts anywhere); network calls from startup, save or card selection paths; retired transcription modules, compile-time credential injection, bundled `.env` files, and network or speech APIs in the watch app. `scripts/scan-release-credentials.py` still fails the signed artifact on credential candidates and retired hosts; the four preset hosts are inventoried in the receipt as static preset data.
+What each provider offers third-party apps, checked 2026-10-22:
+
+| Provider | Official way for an app like noFriction | What noFriction does |
+|---|---|---|
+| OpenRouter | OAuth PKCE that issues the user's own key, no app registration ([docs](https://openrouter.ai/docs/guides/overview/auth/oauth)) | **Sign in with OpenRouter**: one click |
+| OpenAI | API keys. "Sign in with ChatGPT" plan usage is self-serve only for open-source/locally hosted apps; paid apps need OpenAI's approval ([interest form](https://openai.com/form/sign-in-with-chatgpt-interest/)) and it works only with the Responses API (`stream: true`, `store: false`) ([docs](https://developers.openai.com/siwc/quickstart)) | Get a key → **Paste key and connect**. Sign in with ChatGPT once OpenAI approves noFriction |
+| Anthropic | API keys only; Claude.ai sign-in in third-party apps is not allowed | Get a key → Paste key and connect |
+| xAI, Mistral, Meta (Muse) | API keys only (device-login flows that circulate are unofficial) | Get a key → Paste key and connect |
+| Local (Ollama, LM Studio, Jan, llama.cpp) | OpenAI-compatible server on this Mac | **Find AI on this Mac** → Use |
+| Apple on-device | Built in | One click; no key, no network |
+
+- **Connect** (`ai_connect` on the Mac, `AIConnectModel.connect` on iOS): one explicit click saves the endpoint, key and model (exactly as Save does) and then sends the Test connection word. **Paste key and connect** does the same with the key read from the clipboard at the click: on the Mac the backend reads it and it never reaches the screen; on iOS the system Paste button hands it over without a prompt. A pasted sentence or web address is refused, not sent. **Save without testing** (custom form) still sends nothing.
+- **Sign in with OpenRouter** (`ai::connect::ai_sign_in`, `ProviderSignIn`): a PKCE verifier and `state` are made on the device; a listener bound to 127.0.0.1 (Mac also ::1) on a free port waits for `GET /callback?code=…&state=…`; the browser (Mac: default browser; iOS: Apple's web sign-in sheet, reusing the Safari session) opens the preset's `sign_in_url` with `callback_url=http://localhost:<port>/callback`, `code_challenge`, `S256`, `state`, `key_label=noFriction`; the code is POSTed with the verifier to the preset's `key_exchange_url`; the returned key goes to the Keychain and Connect runs with the preset's default model. A state mismatch, a refusal, Cancel or 10 minutes stop it. The listener closes when the sign-in ends and serves only the callback page.
+- **Find AI on this Mac** (`ai_find_local`): GET `http://127.0.0.1:{11434,1234,1337,8080}/v1/models` with a 1.5 s timeout, on click only. Local endpoints need no key and no consent.
+- After a successful connect to a public endpoint, the consent dialog opens right away, so the first Make notes isn't interrupted. Consent rules are unchanged.
+- OpenRouter model ids name their maker (`anthropic/…`, `openai/…`, `google/…`, `x-ai/…`, `mistralai/…`); that maker's vision and context heuristics apply.
+
+**Test connection.** One of the requests that can happen before consent (with Connect, Sign in and Find AI on this Mac, each only on its own click). It POSTs the single user message `Hi` with `max_tokens: 1` (or `max_completion_tokens: 1` for models that require it) to the *saved* endpoint with the *saved* key, and reports the result in plain words: connected, wrong key (401/403), no credit or rate limit (402/429), no `/chat/completions` at that URL (404), unknown model, or unreachable (network error, with the key redacted from the message). It carries no meeting content, so it does not need consent; it runs only from an explicit Connect, Paste key and connect or Test connection click, never at startup, on save or on preset selection. Saving a connection still sends nothing.
+
+**Policy guard.** `scripts/check-ai-provider-policy.py` allows exactly this curated table (same ids, hosts and default models on both platforms) and fails on: any credential-shaped literal, `apiKey = "…"` or Bearer literal in source; a provider or preset marked default/active/selected, or a card selection that does not start empty; any AI-service host outside the two preset tables (retired hosts anywhere); network calls from startup, save or card selection paths; a listening socket anywhere but Sync and the sign-in's loopback callback; a sign-in or exchange URL outside the preset tables; retired transcription modules, compile-time credential injection, bundled `.env` files, and network or speech APIs in the watch app. `scripts/scan-release-credentials.py` still fails the signed artifact on credential candidates and retired hosts; the four preset hosts are inventoried in the receipt as static preset data.
 
 ## Configuration and migration
 

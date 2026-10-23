@@ -30,6 +30,11 @@ final class AIConnectModel {
     /// The highlighted card: a preset id or `customCard`. Nil until the user
     /// taps one or a saved preset URL is loaded; never set by default.
     var selectedCard: String?
+    /// "Connecting…" / "Finish signing in…" while a Connect or Sign in runs
+    var working: String?
+    /// The key field and model under a key card ("Type the key or change the model")
+    var showKeyField = false
+    @ObservationIgnored private var signIn: ProviderSignIn?
 
     var canSave: Bool {
         !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -99,7 +104,7 @@ final class AIConnectModel {
         let host = URLPolicy.parseBaseURL(raw)?.host() ?? raw
         let model = serverModel.trimmingCharacters(in: .whitespacesAndNewlines)
         let who = formPreset.map { "\($0.name) at \(host)" } ?? host
-        return "Requests go straight from this device to \(who) using model \(model.isEmpty ? "(enter a model)" : model) and your own key. Nothing is sent until you save and allow it; Test connection sends only the word \"Hi\"."
+        return "Requests go straight from this device to \(who) using model \(model.isEmpty ? "(enter a model)" : model) and your own key. Connecting sends only the word \"Hi\"; your recordings go only after you allow it."
     }
 
     /// One fixed word to the saved custom endpoint with its saved key. Runs
@@ -114,6 +119,122 @@ final class AIConnectModel {
         let outcome = await client.testConnection(ep)
         testing = false
         testStatus = outcome.ok ? .connected(outcome.message) : .failed(outcome.message)
+    }
+
+    // MARK: Connect in one step (docs/AI_PROVIDERS.md "Connecting")
+
+    /// **Connect**: save the endpoint, key and model, then send the one-word
+    /// test, from one explicit tap. Then ask before recordings go to a public
+    /// endpoint. A saved key for the same URL is kept when none is typed.
+    func connect(_ settings: AISettings, key typed: String? = nil, using client: AIClient = .shared) async {
+        guard let url = URLPolicy.parseBaseURL(serverURL) else { status = .failed("Enter your endpoint's base URL."); return }
+        guard URLPolicy.isAllowed(url) else { status = .failed(AIError.insecureURL.localizedDescription); return }
+        let model = serverModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { status = .failed("Enter the model ID supplied by your endpoint."); return }
+        var key = KeyDetector.normalize(typed ?? serverKey)
+        // Checked before anything is saved: a bad key must not replace a working one
+        if !key.isEmpty, !(8...512).contains(key.count) || !key.allSatisfy({ $0.isASCII && !$0.isWhitespace }) {
+            status = .failed("That doesn't look like an API key. Copy it again and paste it.")
+            return
+        }
+        if key.isEmpty, settings.saved[AIProvider.custom.id]?.baseURL == url.absoluteString {
+            key = settings.endpoint(for: .custom)?.apiKey ?? ""
+        }
+        if formPreset != nil, key.isEmpty {
+            status = .failed("Paste your key first.")
+            return
+        }
+        status = .idle
+        testStatus = .idle
+        working = "Connecting…"
+        defer { working = nil }
+        do {
+            try settings.save(.custom, key: key.isEmpty ? nil : key, baseURL: url, models: [ModelInfo(id: model, contextTokens: nil)])
+        } catch {
+            status = .failed(Redactor.redact(error.localizedDescription, secrets: [key]))
+            return
+        }
+        serverKey = ""
+        guard let ep = settings.endpoint(for: .custom) else { status = .failed("Save the connection first."); return }
+        let outcome = await client.testConnection(ep)
+        let name = settings.displayName(for: .custom)
+        if outcome.ok {
+            status = .connected("Connected to \(name) · \(model).")
+            if !settings.hasConsent(.custom) { consentPrompt = .custom }
+        } else {
+            status = .failed([outcome.message, Self.fix(outcome.message, preset: formPreset)].compactMap { $0 }.joined(separator: " "))
+        }
+    }
+
+    /// The one thing to do after a failed test, in plain words.
+    nonisolated static func fix(_ message: String, preset: AIPreset?) -> String? {
+        let m = message.lowercased()
+        let keys = preset.flatMap { URL(string: $0.keyURL)?.host() }
+        if m.contains("key") { return keys.map { "Copy the key again on \($0), then paste it." } }
+        if m.contains("credit") || m.contains("limit") { return keys.map { "Add credit or check your limits on \($0)." } }
+        if m.contains("reach") { return "Check your internet connection (or that the server is running)." }
+        return nil
+    }
+
+    /// A key from the system Paste button, cleaned; or what to say when the
+    /// clipboard held something else (a sentence, a web address).
+    nonisolated static func key(fromPaste strings: [String], host: String) -> Result<String, AIConnectError> {
+        let refuse = AIConnectError(message: "Copy your key on \(host) first, then tap Paste again.")
+        let raw = (strings.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // What a paste may legitimately carry around the key; anything else
+        // with whitespace inside (a sentence, a password list) is not a key
+        var core = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`“”‘’"))
+        for prefix in ["export ", "Bearer ", "bearer "] where core.hasPrefix(prefix) {
+            core = String(core.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        guard !core.isEmpty, !core.contains(where: \.isWhitespace) else { return .failure(refuse) }
+        var key = KeyDetector.normalize(core)
+        // NAME=value from an env file
+        if let eq = key.firstIndex(of: "="), key[..<eq].allSatisfy({ $0.isUppercase || $0.isNumber || $0 == "_" }), key[..<eq].contains(where: \.isUppercase) {
+            key = String(key[key.index(after: eq)...])
+        }
+        // Shape only (never which service): one token of 20+ key characters.
+        // A copied password has symbols a key doesn't, and is refused.
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:+/=")
+        guard (20...512).contains(key.count), !key.contains("://"),
+              key.unicodeScalars.allSatisfy(allowed.contains) else { return .failure(refuse) }
+        return .success(key)
+    }
+
+    /// **Paste** under a key card: the key goes from the clipboard to the
+    /// Keychain (never shown), then Connect.
+    func pasteAndConnect(_ settings: AISettings, _ strings: [String], using client: AIClient = .shared) async {
+        let host = chosenPreset.flatMap { URL(string: $0.keyURL)?.host() } ?? "your provider's site"
+        switch Self.key(fromPaste: strings, host: host) {
+        case .success(let key): await connect(settings, key: key, using: client)
+        case .failure(let e): status = .failed(e.message)
+        }
+    }
+
+    /// **Sign in with …**: the preset's own sign-in sheet; its key, then Connect.
+    func signIn(_ settings: AISettings, preset: AIPreset) async {
+        guard preset.hasSignIn else { return }
+        let flow = ProviderSignIn()
+        signIn = flow
+        status = .idle
+        testStatus = .idle
+        working = "Finish signing in…"
+        defer { signIn = nil; working = nil }
+        do {
+            let key = try await flow.run(signInURL: preset.signInURL, exchange: ProviderSignIn.exchange(at: preset.keyExchangeURL))
+            selectedCard = nil
+            serverURL = preset.baseURL
+            serverModel = preset.defaultModel
+            await connect(settings, key: key)
+        } catch ProviderSignIn.Failure.cancelled {
+            // The user's choice: say nothing
+        } catch {
+            status = .failed(error.localizedDescription)
+        }
+    }
+
+    func cancelSignIn() {
+        signIn?.cancel()
     }
 
     func saveEndpoint(_ settings: AISettings) {
@@ -136,71 +257,184 @@ final class AIConnectModel {
     }
 }
 
+struct AIConnectError: Error, Equatable {
+    let message: String
+}
+
+/// Connect your AI, as few taps as each service allows: Sign in with
+/// OpenRouter (the key comes back on its own), Apple on-device, or a key
+/// card (Get a key, then Paste) and the custom form. Nothing is selected until
+/// tapped; nothing is sent until a Connect, Paste or Sign in tap; recordings
+/// only after the user allows it.
 struct AIEndpointSection: View {
     @Environment(AISettings.self) private var settings
     @Bindable var model: AIConnectModel
 
     var body: some View {
         Section {
-            presetCards
-            TextField("Base URL", text: $model.serverURL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .accessibilityIdentifier("ai-endpoint-url")
-            VStack(alignment: .leading, spacing: 2) {
-                TextField("Model ID", text: $model.serverModel)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("ai-model-id")
-                if let p = model.chosenPreset, !p.modelHint.isEmpty {
-                    Text("Also: \(p.modelHint)").font(.caption2).foregroundStyle(.secondary)
+            ForEach(AIPreset.all.filter(\.hasSignIn)) { p in signInRow(p) }
+            if AppleOnDevice.isAvailable {
+                Button {
+                    settings.useApple()
+                    model.selectedCard = nil
+                    model.status = .connected("Apple on-device is in use. Nothing leaves this device.")
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(settings.effectiveProvider == .apple ? "Apple on-device: in use" : "Use Apple on-device")
+                        Text("Free. Runs on this iPhone; nothing leaves it.").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                .disabled(settings.effectiveProvider == .apple)
+                .accessibilityIdentifier("use-apple")
             }
-            SecureField(model.chosenPreset == nil ? "API key (optional)" : "Paste your API key", text: $model.serverKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .privacySensitive()
-                .accessibilityLabel(model.chosenPreset == nil ? "API key, optional" : "API key")
-                .accessibilityIdentifier("api-key-field")
-            if let p = model.chosenPreset, let keyURL = URL(string: p.keyURL) {
-                Link("Get a key from \(p.host.replacingOccurrences(of: "api.", with: ""))", destination: keyURL)
-                    .font(.footnote)
-                    .accessibilityIdentifier("get-key-link")
+        } header: {
+            Text("Connect your AI")
+        } footer: {
+            Text("Nothing is sent until you connect, and your recordings only after you allow it.")
+        }
+
+        Section {
+            presetCards
+            if let p = model.chosenPreset, !p.hasSignIn { keySteps(p) }
+            if model.selectedCard == AIConnectModel.customCard { customForm }
+            if model.selectedCard != nil {
+                Text(model.whatWillBeSent)
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("what-will-be-sent")
             }
-            Text(model.whatWillBeSent)
-                .font(.footnote).foregroundStyle(.secondary)
-                .accessibilityIdentifier("what-will-be-sent")
-            // Two rows: three buttons in one wrapped "Test connection" into four lines
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) { pasteAndSave }
-                testButton
+            if let w = model.working, !w.hasPrefix("Finish") {
+                HStack(spacing: 8) { ProgressView(); Text(w).font(.footnote) }
             }
             StatusLine(status: model.status)
             StatusLine(status: model.testStatus)
         } header: {
-            Text("Connect")
+            Text("Or use your own key")
         } footer: {
-            Text("A card fills in its endpoint and a model; paste your own API key. Or enter any OpenAI-compatible endpoint. Nothing is used until you save, and nothing is sent until you allow it. Keys stay in this device's Keychain, tied to the endpoint; changing the endpoint deletes the old key. Internet endpoints need HTTPS; HTTP works only on this device or your private network.")
+            Text("Keys stay in this device's Keychain, tied to the endpoint; changing the endpoint deletes the old key. Internet endpoints need HTTPS; HTTP works only on this device or your private network.")
         }
         .onAppear { if model.selectedCard == nil { model.loadSaved(settings) } }
     }
 
-    @ViewBuilder private var pasteAndSave: some View {
-        Button("Paste key", systemImage: "doc.on.clipboard") { model.pasteFromClipboard() }
-            .buttonStyle(.bordered)
-        Button("Save", systemImage: "checkmark") { model.saveEndpoint(settings) }
+    private func signInRow(_ p: AIPreset) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("EASIEST").font(.caption2.weight(.bold)).foregroundStyle(Theme.ai)
+            Text(p.name).font(.headline)
+            Text(p.note).font(.caption).foregroundStyle(.secondary)
+            if model.working?.hasPrefix("Finish") == true {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Finish signing in…").font(.callout)
+                    Spacer()
+                    Button("Cancel") { model.cancelSignIn() }.buttonStyle(.borderless)
+                }
+            } else {
+                Button {
+                    Task { await model.signIn(settings, preset: p) }
+                } label: {
+                    Label("Sign in with \(p.name.components(separatedBy: " (").first ?? p.name)", systemImage: "person.badge.key")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .foregroundStyle(.black)
+                .disabled(model.working != nil)
+                .accessibilityIdentifier("sign-in-\(p.id)")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private func keySteps(_ p: AIPreset) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let keyURL = URL(string: p.keyURL) {
+                HStack(spacing: 10) {
+                    StepBadge(n: 1)
+                    Link("Get a key at \(keyURL.host() ?? p.host)", destination: keyURL)
+                        .accessibilityIdentifier("get-key-link")
+                }
+            }
+            HStack(spacing: 10) {
+                StepBadge(n: 2)
+                Text("Copy it, then")
+                PasteButton(payloadType: String.self) { strings in
+                    Task { @MainActor in await model.pasteAndConnect(settings, strings) }
+                }
+                .buttonBorderShape(.capsule)
+                .disabled(model.working != nil)
+                .accessibilityIdentifier("paste-and-connect")
+            }
+            Text("Paste checks the key with one word (\"Hi\"). Nothing else is read or sent.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+        DisclosureGroup("Type the key or change the model", isExpanded: $model.showKeyField) {
+            keyField(placeholder: "Paste or type your API key")
+            modelField(hint: p.modelHint)
+            Button {
+                Task { await model.connect(settings) }
+            } label: {
+                Label("Connect", systemImage: "bolt.horizontal").frame(maxWidth: .infinity)
+            }
             .buttonStyle(.borderedProminent)
             .foregroundStyle(.black)
-            .disabled(!model.canSave)
-            .accessibilityIdentifier("save-ai-endpoint")
+            .disabled(model.working != nil || !model.canSave)
+            .accessibilityIdentifier("connect-ai")
+        }
+    }
+
+    @ViewBuilder private var customForm: some View {
+        TextField("Base URL", text: $model.serverURL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
+            .accessibilityIdentifier("ai-endpoint-url")
+        modelField(hint: "")
+        keyField(placeholder: "API key (optional)")
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                Task { await model.connect(settings) }
+            } label: {
+                Label("Connect", systemImage: "bolt.horizontal").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(.black)
+            .disabled(model.working != nil || !model.canSave)
+            .accessibilityIdentifier("connect-ai")
+            HStack(spacing: 10) {
+                Button("Save without testing", systemImage: "checkmark") { model.saveEndpoint(settings) }
+                    .buttonStyle(.bordered)
+                    .disabled(!model.canSave)
+                    .accessibilityIdentifier("save-ai-endpoint")
+                testButton
+            }
+        }
+    }
+
+    private func modelField(hint: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            TextField("Model ID", text: $model.serverModel)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("ai-model-id")
+            if !hint.isEmpty {
+                Text("Also: \(hint)").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func keyField(placeholder: String) -> some View {
+        SecureField(placeholder, text: $model.serverKey)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .privacySensitive()
+            .accessibilityLabel(model.chosenPreset == nil ? "API key, optional" : "API key")
+            .accessibilityIdentifier("api-key-field")
     }
 
     private var testButton: some View {
         Button {
             Task { await model.testConnection(settings) }
         } label: {
-            if model.testing { ProgressView() } else { Label("Test connection", systemImage: "antenna.radiowaves.left.and.right") }
+            if model.testing { ProgressView() } else { Label("Test", systemImage: "antenna.radiowaves.left.and.right") }
         }
         .buttonStyle(.bordered)
         .disabled(model.testing || !model.canTest(settings))
@@ -208,18 +442,11 @@ struct AIEndpointSection: View {
         .accessibilityIdentifier("test-ai-connection")
     }
 
-    /// Text-only cards (no third-party logos). Apple on-device appears when available.
+    /// Text-only cards (no third-party logos) for the services that take a key.
     private var presetCards: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if AppleOnDevice.isAvailable {
-                    PresetCard(name: "Apple on-device", note: settings.effectiveProvider == .apple ? "In use. Nothing leaves this device." : "No key. Nothing leaves this device.",
-                               selected: settings.effectiveProvider == .apple && model.selectedCard == nil) {
-                        settings.useApple()
-                        model.selectedCard = nil
-                    }
-                }
-                ForEach(AIPreset.all) { p in
+                ForEach(AIPreset.all.filter { !$0.hasSignIn }) { p in
                     PresetCard(name: p.name, note: p.note, selected: model.selectedCard == p.id) { model.choose(p) }
                         .accessibilityIdentifier("preset-\(p.id)")
                 }
@@ -232,6 +459,18 @@ struct AIEndpointSection: View {
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("AI service")
+    }
+}
+
+private struct StepBadge: View {
+    let n: Int
+    var body: some View {
+        Text("\(n)")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.black)
+            .frame(width: 22, height: 22)
+            .background(Circle().fill(Theme.ai))
+            .accessibilityHidden(true)
     }
 }
 
@@ -282,21 +521,7 @@ struct AISetupSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Text("Use Apple on-device when available, pick a card and paste your own key, or enter your own AI endpoint and model. noFriction provides no hosted models.")
-                        .font(.callout)
-                }
                 AIEndpointSection(model: model)
-                if AppleOnDevice.isAvailable {
-                    Section {
-                        Button("Use Apple on-device (no key)") {
-                            settings.useApple()
-                            dismiss()
-                        }
-                    } footer: {
-                        Text("Runs on this iPhone. Nothing leaves the device.")
-                    }
-                }
             }
             .navigationTitle("Set up AI")
             .navigationBarTitleDisplayMode(.inline)

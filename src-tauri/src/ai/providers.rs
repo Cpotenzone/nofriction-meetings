@@ -113,9 +113,35 @@ pub struct EndpointPreset {
     pub key_url: &'static str,
     /// One line shown on the card
     pub note: &'static str,
+    /// One-click sign-in that issues the user's own key (OAuth PKCE,
+    /// `ai::connect`); "" for a service that only takes a pasted key
+    pub sign_in_url: &'static str,
+    /// Where the sign-in's code is exchanged for that key; "" with no sign-in
+    pub key_exchange_url: &'static str,
 }
 
 pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
+    // OpenRouter: one account and one key for every major model, OpenAI-compatible
+    // Chat Completions at https://openrouter.ai/api/v1 with Bearer auth
+    // (https://openrouter.ai/docs/api/reference/overview). Its OAuth PKCE flow
+    // issues the user's own key with no app registration: the browser opens
+    // https://openrouter.ai/auth?callback_url=…&code_challenge=…&code_challenge_method=S256,
+    // a localhost callback receives `code`, and POST https://openrouter.ai/api/v1/auth/keys
+    // {code, code_verifier, code_challenge_method} answers {key}
+    // (https://openrouter.ai/docs/guides/overview/auth/oauth). Model ids:
+    // https://openrouter.ai/api/v1/models (anthropic/claude-sonnet-5.5,
+    // openai/gpt-6-luna, google/gemini-4-argon, x-ai/grok-4.7 listed 2026-10-22).
+    EndpointPreset {
+        id: "openrouter",
+        name: "OpenRouter (every model)",
+        base_url: "https://openrouter.ai/api/v1",
+        default_model: "anthropic/claude-sonnet-5.5",
+        model_hint: "openai/gpt-6-luna, google/gemini-4-argon, x-ai/grok-4.7",
+        key_url: "https://openrouter.ai/keys",
+        note: "One sign-in for ChatGPT, Claude, Gemini, Grok and more; billed by OpenRouter.",
+        sign_in_url: "https://openrouter.ai/auth",
+        key_exchange_url: "https://openrouter.ai/api/v1/auth/keys",
+    },
     // OpenAI Chat Completions API. Base URL and endpoint per the API reference
     // (https://developers.openai.com/api/docs/changelog lists gpt-6-luna,
     // gpt-6.1-sol and gpt-6-astra under v1/chat/completions, Sep 2026;
@@ -128,6 +154,8 @@ pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
         model_hint: "gpt-6.1-sol, gpt-6-astra",
         key_url: "https://platform.openai.com/api-keys",
         note: "Your OpenAI API key; billed by OpenAI.",
+        sign_in_url: "",
+        key_exchange_url: "",
     },
     // Anthropic's OpenAI SDK compatibility layer: base URL
     // https://api.anthropic.com/v1/ with the Claude key as a Bearer token
@@ -141,6 +169,8 @@ pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
         model_hint: "claude-haiku-5-5, claude-opus-5-5",
         key_url: "https://platform.claude.com/settings/keys",
         note: "Your Claude API key; billed by Anthropic.",
+        sign_in_url: "",
+        key_exchange_url: "",
     },
     // Meta Model API (Muse): OpenAI-compatible Chat Completions at
     // https://api.meta.ai/v1 with the key as a Bearer token; muse-spark-1.3 is
@@ -155,6 +185,8 @@ pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
         model_hint: "muse-spark-1.1",
         key_url: "https://dev.meta.ai",
         note: "Your Meta Model API key; billed by Meta.",
+        sign_in_url: "",
+        key_exchange_url: "",
     },
     // xAI: OpenAI-compatible base https://api.x.ai/v1 with Bearer auth
     // (https://docs.x.ai/docs/guides/chat). xAI marks /v1/chat/completions as
@@ -169,6 +201,8 @@ pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
         model_hint: "grok-4.3",
         key_url: "https://console.x.ai",
         note: "Your xAI API key; billed by xAI.",
+        sign_in_url: "",
+        key_exchange_url: "",
     },
     // Mistral: POST https://api.mistral.ai/v1/chat/completions with Bearer auth
     // (https://docs.mistral.ai/api/); model aliases mistral-large-latest and
@@ -181,6 +215,8 @@ pub static ENDPOINT_PRESETS: &[EndpointPreset] = &[
         model_hint: "mistral-small-latest",
         key_url: "https://console.mistral.ai/api-keys",
         note: "Your Mistral API key; billed by Mistral.",
+        sign_in_url: "",
+        key_exchange_url: "",
     },
 ];
 
@@ -416,8 +452,28 @@ pub fn pick_vision_model(p: &Preset, models: &[String], text_model: Option<&str>
         .cloned()
 }
 
+/// OpenRouter model ids name their maker ("anthropic/claude-sonnet-5.5"):
+/// that maker's heuristics apply to the rest of the id.
+pub fn openrouter_family(model: &str) -> Option<(&'static str, &str)> {
+    let (maker, rest) = model.split_once('/')?;
+    let family = match maker.to_ascii_lowercase().as_str() {
+        "openai" => "openai",
+        "anthropic" => "anthropic",
+        "google" => "gemini",
+        "x-ai" => "xai",
+        "mistralai" => "mistral",
+        "meta-llama" | "meta" => "meta",
+        "deepseek" => "deepseek",
+        _ => return None,
+    };
+    Some((family, rest))
+}
+
 /// Does this model accept images? `None` = can't tell.
 pub fn supports_vision(provider: &str, model: &str) -> Option<bool> {
+    if provider == "openrouter" {
+        return openrouter_family(model).and_then(|(f, m)| supports_vision(f, m));
+    }
     let m = model.to_ascii_lowercase();
     let has = |xs: &[&str]| xs.iter().any(|x| m.contains(x));
     match provider {
@@ -444,6 +500,12 @@ pub fn context_window(provider: &str, model: &str, reported: Option<usize>) -> u
     const CAP: usize = 128_000;
     if let Some(r) = reported.filter(|r| *r > 1024) {
         return r.min(CAP);
+    }
+    if provider == "openrouter" {
+        return match openrouter_family(model) {
+            Some((f, m)) => context_window(f, m, None),
+            None => 32_768,
+        };
     }
     let m = model.to_ascii_lowercase();
     let known = match provider {
@@ -487,7 +549,7 @@ mod tests {
     fn endpoint_presets_are_static_https_and_never_selected_by_default() {
         assert_eq!(
             ENDPOINT_PRESETS.iter().map(|p| p.id).collect::<Vec<_>>(),
-            vec!["openai", "anthropic", "meta", "xai", "mistral"]
+            vec!["openrouter", "openai", "anthropic", "meta", "xai", "mistral"]
         );
         for p in ENDPOINT_PRESETS {
             assert_eq!(check_base_url(p.base_url).unwrap(), p.base_url, "{}", p.id);
@@ -500,6 +562,16 @@ mod tests {
             // Presets never become a provider id: the saved connection stays "custom"
             assert!(preset(p.id).is_none(), "{}", p.id);
         }
+        // OpenRouter ids name their maker: that maker's heuristics apply
+        assert_eq!(supports_vision("openrouter", "anthropic/claude-sonnet-5.5"), Some(true));
+        assert_eq!(supports_vision("openrouter", "openai/gpt-6-luna"), Some(true));
+        assert_eq!(supports_vision("openrouter", "deepseek/deepseek-r2"), Some(false));
+        assert_eq!(supports_vision("openrouter", "unknown-model"), None);
+        assert_eq!(context_window("openrouter", "google/gemini-4-argon", None), 128_000);
+        assert_eq!(context_window("openrouter", "some/odd-model", None), 32_768);
+        let or = endpoint_preset("openrouter").unwrap();
+        assert!(or.sign_in_url.starts_with("https://") && or.key_exchange_url.starts_with("https://"));
+        assert!(ENDPOINT_PRESETS.iter().filter(|p| p.id != "openrouter").all(|p| p.sign_in_url.is_empty() && p.key_exchange_url.is_empty()));
         assert!(preset_for_url("https://proxy.example.com/v1").is_none());
         assert!(preset_for_url("http://127.0.0.1:11434/v1").is_none());
         assert_eq!(provider_hint("custom", Some("https://api.openai.com/v1/")), "openai");

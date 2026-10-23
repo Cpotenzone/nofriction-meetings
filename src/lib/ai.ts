@@ -91,6 +91,27 @@ export interface AiPreset {
     model_hint: string;
     key_url: string;
     note: string;
+    /** One-click sign-in that issues the user's own key ("" = paste a key) */
+    sign_in_url: string;
+    key_exchange_url: string;
+}
+
+/** What one Connect click did (`ai::connect`). */
+export interface AiConnectResult {
+    ok: boolean;
+    /** connected | wrong_key | no_credit | unreachable | bad_url | model_missing | no_key | other */
+    class: string;
+    message: string;
+    needs_consent: boolean;
+    name: string;
+    model: string;
+}
+
+/** An AI server already running on this Mac (Ollama, LM Studio, …). */
+export interface AiLocalServer {
+    name: string;
+    base_url: string;
+    models: string[];
 }
 
 export const ai = {
@@ -110,6 +131,14 @@ export const ai = {
     grantConsent: (provider: string, expectedBaseUrl: string) => invoke<AiStatus>("ai_grant_consent", { provider, expectedBaseUrl }),
     revokeConsent: (provider: string) => invoke<AiStatus>("ai_revoke_consent", { provider }),
     status: () => invoke<AiStatus>("ai_status"),
+    /** Save + the one-word test in one click; `fromClipboard` reads the key there (never shown) */
+    connect: (baseUrl: string, model: string, key: string | null, fromClipboard: boolean) =>
+        invoke<AiConnectResult>("ai_connect", { baseUrl, model, key, fromClipboard }),
+    /** A preset's own sign-in in the browser (OpenRouter), then connect */
+    signIn: (preset: string) => invoke<AiConnectResult>("ai_sign_in", { preset }),
+    signInCancel: () => invoke<void>("ai_sign_in_cancel"),
+    /** AI servers running on this Mac (loopback only, on click) */
+    findLocal: () => invoke<AiLocalServer[]>("ai_find_local"),
 };
 
 // ---------------------------------------------------------------------------

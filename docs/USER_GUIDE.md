@@ -217,9 +217,26 @@ again, and a topic you removed doesn't come back.
 
 ## Connect your AI
 
-AI runs in one of two places, and you choose which. noFriction doesn't host a
-model, doesn't supply an API key and doesn't pick a service for you. Nothing
-remote is set up until you enter it.
+Open **Settings → AI** (Mac) or the **Settings tab** (iPhone/iPad), under
+**Connect your AI**. Pick whichever is easiest for you:
+
+- **Sign in with OpenRouter** (easiest): one sign-in in your browser, and every
+  major model (ChatGPT, Claude, Gemini, Grok, Mistral, Llama) works with one
+  account. The key comes back to noFriction on its own. You pay OpenRouter as
+  you go.
+- **Apple on-device** (free): one click, no account, nothing leaves the device.
+  Needs Apple Intelligence (below).
+- **Find AI on this Mac** (free, Mac): if Ollama or LM Studio is running, it
+  shows up with its models; pick one and click **Use**.
+- **Your own key** for ChatGPT, Claude, Muse, Grok or Mistral: click the card,
+  **Get a key** (opens the provider's key page), copy the key there, then
+  **Paste key and connect**. That's it: the key goes straight to your Keychain
+  and noFriction checks it with one word ("Hi"). If it doesn't work, the line
+  under the button says what to do.
+
+After connecting to an internet service, noFriction asks once before your
+recordings are sent there. noFriction doesn't host a model, doesn't supply an
+API key and doesn't pick a service for you.
 
 ### Apple on-device (no setup, no key)
 
@@ -252,16 +269,11 @@ your server's documentation you need:
 - **Model ID**: exactly as your server names it.
 - **API key**: only if your server requires one. Leave it empty otherwise.
 
-Enter them:
-- iPhone/iPad: **Settings tab → Connect**: pick a card, or **Custom
-  endpoint**, then **Base URL**, **Model ID** and **API key** → **Save**.
-- Mac: **Settings → AI**: pick a card, or **Custom endpoint**, then
-  **Base URL**, **Model** and **API key** → **Save connection**.
-
-Saving doesn't contact the server. To check it, tap **Test connection**
-(iPhone/iPad) or click **Test connection** (Mac; or **Test** next to it under
-**Saved connections**); it sends only the word "Hi". On the Mac, **↻** under
-**Models** reloads the server's model list.
+Enter them under **Custom endpoint** (**Base URL**, **Model**, **API key**),
+then **Connect**: it saves them and checks the server with the word "Hi".
+**Save without testing** saves without contacting the server; **Test
+connection** checks it later. On the Mac, **↻** under **Models** reloads the
+server's model list.
 
 Good to know:
 - **HTTPS for the internet.** An address on the internet must start with
