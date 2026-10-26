@@ -381,7 +381,10 @@ Export a recording, and connect your AI in one step.
 The Mac app's App Store versions are per platform (3.x, not 1.0). **3.8.0
 (46)** is in App Review with the 3.8.0 text (the 3.7.0 text below with Lessons,
 before Make lesson and Export). The text below is for **3.9.0 (47)**: Make
-lesson, Export… and one-step AI connect. Paste it when 3.9.0 is submitted.
+lesson, Export… and one-step AI connect. **Submitted 2026-10-25 with build
+48** on the same version record (3.8.0 was withdrawn). Because 3.9.0 is the
+first Mac version, App Store Connect refuses What's New; the 3.9.0 What's New
+below is for TestFlight and the next version.
 
 ### Promotional text (limit 170)
 
