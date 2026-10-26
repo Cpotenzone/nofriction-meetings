@@ -5,8 +5,8 @@
 //! with provenance `seed`, idempotently (keyed by content fingerprint). A
 //! deliberate removal leaves a tombstone so re-seeding does not resurrect it.
 //!
-//! NOTE: the shipped stoichiometry.lesson artifact is produced in FEAT-002.
-//! This file is the loader; it is testable now via `ensure_seeded_from_bytes`.
+//! The bundle is compiled into the binary (`SEED_BUNDLE`), so every build has
+//! it; tests drive the loader through `ensure_seeded_from_bytes`.
 
 use crate::lessons::bundle;
 use sqlx::{Pool, Sqlite};
@@ -83,33 +83,15 @@ pub async fn ensure_seeded_from_bytes(pool: &Pool<Sqlite>, bytes: &[u8]) -> Resu
     Ok(true)
 }
 
-/// Seed from the shipped resource on startup (not a command). The resource path
-/// is resolved relative to the app resource dir; absence is not an error (the
-/// artifact ships from FEAT-002).
-pub async fn ensure_seeded(pool: &Pool<Sqlite>) -> Result<bool, String> {
-    let path = seed_resource_path();
-    let Some(path) = path else {
-        log::info!("Lessons: no shipped seed bundle present yet");
-        return Ok(false);
-    };
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(_) => {
-            log::info!("Lessons: seed bundle not found at {}", path.display());
-            return Ok(false);
-        }
-    };
-    ensure_seeded_from_bytes(pool, &bytes).await
-}
+/// The shipped seed course, compiled into the binary. A runtime resource lookup
+/// found it only in development (beside `cargo run`'s working directory): the
+/// bundled .app had no copy, so the store builds started with an empty Lessons
+/// tab. Embedding it works the same in the DMG and the sandboxed Mac App Store
+/// build, with no bundle-resource configuration to forget.
+pub const SEED_BUNDLE: &[u8] = include_bytes!("../../resources/seed/stoichiometry.lesson");
 
-/// Where the shipped seed bundle lives inside the app resources. FEAT-002
-/// produces `src-tauri/resources/seed/stoichiometry.lesson`; at runtime Tauri
-/// stages resources beside the binary. We look next to the executable and in a
-/// `resources/seed` sibling so startup can find it without an AppHandle.
-fn seed_resource_path() -> Option<std::path::PathBuf> {
-    let candidates = [
-        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("resources/seed/stoichiometry.lesson"))),
-        Some(std::path::PathBuf::from("resources/seed/stoichiometry.lesson")),
-    ];
-    candidates.into_iter().flatten().find(|p| p.exists())
+/// Seed the shipped course on startup (not a command). Idempotent: see
+/// `ensure_seeded_from_bytes`.
+pub async fn ensure_seeded(pool: &Pool<Sqlite>) -> Result<bool, String> {
+    ensure_seeded_from_bytes(pool, SEED_BUNDLE).await
 }
