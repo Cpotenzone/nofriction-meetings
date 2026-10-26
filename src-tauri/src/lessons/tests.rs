@@ -1176,6 +1176,17 @@ async fn seed_loader_is_idempotent_and_tombstone_sticks() {
     let _ = std::fs::remove_dir_all(super::lessons_root().join(&set_id));
 }
 
+/// The shipped course is in the binary and passes the import checks, so a
+/// store build's Lessons tab starts with it. Validation only: committing would
+/// write into the real app-data lessons folder under the seed's own id.
+#[test]
+fn the_seed_course_is_compiled_in_and_valid() {
+    assert!(super::seed::SEED_BUNDLE.len() > 10_000, "the seed bundle is embedded");
+    let prepared = super::bundle::validate_bytes(super::seed::SEED_BUNDLE).expect("the shipped seed passes import validation");
+    assert_eq!(prepared.validated.set.id, super::seed::SEED_SET_ID);
+    assert!(prepared.validated.set.title.to_lowercase().contains("stoichiometry"), "{}", prepared.validated.set.title);
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Purge (generated set): live + cascade + backup. Seed/imported survive.
 // ════════════════════════════════════════════════════════════════════════

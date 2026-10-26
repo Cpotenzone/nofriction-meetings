@@ -556,8 +556,12 @@ data folder (NFR-6).
 The seed stoichiometry set is **authored into the exact same `.lesson` format**
 and loaded through the **same import+validate path** as a third-party bundle.
 There is no privileged "internal" loader. Concretely: the build step produces
-`src-tauri/resources/seed/stoichiometry.lesson`; on first run the app copies it
-into the catalog by calling the ordinary `import_bundle` function. If the seed
+`src-tauri/resources/seed/stoichiometry.lesson`, which is compiled into the
+binary (`lessons::seed::SEED_BUNDLE`, `include_bytes!`); on first run the app
+copies it into the catalog by calling the ordinary `import_bundle` function.
+(Until Mac 3.9.0 (48) it was looked up as a file beside the binary, which
+exists only in development, so store builds 46 and 47 started with an empty
+Lessons tab. Test: `the_seed_course_is_compiled_in_and_valid`.) If the seed
 set fails validation, that is a build-breaking bug (a seed-validation unit test
 asserts the shipped bundle passes `validate_bundle` with zero errors, §14). This
 guarantees the authored content can never rely on anything the public format
@@ -722,7 +726,7 @@ startup/save network (§14, NFR-2).
 On startup, `lessons::seed::ensure_seeded(pool)` checks a `lessons_seed_version`
 value in the app settings table. If the shipped seed version is newer than what
 was loaded (or nothing was loaded), it imports
-`resources/seed/stoichiometry.lesson` via the ordinary `import_bundle` path with
+the embedded `resources/seed/stoichiometry.lesson` via the ordinary `import_bundle` path with
 provenance `seed`, idempotently (keyed by content fingerprint). If the user
 *removed* the seed set deliberately, a tombstone flag prevents re-seeding it on
 the next launch (so "remove" sticks). Free users can take the full seed course
