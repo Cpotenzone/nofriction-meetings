@@ -1,0 +1,33 @@
+name: Temporary Azure OIDC smoke
+
+on:
+  push:
+    branches:
+      - codex/azure-static-publish-20261029
+    paths:
+      - .github/workflows/azure_oidc_smoke_temp.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: a20f5b7b-aa5b-4b36-8350-617ab39eb432
+          tenant-id: 3c3f26f9-e1a4-4776-aff2-2a8a16ee453e
+          subscription-id: e242106d-31bc-406c-a8aa-d19cfbe29261
+
+      - name: Verify container-scoped data access
+        run: |
+          actual=$(az storage blob list \
+            --auth-mode login \
+            --account-name canofrictione242106d \
+            --container-name '$web' \
+            --query '[length(@),sum([].properties.contentLength)]' \
+            --output tsv)
+          printf 'actual: %s\n' "$actual"
+          [ "$actual" = $'97\t18738954' ]
