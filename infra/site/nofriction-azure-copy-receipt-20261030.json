@@ -38,6 +38,16 @@
     "full_body_and_content_headers_passed": 97,
     "passed": true
   },
+  "repository_vs_live": {
+    "comparison_file": "infra/site/nofriction-repo-vs-live-comparison-20261030.json",
+    "tracked_non_video_objects": 95,
+    "tracked_non_video_bytes": 3736824,
+    "manifest_sha256": "d89786df8590720ddd6a2cc3e2d701185a267251f236682f7bd8457f2bb23409",
+    "missing": 0,
+    "extra": 0,
+    "mismatched": 0,
+    "passed": true
+  },
   "publisher": {
     "identity": "mi-nofriction-site-release-scus",
     "client_id": "a20f5b7b-aa5b-4b36-8350-617ab39eb432",

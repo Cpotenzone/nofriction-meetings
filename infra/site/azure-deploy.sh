@@ -26,17 +26,6 @@ while IFS= read -r path; do
   esac
 done < <(find "$SITE_DIR" -type f -print)
 
-az storage blob sync \
-  --auth-mode login \
-  --account-name "$AZURE_STORAGE_ACCOUNT" \
-  --container '$web' \
-  --source "$SITE_DIR" \
-  --delete-destination true \
-  --exclude-path 'video' \
-  --exclude-pattern 'README.md;.DS_Store' \
-  --only-show-errors \
-  --output none
-
 upload_type() {
   local pattern="$1"
   local content_type="$2"
@@ -61,10 +50,27 @@ upload_type '*.svg' 'image/svg+xml' "$LONG"
 upload_type '*.mp4' 'video/mp4' "$LONG"
 upload_type '*.webm' 'video/webm' "$LONG"
 upload_type '*.docx' 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' "$LONG"
-upload_type '*.html' 'text/html; charset=utf-8' "$SHORT"
 upload_type 'style.css' 'text/css; charset=utf-8' "$SHORT"
 upload_type 'js/*.js' 'text/javascript; charset=utf-8' "$SHORT"
 upload_type 'sitemap.xml' 'application/xml; charset=utf-8' "$SHORT"
 upload_type 'robots.txt' 'text/plain; charset=utf-8' "$SHORT"
+
+# HTML is deliberately the final content write so pages never reference assets
+# that have not reached the destination yet.
+upload_type '*.html' 'text/html; charset=utf-8' "$SHORT"
+
+# With every expected object already present, this final sync only prunes stale
+# non-video keys. video/ remains excluded so a missing release asset cannot
+# erase the previously published hero film.
+az storage blob sync \
+  --auth-mode login \
+  --account-name "$AZURE_STORAGE_ACCOUNT" \
+  --container '$web' \
+  --source "$SITE_DIR" \
+  --delete-destination true \
+  --exclude-path 'video' \
+  --exclude-pattern 'README.md;.DS_Store' \
+  --only-show-errors \
+  --output none
 
 echo "published $SITE_DIR to https://${AZURE_STORAGE_ACCOUNT}.z21.web.core.windows.net/"
