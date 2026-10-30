@@ -23,11 +23,18 @@ jobs:
 
       - name: Verify container-scoped data access
         run: |
-          actual=$(az storage blob list \
+          count=$(az storage blob list \
             --auth-mode login \
             --account-name canofrictione242106d \
             --container-name '$web' \
-            --query '[length(@),sum([].properties.contentLength)]' \
+            --query 'length(@)' \
             --output tsv)
-          printf 'actual: %s\n' "$actual"
-          [ "$actual" = $'97\t18738954' ]
+          total=$(az storage blob list \
+            --auth-mode login \
+            --account-name canofrictione242106d \
+            --container-name '$web' \
+            --query 'sum([].properties.contentLength)' \
+            --output tsv)
+          printf 'actual: %s objects / %s bytes\n' "$count" "$total"
+          [ "$count" = '97' ]
+          [ "$total" = '18738954' ]
