@@ -1,4 +1,4 @@
-# nofriction.io on S3 + CloudFront
+# nofriction.io on S3 + CloudFront, with an Azure mirror
 
 The site is the static files in `site/`. No build step, no framework, no
 middleman: `aws s3 sync` to a private bucket, CloudFront in front with an
@@ -6,6 +6,14 @@ Origin Access Control, an ACM certificate, and a CloudFront Function that turns
 `/support/` into `/support/index.html`. Pushes to `main` that touch `site/**`
 deploy through `.github/workflows/site_deploy.yml` once the `AWS_ROLE_ARN`
 secret exists; until then the workflow exits 0 with a notice.
+
+The production DNS and CloudFront path remain unchanged. A byte-verified Azure
+static copy is available at
+`https://canofrictione242106d.z21.web.core.windows.net/`. The same workflow now
+publishes both origins so an Azure cutover cannot silently trail an S3-only
+deploy. Azure authentication is GitHub OIDC from the immutable repository and
+`main` branch subject; the managed identity has blob access only to this
+account's `$web` container. No account key or SAS token is used.
 
 Everything below is one-time setup in the AWS console or CLI. Region for the
 certificate is **us-east-1** (CloudFront requires it); the bucket can live

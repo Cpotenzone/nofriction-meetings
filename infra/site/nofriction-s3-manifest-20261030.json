@@ -1,0 +1,887 @@
+{
+  "schema": "nofriction.azure-static-manifest.v1",
+  "captured_at": "2026-10-30T04:54:37.730208+00:00",
+  "source": {
+    "kind": "s3",
+    "bucket": "nofriction-io-site",
+    "profile_written": false
+  },
+  "object_count": 97,
+  "total_bytes": 18738954,
+  "objects_sha256": "e7f885dfee63944b91b97662eb03308610d1f1e59fdc475ebe2bbd4b6d9c9c98",
+  "objects": [
+    {
+      "key": "404.html",
+      "size": 4946,
+      "sha256": "be6dfb6c43c2b9d6fd48321127dec9217b31615379028d5dab9fedca41a3b1f7",
+      "source_etag": "2c5f00aeedd687651159841bd9638d13",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "about/index.html",
+      "size": 10245,
+      "sha256": "8f2eb8156dfab35d57b18c34f15ea88f7ada4f0e45c1166350cda2651b7fddf4",
+      "source_etag": "3649d0f60b588e7f23e6a6bfbd26bbcd",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "casey/index.html",
+      "size": 19085,
+      "sha256": "261a10c18046f7b2675b4e21bb132b42b74e78a0eca1901c144e710692a8cc9f",
+      "source_etag": "6bcd5c21aff64b5469ee0e6dd34c8bdd",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "contact/index.html",
+      "size": 5780,
+      "sha256": "3915d91acf20f157c25f3a972e44d21e1efe231794c7bcc24575ebdf68b4f86d",
+      "source_etag": "ac9b3e6e1bb46fbe779bc615727d8752",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "download/index.html",
+      "size": 7944,
+      "sha256": "d57bb7f0312532696db21bc56701956dae951a03f8649d8b6b79357ff3fb7438",
+      "source_etag": "cdf71ac1d78b9f7d276536fcf185e682",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "files/POTENZONE_Casey_CV-EN.docx",
+      "size": 37671,
+      "sha256": "cb0e07316d43f90e2bbe1252c85b6ff75a6e79678b3eddf17ceaafb87e21e078",
+      "source_etag": "390fe293d0daecdd24e4440cd52e182a",
+      "last_modified": "2026-10-23T15:00:57+00:00",
+      "ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "guides/classes/index.html",
+      "size": 12762,
+      "sha256": "f1aa126a068e58e34cf51b0f278701a76173602a33e50de8473f114003f3f007",
+      "source_etag": "870c141944f641b309c275c762038977",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "guides/index.html",
+      "size": 5789,
+      "sha256": "e5d15dd933358bede244eff0d06d9606c0fa0b09ebfeaf61465d1d43b27316d0",
+      "source_etag": "bbbf46db3d391f51ca0dfc1f0a0e7ffb",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "guides/notes/index.html",
+      "size": 12328,
+      "sha256": "e21af943d54caa92af2b37bec2f5cbb5693f26a029a62f75629e5a77ec7239b5",
+      "source_etag": "eabdd2282e7a0fb34993fde31a189d18",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "img/apple-touch-icon.png",
+      "size": 18403,
+      "sha256": "7dd79691579c4e3254ef6edaa5170a43994bc8f504ffcc613e998424cba91d91",
+      "source_etag": "b48106b2962126e568ed3e23bdd444e7",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/badges/download-on-the-app-store.svg",
+      "size": 10804,
+      "sha256": "a26fc5b38380272c92e9019a2eb8b45542a66814b3e2b203772db8904b9fb99f",
+      "source_etag": "2928664fe1fc6aca88583a6f606d60ba",
+      "last_modified": "2026-10-23T15:00:51+00:00",
+      "ContentType": "image/svg+xml",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/badges/download-on-the-mac-app-store.svg",
+      "size": 12064,
+      "sha256": "15111cd04380b58d95307dcb07f0b6b06304dbc7504c57fd9cdbf0a2f78e3a92",
+      "source_etag": "b36bcf724bc71f295292ea1fbf066aa1",
+      "last_modified": "2026-10-23T15:00:51+00:00",
+      "ContentType": "image/svg+xml",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/favicon-32.png",
+      "size": 1708,
+      "sha256": "3ea8bfac774f805280fe542b078dbed00e77ff9a6318cf1ccb468175ad31e8b7",
+      "source_etag": "eb9389465364819b3999386bec4ac9ab",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/favicon.ico",
+      "size": 2456,
+      "sha256": "dc44579883ce7fbfc9f6f750c38792423de7c8c744ebced33747b57660c7398e",
+      "source_etag": "c08284936f309309d41e0a15671cf892",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/x-icon",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-chat.png",
+      "size": 55248,
+      "sha256": "75f3cb731ba197e34bd446b925e92227dcc23bb51eb236d66d8d153f42bf2fc4",
+      "source_etag": "4f345163f90c8b24b8a3de834dc62076",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-chat.webp",
+      "size": 27838,
+      "sha256": "a523821f5b2f1ef805f23ce24a5f2dbe78b22ebf915e011ccc6d52a4ec1eb9b9",
+      "source_etag": "341f61d390c4997832933d3f8d78da05",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-class-mark.png",
+      "size": 96003,
+      "sha256": "04fc6ff904822007ed4f9b3f4013fb9aed76a325c786c3c8d2b55b5a1c83eb36",
+      "source_etag": "88919e8c6487044f63af577e85464949",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-class-mark.webp",
+      "size": 53390,
+      "sha256": "7934b69710297cde25bc6d43bc94fd4f1af25423e1c7adc6f6809987e0c369ff",
+      "source_etag": "4a5aeb3cf654c50f64f9737e6914b31a",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-class-sheet.png",
+      "size": 34039,
+      "sha256": "dd6581575b8b0c01b0f5324b5ffebf1b1f64dd6b7739415763b64e5ed2505df4",
+      "source_etag": "7107d23148c49dbe02eae5e5d2444769",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-class-sheet.webp",
+      "size": 15770,
+      "sha256": "e41ee8a40c67c3bd3d42c0244635f3e99c15e555da9543cfbae9246c7a18a6ec",
+      "source_etag": "0ca6bb8ceb7a4b29a3204264d50fdeb4",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-flashcards.png",
+      "size": 35144,
+      "sha256": "34169ebc6d5605105ab6c8315412e66fc36d54fb2291cf852b33f73f3d5428f4",
+      "source_etag": "d7d0bd24485052a464caa2a63570d6e5",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-flashcards.webp",
+      "size": 15890,
+      "sha256": "cb9ee6f0125c3e53db9e77a2acaa8f917f7eea8511fe9210d8b88879b9d2bf40",
+      "source_etag": "d96bf790d42d8597c4c43e9c0a82d901",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-followup-email.png",
+      "size": 29643,
+      "sha256": "5970c5e3c0bfa1016d5d37ffcc4fca7d69de946f828c7b8f4618d8216188d061",
+      "source_etag": "bbaea20ae94b75d364dbe829b128d262",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-followup-email.webp",
+      "size": 14388,
+      "sha256": "a4e40bf4623b971e668abb5ba3a834b1db85404a9f473b8c93b9430dccad0c3b",
+      "source_etag": "c09dc6dbd73e5cf672d6be4f75f32e64",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-lecture-marks.png",
+      "size": 89735,
+      "sha256": "321a1fdfc145cedf3064f2993e785697aeeffaeec11411f5aee22a3c76ffc128",
+      "source_etag": "59c1d0f18971289e52b4b4d8d89f7873",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-lecture-marks.webp",
+      "size": 44704,
+      "sha256": "dc673a161e5191f6ebb3656c9ef554298d3a4f4be5d65543bfe6eea5c421ae93",
+      "source_etag": "816cabf793a0f24417ba2f70d2504137",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-lecture-notes.png",
+      "size": 70635,
+      "sha256": "2dd91c149581298daeef680533ad7eb008f84e43984ab208ca285a985c586c3a",
+      "source_etag": "af4715f96728bd0038ba8aa80356606b",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-lecture-notes.webp",
+      "size": 36370,
+      "sha256": "22ce025a6dd5dc25fd14e757785ea4398ad48599516a6912e5ae028cc452fb57",
+      "source_etag": "97c94c99dd6ef17c01a8d08aa6525179",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-meeting-mark.png",
+      "size": 77614,
+      "sha256": "2f01fbaca25f925a4536604238bc658edd45cc44fdee7f7918fc124c21c4f919",
+      "source_etag": "086097bbe0aaba009bd0398363a41b59",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-meeting-mark.webp",
+      "size": 41596,
+      "sha256": "238bd736b3ecfffa212fc033e6db20610ef3f17d66f8f9732d3931beb196011d",
+      "source_etag": "db256c6e2511ad312f22e1a1a4d22bb0",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-meeting-notes.png",
+      "size": 97774,
+      "sha256": "0ded2f109c6116706c1f05395f7f63d70d544ddcc67ecd93f2171751f32f5089",
+      "source_etag": "0030e819ed3b672c6aaec4f1c7d775c2",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-meeting-notes.webp",
+      "size": 54448,
+      "sha256": "0084fd87689ba9d470bbf609d8670bcbb73e5c346008d2fb9272d82c56b81618",
+      "source_etag": "8d19dfdebbc32a3445aca9f41d114362",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-meeting-recording.png",
+      "size": 67161,
+      "sha256": "7509fae36a42591386152b0e3e9056827424b3f32cbc781e87c414abd1bdcdd9",
+      "source_etag": "361a73948014031cedccd82cce693921",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-meeting-recording.webp",
+      "size": 36756,
+      "sha256": "922adb8e2746ae96dbe1942e5db397bf99496111ad5c81233411caad92a33096",
+      "source_etag": "20e586dab5fae88fad8df4c249681ec8",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-notebook.png",
+      "size": 64585,
+      "sha256": "e3ad338b1f484ab3332c3cba207e3b24e258df0c283f6fdc277680c241de9564",
+      "source_etag": "72d9786f3a30fb0e3da4b40bd55f8935",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-notebook.webp",
+      "size": 28950,
+      "sha256": "4ebe16f5b2013f3f4d7d3de42fd3239cdc67bc4806d57ab05a462b4e2ee3df74",
+      "source_etag": "c753afa07d8a5ec759772b3c9b327f32",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-quiz.png",
+      "size": 57924,
+      "sha256": "5a982285fcfc1269bd4ae5337ba2109ed18257da2e5751b43b5e855e9a6c84d4",
+      "source_etag": "282032477852b685a477fb18d588838a",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-quiz.webp",
+      "size": 31980,
+      "sha256": "38860f2aaafa048d81564a3fc87f45572b9e8750641f0b8a022e9971edd313bb",
+      "source_etag": "ad01c8468e24e764124f18bb44c5c44a",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-search.png",
+      "size": 55636,
+      "sha256": "8af400559ca25e0bd1508d6efe087adcc6a13092f1c96ce97f26c5d104736535",
+      "source_etag": "c3105d5298dd53e7ec9e499c4b3f62fb",
+      "last_modified": "2026-10-23T15:00:49+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/ios-search.webp",
+      "size": 22944,
+      "sha256": "b2a15263ef93380df7388ddf836d88d8f53f6c3dd1449e21ce9d4db91f4d38a2",
+      "source_etag": "656c15b81ff07d5f018c911d3a9fcb5f",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-ai-settings.png",
+      "size": 81068,
+      "sha256": "fb4f2deb88f0d79de5ad316e0053b4a8a2179577de8fce713476fb7c8b84fde0",
+      "source_etag": "c001797e3ca7dcb60c82c620a4c89164",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-ai-settings.webp",
+      "size": 40214,
+      "sha256": "46d86e825b1fb57a56db18c8dd4b2891f3d5fd6c5f7c0ef665fa3d0566620545",
+      "source_etag": "9bf37b87ff6dd60e708e9abc10c4d6d3",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-lecture-recording.png",
+      "size": 65197,
+      "sha256": "e4cf30dd2fcd45b1080d9901e111b222e685677f88e0678d91161563a0adbdbd",
+      "source_etag": "7afa98d2f2ac3758e301fd4370481fba",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-lecture-recording.webp",
+      "size": 55174,
+      "sha256": "56cd2c9af60bd0049b0d976a3eed43c5bc89c10e36e5b8952c4bc206b7be9364",
+      "source_etag": "d8d1a00b8db33278d5198506b12dc21c",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-meeting-notes.png",
+      "size": 105168,
+      "sha256": "3f6d1fc993a2a77d85306d01c923968726b3d8d468421e44973fbeea982d4a57",
+      "source_etag": "e13a327aa68fddf2a3e9421d39c8b0cb",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-meeting-notes.webp",
+      "size": 59718,
+      "sha256": "1f08779dc42cef592b641beff11f47d65b9baa692b2345954927624cc52246dd",
+      "source_etag": "3e93a045b5902c2cf187f9a1632ec960",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-record-sheet.png",
+      "size": 28008,
+      "sha256": "c3ac245dd57c30326f8f4d04a46fca258d96092ca7d91f6d651cd3719e3d899c",
+      "source_etag": "dd7d6f25222a6a494b729fed097b74ab",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-record-sheet.webp",
+      "size": 21686,
+      "sha256": "1d29afc8028c57c9ddc1c39163c820fa6f911594132e5b1eab777bbd46bf6d1c",
+      "source_etag": "c58b00cdddde5709fb44d58ee650d319",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-study-guide.png",
+      "size": 81796,
+      "sha256": "fcebc5e27f883a66bcd1a13451f1800f948e4da1489180e88e03c2d045f7ed04",
+      "source_etag": "454bd0d95357aa974b5fc7afe5efeaab",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/guides/mac-study-guide.webp",
+      "size": 44850,
+      "sha256": "062f5271ece298b37cca7ba23a17f4111b15aaa6efedcccaf275877a4f5512f8",
+      "source_etag": "44166abab5e7fbf1cd44a5ea179d5495",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/icon-192.png",
+      "size": 20176,
+      "sha256": "60917c434d1e6eef241f01787aa5ccb293a24c419927a38e35463694e63ddfe6",
+      "source_etag": "12b04c07cc5d19e81609d9d96b4e8027",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/icon-512.png",
+      "size": 79190,
+      "sha256": "1672512bd6363055f72472f2b9aad542483e76e9240b91018a7ce9d9d32cec04",
+      "source_etag": "dc71d51db66f177ee94975e7d16ecb9f",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/iphone-01-record.png",
+      "size": 76582,
+      "sha256": "42e425f9102c14e1a9d66965b59eaa762a060b5ba7f4cce55a825e19176405a4",
+      "source_etag": "cfc4bd4493f2f5bc1b1a295c6258a63c",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/iphone-01-record.webp",
+      "size": 61936,
+      "sha256": "7ea5c8561d7e8100482f09a89b3ddf54b8bf1e6491c17aeb48ace8b998767f07",
+      "source_etag": "6bd3fbc9b43b2281490be6f9a0df4752",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/iphone-02-notes.png",
+      "size": 73314,
+      "sha256": "af17a60fd47304c5a01daa0efa6d7d68dc58b6a5b63712ef12c7b8d083e180c5",
+      "source_etag": "5f80a27bb0b3162834f36ce166c35601",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/iphone-02-notes.webp",
+      "size": 60478,
+      "sha256": "5f57d1f8e6f61ae89b1a2357225a08e6d41c645caa0596489d32e98c69346c3d",
+      "source_etag": "338c5d903eaabe44885cb86557cba582",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/iphone-03-stricken.png",
+      "size": 90816,
+      "sha256": "f026f663439a19d9ede710086421d64ddbd987a654fb9ac9201d6c2212c3bbab",
+      "source_etag": "9ae2393636eb2054bace0fa107902efc",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/iphone-03-stricken.webp",
+      "size": 81210,
+      "sha256": "643429467d16694ab138f2b3e55f44c4855b826d2f986c2232afddaa34bbbd82",
+      "source_etag": "9afdddc7a2e99d9802081d2575c51d79",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-01-rewind.png",
+      "size": 80510,
+      "sha256": "df9c37435bf91ad25d3b78d52b2d8d597b708f492079a31aa8fb25213cf64188",
+      "source_etag": "c0ddbbd3221222eaad11087c1cc4e022",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-01-rewind.webp",
+      "size": 59458,
+      "sha256": "ff47f1fd75199420791db711ed8ab5b93ef1ab4cb025a4f95ea229c6fa3e8101",
+      "source_etag": "3e0f6c559bb4df909db62a37d41784b3",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-02-record-sheet.png",
+      "size": 15220,
+      "sha256": "b83456b7c7770d14c729e8bbbd052d23920bd1d1d0cb64db785b902d1d3d6917",
+      "source_etag": "b3749cca32a0e7d887058cacebfdf0ab",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-02-record-sheet.webp",
+      "size": 12374,
+      "sha256": "5d5e8f5093033fc2a7780c799a6fd2ee3903f788ce95f7026af5ec0feb11ca8e",
+      "source_etag": "21c8367367a468859a9cb74c7d9cc0d2",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-03-review.png",
+      "size": 61637,
+      "sha256": "3b811fee5d1dd9ec48d60d1bad16daeb5b56e1dfda2e3a75c9ac6496733ebc14",
+      "source_etag": "a3ddecdfaf1eec462cb31110b29ca113",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-03-review.webp",
+      "size": 49510,
+      "sha256": "228657bc87c1a5c91cbcc65d373297de6fd4468d8a6a05eee6e25401dc51d5c3",
+      "source_etag": "5aca48aa3bce778e3ebf601831902325",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-04-links.png",
+      "size": 51949,
+      "sha256": "017c5989d0a9af6104acc7d3d9cd666e7ce669f6324697621888413c7ab49123",
+      "source_etag": "e417684fc4532f23b2323aba6fe1cbfc",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-04-links.webp",
+      "size": 42192,
+      "sha256": "e7cc01ac3203923df9884ecf5b22ab424668f4633e0aacf80a25f339272061c6",
+      "source_etag": "d3d5a3a4e0339744bf899b7f2bef7887",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-05-notebooks.png",
+      "size": 91037,
+      "sha256": "dc51ed974e1e790d15f4bf318934370df442a19921ddc51409747eaee3b843d8",
+      "source_etag": "695ae52ee99dbba813af0ef3884390ed",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-05-notebooks.webp",
+      "size": 71058,
+      "sha256": "f7e167655c6e4ee64cf594903b5e1b0a4cc8cb47f4b0c8f00752bca46c65ec44",
+      "source_etag": "4bce4e8f8eb59cc76a88b5904b3ffdbb",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-09-export.png",
+      "size": 118049,
+      "sha256": "48fc410dcb1a96457b7b3f9ec17a70c7ed18f406516251d076129b3cd1391166",
+      "source_etag": "0ec6db4673df44a0d177e407015330fd",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-09-export.webp",
+      "size": 85222,
+      "sha256": "11cc381b52ff2609528083c8ba315fc07a35a32b2711bbcb1a7038e2b1aa3bd3",
+      "source_etag": "4cb12136dcadbb6725766f442604f9bb",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-10-lessons.png",
+      "size": 37170,
+      "sha256": "aad79152a2810889735c4d7dd8a59de7e71b2c1bc7507a22d87acfa24da1232d",
+      "source_etag": "7fcb6e4514d8c47755486ec14280c5df",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/mac-10-lessons.webp",
+      "size": 32854,
+      "sha256": "9a853718b0ae6f5f57e168261add7ff5e6f2a090693a2c8e240a0c11e2de5a1f",
+      "source_etag": "74978b77356d681599726a8695f1ca75",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/og.png",
+      "size": 150602,
+      "sha256": "39da568e36d53df3dee61036c8a3f507d0a563dcd3d11a83286c44a95a623bb1",
+      "source_etag": "8e8f05d2f7b93e99655cb85ffa7f96a8",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-01-recording.png",
+      "size": 20105,
+      "sha256": "9880ad6a62944da5f593b1be6ac0210959d090285b4d1a7a3aa5317f24504f01",
+      "source_etag": "65b9a025762a53bcd65646ada034cfb4",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-01-recording.webp",
+      "size": 9846,
+      "sha256": "a1e1e19837ff5f929a7815cd0655074b5176f753128b5960963ebdb0bf609ec1",
+      "source_etag": "ff4fc9477dfdae3f13b130f9bce9cda7",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-02-record.png",
+      "size": 5967,
+      "sha256": "cf56303ab457868570362cba73fc152514d7e801280ce22699cc09222dba2181",
+      "source_etag": "ce5629e221d87dddefc007a7a981aa54",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-02-record.webp",
+      "size": 9764,
+      "sha256": "718194821705ed47a2db264e68f0ac851a4b7de78324174aa9b049f5456ede5b",
+      "source_etag": "6c4af697c5410351e9b3170125f47f6d",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-03-recordings.png",
+      "size": 10496,
+      "sha256": "cf8b5deba699f47208c28fe4af47001d9bdcec35a5fbddf46ca750dca8eeb299",
+      "source_etag": "fa338f86631dd69ee9638db4ececdb94",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-03-recordings.webp",
+      "size": 15418,
+      "sha256": "e7f2e52531e7abeb94169d53c843f23e4d4b84472d9f1cc5f74aad7df036f7c8",
+      "source_etag": "4176ceb0d6fe6e6946193c6d3de34905",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-04-class.png",
+      "size": 8184,
+      "sha256": "6bce596d59dc5193467f51e00bc3c4a846da8a0d8d791f00077916170fa6992c",
+      "source_etag": "f948f347d238384f2b2071af960e50f9",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-04-class.webp",
+      "size": 14270,
+      "sha256": "d1bfa79843e32fbc22d7b927204a27911e5f762003fcfcd9c2982f32ccfb6374",
+      "source_etag": "c892a895a9183817b2d3fc3bdfcf74b3",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-05-discreet.png",
+      "size": 2060,
+      "sha256": "f3d2bbb3d0da4354c2272906ffe4e4f1490a40bada194feb7bd92dd1196f9020",
+      "source_etag": "5388d6f11ae033461146149742508f7c",
+      "last_modified": "2026-10-23T15:00:50+00:00",
+      "ContentType": "image/png",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "img/watch-05-discreet.webp",
+      "size": 1964,
+      "sha256": "a7f413c1c3cbe65b9b5235f9f339beffae944446fd0491faa817a4bb485a2e8f",
+      "source_etag": "60d43a12576fc4db11e85c3d2a196a4b",
+      "last_modified": "2026-10-23T15:00:48+00:00",
+      "ContentType": "image/webp",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "index.html",
+      "size": 41758,
+      "sha256": "24e68163b6c7a8ef966176c5c094b35336260eb013d824de2946c3d533de4717",
+      "source_etag": "59280670022db1c3dbafdc888a4d6aed",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "js/site.js",
+      "size": 660,
+      "sha256": "37d58ac0e0e8c279bce1919730b7fee1632bd2cf54122dc58247f2d050f974a0",
+      "source_etag": "a5991a442208fcbb0ff0aa563d91efeb",
+      "last_modified": "2026-10-23T15:00:57+00:00",
+      "ContentType": "text/javascript; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "js/store.js",
+      "size": 1445,
+      "sha256": "ef0ffba87489f8cae01057fcfdd6b7d1448472ebe73218bd5b3f88edd56bfe08",
+      "source_etag": "1b2203c69a67fba313c9a4b41d7eb6ac",
+      "last_modified": "2026-10-23T15:00:57+00:00",
+      "ContentType": "text/javascript; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "mark.svg",
+      "size": 12965,
+      "sha256": "f9724fb7c31525d2a2f80826e70a713b8ce8a4baf0985d25cef49607a60c735a",
+      "source_etag": "0b43c3a9c5d872a149d9e06ffc16b835",
+      "last_modified": "2026-10-23T15:00:52+00:00",
+      "ContentType": "image/svg+xml",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "privacy.html",
+      "size": 379,
+      "sha256": "8c322f8ad337a02f17f323a72eb4c1546b483f2df014b66e347ed0f7dc123785",
+      "source_etag": "563a7b47a7d82d32708a4ea1541902c8",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "privacy/index.html",
+      "size": 18952,
+      "sha256": "786e4a2a2e33d2f73af776e582e3ca1bbcdd674bcee6104aa6c41a009ef648c3",
+      "source_etag": "5a48ca2a834b004b650055179e65a8ad",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "privacy/website/index.html",
+      "size": 12472,
+      "sha256": "cea17e7f763175aa3744878ba51900c70166fe1bc07a27178c7a0d787e651018",
+      "source_etag": "5c6a9c5530b9b736df226c3a4a6ee8c7",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "robots.txt",
+      "size": 66,
+      "sha256": "ae787768051284a0d21bc3831c1680043e6a391bdb582d7dead3b418adfa166e",
+      "source_etag": "a8b1eb3a7a917359295148f22d32c477",
+      "last_modified": "2026-10-23T15:01:00+00:00",
+      "ContentType": "text/plain; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "sitemap.xml",
+      "size": 1124,
+      "sha256": "f83f2be551e0222b398494a7e0991a5d823304e414f42b9842b57d415d91bf7e",
+      "source_etag": "d5925f12d6d34e69054f5e846f34f953",
+      "last_modified": "2026-10-23T15:00:59+00:00",
+      "ContentType": "application/xml; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "style.css",
+      "size": 17261,
+      "sha256": "3afb99366cb90eaac7cddc8b1eeb7950d675363639da708e52c32b39d6e498fd",
+      "source_etag": "9f28029939926a4f4559b8ba3d877f5a",
+      "last_modified": "2026-10-23T15:00:56+00:00",
+      "ContentType": "text/css; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "support/index.html",
+      "size": 13446,
+      "sha256": "a237a9cafe4ba0402bc63f1e2cfd926be919e463b442e7bfaa360534b7c5b34d",
+      "source_etag": "9f5423838ff993ca61824a1658d6a4d8",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "terms/index.html",
+      "size": 14649,
+      "sha256": "385a4e52e7ca3f733764fb65bf761d4242d1e44f4d7e2292d2ccbdf84c6b21c6",
+      "source_etag": "b2972069460875a0e4ff9a11655bbf15",
+      "last_modified": "2026-10-23T15:00:58+00:00",
+      "ContentType": "text/html; charset=utf-8",
+      "CacheControl": "public, max-age=300, must-revalidate"
+    },
+    {
+      "key": "video/hero.mp4",
+      "size": 9364540,
+      "sha256": "995770e9815ac44df2d89b785b4344d88a50fbd074024c6fbf02ad9734a67f8b",
+      "source_etag": "aedd3a9046f9515873e965ff19bb67a1-2",
+      "last_modified": "2026-10-23T15:00:53+00:00",
+      "ContentType": "video/mp4",
+      "CacheControl": "public, max-age=31536000, immutable"
+    },
+    {
+      "key": "video/hero.webm",
+      "size": 5637590,
+      "sha256": "2c82a1d25f093077b631e1f82f3e6f6d8a9758d2fdc4002396f166362f762606",
+      "source_etag": "fbb615cef4549e26340628e04a5e4d6c",
+      "last_modified": "2026-10-23T15:00:54+00:00",
+      "ContentType": "video/webm",
+      "CacheControl": "public, max-age=31536000, immutable"
+    }
+  ]
+}

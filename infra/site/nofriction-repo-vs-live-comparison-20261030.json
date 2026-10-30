@@ -1,0 +1,17 @@
+{
+  "schema": "nofriction.repo-vs-live-comparison.v1",
+  "observed_at": "2026-10-30T05:05:46Z",
+  "repository_head_before_change": "dd539a7de9d582b466f920116cb18ad546b6609f",
+  "source_manifest": "infra/site/nofriction-s3-manifest-20261030.json",
+  "comparison_scope": "All tracked public site files except README.md and the two preserved release-video objects absent from the repository checkout",
+  "live_non_video_count": 95,
+  "repository_count": 95,
+  "live_non_video_bytes": 3736824,
+  "repository_bytes": 3736824,
+  "live_non_video_manifest_sha256": "d89786df8590720ddd6a2cc3e2d701185a267251f236682f7bd8457f2bb23409",
+  "repository_manifest_sha256": "d89786df8590720ddd6a2cc3e2d701185a267251f236682f7bd8457f2bb23409",
+  "missing": [],
+  "extra": [],
+  "mismatched": [],
+  "passed": true
+}
