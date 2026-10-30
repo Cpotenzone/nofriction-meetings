@@ -54,7 +54,18 @@
     "workflow": ".github/workflows/site_deploy.yml",
     "azure_script": "infra/site/azure-deploy.sh",
     "behavior": "The existing main-branch site workflow publishes S3/CloudFront and then the Azure mirror; Azure failure fails the workflow.",
-    "github_oidc_run_verified": false
+    "github_oidc_run_verified": true,
+    "github_oidc_smoke": {
+      "run_id": 41006117678,
+      "run_url": "https://github.com/InsureMEP/nofriction-meetings/actions/runs/41006117678",
+      "temporary_branch_subject_removed_after_test": true,
+      "azure_login": "passed",
+      "container_readback": {
+        "object_count": 97,
+        "total_bytes": 18738954,
+        "passed": true
+      }
+    }
   },
   "cutover": {
     "performed": false,
