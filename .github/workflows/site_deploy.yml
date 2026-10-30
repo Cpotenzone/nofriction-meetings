@@ -1,4 +1,4 @@
-name: Deploy site (S3 + CloudFront)
+name: Deploy site (S3 + CloudFront + Azure mirror)
 
 # Deploys site/ to S3 and invalidates CloudFront on every push to main that
 # touches the site. Safe by default: with no AWS_ROLE_ARN secret it exits 0
@@ -31,6 +31,10 @@ jobs:
       BUCKET: ${{ secrets.SITE_BUCKET }}
       DISTRIBUTION_ID: ${{ secrets.SITE_DISTRIBUTION_ID }}
       AWS_REGION: us-east-1
+      AZURE_CLIENT_ID: a20f5b7b-aa5b-4b36-8350-617ab39eb432
+      AZURE_TENANT_ID: 3c3f26f9-e1a4-4776-aff2-2a8a16ee453e
+      AZURE_SUBSCRIPTION_ID: e242106d-31bc-406c-a8aa-d19cfbe29261
+      AZURE_STORAGE_ACCOUNT: canofrictione242106d
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,7 +62,6 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Fetch the homepage film (release asset)
-        if: steps.cfg.outputs.configured == 'true'
         # hero.mp4 / hero.webm are too large for git; they live on the
         # `site-media` release. deploy.sh copies marketing/out/hero.* into
         # site/video/. Replace them with: gh release upload site-media <file> --clobber
@@ -76,11 +79,31 @@ jobs:
           chmod +x infra/site/deploy.sh
           infra/site/deploy.sh
 
+      - name: Sign in to Azure with the repository-scoped identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish the exact Azure mirror
+        run: |
+          chmod +x infra/site/azure-deploy.sh
+          infra/site/azure-deploy.sh
+
       - name: Verify
         if: steps.cfg.outputs.configured == 'true'
         run: |
           for p in / /support/ /privacy/ /download/; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://nofriction.io$p")
+            echo "$code $p"
+            [ "$code" = "200" ] || exit 1
+          done
+
+      - name: Verify Azure mirror
+        run: |
+          for p in / /support/index.html /privacy/index.html /download/index.html; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${AZURE_STORAGE_ACCOUNT}.z21.web.core.windows.net$p")
             echo "$code $p"
             [ "$code" = "200" ] || exit 1
           done

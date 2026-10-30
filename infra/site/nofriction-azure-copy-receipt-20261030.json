@@ -1,0 +1,64 @@
+{
+  "schema": "nofriction.azure-static-copy-receipt.v1",
+  "observed_at": "2026-10-30T04:56:29Z",
+  "source": {
+    "bucket": "nofriction-io-site",
+    "cloudfront_distribution": "E2AHX31YV2TCE4",
+    "cloudfront_hostname": "dsdh8rrnay7bm.cloudfront.net",
+    "public_aliases": [
+      "nofriction.io",
+      "www.nofriction.io"
+    ],
+    "public_routing_changed": false
+  },
+  "destination": {
+    "subscription_id": "e242106d-31bc-406c-a8aa-d19cfbe29261",
+    "resource_group": "rg-criticalasset-sites-prod-scus",
+    "storage_account": "canofrictione242106d",
+    "location": "southcentralus",
+    "sku": "Standard_LRS",
+    "kind": "StorageV2",
+    "https_only": true,
+    "minimum_tls_version": "TLS1_2",
+    "shared_key_access": false,
+    "blob_public_access": false,
+    "static_website": {
+      "index_document": "index.html",
+      "error_document": "404.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/"
+    }
+  },
+  "copy": {
+    "object_count": 97,
+    "total_bytes": 18738954,
+    "manifest_objects_sha256": "e7f885dfee63944b91b97662eb03308610d1f1e59fdc475ebe2bbd4b6d9c9c98",
+    "manifest_file_sha256": "34005ab6eefacf7d465490ed579066d65096215d28d2767e676cd2e6029feae4",
+    "verification_file_sha256": "921a96514c1b2c884ead3cfd81b109669868bcf5ad8c621881a4a65f728f0080",
+    "full_body_and_content_headers_checked": 97,
+    "full_body_and_content_headers_passed": 97,
+    "passed": true
+  },
+  "publisher": {
+    "identity": "mi-nofriction-site-release-scus",
+    "client_id": "a20f5b7b-aa5b-4b36-8350-617ab39eb432",
+    "principal_id": "687a553e-1074-48e2-a121-744051c7b3a9",
+    "tenant_id": "3c3f26f9-e1a4-4776-aff2-2a8a16ee453e",
+    "role": "Storage Blob Data Contributor",
+    "role_scope": "/subscriptions/e242106d-31bc-406c-a8aa-d19cfbe29261/resourceGroups/rg-criticalasset-sites-prod-scus/providers/Microsoft.Storage/storageAccounts/canofrictione242106d/blobServices/default/containers/$web",
+    "federated_subject": "repo:InsureMEP@349889035/nofriction-meetings@1135845271:ref:refs/heads/main",
+    "audience": "api://AzureADTokenExchange",
+    "account_keys_or_sas_used": false
+  },
+  "future_publish": {
+    "branch": "codex/azure-static-publish-20261029",
+    "workflow": ".github/workflows/site_deploy.yml",
+    "azure_script": "infra/site/azure-deploy.sh",
+    "behavior": "The existing main-branch site workflow publishes S3/CloudFront and then the Azure mirror; Azure failure fails the workflow.",
+    "github_oidc_run_verified": false
+  },
+  "cutover": {
+    "performed": false,
+    "owner": "Azure migration root coordinator",
+    "required_later": "Replace the CloudFront S3 origin with the tested Azure HTTPS origin while retaining aliases, certificate, viewer-request rewrite, cache and security policies, then verify before any DNS change."
+  }
+}

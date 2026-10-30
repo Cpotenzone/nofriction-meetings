@@ -1,0 +1,1466 @@
+{
+  "schema": "nofriction.azure-static-verification.v1",
+  "verified_at": "2026-10-30T04:59:28.110697+00:00",
+  "base_url": "https://canofrictione242106d.z21.web.core.windows.net/",
+  "object_count": 97,
+  "passed_count": 97,
+  "total_bytes": 18738954,
+  "passed": true,
+  "checks": [
+    {
+      "key": "404.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/404.html",
+      "status": 200,
+      "size": 4946,
+      "sha256": "be6dfb6c43c2b9d6fd48321127dec9217b31615379028d5dab9fedca41a3b1f7",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "about/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/about/index.html",
+      "status": 200,
+      "size": 10245,
+      "sha256": "8f2eb8156dfab35d57b18c34f15ea88f7ada4f0e45c1166350cda2651b7fddf4",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "casey/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/casey/index.html",
+      "status": 200,
+      "size": 19085,
+      "sha256": "261a10c18046f7b2675b4e21bb132b42b74e78a0eca1901c144e710692a8cc9f",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "contact/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/contact/index.html",
+      "status": 200,
+      "size": 5780,
+      "sha256": "3915d91acf20f157c25f3a972e44d21e1efe231794c7bcc24575ebdf68b4f86d",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "download/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/download/index.html",
+      "status": 200,
+      "size": 7944,
+      "sha256": "d57bb7f0312532696db21bc56701956dae951a03f8649d8b6b79357ff3fb7438",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "files/POTENZONE_Casey_CV-EN.docx",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/files/POTENZONE_Casey_CV-EN.docx",
+      "status": 200,
+      "size": 37671,
+      "sha256": "cb0e07316d43f90e2bbe1252c85b6ff75a6e79678b3eddf17ceaafb87e21e078",
+      "headers": {
+        "ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "guides/classes/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/guides/classes/index.html",
+      "status": 200,
+      "size": 12762,
+      "sha256": "f1aa126a068e58e34cf51b0f278701a76173602a33e50de8473f114003f3f007",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "guides/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/guides/index.html",
+      "status": 200,
+      "size": 5789,
+      "sha256": "e5d15dd933358bede244eff0d06d9606c0fa0b09ebfeaf61465d1d43b27316d0",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "guides/notes/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/guides/notes/index.html",
+      "status": 200,
+      "size": 12328,
+      "sha256": "e21af943d54caa92af2b37bec2f5cbb5693f26a029a62f75629e5a77ec7239b5",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/apple-touch-icon.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/apple-touch-icon.png",
+      "status": 200,
+      "size": 18403,
+      "sha256": "7dd79691579c4e3254ef6edaa5170a43994bc8f504ffcc613e998424cba91d91",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/badges/download-on-the-app-store.svg",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/badges/download-on-the-app-store.svg",
+      "status": 200,
+      "size": 10804,
+      "sha256": "a26fc5b38380272c92e9019a2eb8b45542a66814b3e2b203772db8904b9fb99f",
+      "headers": {
+        "ContentType": "image/svg+xml",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/badges/download-on-the-mac-app-store.svg",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/badges/download-on-the-mac-app-store.svg",
+      "status": 200,
+      "size": 12064,
+      "sha256": "15111cd04380b58d95307dcb07f0b6b06304dbc7504c57fd9cdbf0a2f78e3a92",
+      "headers": {
+        "ContentType": "image/svg+xml",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/favicon-32.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/favicon-32.png",
+      "status": 200,
+      "size": 1708,
+      "sha256": "3ea8bfac774f805280fe542b078dbed00e77ff9a6318cf1ccb468175ad31e8b7",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/favicon.ico",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/favicon.ico",
+      "status": 200,
+      "size": 2456,
+      "sha256": "dc44579883ce7fbfc9f6f750c38792423de7c8c744ebced33747b57660c7398e",
+      "headers": {
+        "ContentType": "image/x-icon",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-chat.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-chat.png",
+      "status": 200,
+      "size": 55248,
+      "sha256": "75f3cb731ba197e34bd446b925e92227dcc23bb51eb236d66d8d153f42bf2fc4",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-chat.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-chat.webp",
+      "status": 200,
+      "size": 27838,
+      "sha256": "a523821f5b2f1ef805f23ce24a5f2dbe78b22ebf915e011ccc6d52a4ec1eb9b9",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-class-mark.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-class-mark.png",
+      "status": 200,
+      "size": 96003,
+      "sha256": "04fc6ff904822007ed4f9b3f4013fb9aed76a325c786c3c8d2b55b5a1c83eb36",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-class-mark.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-class-mark.webp",
+      "status": 200,
+      "size": 53390,
+      "sha256": "7934b69710297cde25bc6d43bc94fd4f1af25423e1c7adc6f6809987e0c369ff",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-class-sheet.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-class-sheet.png",
+      "status": 200,
+      "size": 34039,
+      "sha256": "dd6581575b8b0c01b0f5324b5ffebf1b1f64dd6b7739415763b64e5ed2505df4",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-class-sheet.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-class-sheet.webp",
+      "status": 200,
+      "size": 15770,
+      "sha256": "e41ee8a40c67c3bd3d42c0244635f3e99c15e555da9543cfbae9246c7a18a6ec",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-flashcards.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-flashcards.png",
+      "status": 200,
+      "size": 35144,
+      "sha256": "34169ebc6d5605105ab6c8315412e66fc36d54fb2291cf852b33f73f3d5428f4",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-flashcards.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-flashcards.webp",
+      "status": 200,
+      "size": 15890,
+      "sha256": "cb9ee6f0125c3e53db9e77a2acaa8f917f7eea8511fe9210d8b88879b9d2bf40",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-followup-email.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-followup-email.png",
+      "status": 200,
+      "size": 29643,
+      "sha256": "5970c5e3c0bfa1016d5d37ffcc4fca7d69de946f828c7b8f4618d8216188d061",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-followup-email.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-followup-email.webp",
+      "status": 200,
+      "size": 14388,
+      "sha256": "a4e40bf4623b971e668abb5ba3a834b1db85404a9f473b8c93b9430dccad0c3b",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-lecture-marks.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-lecture-marks.png",
+      "status": 200,
+      "size": 89735,
+      "sha256": "321a1fdfc145cedf3064f2993e785697aeeffaeec11411f5aee22a3c76ffc128",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-lecture-marks.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-lecture-marks.webp",
+      "status": 200,
+      "size": 44704,
+      "sha256": "dc673a161e5191f6ebb3656c9ef554298d3a4f4be5d65543bfe6eea5c421ae93",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-lecture-notes.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-lecture-notes.png",
+      "status": 200,
+      "size": 70635,
+      "sha256": "2dd91c149581298daeef680533ad7eb008f84e43984ab208ca285a985c586c3a",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-lecture-notes.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-lecture-notes.webp",
+      "status": 200,
+      "size": 36370,
+      "sha256": "22ce025a6dd5dc25fd14e757785ea4398ad48599516a6912e5ae028cc452fb57",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-meeting-mark.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-meeting-mark.png",
+      "status": 200,
+      "size": 77614,
+      "sha256": "2f01fbaca25f925a4536604238bc658edd45cc44fdee7f7918fc124c21c4f919",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-meeting-mark.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-meeting-mark.webp",
+      "status": 200,
+      "size": 41596,
+      "sha256": "238bd736b3ecfffa212fc033e6db20610ef3f17d66f8f9732d3931beb196011d",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-meeting-notes.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-meeting-notes.png",
+      "status": 200,
+      "size": 97774,
+      "sha256": "0ded2f109c6116706c1f05395f7f63d70d544ddcc67ecd93f2171751f32f5089",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-meeting-notes.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-meeting-notes.webp",
+      "status": 200,
+      "size": 54448,
+      "sha256": "0084fd87689ba9d470bbf609d8670bcbb73e5c346008d2fb9272d82c56b81618",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-meeting-recording.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-meeting-recording.png",
+      "status": 200,
+      "size": 67161,
+      "sha256": "7509fae36a42591386152b0e3e9056827424b3f32cbc781e87c414abd1bdcdd9",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-meeting-recording.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-meeting-recording.webp",
+      "status": 200,
+      "size": 36756,
+      "sha256": "922adb8e2746ae96dbe1942e5db397bf99496111ad5c81233411caad92a33096",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-notebook.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-notebook.png",
+      "status": 200,
+      "size": 64585,
+      "sha256": "e3ad338b1f484ab3332c3cba207e3b24e258df0c283f6fdc277680c241de9564",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-notebook.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-notebook.webp",
+      "status": 200,
+      "size": 28950,
+      "sha256": "4ebe16f5b2013f3f4d7d3de42fd3239cdc67bc4806d57ab05a462b4e2ee3df74",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-quiz.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-quiz.png",
+      "status": 200,
+      "size": 57924,
+      "sha256": "5a982285fcfc1269bd4ae5337ba2109ed18257da2e5751b43b5e855e9a6c84d4",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-quiz.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-quiz.webp",
+      "status": 200,
+      "size": 31980,
+      "sha256": "38860f2aaafa048d81564a3fc87f45572b9e8750641f0b8a022e9971edd313bb",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-search.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-search.png",
+      "status": 200,
+      "size": 55636,
+      "sha256": "8af400559ca25e0bd1508d6efe087adcc6a13092f1c96ce97f26c5d104736535",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/ios-search.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/ios-search.webp",
+      "status": 200,
+      "size": 22944,
+      "sha256": "b2a15263ef93380df7388ddf836d88d8f53f6c3dd1449e21ce9d4db91f4d38a2",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-ai-settings.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-ai-settings.png",
+      "status": 200,
+      "size": 81068,
+      "sha256": "fb4f2deb88f0d79de5ad316e0053b4a8a2179577de8fce713476fb7c8b84fde0",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-ai-settings.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-ai-settings.webp",
+      "status": 200,
+      "size": 40214,
+      "sha256": "46d86e825b1fb57a56db18c8dd4b2891f3d5fd6c5f7c0ef665fa3d0566620545",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-lecture-recording.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-lecture-recording.png",
+      "status": 200,
+      "size": 65197,
+      "sha256": "e4cf30dd2fcd45b1080d9901e111b222e685677f88e0678d91161563a0adbdbd",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-lecture-recording.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-lecture-recording.webp",
+      "status": 200,
+      "size": 55174,
+      "sha256": "56cd2c9af60bd0049b0d976a3eed43c5bc89c10e36e5b8952c4bc206b7be9364",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-meeting-notes.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-meeting-notes.png",
+      "status": 200,
+      "size": 105168,
+      "sha256": "3f6d1fc993a2a77d85306d01c923968726b3d8d468421e44973fbeea982d4a57",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-meeting-notes.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-meeting-notes.webp",
+      "status": 200,
+      "size": 59718,
+      "sha256": "1f08779dc42cef592b641beff11f47d65b9baa692b2345954927624cc52246dd",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-record-sheet.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-record-sheet.png",
+      "status": 200,
+      "size": 28008,
+      "sha256": "c3ac245dd57c30326f8f4d04a46fca258d96092ca7d91f6d651cd3719e3d899c",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-record-sheet.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-record-sheet.webp",
+      "status": 200,
+      "size": 21686,
+      "sha256": "1d29afc8028c57c9ddc1c39163c820fa6f911594132e5b1eab777bbd46bf6d1c",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-study-guide.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-study-guide.png",
+      "status": 200,
+      "size": 81796,
+      "sha256": "fcebc5e27f883a66bcd1a13451f1800f948e4da1489180e88e03c2d045f7ed04",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/guides/mac-study-guide.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/guides/mac-study-guide.webp",
+      "status": 200,
+      "size": 44850,
+      "sha256": "062f5271ece298b37cca7ba23a17f4111b15aaa6efedcccaf275877a4f5512f8",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/icon-192.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/icon-192.png",
+      "status": 200,
+      "size": 20176,
+      "sha256": "60917c434d1e6eef241f01787aa5ccb293a24c419927a38e35463694e63ddfe6",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/icon-512.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/icon-512.png",
+      "status": 200,
+      "size": 79190,
+      "sha256": "1672512bd6363055f72472f2b9aad542483e76e9240b91018a7ce9d9d32cec04",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/iphone-01-record.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/iphone-01-record.png",
+      "status": 200,
+      "size": 76582,
+      "sha256": "42e425f9102c14e1a9d66965b59eaa762a060b5ba7f4cce55a825e19176405a4",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/iphone-01-record.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/iphone-01-record.webp",
+      "status": 200,
+      "size": 61936,
+      "sha256": "7ea5c8561d7e8100482f09a89b3ddf54b8bf1e6491c17aeb48ace8b998767f07",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/iphone-02-notes.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/iphone-02-notes.png",
+      "status": 200,
+      "size": 73314,
+      "sha256": "af17a60fd47304c5a01daa0efa6d7d68dc58b6a5b63712ef12c7b8d083e180c5",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/iphone-02-notes.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/iphone-02-notes.webp",
+      "status": 200,
+      "size": 60478,
+      "sha256": "5f57d1f8e6f61ae89b1a2357225a08e6d41c645caa0596489d32e98c69346c3d",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/iphone-03-stricken.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/iphone-03-stricken.png",
+      "status": 200,
+      "size": 90816,
+      "sha256": "f026f663439a19d9ede710086421d64ddbd987a654fb9ac9201d6c2212c3bbab",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/iphone-03-stricken.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/iphone-03-stricken.webp",
+      "status": 200,
+      "size": 81210,
+      "sha256": "643429467d16694ab138f2b3e55f44c4855b826d2f986c2232afddaa34bbbd82",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-01-rewind.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-01-rewind.png",
+      "status": 200,
+      "size": 80510,
+      "sha256": "df9c37435bf91ad25d3b78d52b2d8d597b708f492079a31aa8fb25213cf64188",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-01-rewind.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-01-rewind.webp",
+      "status": 200,
+      "size": 59458,
+      "sha256": "ff47f1fd75199420791db711ed8ab5b93ef1ab4cb025a4f95ea229c6fa3e8101",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-02-record-sheet.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-02-record-sheet.png",
+      "status": 200,
+      "size": 15220,
+      "sha256": "b83456b7c7770d14c729e8bbbd052d23920bd1d1d0cb64db785b902d1d3d6917",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-02-record-sheet.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-02-record-sheet.webp",
+      "status": 200,
+      "size": 12374,
+      "sha256": "5d5e8f5093033fc2a7780c799a6fd2ee3903f788ce95f7026af5ec0feb11ca8e",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-03-review.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-03-review.png",
+      "status": 200,
+      "size": 61637,
+      "sha256": "3b811fee5d1dd9ec48d60d1bad16daeb5b56e1dfda2e3a75c9ac6496733ebc14",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-03-review.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-03-review.webp",
+      "status": 200,
+      "size": 49510,
+      "sha256": "228657bc87c1a5c91cbcc65d373297de6fd4468d8a6a05eee6e25401dc51d5c3",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-04-links.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-04-links.png",
+      "status": 200,
+      "size": 51949,
+      "sha256": "017c5989d0a9af6104acc7d3d9cd666e7ce669f6324697621888413c7ab49123",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-04-links.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-04-links.webp",
+      "status": 200,
+      "size": 42192,
+      "sha256": "e7cc01ac3203923df9884ecf5b22ab424668f4633e0aacf80a25f339272061c6",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-05-notebooks.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-05-notebooks.png",
+      "status": 200,
+      "size": 91037,
+      "sha256": "dc51ed974e1e790d15f4bf318934370df442a19921ddc51409747eaee3b843d8",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-05-notebooks.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-05-notebooks.webp",
+      "status": 200,
+      "size": 71058,
+      "sha256": "f7e167655c6e4ee64cf594903b5e1b0a4cc8cb47f4b0c8f00752bca46c65ec44",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-09-export.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-09-export.png",
+      "status": 200,
+      "size": 118049,
+      "sha256": "48fc410dcb1a96457b7b3f9ec17a70c7ed18f406516251d076129b3cd1391166",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-09-export.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-09-export.webp",
+      "status": 200,
+      "size": 85222,
+      "sha256": "11cc381b52ff2609528083c8ba315fc07a35a32b2711bbcb1a7038e2b1aa3bd3",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-10-lessons.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-10-lessons.png",
+      "status": 200,
+      "size": 37170,
+      "sha256": "aad79152a2810889735c4d7dd8a59de7e71b2c1bc7507a22d87acfa24da1232d",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/mac-10-lessons.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/mac-10-lessons.webp",
+      "status": 200,
+      "size": 32854,
+      "sha256": "9a853718b0ae6f5f57e168261add7ff5e6f2a090693a2c8e240a0c11e2de5a1f",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/og.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/og.png",
+      "status": 200,
+      "size": 150602,
+      "sha256": "39da568e36d53df3dee61036c8a3f507d0a563dcd3d11a83286c44a95a623bb1",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-01-recording.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-01-recording.png",
+      "status": 200,
+      "size": 20105,
+      "sha256": "9880ad6a62944da5f593b1be6ac0210959d090285b4d1a7a3aa5317f24504f01",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-01-recording.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-01-recording.webp",
+      "status": 200,
+      "size": 9846,
+      "sha256": "a1e1e19837ff5f929a7815cd0655074b5176f753128b5960963ebdb0bf609ec1",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-02-record.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-02-record.png",
+      "status": 200,
+      "size": 5967,
+      "sha256": "cf56303ab457868570362cba73fc152514d7e801280ce22699cc09222dba2181",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-02-record.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-02-record.webp",
+      "status": 200,
+      "size": 9764,
+      "sha256": "718194821705ed47a2db264e68f0ac851a4b7de78324174aa9b049f5456ede5b",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-03-recordings.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-03-recordings.png",
+      "status": 200,
+      "size": 10496,
+      "sha256": "cf8b5deba699f47208c28fe4af47001d9bdcec35a5fbddf46ca750dca8eeb299",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-03-recordings.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-03-recordings.webp",
+      "status": 200,
+      "size": 15418,
+      "sha256": "e7f2e52531e7abeb94169d53c843f23e4d4b84472d9f1cc5f74aad7df036f7c8",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-04-class.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-04-class.png",
+      "status": 200,
+      "size": 8184,
+      "sha256": "6bce596d59dc5193467f51e00bc3c4a846da8a0d8d791f00077916170fa6992c",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-04-class.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-04-class.webp",
+      "status": 200,
+      "size": 14270,
+      "sha256": "d1bfa79843e32fbc22d7b927204a27911e5f762003fcfcd9c2982f32ccfb6374",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-05-discreet.png",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-05-discreet.png",
+      "status": 200,
+      "size": 2060,
+      "sha256": "f3d2bbb3d0da4354c2272906ffe4e4f1490a40bada194feb7bd92dd1196f9020",
+      "headers": {
+        "ContentType": "image/png",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "img/watch-05-discreet.webp",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/img/watch-05-discreet.webp",
+      "status": 200,
+      "size": 1964,
+      "sha256": "a7f413c1c3cbe65b9b5235f9f339beffae944446fd0491faa817a4bb485a2e8f",
+      "headers": {
+        "ContentType": "image/webp",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/index.html",
+      "status": 200,
+      "size": 41758,
+      "sha256": "24e68163b6c7a8ef966176c5c094b35336260eb013d824de2946c3d533de4717",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "js/site.js",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/js/site.js",
+      "status": 200,
+      "size": 660,
+      "sha256": "37d58ac0e0e8c279bce1919730b7fee1632bd2cf54122dc58247f2d050f974a0",
+      "headers": {
+        "ContentType": "text/javascript; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "js/store.js",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/js/store.js",
+      "status": 200,
+      "size": 1445,
+      "sha256": "ef0ffba87489f8cae01057fcfdd6b7d1448472ebe73218bd5b3f88edd56bfe08",
+      "headers": {
+        "ContentType": "text/javascript; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "mark.svg",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/mark.svg",
+      "status": 200,
+      "size": 12965,
+      "sha256": "f9724fb7c31525d2a2f80826e70a713b8ce8a4baf0985d25cef49607a60c735a",
+      "headers": {
+        "ContentType": "image/svg+xml",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "privacy.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/privacy.html",
+      "status": 200,
+      "size": 379,
+      "sha256": "8c322f8ad337a02f17f323a72eb4c1546b483f2df014b66e347ed0f7dc123785",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "privacy/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/privacy/index.html",
+      "status": 200,
+      "size": 18952,
+      "sha256": "786e4a2a2e33d2f73af776e582e3ca1bbcdd674bcee6104aa6c41a009ef648c3",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "privacy/website/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/privacy/website/index.html",
+      "status": 200,
+      "size": 12472,
+      "sha256": "cea17e7f763175aa3744878ba51900c70166fe1bc07a27178c7a0d787e651018",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "robots.txt",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/robots.txt",
+      "status": 200,
+      "size": 66,
+      "sha256": "ae787768051284a0d21bc3831c1680043e6a391bdb582d7dead3b418adfa166e",
+      "headers": {
+        "ContentType": "text/plain; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "sitemap.xml",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/sitemap.xml",
+      "status": 200,
+      "size": 1124,
+      "sha256": "f83f2be551e0222b398494a7e0991a5d823304e414f42b9842b57d415d91bf7e",
+      "headers": {
+        "ContentType": "application/xml; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "style.css",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/style.css",
+      "status": 200,
+      "size": 17261,
+      "sha256": "3afb99366cb90eaac7cddc8b1eeb7950d675363639da708e52c32b39d6e498fd",
+      "headers": {
+        "ContentType": "text/css; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "support/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/support/index.html",
+      "status": 200,
+      "size": 13446,
+      "sha256": "a237a9cafe4ba0402bc63f1e2cfd926be919e463b442e7bfaa360534b7c5b34d",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "terms/index.html",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/terms/index.html",
+      "status": 200,
+      "size": 14649,
+      "sha256": "385a4e52e7ca3f733764fb65bf761d4242d1e44f4d7e2292d2ccbdf84c6b21c6",
+      "headers": {
+        "ContentType": "text/html; charset=utf-8",
+        "CacheControl": "public, max-age=300, must-revalidate",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "video/hero.mp4",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/video/hero.mp4",
+      "status": 200,
+      "size": 9364540,
+      "sha256": "995770e9815ac44df2d89b785b4344d88a50fbd074024c6fbf02ad9734a67f8b",
+      "headers": {
+        "ContentType": "video/mp4",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    },
+    {
+      "key": "video/hero.webm",
+      "url": "https://canofrictione242106d.z21.web.core.windows.net/video/hero.webm",
+      "status": 200,
+      "size": 5637590,
+      "sha256": "2c82a1d25f093077b631e1f82f3e6f6d8a9758d2fdc4002396f166362f762606",
+      "headers": {
+        "ContentType": "video/webm",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "ContentEncoding": null,
+        "ContentLanguage": null,
+        "ContentDisposition": null
+      },
+      "passed": true
+    }
+  ]
+}
